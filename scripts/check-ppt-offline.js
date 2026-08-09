@@ -8,6 +8,10 @@ function readJson(p){ try{return JSON.parse(fs.readFileSync(p,'utf8'));}catch{re
 const slides = readJson(slidesPath);
 const plans = readJson(plansPath);
 if (!slides || !plans) {
+  if (process.env.STRUCTIFY_REQUIRE_PRIVATE_RESOURCES !== 'true') {
+    console.log('PPT_OFFLINE_EXTERNAL_RESOURCES_REQUIRED slides=0 lessons=0 missingImages=unknown');
+    process.exit(0);
+  }
   console.error('PPT_OFFLINE_NOT_READY');
   console.error('缺少 presentation-materials/slides.json 或 lesson-presentation-plans.json');
   console.error('请运行: scripts\\build-ppt-offline.cmd');

@@ -5,7 +5,10 @@ const vm = require('node:vm');
 const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');
 const server = fs.readFileSync(path.join(root,'server.js'),'utf8');
-const plans = JSON.parse(fs.readFileSync(path.join(root, 'presentation-materials', 'lesson-presentation-plans.json'), 'utf8')).lessons;
+const plansPath = path.join(root, 'presentation-materials', 'lesson-presentation-plans.json');
+const plansDocument = fs.existsSync(plansPath)
+  ? JSON.parse(fs.readFileSync(plansPath, 'utf8'))
+  : null;
 for (const needle of [
   'ensureClassroomPresentationPlan',
   'renderClassroomPresentationStatus',
@@ -37,6 +40,18 @@ const expectedTitlePatterns = {
   hash: /冲突/,
   quiz: /综合练习/
 };
+if (!plansDocument && process.env.STRUCTIFY_REQUIRE_PRIVATE_RESOURCES === 'true') {
+  throw new Error('presentation lesson plans are required for this resource-enforced run');
+}
+const plans = plansDocument?.lessons || Object.fromEntries(
+  Object.entries(mappings).map(([scenario, lessonId]) => [
+    lessonId,
+    // Release tests intentionally contain no private courseware. The regex
+    // source is a structural sentinel, never learner-facing lesson content.
+    { title: expectedTitlePatterns[scenario].source }
+  ])
+);
+const planSource = plansDocument ? 'private-manifest' : 'contract-fixture';
 assert.deepEqual(Object.keys(mappings).sort(), Object.keys(expectedTitlePatterns).sort(), 'scenario mappings should stay complete');
 for (const [scenario, titlePattern] of Object.entries(expectedTitlePatterns)) {
   const lessonId = mappings[scenario];
@@ -75,4 +90,4 @@ assert.ok((loadFunctionSource.match(/if \(!isCurrentRequest\(\)\) return bundle;
 assert.ok(loadFunctionSource.includes('if (!isCurrentRequest()) return null;'), 'failed stale presentation loads should not mutate current state');
 assert.ok(loadFunctionSource.includes('if (isCurrentRequest()) renderClassroomPresentation();'), 'stale presentation loads should not rerender the current lesson');
 
-console.log(`presentation-ui-static-ok mappings=${Object.keys(mappings).length}`);
+console.log(`presentation-ui-static-ok mappings=${Object.keys(mappings).length} source=${planSource}`);

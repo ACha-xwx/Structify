@@ -48,6 +48,9 @@ Files:
 - `Caddyfile.production` - dedicated-host container Caddy routes and SSE flush behavior.
 - `Caddyfile.host.production` - append-only shared-host site block for `structify.cn`.
 - `.env.spring.example` - placeholder-only production environment template.
+- `scripts/init-production-env.sh` - Linux-only secret-file generator; it
+  writes fresh database/JWT values outside the checkout, refuses overwrite,
+  and leaves optional model/SMTP/sandbox integrations disabled.
 - `scripts/preflight.sh` - local configuration and path checks.
 - `scripts/deploy.sh` - build, backup, Flyway-on-start, and service rollout.
 - `scripts/backup.sh` / `restore.sh` - MySQL, SQLite, and optional private-media snapshots.

@@ -64,11 +64,15 @@ or a non-expired HMAC URL signature. Never replace that route with `file_server`
    data, or credentials in the repository. Keep originals and rendered media
    in an access-controlled private store.
 
-4. Create `/etc/structify/structify.env` from
-   [`deployment/.env.spring.example`](../deployment/.env.spring.example), set
-   mode `0600`, and replace every `__...__` marker through the secret manager.
-   The file must not be copied back into the checkout or included in a support
-   bundle. In shared-host mode, set `HOST_CADDY_CONFIG` to the complete active
+4. Create `/etc/structify/structify.env` with
+   [`deployment/scripts/init-production-env.sh`](../deployment/scripts/init-production-env.sh).
+   The parent directory must be a real Linux `0700` directory; the generator
+   creates distinct database and JWT secrets, writes the result with mode
+   `0600`, refuses to overwrite an existing file, and never prints values.
+   Enable model, SMTP, or remote execution only by adding their real
+   secret-manager values after the corresponding service is ready. The file
+   must not be copied back into the checkout or included in a support bundle.
+   In shared-host mode, set `HOST_CADDY_CONFIG` to the complete active
    Caddyfile which imports `Caddyfile.host.production`, and keep
    `CADDY_MODE=host`, `MIN_AVAILABLE_MEMORY_MB=1536`, `NODE_HOST_PORT=18791`,
    and `SPRING_HOST_PORT=18792` unless the host is dedicated to Structify.
@@ -143,7 +147,9 @@ dry-run. Review output, then add the explicit confirmation flag.
 
 ```bash
 install -d -m 700 /etc/structify /var/backups/structify
-install -m 600 deployment/.env.spring.example /etc/structify/structify.env
+deployment/scripts/init-production-env.sh \
+  --output /etc/structify/structify.env \
+  --release <immutable-release-tag>
 
 deployment/scripts/preflight.sh \
   --env-file /etc/structify/structify.env

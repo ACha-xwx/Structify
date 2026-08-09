@@ -66,6 +66,7 @@ Caddyfile.remote
 # === Local deployment answers and working notes ===
 docs/production-input-checklist.md
 docs/production-input-response-review.md
+docs/private-resource-inventory.local.md
 docs/superpowers/
 task_plan.md
 findings.md

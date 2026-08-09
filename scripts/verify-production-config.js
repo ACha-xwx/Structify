@@ -400,6 +400,74 @@ function verifyContainerCaddyExecuteGate() {
   }
 }
 
+function verifyProductionEnvGenerator() {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ds-agent-production-env-"));
+  const outputParent = path.join(fixtureRoot, "private-secrets");
+  const output = path.join(outputParent, "structify.env");
+  fs.mkdirSync(outputParent, { recursive: true, mode: 0o700 });
+  const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "bash";
+  const bashEnv = path.join(fixtureRoot, "bash-env");
+  if (process.platform === "win32") {
+    fs.writeFileSync(bashEnv, [
+      "stat() { if [[ \"$1\" == \"-c\" && \"$2\" == \"%a\" && \"$3\" == */private-secrets ]]; then printf '700\\n'; else command stat \"$@\"; fi; }"
+    ].join("\n"));
+  }
+  const args = [
+    "deployment/scripts/init-production-env.sh",
+    "--output", bashPath(output),
+    "--release", "test-release"
+  ];
+  try {
+    const result = spawnSync(shell, args, {
+      cwd: root,
+      encoding: "utf8",
+      env: process.platform === "win32"
+        ? { ...process.env, BASH_ENV: bashPath(bashEnv) }
+        : process.env
+    });
+    const outputText = `${result.stdout || ""}\n${result.stderr || ""}`;
+    assert.equal(result.status, 0, outputText);
+    assert.match(outputText, /production environment created outside the repository/);
+    const generated = fs.readFileSync(output, "utf8");
+    const values = Object.fromEntries(generated.split(/\r?\n/)
+      .filter((line) => /^[A-Z0-9_]+=/.test(line))
+      .map((line) => {
+        const separator = line.indexOf("=");
+        return [line.slice(0, separator), line.slice(separator + 1)];
+      }));
+    assert.equal(values.NODE_IMAGE, "structify-node:test-release");
+    assert.equal(values.SPRING_IMAGE, "structify-spring:test-release");
+    assert.equal(values.MYSQL_USER, "structify_app");
+    assert.match(values.MYSQL_PASSWORD, /^[a-f0-9]{64}$/);
+    assert.match(values.MYSQL_ROOT_PASSWORD, /^[a-f0-9]{64}$/);
+    assert.match(values.JWT_SECRET, /^[a-f0-9]{64}$/);
+    assert.match(values.NODE_COMPAT_JWT_SECRET, /^[a-f0-9]{64}$/);
+    assert.notEqual(values.JWT_SECRET, values.NODE_COMPAT_JWT_SECRET);
+    assert.equal(values.AUTH_MAIL_ENABLED, "false");
+    assert.equal(values.MODEL_API_KEY, "");
+    assert.equal(values.PISTON_BASE_URL, "");
+    assert.equal(values.JUDGE0_BASE_URL, "");
+    assert.equal(values.HOST_CADDY_CONFIG, "/etc/caddy/Caddyfile");
+    assert.equal(values.MIN_AVAILABLE_MEMORY_MB, "1536");
+    if (process.platform !== "win32") {
+      assert.equal(fs.statSync(outputParent).mode & 0o777, 0o700);
+      assert.equal(fs.statSync(output).mode & 0o777, 0o600);
+    }
+    for (const [key, value] of Object.entries(values)) {
+      assert.doesNotMatch(value, /^__.*__$/, "placeholder value remains for " + key);
+    }
+    assert.doesNotMatch(outputText, new RegExp(values.MYSQL_PASSWORD));
+    assert.doesNotMatch(outputText, new RegExp(values.JWT_SECRET));
+
+    const second = spawnSync(shell, args, { cwd: root, encoding: "utf8" });
+    const secondOutput = `${second.stdout || ""}\n${second.stderr || ""}`;
+    assert.notEqual(second.status, 0, secondOutput);
+    assert.match(secondOutput, /refusing to overwrite/);
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+}
+
 function verifyDatabaseRecoveryDryRun() {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ds-agent-database-recovery-"));
   const envFile = path.join(fixtureRoot, "structify.env");
@@ -456,8 +524,9 @@ const result = spawnSync(process.execPath, ["server.js"], {
   verifyHostCaddyPreflight();
   verifyHostCaddyExecuteGate();
   verifyContainerCaddyExecuteGate();
+  verifyProductionEnvGenerator();
   verifyDatabaseRecoveryDryRun();
-  console.log("production-config-ok jwt-required=1 optional-services-nonblocking=1 host-caddy-preflight=1 host-caddy-execute-gate=1 container-caddy-execute-gate=1 database-recovery-dry-run=1 no-secret-output=1");
+  console.log("production-config-ok jwt-required=1 optional-services-nonblocking=1 host-caddy-preflight=1 host-caddy-execute-gate=1 container-caddy-execute-gate=1 production-env-generator=1 database-recovery-dry-run=1 no-secret-output=1");
 })().catch((error) => {
   console.error(error.message);
   process.exitCode = 1;
