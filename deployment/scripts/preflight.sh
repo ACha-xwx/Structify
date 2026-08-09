@@ -73,6 +73,15 @@ else
   acme_email="$(env_value ACME_EMAIL)"
   [[ -n "$acme_email" && "$acme_email" != __*__ ]] || die "ACME_EMAIL is required when CADDY_MODE=container"
   log "container Caddy mode: Structify owns public 80/443"
+  if [[ "$EXECUTE" == "1" ]]; then
+    require_command ss
+    for public_port in 80 443; do
+      public_listeners="$(ss -H -ltn "sport = :$public_port" 2>/dev/null || true)"
+      [[ -z "$public_listeners" ]] \
+        || die "public TCP port $public_port is already bound; CADDY_MODE=container requires a dedicated host"
+    done
+    log "public TCP ports 80 and 443 are available for container Caddy"
+  fi
 fi
 
 if [[ "$EXECUTE" == "1" ]]; then

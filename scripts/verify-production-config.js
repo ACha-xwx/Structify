@@ -324,6 +324,82 @@ function verifyHostCaddyExecuteGate() {
   }
 }
 
+function verifyContainerCaddyExecuteGate() {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ds-agent-container-caddy-execute-"));
+  const binDir = path.join(fixtureRoot, "bin");
+  const privateRoot = path.join(fixtureRoot, "private");
+  const envFile = path.join(fixtureRoot, "structify.env");
+  const bashEnv = path.join(fixtureRoot, "bash-env");
+  const privatePaths = [
+    path.join(privateRoot, "knowledge"),
+    path.join(privateRoot, "course-content"),
+    path.join(privateRoot, "presentation-materials")
+  ];
+  fs.mkdirSync(binDir);
+  privatePaths.forEach((privatePath) => fs.mkdirSync(privatePath, { recursive: true }));
+  writeExecutable(path.join(binDir, "docker"), "exit 0");
+  writeExecutable(path.join(binDir, "ss"), "printf 'LISTEN 0 4096 0.0.0.0:80 0.0.0.0:*\\n'");
+  fs.writeFileSync(bashEnv, [
+    "stat() { if [[ \"$1\" == \"-c\" && \"$2\" == \"%a\" ]]; then printf '600\\n'; else command stat \"$@\"; fi; }",
+    "awk() { if [[ \"$*\" == *\"/proc/meminfo\"* ]]; then printf '1048576\\n'; else command awk \"$@\"; fi; }"
+  ].join("\n"));
+  const fixture = [
+    "COMPOSE_PROJECT_NAME=structify-test",
+    "CADDY_MODE=container",
+    "ACME_EMAIL=operator@example.test",
+    "NODE_HOST_PORT=18791",
+    "SPRING_HOST_PORT=18792",
+    "NODE_IMAGE=structify-node:test-release",
+    "SPRING_IMAGE=structify-spring:test-release",
+    "MYSQL_DATABASE=structify",
+    "MYSQL_USER=structify_app",
+    "MYSQL_PASSWORD=test-database-password",
+    "MYSQL_ROOT_PASSWORD=test-root-password",
+    `JWT_SECRET=${"j".repeat(64)}`,
+    `NODE_COMPAT_JWT_SECRET=${"n".repeat(64)}`,
+    "NODE_COMPAT_ENABLED=true",
+    "CORS_ALLOWED_ORIGINS=https://structify.cn",
+    "AUTH_COOKIE_SECURE=true",
+    "AUTH_EXPOSE_DEV_CODE=false",
+    "AUTH_MAIL_ENABLED=false",
+    "BOOTSTRAP_ADMIN_EMAIL=",
+    "TEACHER_EMAILS=",
+    "ALLOW_FIRST_USER_TEACHER=false",
+    "MODEL_API_KEY=",
+    "SMTP_HOST=",
+    "SMTP_USER=",
+    "SMTP_PASS=",
+    "SMTP_FROM=",
+    "JUDGE0_BASE_URL=",
+    "PISTON_BASE_URL=",
+    "VERIFICATION_CODE_FILE=",
+    "KNOWLEDGE_DEBUG_API=false",
+    "MIN_AVAILABLE_MEMORY_MB=512",
+    `KNOWLEDGE_DIR_HOST=${bashPath(privatePaths[0])}`,
+    `RESOURCE_DIR_HOST=${bashPath(privatePaths[1])}`,
+    `PRESENTATION_DIR_HOST=${bashPath(privatePaths[2])}`
+  ].join("\n");
+  fs.writeFileSync(envFile, `${fixture}\n`, { mode: 0o600 });
+
+  try {
+    const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "bash";
+    const env = {
+      ...process.env,
+      PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+      BASH_ENV: bashPath(bashEnv)
+    };
+    const result = spawnSync(shell, [
+      "deployment/scripts/preflight.sh", "--env-file", bashPath(envFile), "--execute"
+    ], { cwd: root, encoding: "utf8", env });
+    const output = `${result.stdout || ""}\n${result.stderr || ""}`;
+    assert.notEqual(result.status, 0, output);
+    assert.match(output, /public TCP port 80 is already bound/);
+    assert.doesNotMatch(output, /test-(?:database|root)-password/);
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+}
+
 function verifyDatabaseRecoveryDryRun() {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ds-agent-database-recovery-"));
   const envFile = path.join(fixtureRoot, "structify.env");
@@ -379,8 +455,9 @@ const result = spawnSync(process.execPath, ["server.js"], {
   verifyOptionalDeploymentContract();
   verifyHostCaddyPreflight();
   verifyHostCaddyExecuteGate();
+  verifyContainerCaddyExecuteGate();
   verifyDatabaseRecoveryDryRun();
-  console.log("production-config-ok jwt-required=1 optional-services-nonblocking=1 host-caddy-preflight=1 host-caddy-execute-gate=1 database-recovery-dry-run=1 no-secret-output=1");
+  console.log("production-config-ok jwt-required=1 optional-services-nonblocking=1 host-caddy-preflight=1 host-caddy-execute-gate=1 container-caddy-execute-gate=1 database-recovery-dry-run=1 no-secret-output=1");
 })().catch((error) => {
   console.error(error.message);
   process.exitCode = 1;
