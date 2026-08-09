@@ -32,6 +32,8 @@ services:
     build:
       context: ..
       dockerfile: deployment/Dockerfile.node
+      args:
+        NODE_BASE_IMAGE: ${NODE_BASE_IMAGE:-node:22-bookworm-slim}
     restart: unless-stopped
     init: true
     environment:
@@ -39,7 +41,7 @@ services:
       HOST: 0.0.0.0
       PORT: 8791
       CORS_ALLOWED_ORIGINS: https://structify.cn
-      JWT_SECRET: ${JWT_SECRET:?set a strong JWT_SECRET}
+      NODE_COMPAT_JWT_SECRET: ${NODE_COMPAT_JWT_SECRET:?set a strong NODE_COMPAT_JWT_SECRET}
       DB_PATH: /app/data/data.db
       KNOWLEDGE_DIR: /app/private/knowledge
       KNOWLEDGE_DEBUG_API: "false"
@@ -59,21 +61,21 @@ services:
       CODE_REQUEST_IP_RATE_MAX: ${CODE_REQUEST_IP_RATE_MAX:-12}
       CODE_MAX_ATTEMPTS: ${CODE_MAX_ATTEMPTS:-5}
       CODE_LOCK_MS: ${CODE_LOCK_MS:-900000}
-      MODEL_PROVIDER: ${MODEL_PROVIDER:?set MODEL_PROVIDER}
-      MODEL_API_KEY: ${MODEL_API_KEY:?set MODEL_API_KEY}
-      MODEL_BASE_URL: ${MODEL_BASE_URL:?set MODEL_BASE_URL}
-      MODEL_NAME: ${MODEL_NAME:?set MODEL_NAME}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-deepseek}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-https://api.deepseek.com/v1}
+      MODEL_NAME: ${MODEL_NAME:-deepseek-v4-pro}
       MODEL_TIMEOUT_MS: ${MODEL_TIMEOUT_MS:-45000}
       MODEL_STREAM_IDLE_TIMEOUT_MS: ${MODEL_STREAM_IDLE_TIMEOUT_MS:-30000}
-      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST}
-      SMTP_CONNECT_HOST: ${SMTP_CONNECT_HOST:-${SMTP_HOST}}
-      SMTP_TLS_SERVERNAME: ${SMTP_TLS_SERVERNAME:-${SMTP_HOST}}
-      SMTP_PORT: ${SMTP_PORT:?set SMTP_PORT}
-      SMTP_USER: ${SMTP_USER:?set SMTP_USER}
-      SMTP_PASS: ${SMTP_PASS:?set SMTP_PASS}
-      SMTP_FROM: ${SMTP_FROM:?set SMTP_FROM}
-      JUDGE0_BASE_URL: ${JUDGE0_BASE_URL:?set JUDGE0_BASE_URL}
-      PISTON_BASE_URL: ${PISTON_BASE_URL:?set PISTON_BASE_URL}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_CONNECT_HOST: ${SMTP_CONNECT_HOST:-}
+      SMTP_TLS_SERVERNAME: ${SMTP_TLS_SERVERNAME:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      JUDGE0_BASE_URL: ${JUDGE0_BASE_URL:-}
+      PISTON_BASE_URL: ${PISTON_BASE_URL:-}
       EXECUTE_RATE_WINDOW_MS: ${EXECUTE_RATE_WINDOW_MS:-60000}
       EXECUTE_RATE_MAX: ${EXECUTE_RATE_MAX:-8}
       EXECUTE_MAX_CONCURRENCY: ${EXECUTE_MAX_CONCURRENT:-4}
@@ -91,7 +93,7 @@ services:
       - ${KNOWLEDGE_DIR_HOST:?set KNOWLEDGE_DIR_HOST}:/app/private/knowledge:ro
       - ${PRESENTATION_DIR_HOST:?set PRESENTATION_DIR_HOST}:/app/private/presentation-materials:ro
     ports:
-      - 127.0.0.1:8791:8791
+      - 127.0.0.1:${NODE_HOST_PORT:-18791}:8791
     expose:
       - "8791"
     healthcheck:
@@ -114,6 +116,9 @@ services:
     image: ${SPRING_IMAGE:?set immutable SPRING_IMAGE release tag}
     build:
       context: ../apps/server
+      args:
+        JAVA_BUILD_IMAGE: ${JAVA_BUILD_IMAGE:-eclipse-temurin:21-jdk}
+        JAVA_RUNTIME_IMAGE: ${JAVA_RUNTIME_IMAGE:-eclipse-temurin:21-jre}
     restart: unless-stopped
     init: true
     depends_on:
@@ -127,30 +132,32 @@ services:
       DB_USER: ${MYSQL_USER:?set MYSQL_USER}
       DB_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD}
       JWT_SECRET: ${JWT_SECRET:?set a strong JWT_SECRET}
+      NODE_COMPAT_ENABLED: ${NODE_COMPAT_ENABLED:-true}
+      NODE_COMPAT_JWT_SECRET: ${NODE_COMPAT_JWT_SECRET:?set a strong NODE_COMPAT_JWT_SECRET}
       CORS_ALLOWED_ORIGINS: https://structify.cn
       AUTH_TOKEN_ISSUER: ${AUTH_TOKEN_ISSUER:-structify.cn}
       AUTH_TOKEN_TTL: ${AUTH_TOKEN_TTL:-PT2H}
       AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-ds_session}
       AUTH_COOKIE_SECURE: "true"
       AUTH_EXPOSE_DEV_CODE: "false"
-      AUTH_MAIL_ENABLED: "true"
+      AUTH_MAIL_ENABLED: ${AUTH_MAIL_ENABLED:-false}
       BOOTSTRAP_ADMIN_EMAIL: ""
       TEACHER_EMAILS: ""
-      MODEL_PROVIDER: ${MODEL_PROVIDER:?set MODEL_PROVIDER}
-      MODEL_API_KEY: ${MODEL_API_KEY:?set MODEL_API_KEY}
-      MODEL_BASE_URL: ${MODEL_BASE_URL:?set MODEL_BASE_URL}
-      MODEL_NAME: ${MODEL_NAME:?set MODEL_NAME}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-deepseek}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-https://api.deepseek.com/v1}
+      MODEL_NAME: ${MODEL_NAME:-deepseek-v4-pro}
       MODEL_TIMEOUT: ${MODEL_TIMEOUT:-PT45S}
       MODEL_STREAM_IDLE_TIMEOUT: ${MODEL_STREAM_IDLE_TIMEOUT:-PT30S}
       MODEL_MAX_RESPONSE_BYTES: ${MODEL_MAX_RESPONSE_BYTES:-1048576}
       KNOWLEDGE_DIR: /app/private/knowledge
       KNOWLEDGE_AUTO_PUBLISH_LOCAL: "false"
       RESOURCE_DIR: /app/private/course-content
-      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT:?set SMTP_PORT}
-      SMTP_USER: ${SMTP_USER:?set SMTP_USER}
-      SMTP_PASS: ${SMTP_PASS:?set SMTP_PASS}
-      SMTP_FROM: ${SMTP_FROM:?set SMTP_FROM}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
       SMTP_AUTH: ${SMTP_AUTH:-true}
       SMTP_SSL: ${SMTP_SSL:-true}
       SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
@@ -159,7 +166,7 @@ services:
       SMTP_CONNECTION_TIMEOUT_MS: ${SMTP_CONNECTION_TIMEOUT_MS:-5000}
       SMTP_READ_TIMEOUT_MS: ${SMTP_READ_TIMEOUT_MS:-10000}
       SMTP_WRITE_TIMEOUT_MS: ${SMTP_WRITE_TIMEOUT_MS:-10000}
-      PISTON_BASE_URL: ${PISTON_BASE_URL:?set PISTON_BASE_URL}
+      PISTON_BASE_URL: ${PISTON_BASE_URL:-}
       EXECUTE_TIMEOUT: ${EXECUTE_TIMEOUT:-PT15S}
       EXECUTE_CODE_MAX_LENGTH: ${EXECUTE_CODE_MAX_LENGTH:-20000}
       EXECUTE_INPUT_MAX_LENGTH: ${EXECUTE_INPUT_MAX_LENGTH:-12000}
@@ -172,7 +179,7 @@ services:
       - ${KNOWLEDGE_DIR_HOST:?set KNOWLEDGE_DIR_HOST}:/app/private/knowledge:ro
       - ${RESOURCE_DIR_HOST:?set RESOURCE_DIR_HOST}:/app/private/course-content:ro
     ports:
-      - 127.0.0.1:8792:8792
+      - 127.0.0.1:${SPRING_HOST_PORT:-18792}:8792
     expose:
       - "8792"
     read_only: true
@@ -188,6 +195,8 @@ services:
 
   caddy:
     image: caddy:2.10-alpine
+    profiles:
+      - container-caddy
     restart: unless-stopped
     depends_on:
       node:
@@ -195,7 +204,7 @@ services:
       spring-api:
         condition: service_started
     environment:
-      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+      ACME_EMAIL: ${ACME_EMAIL:-}
     ports:
       - 80:80
       - 443:443

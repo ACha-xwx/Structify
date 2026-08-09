@@ -1,21 +1,32 @@
 # Production deployment assets
 
-The production target is `https://structify.cn`. The complete topology is in
-[`docker-compose.production.yml`](docker-compose.production.yml) and uses
-Caddy for TLS and routing:
+The production target is `https://structify.cn`. The default topology keeps an
+existing host Caddy in control of public TLS and routes only Structify traffic
+to dedicated loopback ports:
 
 ```text
 Internet :443
-    -> caddy
-       /api/v1/*      -> spring-api:8792 (Spring, MySQL, Flyway)
-       /api/*         -> node:8791 (legacy compatibility service)
-       /presentation/* -> node:8791 (Node JWT or short-lived HMAC check)
-       / and static   -> node:8791
+    -> existing host Caddy
+       /api/v1/*       -> Spring loopback :18792 (MySQL, Flyway)
+       /api/*          -> Node loopback :18791 (compatibility service)
+       /presentation/* -> Node loopback :18791 (JWT/HMAC check)
+       / and static    -> Node loopback :18791
 ```
 
-Only Caddy publishes ports 80/443. Node 8791 and Spring 8792 are published on
-the host loopback interface for health checks, not on a public interface.
-MySQL has no host port and is reachable only on the internal Compose network.
+`CADDY_MODE=host` is the production default. It starts only MySQL, Node, and
+Spring, then requires the operator to import and validate
+[`Caddyfile.host.production`](Caddyfile.host.production) in the existing host
+Caddy configuration. Structify never binds public `80/443` in that mode. The
+`container` mode is available only for a dedicated host and explicitly starts
+the profiled Caddy service. Node and Spring bind the configurable loopback
+ports `18791` and `18792`; MySQL has no host port and is reachable only on the
+internal Compose network.
+
+The default build bases are the official Node 22 Bookworm and Eclipse Temurin
+21 images. When Docker Hub is unavailable, an operator may set
+`NODE_BASE_IMAGE`, `JAVA_BUILD_IMAGE`, and `JAVA_RUNTIME_IMAGE` in the private
+production environment file to a verified compatible mirror. Record the
+resolved digests with the release; do not add mirror credentials to source.
 
 Use [`../docs/production-deployment.md`](../docs/production-deployment.md) as
 the operator runbook. All operational scripts are under `scripts/` and are
@@ -24,9 +35,10 @@ domain-specific `--confirm` value.
 
 Files:
 
-- `docker-compose.production.yml` - Node, Spring, MySQL, and Caddy topology.
+- `docker-compose.production.yml` - Node, Spring, MySQL, and optional profiled Caddy topology.
 - `Dockerfile.node` / `Dockerfile.node.dockerignore` / `node-entrypoint.sh` - non-root Node compatibility image; the build context allowlist excludes private media and databases, while reviewed public PDFs are seeded into a dedicated writable upload volume.
-- `Caddyfile.production` - `structify.cn` routes and SSE flush behavior.
+- `Caddyfile.production` - dedicated-host container Caddy routes and SSE flush behavior.
+- `Caddyfile.host.production` - append-only shared-host site block for `structify.cn`.
 - `.env.spring.example` - placeholder-only production environment template.
 - `scripts/preflight.sh` - local configuration and path checks.
 - `scripts/deploy.sh` - build, backup, Flyway-on-start, and service rollout.
@@ -47,3 +59,9 @@ must exercise both modes: a context-free request returns a non-persisted
 preview, while an authenticated source-verified request commits one linked
 animation/snapshot/event evidence unit with a non-null chapter. Do this only
 after a restore-tested backup and before DNS promotion.
+
+The legacy Node login bridge uses a dedicated `NODE_COMPAT_JWT_SECRET`; it is
+not the Spring `JWT_SECRET`. In host or container mode, Node receives only the
+compatibility key. Spring accepts it only when `NODE_COMPAT_ENABLED=true` and
+only on the restricted learning/animation evidence endpoints documented in the
+API difference matrix.

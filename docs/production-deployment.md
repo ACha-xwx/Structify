@@ -2,9 +2,9 @@
 
 This runbook describes a two-backend compatibility deployment. It is written
 for a Linux host with Docker Compose v2, a DNS provider, a secret manager, and
-an operator who can review backups. It does not contain credentials. This
-workspace has completed a read-only SSH/Docker/DNS preflight only; no remote
-deployment, backup, migration, or DNS change has been performed.
+an operator who can review backups. It does not contain credentials. The
+default production mode is an isolated Structify stack behind an existing host
+Caddy site block, so it does not take over unrelated public listeners.
 
 The older root-level `13-cloudflare-deployment-guide.md` is a historical
 prototype/Cloudflare note and still names `agent.example.com` and placeholder
@@ -15,9 +15,9 @@ and the files under `deployment/` for production.
 
 ```text
                          public 80/443
-Internet -> structify.cn -> Caddy
-                             |-- /api/v1/* ----------> Spring :8792
-                             |-- /api/* --------------> Node :8791
+Internet -> structify.cn -> existing host Caddy
+                             |-- /api/v1/* ----------> Spring loopback :18792
+                             |-- /api/* --------------> Node loopback :18791
                              |-- /presentation/* -----> Node signed/auth route
                              `-- /, /pdfs/* ----------> Node static/legacy route
 
@@ -63,7 +63,8 @@ or a non-expired HMAC URL signature. Never replace that route with `file_server`
    [`deployment/.env.spring.example`](../deployment/.env.spring.example), set
    mode `0600`, and replace every `__...__` marker through the secret manager.
    The file must not be copied back into the checkout or included in a support
-   bundle.
+   bundle. Keep `CADDY_MODE=host`, `NODE_HOST_PORT=18791`, and
+   `SPRING_HOST_PORT=18792` unless the host is dedicated to Structify.
 
 The Node image keeps reviewed public PDFs in `/app/default-pdfs` and seeds a
 separate `node-pdfs` volume on first boot. That volume is writable only for the
@@ -75,8 +76,22 @@ private directories and SQLite files are not sent to the Docker daemon.
 ## Required production values
 
 - `CORS_ALLOWED_ORIGINS` must be exactly `https://structify.cn`.
-- `JWT_SECRET` must be at least 64 random characters and must be identical for
-  Node and Spring during migration. Generate it with `openssl rand -hex 32`.
+- `CADDY_MODE=host` is the default for a shared host. Import
+  `deployment/Caddyfile.host.production` into the existing host Caddy config,
+  validate the complete Caddy configuration, then reload it. Do not replace
+  the existing Caddyfile or start the container Caddy profile on that host.
+  The source Caddy block routes to `127.0.0.1:18791` and
+  `127.0.0.1:18792`; both ports must be unused before deployment.
+- Set `CADDY_MODE=container` only on a dedicated host. In that mode,
+  `ACME_EMAIL` is required and the profiled Compose Caddy service owns public
+  `80/443`.
+- `JWT_SECRET` and `NODE_COMPAT_JWT_SECRET` must each be at least 64 random
+  characters and must differ. Generate each separately with `openssl rand -hex
+  32`. `JWT_SECRET` is confined to Spring. Node uses only
+  `NODE_COMPAT_JWT_SECRET`; while `NODE_COMPAT_ENABLED=true`, Spring accepts a
+  Node Bearer token only for progress, learning-event, DSVP simulation, and
+  owned animation-observation endpoints. It never trusts the Node user ID or
+  roles and maps identity by the verified email in MySQL.
 - `AUTH_COOKIE_SECURE=true`; Spring emits an `HttpOnly; Secure; SameSite=Strict`
   `ds_session` cookie and accepts the documented Bearer token as well.
 - `BOOTSTRAP_ADMIN_EMAIL`, `TEACHER_EMAILS`, and
@@ -87,19 +102,24 @@ private directories and SQLite files are not sent to the Docker daemon.
 - `KNOWLEDGE_DEBUG_API=false`, `VERIFICATION_CODE_FILE` empty, and
   `KNOWLEDGE_AUTO_PUBLISH_LOCAL=false`. A file appearing under the private
   knowledge mount does not publish it to retrieval.
-- `AUTH_MAIL_ENABLED=true` and `AUTH_EXPOSE_DEV_CODE=false`. A mail outage
-  must be surfaced as a delivery failure; never enable development-code echo
-  in a public environment.
-- `MODEL_API_KEY`, `SMTP_PASS`, database passwords, and `JWT_SECRET` are
-  secret-manager values only. The model base URL must include the provider's
+- `AUTH_EXPOSE_DEV_CODE=false` in every public environment. Set
+  `AUTH_MAIL_ENABLED=true` only after SMTP delivery is configured and tested.
+  With mail disabled, production verification-code requests return
+  `SMTP_NOT_CONFIGURED` rather than pretending a message was delivered.
+- `MODEL_API_KEY`, `SMTP_PASS`, database passwords, `JWT_SECRET`, and
+  `NODE_COMPAT_JWT_SECRET` are secret-manager values only. The model base URL must include the provider's
   OpenAI-compatible `/v1` path (for example, `https://api.deepseek.com/v1`).
-- SMTP must use either implicit TLS (`SMTP_PORT=465`, `SMTP_SSL=true`,
-  `SMTP_STARTTLS=false`) or required STARTTLS (`SMTP_PORT=587`,
-  `SMTP_SSL=false`, `SMTP_STARTTLS=true`, `SMTP_STARTTLS_REQUIRED=true`). Keep
+  Model configuration is optional for a degraded rollout; unconfigured model
+  requests return a documented unavailable error.
+- When mail is enabled, SMTP must use either implicit TLS (`SMTP_PORT=465`,
+  `SMTP_SSL=true`, `SMTP_STARTTLS=false`) or required STARTTLS
+  (`SMTP_PORT=587`, `SMTP_SSL=false`, `SMTP_STARTTLS=true`,
+  `SMTP_STARTTLS_REQUIRED=true`). Keep
   `SMTP_SSL_CHECK_SERVER_IDENTITY=true`.
-- `PISTON_BASE_URL` is required for Spring. Node keeps Judge0 as its primary
-  provider and Piston as fallback; set both to team-controlled services when
-  possible. User code must never execute on this host.
+- `PISTON_BASE_URL` and `JUDGE0_BASE_URL` are optional only when code
+  execution is deliberately disabled. When neither is configured, Node returns
+  `COMPILER_NOT_CONFIGURED`; when configured, use team-controlled HTTPS
+  sandboxes. User code must never execute on this host.
 
 ## First rollout
 
@@ -127,8 +147,9 @@ deployment/scripts/deploy.sh \
 Before the execute step, set `NODE_IMAGE=structify-node:<release>` and
 `SPRING_IMAGE=structify-spring:<release>` in the environment file. `deploy.sh`
 builds those immutable local tags, performs a backup first, starts MySQL, lets
-Spring run Flyway migrations, and then starts Node and Caddy. It never changes
-DNS.
+Spring run Flyway migrations, and then starts Node and Spring. In host mode it
+does not change Caddy or DNS; validate and reload the imported host site block
+only after loopback health passes.
 
 Run local health checks after startup:
 
@@ -281,7 +302,7 @@ image and verify health before DNS is restored.
 - [ ] CORS is exactly `https://structify.cn`; secure cookie is enabled.
 - [ ] Static admin/teacher elevation, debug API, and verification-code capture are off.
 - [ ] Private knowledge, course resources, and rendered PPT directories are mounted read-only.
-- [ ] 8791/8792 bind only loopback; MySQL has no host port; only Caddy is public.
+- [ ] 18791/18792 bind only loopback; MySQL has no host port; only the selected Caddy owner is public.
 - [ ] MySQL backup was created and restore-tested; private media snapshot exists.
 - [ ] Flyway completed without `clean`; health and smoke checks passed.
 - [ ] A source-verified DSVP smoke request linked its snapshot to the animation record and appeared in the expected chapter progress; a context-free preview wrote no evidence.

@@ -63,18 +63,7 @@ public final class JwtTokenService {
 
     public AuthenticatedUser verify(String token) {
         try {
-            String[] parts = token == null ? new String[0] : token.split("\\.");
-            if (parts.length != 3) {
-                throw new InvalidTokenException("invalid token format");
-            }
-
-            String unsigned = parts[0] + "." + parts[1];
-            byte[] actualSignature = URL_DECODER.decode(parts[2]);
-            if (!MessageDigest.isEqual(sign(unsigned), actualSignature)) {
-                throw new InvalidTokenException("invalid token signature");
-            }
-
-            JsonNode payload = objectMapper.readTree(URL_DECODER.decode(parts[1]));
+            JsonNode payload = verifiedPayload(token);
             if (!issuer.equals(payload.path("iss").asText())) {
                 throw new InvalidTokenException("invalid token issuer");
             }
@@ -95,6 +84,53 @@ public final class JwtTokenService {
         } catch (Exception error) {
             throw new InvalidTokenException("invalid token", error);
         }
+    }
+
+    /**
+     * Verifies the pre-existing Node compatibility token shape. It deliberately
+     * accepts no issuer, subject, or role claims so a malformed Spring token
+     * cannot fall through into this migration-only path.
+     */
+    public NodeCompatibilityToken verifyNodeCompatibilityToken(String token) {
+        try {
+            JsonNode payload = verifiedPayload(token);
+            if (payload.hasNonNull("iss") || payload.hasNonNull("sub") || payload.hasNonNull("roles")) {
+                throw new InvalidTokenException("not a Node compatibility token");
+            }
+            if (clock.instant().getEpochSecond() >= payload.path("exp").asLong()) {
+                throw new InvalidTokenException("token expired");
+            }
+
+            String rawUserId = payload.path("userId").asText();
+            String email = payload.path("email").asText();
+            long nodeUserId;
+            try {
+                nodeUserId = Long.parseLong(rawUserId);
+            } catch (NumberFormatException invalidUserId) {
+                throw new InvalidTokenException("invalid Node user id", invalidUserId);
+            }
+            if (nodeUserId <= 0 || !email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$") || email.length() > 254) {
+                throw new InvalidTokenException("invalid Node compatibility claims");
+            }
+            return new NodeCompatibilityToken(nodeUserId, email);
+        } catch (InvalidTokenException error) {
+            throw error;
+        } catch (Exception error) {
+            throw new InvalidTokenException("invalid Node compatibility token", error);
+        }
+    }
+
+    private JsonNode verifiedPayload(String token) throws Exception {
+        String[] parts = token == null ? new String[0] : token.split("\\.");
+        if (parts.length != 3) {
+            throw new InvalidTokenException("invalid token format");
+        }
+        String unsigned = parts[0] + "." + parts[1];
+        byte[] actualSignature = URL_DECODER.decode(parts[2]);
+        if (!MessageDigest.isEqual(sign(unsigned), actualSignature)) {
+            throw new InvalidTokenException("invalid token signature");
+        }
+        return objectMapper.readTree(URL_DECODER.decode(parts[1]));
     }
 
     private byte[] sign(String value) throws GeneralSecurityException {

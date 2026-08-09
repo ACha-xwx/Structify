@@ -10,8 +10,6 @@
 !prototype.html
 !lib
 !lib/**
-!pdfs
-!pdfs/**
 !deployment
 !deployment/Dockerfile.node
 !deployment/Dockerfile.node.dockerignore

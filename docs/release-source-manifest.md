@@ -9,5 +9,7 @@ The release source intentionally excludes private courseware and local state. Th
 - `data.db*`, `.jwt-secret`, `.env` files, uploads, and backups
 - `node_modules/`, `apps/server/target/`, `output/`, and `.playwright-cli/`
 - local planning and audit logs (`task_plan.md`, `findings.md`, and `progress.md`)
+- local production-input answers and generated design/planning notes
+  (`docs/production-input-*.md` and `docs/superpowers/`)
 
 The release repository is initialized with fresh history so it does not inherit private-material objects from the legacy public repository. Production secrets, private presentation resources, database state, and Caddy data must be supplied through the server secret and backup procedures described in `docs/production-deployment.md`.

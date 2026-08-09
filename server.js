@@ -60,15 +60,17 @@ const knowledgeRetriever = createKnowledgeRetriever({
 knowledgeRetriever.load();
 
 // Auth & Email
-function loadJwtSecret() {
-  if (process.env.JWT_SECRET) {
-    if (String(process.env.JWT_SECRET).length < 32) {
-      throw new Error("JWT_SECRET must contain at least 32 characters");
+function loadNodeCompatibilityJwtSecret() {
+  const configured = process.env.NODE_COMPAT_JWT_SECRET
+    || (process.env.NODE_ENV === "production" ? "" : process.env.JWT_SECRET);
+  if (configured) {
+    if (String(configured).length < 32) {
+      throw new Error("NODE_COMPAT_JWT_SECRET must contain at least 32 characters");
     }
-    return process.env.JWT_SECRET;
+    return configured;
   }
   if (process.env.NODE_ENV === "production") {
-    throw new Error("JWT_SECRET is required in production");
+    throw new Error("NODE_COMPAT_JWT_SECRET is required in production");
   }
   const secretPath = path.join(__dirname, ".jwt-secret");
   try {
@@ -89,7 +91,7 @@ function loadJwtSecret() {
   return generated;
 }
 
-const JWT_SECRET = loadJwtSecret();
+const NODE_COMPAT_JWT_SECRET = loadNodeCompatibilityJwtSecret();
 const SMTP_HOST = process.env.SMTP_HOST || "";
 const SMTP_CONNECT_HOST = process.env.SMTP_CONNECT_HOST || SMTP_HOST;
 const SMTP_TLS_SERVERNAME = process.env.SMTP_TLS_SERVERNAME || SMTP_HOST;
@@ -98,9 +100,6 @@ const SMTP_USER = process.env.SMTP_USER || "";
 const SMTP_PASS = process.env.SMTP_PASS || "";
 const SMTP_FROM = process.env.SMTP_FROM || "";
 const SMTP_CONFIGURED = Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS && SMTP_FROM);
-if (process.env.NODE_ENV === "production" && !SMTP_CONFIGURED) {
-  throw new Error("SMTP configuration is required in production");
-}
 function parseBooleanEnv(value) {
   return /^(1|true|yes|on)$/i.test(String(value || "").trim());
 }
@@ -243,14 +242,14 @@ function timingSafeTextEqual(left, right) {
 function signToken(userId, email) {
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
   const payload = Buffer.from(JSON.stringify({ userId, email, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 7 * 24 * 3600 })).toString("base64url");
-  const sig = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${payload}`).digest("base64url");
+  const sig = crypto.createHmac("sha256", NODE_COMPAT_JWT_SECRET).update(`${header}.${payload}`).digest("base64url");
   return `${header}.${payload}.${sig}`;
 }
 
 function verifyToken(token) {
   try {
     const [header, payload, sig] = token.split(".");
-    const expected = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${payload}`).digest("base64url");
+    const expected = crypto.createHmac("sha256", NODE_COMPAT_JWT_SECRET).update(`${header}.${payload}`).digest("base64url");
     if (!timingSafeTextEqual(sig, expected)) return null;
     const data = JSON.parse(Buffer.from(payload, "base64url").toString());
     if (data.exp < Math.floor(Date.now() / 1000)) return null;
@@ -343,7 +342,7 @@ function saveVerificationCode(email, purpose, code) {
 }
 
 function hashVerificationCode(email, purpose, code) {
-  return crypto.createHmac("sha256", JWT_SECRET)
+  return crypto.createHmac("sha256", NODE_COMPAT_JWT_SECRET)
     .update(`${purpose}:${email}:${code}`)
     .digest("hex");
 }
@@ -441,7 +440,7 @@ async function sendCodeEmail(email, code, purpose = "login") {
   const transport = getTransporter();
   const purposeLabel = codePurposeLabel(purpose);
   if (!transport) {
-    return true;
+    return process.env.NODE_ENV !== "production";
   }
   try {
     await transport.sendMail({
@@ -1692,6 +1691,9 @@ async function handleRequestCode(req, res) {
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     sendJson(res, 400, { error: "请输入有效的邮箱地址" }); return;
   }
+  if (process.env.NODE_ENV === "production" && !SMTP_CONFIGURED) {
+    sendJson(res, 503, { code: "SMTP_NOT_CONFIGURED", error: "验证码邮件服务未配置" }); return;
+  }
   if (!checkCodeRequestRate(req, res, email)) return;
   let shouldSend = true;
   if (purpose === "register") {
@@ -2720,7 +2722,7 @@ const PRESENTATION_ASSET_URL_TTL_SECONDS = Math.max(
 );
 
 function presentationAssetSignature(pathname, expires) {
-  return crypto.createHmac("sha256", JWT_SECRET)
+  return crypto.createHmac("sha256", NODE_COMPAT_JWT_SECRET)
     .update(`${pathname}\n${expires}`)
     .digest("hex");
 }
@@ -3038,8 +3040,9 @@ async function handleUpload(req, res) {
 }
 
 /* ===== Code Execution Handler ===== */
-const JUDGE0_BASE_URL = (process.env.JUDGE0_BASE_URL || "https://ce.judge0.com").replace(/\/+$/, "");
-const PISTON_BASE_URL = (process.env.PISTON_BASE_URL || "https://emkc.org/api/v2/piston").replace(/\/+$/, "");
+const JUDGE0_BASE_URL = (process.env.JUDGE0_BASE_URL || "").trim().replace(/\/+$/, "");
+const PISTON_BASE_URL = (process.env.PISTON_BASE_URL || "").trim().replace(/\/+$/, "");
+const CODE_EXECUTION_CONFIGURED = Boolean(JUDGE0_BASE_URL || PISTON_BASE_URL);
 const LANG_MAP = {
   c: { language: "c", version: "10.2.0", judge0Id: 103, label: "C (GCC 14.1.0)" },
   cpp: { language: "c++", version: "10.2.0", judge0Id: 105, label: "C++ (GCC 14.1.0)" },
@@ -3109,6 +3112,10 @@ async function executeWithPiston(langConfig, code, stdin, timeoutMs = EXECUTE_PR
 }
 
 async function handleExecute(req, res) {
+  if (!CODE_EXECUTION_CONFIGURED) {
+    sendJson(res, 503, { code: "COMPILER_NOT_CONFIGURED", error: "远程代码沙箱未配置" });
+    return;
+  }
   const ip = getClientIp(req);
   if (!checkExecuteRate(ip)) {
     sendJson(res, 429, { error: "编译请求过于频繁，请稍后再试" });
@@ -3159,18 +3166,22 @@ async function handleExecute(req, res) {
       Math.min(EXECUTE_PROVIDER_TIMEOUT_MS, Math.floor(EXECUTE_TIMEOUT_MS * 0.45))
     );
     let result;
-    try {
-      result = await executeWithJudge0(langConfig, codeText, stdinText, primaryBudget);
-    } catch (judge0Error) {
-      const remainingBudget = EXECUTE_TIMEOUT_MS - (Date.now() - executionStartedAt);
-      if (remainingBudget <= 200) throw judge0Error;
-      result = await executeWithPiston(
-        langConfig,
-        codeText,
-        stdinText,
-        Math.max(200, Math.min(EXECUTE_PROVIDER_TIMEOUT_MS, remainingBudget))
-      );
-      result.warning = `Judge0 不可用，已切换备用执行器：${judge0Error.message}`;
+    if (!JUDGE0_BASE_URL) {
+      result = await executeWithPiston(langConfig, codeText, stdinText, primaryBudget);
+    } else {
+      try {
+        result = await executeWithJudge0(langConfig, codeText, stdinText, primaryBudget);
+      } catch (judge0Error) {
+        const remainingBudget = EXECUTE_TIMEOUT_MS - (Date.now() - executionStartedAt);
+        if (!PISTON_BASE_URL || remainingBudget <= 200) throw judge0Error;
+        result = await executeWithPiston(
+          langConfig,
+          codeText,
+          stdinText,
+          Math.max(200, Math.min(EXECUTE_PROVIDER_TIMEOUT_MS, remainingBudget))
+        );
+        result.warning = `Judge0 不可用，已切换备用执行器：${judge0Error.message}`;
+      }
     }
     sendJson(res, 200, normalizeExecutionResult(result));
   } catch (e) {
@@ -3237,6 +3248,7 @@ const server = http.createServer(async (req, res) => {
         ok: true,
         modelConfigured: Boolean(MODEL_API_KEY),
         smtpConfigured: SMTP_CONFIGURED,
+        codeExecutionConfigured: CODE_EXECUTION_CONFIGURED,
         knowledge: getPublicKnowledgeStats(),
         uptime: process.uptime(),
         timestamp: new Date().toISOString()

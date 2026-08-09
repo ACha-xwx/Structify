@@ -13,9 +13,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+node_port="$(node_host_port)"
+spring_port="$(spring_host_port)"
+
 commands=(
-  "curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8791/healthz"
-  "curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8792/actuator/health"
+  "curl --fail --silent --show-error --max-time 10 http://127.0.0.1:$node_port/healthz"
+  "curl --fail --silent --show-error --max-time 10 http://127.0.0.1:$spring_port/actuator/health"
   "docker compose --env-file $ENV_FILE -f $COMPOSE_FILE ps"
 )
 if [[ "$EXECUTE" != "1" ]]; then
@@ -26,7 +29,7 @@ fi
 
 require_command curl
 require_command docker
-curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8791/healthz >/dev/null
-curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8792/actuator/health >/dev/null
+curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:$node_port/healthz" >/dev/null
+curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:$spring_port/actuator/health" >/dev/null
 compose ps
 log "loopback health checks passed"

@@ -1,4 +1,6 @@
-FROM eclipse-temurin:21-jdk AS build
+ARG JAVA_BUILD_IMAGE=eclipse-temurin:21-jdk
+ARG JAVA_RUNTIME_IMAGE=eclipse-temurin:21-jre
+FROM ${JAVA_BUILD_IMAGE} AS build
 
 WORKDIR /workspace
 COPY .mvn .mvn
@@ -10,7 +12,7 @@ RUN chmod +x mvnw && ./mvnw -q -DskipTests dependency:go-offline
 COPY src src
 RUN ./mvnw -q -DskipTests package
 
-FROM eclipse-temurin:21-jre
+FROM ${JAVA_RUNTIME_IMAGE}
 
 RUN useradd --system --uid 10001 --create-home appuser
 WORKDIR /app

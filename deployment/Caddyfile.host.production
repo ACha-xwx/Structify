@@ -1,17 +1,25 @@
-{
-    email {$ACME_EMAIL}
-    admin off
-}
+# Import this file from the existing host Caddyfile after its global options.
+# It intentionally has no global block, listener declarations, credentials, or
+# unrelated sites, so it can coexist with services already owned by host Caddy.
 
-# Historical direct-host variant. For a shared host, use
-# Caddyfile.host.production as an imported site block instead. Both
-# applications use Structify's dedicated loopback ports.
 www.structify.cn {
     redir https://structify.cn{uri} permanent
 }
 
 structify.cn {
     encode zstd gzip
+
+    log {
+        output stdout
+        format json
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "same-origin"
+        -Server
+    }
 
     route {
         @spring_sse path /api/v1/chat/stream

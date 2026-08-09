@@ -54,7 +54,7 @@ mkdir -m 700 -p "$DEST"
 chmod 700 "$DEST"
 compose config --quiet
 
-compose exec -T mysql sh -c 'exec mysqldump --single-transaction --routines --events --set-gtid-purged=OFF -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' > "$DEST/mysql.sql"
+compose exec -T mysql sh -c 'exec mysqldump --single-transaction --routines --events --no-tablespaces --set-gtid-purged=OFF -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' > "$DEST/mysql.sql"
 compose exec -T node node -e '
 const fs = require("node:fs");
 const Database = require("better-sqlite3");

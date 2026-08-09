@@ -39,7 +39,8 @@ Use [`deployment/.env.spring.example`](../../deployment/.env.spring.example) as 
 | Variable | Purpose |
 |---|---|
 | `DB_URL`, `DB_USER`, `DB_PASSWORD` | MySQL JDBC connection. Local development defaults to H2. |
-| `JWT_SECRET` | Random secret with at least 64 characters; share it with Node only during the compatibility migration. |
+| `JWT_SECRET` | Random Spring session-token secret with at least 64 characters. Do not provide it to the Node container. |
+| `NODE_COMPAT_ENABLED`, `NODE_COMPAT_JWT_SECRET` | Temporary Node-to-Spring migration bridge. Use a different 64+ character key; Node Bearer tokens are accepted only for the documented learning/animation evidence endpoints while enabled. |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated exact frontend origins allowed to call the API with credentials. |
 | `BOOTSTRAP_ADMIN_EMAIL` | Leave empty in production. Static administrator elevation is intentionally disabled. |
 | `TEACHER_EMAILS` | Leave empty in production; role changes require an audited operator workflow. |
@@ -72,8 +73,9 @@ During migration, Caddy sends `/api/v1/*` to this service and the legacy
 [`docs/api-node-spring-differences.md`](../../docs/api-node-spring-differences.md)
 and [`docs/data-model-node-spring-differences.md`](../../docs/data-model-node-spring-differences.md).
 
-Production defaults fail closed: a real `JWT_SECRET`, MySQL URL/credentials,
-SMTP, model, and Piston URL are required; development-code exposure,
+Production defaults fail closed: real `JWT_SECRET` and `NODE_COMPAT_JWT_SECRET`
+values plus MySQL URL/credentials are required. SMTP, model, and Piston remain
+explicitly disabled until configured; development-code exposure,
 knowledge auto-publish, debug retrieval, static role elevation, and code
 capture are disabled. Actuator remains a loopback health endpoint with hidden
 details.

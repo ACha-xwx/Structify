@@ -12,6 +12,8 @@ public record SecurityProperties(
     boolean cookieSecure,
     String corsAllowedOrigins,
     String bootstrapAdminEmail,
-    String teacherEmails
+    String teacherEmails,
+    boolean nodeCompatEnabled,
+    String nodeCompatJwtSecret
 ) {
 }

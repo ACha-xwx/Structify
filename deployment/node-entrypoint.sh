@@ -5,7 +5,9 @@ set -eu
 # volume is used for Node uploads; seed it only on first boot so updates do not
 # overwrite operator-managed files.
 if [ ! -e /app/pdfs/.seeded ]; then
-  cp -R /app/default-pdfs/. /app/pdfs/
+  if [ -d /app/default-pdfs ]; then
+    cp -R /app/default-pdfs/. /app/pdfs/
+  fi
   touch /app/pdfs/.seeded
 fi
 

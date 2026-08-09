@@ -37,6 +37,15 @@ change must not assume that a successful Node response can be replayed against
 Spring without adapting the endpoint, password policy, ownership rules, and
 response schema.
 
+During the current migration, Node signs its local Bearer token with the
+separate `NODE_COMPAT_JWT_SECRET`; Spring keeps `JWT_SECRET` private. When
+`NODE_COMPAT_ENABLED=true`, Spring accepts a valid Node token only from the
+`Authorization: Bearer` header and only for `GET /api/v1/learning/progress`,
+`POST /api/v1/learning/events`, `POST /api/v1/animations/simulate`, and an
+owned `POST /api/v1/animations/{id}/observations`. It resolves the MySQL user
+by verified email and roles from MySQL, never from the Node token. All other
+Spring endpoints require a standard Spring token or `ds_session` cookie.
+
 For knowledge search specifically, the current browser sends the v1 request first and retries the legacy Node route only when v1 returns HTTP 404. A v1 `400` (for example, a missing or oversized query) or any upstream/server error is shown as an error and is not silently downgraded to the debug route. Because the Node route is intentionally disabled in production, clients should treat the Spring response shape as canonical and keep the fallback only for older deployments that have not yet exposed v1.
 
 Both services use exact-origin CORS with credentials enabled. The only allowed
