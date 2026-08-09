@@ -85,6 +85,9 @@ private directories and SQLite files are not sent to the Docker daemon.
 - Set `CADDY_MODE=container` only on a dedicated host. In that mode,
   `ACME_EMAIL` is required and the profiled Compose Caddy service owns public
   `80/443`.
+- HSTS is intentionally not enabled by the shipped Caddy files. Add it only
+  after the domain owner confirms that every current and future subdomain is
+  HTTPS-only; do not enable `includeSubDomains` as part of the first rollout.
 - `JWT_SECRET` and `NODE_COMPAT_JWT_SECRET` must each be at least 64 random
   characters and must differ. Generate each separately with `openssl rand -hex
   32`. `JWT_SECRET` is confined to Spring. Node uses only

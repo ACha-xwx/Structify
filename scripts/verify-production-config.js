@@ -92,6 +92,7 @@ function verifyOptionalDeploymentContract() {
   const restore = fs.readFileSync(path.join(root, "deployment", "scripts", "restore.sh"), "utf8");
   const health = fs.readFileSync(path.join(root, "deployment", "scripts", "health-check.sh"), "utf8");
   const hostCaddy = fs.readFileSync(path.join(root, "deployment", "Caddyfile.host.production"), "utf8");
+  const productionCaddy = fs.readFileSync(path.join(root, "deployment", "Caddyfile.production"), "utf8");
   const productionApplication = fs.readFileSync(path.join(root, "apps", "server", "src", "main", "resources", "application-prod.yml"), "utf8");
   const nodeDockerfile = fs.readFileSync(path.join(root, "deployment", "Dockerfile.node"), "utf8");
   const nodeDockerignore = fs.readFileSync(path.join(root, "deployment", "Dockerfile.node.dockerignore"), "utf8");
@@ -136,6 +137,8 @@ function verifyOptionalDeploymentContract() {
   assert.match(health, /node_host_port/);
   assert.match(hostCaddy, /reverse_proxy 127\.0\.0\.1:18791/);
   assert.match(hostCaddy, /reverse_proxy 127\.0\.0\.1:18792/);
+  assert.doesNotMatch(hostCaddy, /Strict-Transport-Security/, "HSTS requires an explicit production decision");
+  assert.doesNotMatch(productionCaddy, /Strict-Transport-Security/, "HSTS requires an explicit production decision");
   assert.match(productionApplication, /mail-enabled:\s+\$\{AUTH_MAIL_ENABLED:false\}/);
   assert.doesNotMatch(nodeDockerfile, /COPY[^\n]*\bpdfs\b/i, "release image must not package courseware");
   assert.doesNotMatch(nodeDockerignore, /!pdfs(?:\/\*\*)?\s*$/m, "build context must not re-include courseware");

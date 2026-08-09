@@ -14,8 +14,9 @@ structify.cn {
         format json
     }
 
+    # HSTS is deliberately omitted until the domain owner confirms every
+    # current and future subdomain is HTTPS-only.
     header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-Content-Type-Options "nosniff"
         Referrer-Policy "same-origin"
         -Server
