@@ -1,0 +1,43 @@
+{
+    email {$ACME_EMAIL}
+    admin off
+}
+
+# Direct-host variant. Both application processes must listen on 127.0.0.1.
+www.structify.cn {
+    redir https://structify.cn{uri} permanent
+}
+
+structify.cn {
+    encode zstd gzip
+
+    route {
+        @spring_sse path /api/v1/chat/stream
+        handle @spring_sse {
+            reverse_proxy 127.0.0.1:8792 {
+                flush_interval -1
+            }
+        }
+
+        @spring_api path /api/v1/*
+        handle @spring_api {
+            reverse_proxy 127.0.0.1:8792
+        }
+
+        @presentation path /presentation/*
+        handle @presentation {
+            reverse_proxy 127.0.0.1:8791
+        }
+
+        @legacy_api path /api/*
+        handle @legacy_api {
+            reverse_proxy 127.0.0.1:8791 {
+                flush_interval -1
+            }
+        }
+
+        handle {
+            reverse_proxy 127.0.0.1:8791
+        }
+    }
+}

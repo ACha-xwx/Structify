@@ -1,0 +1,76 @@
+# === Secrets & Environment ===
+.env
+.env.*
+!.env.example
+!deployment/.env.spring.example
+.jwt-secret
+
+# === Database ===
+data.db
+data.db-shm
+data.db-wal
+
+# === Dependencies ===
+node_modules/
+apps/server/target/
+
+# === User Uploads ===
+uploads/
+
+# === Private Course Knowledge ===
+# Full textbook OCR may be copyrighted and must not be pushed to the public repository.
+knowledge/private/
+lesson-materials/
+presentation-materials/
+teach_ppt/
+pdfs/
+
+# === Local Build / Browser Artifacts ===
+# Rendered PPT output and browser traces are local evidence, not release inputs.
+output/
+.playwright-cli/
+
+# === Logs ===
+*.log
+
+# === Backup & Temp Files ===
+*.bak
+*.bak-*
+*.backup-*
+*.tmp-*
+*.tar.gz
+prototype.restore-*
+prototype.wip-*
+
+# === Screenshots & Debug Images ===
+*.png
+*.jpg
+*.jpeg
+
+# === Debug & Test Outputs ===
+public-*.html
+public-*.txt
+public-*.json
+public-*.headers.txt
+online-page.tmp.html
+local-root-*.html
+chrome-*.html
+tmp-*/
+tmp-*.html
+audit-current-report.json
+
+# === Server Config (contains IP/infra info) ===
+update-server.sh
+Caddyfile.remote
+
+# === AI Tool Config ===
+.superpowers/
+
+# === OS & Editor ===
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# === Test Output ===
+test-results/

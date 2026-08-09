@@ -1,0 +1,64 @@
+{
+    email {$ACME_EMAIL}
+    admin off
+}
+
+# Keep the alternate host explicit so certificates cover it and all traffic
+# lands on the canonical origin used by cookies and CORS.
+www.structify.cn {
+    redir https://structify.cn{uri} permanent
+}
+
+structify.cn {
+    encode zstd gzip
+
+    log {
+        output stdout
+        format json
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "same-origin"
+        -Server
+    }
+
+    route {
+        # Spring's only streaming browser endpoint is SSE. Immediate flushing
+        # prevents proxy buffering and preserves named SSE event boundaries.
+        @spring_sse path /api/v1/chat/stream
+        handle @spring_sse {
+            reverse_proxy spring-api:8792 {
+                flush_interval -1
+            }
+        }
+
+        @spring_api path /api/v1/*
+        handle @spring_api {
+            reverse_proxy spring-api:8792
+        }
+
+        # Never serve this directory from Caddy. Node validates either the JWT
+        # or the short-lived HMAC signature and confines paths to rendered media.
+        @presentation path /presentation/*
+        handle @presentation {
+            reverse_proxy node:8791
+        }
+
+        # POST /api/chat may return SSE on the same legacy path, so disable
+        # response buffering for the compatibility API as a whole.
+        @legacy_api path /api/*
+        handle @legacy_api {
+            reverse_proxy node:8791 {
+                flush_interval -1
+            }
+        }
+
+        # Root HTML, public PDFs, and the small vendored browser asset stay on
+        # the Node compatibility service until frontend migration is complete.
+        handle {
+            reverse_proxy node:8791
+        }
+    }
+}

@@ -1,0 +1,18 @@
+# The Node build context is the repository root. Keep private material,
+# databases, screenshots, and other workspace artifacts out of the Docker
+# daemon context even though the Dockerfile does not COPY them.
+**
+!package.json
+!package-lock.json
+!server.js
+!presentation-runtime.js
+!index.html
+!prototype.html
+!lib
+!lib/**
+!pdfs
+!pdfs/**
+!deployment
+!deployment/Dockerfile.node
+!deployment/Dockerfile.node.dockerignore
+!deployment/node-entrypoint.sh

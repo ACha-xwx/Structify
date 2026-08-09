@@ -1,0 +1,313 @@
+# structify.cn production runbook
+
+This runbook describes a two-backend compatibility deployment. It is written
+for a Linux host with Docker Compose v2, a DNS provider, a secret manager, and
+an operator who can review backups. It does not contain credentials. This
+workspace has completed a read-only SSH/Docker/DNS preflight only; no remote
+deployment, backup, migration, or DNS change has been performed.
+
+The older root-level `13-cloudflare-deployment-guide.md` is a historical
+prototype/Cloudflare note and still names `agent.example.com` and placeholder
+server state. It is not an approval record for `structify.cn`; use this runbook
+and the files under `deployment/` for production.
+
+## Scope and traffic boundary
+
+```text
+                         public 80/443
+Internet -> structify.cn -> Caddy
+                             |-- /api/v1/* ----------> Spring :8792
+                             |-- /api/* --------------> Node :8791
+                             |-- /presentation/* -----> Node signed/auth route
+                             `-- /, /pdfs/* ----------> Node static/legacy route
+
+Spring :8792 -> MySQL 8.4 (private data network)
+Node   :8791 -> SQLite volume + private knowledge/PPT volumes (read-only media)
+```
+
+`/api/v1/chat/stream` is Spring SSE. Legacy `POST /api/chat` may also stream
+when the request asks for a stream. Caddy sets `flush_interval -1` on both
+API paths so chunks are not buffered. Spring's current API has no WebSocket
+endpoint. Caddy's standard reverse proxy keeps HTTP Upgrade support available
+for a future endpoint, but no `/ws` path is advertised or required today.
+
+The `/presentation/*` route is deliberately proxied to Node. Caddy does not
+mount or serve `PRESENTATION_DIR`; Node's `presentation-runtime.js` confines
+files to its `rendered/` directory and `server.js` requires either a valid JWT
+or a non-expired HMAC URL signature. Never replace that route with `file_server`.
+
+## Prerequisites and known blockers
+
+1. Obtain a Linux host, Docker Engine, Compose v2, Caddy-compatible DNS, and
+   outbound access to the selected model, SMTP, Judge0/Piston, and ACME servers.
+2. Create a release tag and record the source revision and image digests. This
+     checkout currently has a verified `origin` remote and a recorded
+     `origin/main` revision, but this worktree is uncommitted. Create and
+     record an immutable release commit/tag and image digests before promotion.
+3. Create the private root with permissions readable by the container users:
+
+   ```text
+   /srv/structify/private/knowledge/
+   /srv/structify/private/course-content/
+   /srv/structify/private/presentation-materials/
+     slides.json
+     lesson-presentation-plans.json
+     rendered/<deck>/<page>.png
+   ```
+
+   Do not place OCR, teacher PPT originals, authorization evidence, student
+   data, or credentials in the repository. Keep originals and rendered media
+   in an access-controlled private store.
+
+4. Create `/etc/structify/structify.env` from
+   [`deployment/.env.spring.example`](../deployment/.env.spring.example), set
+   mode `0600`, and replace every `__...__` marker through the secret manager.
+   The file must not be copied back into the checkout or included in a support
+   bundle.
+
+The Node image keeps reviewed public PDFs in `/app/default-pdfs` and seeds a
+separate `node-pdfs` volume on first boot. That volume is writable only for the
+legacy upload route and is included in the application backup; private PPT and
+course resources remain read-only external mounts.
+`Dockerfile.node.dockerignore` also allowlists the build context so local
+private directories and SQLite files are not sent to the Docker daemon.
+
+## Required production values
+
+- `CORS_ALLOWED_ORIGINS` must be exactly `https://structify.cn`.
+- `JWT_SECRET` must be at least 64 random characters and must be identical for
+  Node and Spring during migration. Generate it with `openssl rand -hex 32`.
+- `AUTH_COOKIE_SECURE=true`; Spring emits an `HttpOnly; Secure; SameSite=Strict`
+  `ds_session` cookie and accepts the documented Bearer token as well.
+- `BOOTSTRAP_ADMIN_EMAIL`, `TEACHER_EMAILS`, and
+  `ALLOW_FIRST_USER_TEACHER` remain empty/false. There is no static production
+  administrator. Role elevation requires an audited, reviewed database change
+  or a future admin workflow; do not solve this by setting the first user as a
+  teacher.
+- `KNOWLEDGE_DEBUG_API=false`, `VERIFICATION_CODE_FILE` empty, and
+  `KNOWLEDGE_AUTO_PUBLISH_LOCAL=false`. A file appearing under the private
+  knowledge mount does not publish it to retrieval.
+- `AUTH_MAIL_ENABLED=true` and `AUTH_EXPOSE_DEV_CODE=false`. A mail outage
+  must be surfaced as a delivery failure; never enable development-code echo
+  in a public environment.
+- `MODEL_API_KEY`, `SMTP_PASS`, database passwords, and `JWT_SECRET` are
+  secret-manager values only. The model base URL must include the provider's
+  OpenAI-compatible `/v1` path (for example, `https://api.deepseek.com/v1`).
+- SMTP must use either implicit TLS (`SMTP_PORT=465`, `SMTP_SSL=true`,
+  `SMTP_STARTTLS=false`) or required STARTTLS (`SMTP_PORT=587`,
+  `SMTP_SSL=false`, `SMTP_STARTTLS=true`, `SMTP_STARTTLS_REQUIRED=true`). Keep
+  `SMTP_SSL_CHECK_SERVER_IDENTITY=true`.
+- `PISTON_BASE_URL` is required for Spring. Node keeps Judge0 as its primary
+  provider and Piston as fallback; set both to team-controlled services when
+  possible. User code must never execute on this host.
+
+## First rollout
+
+All commands below are examples. The first invocation of every script is a
+dry-run. Review output, then add the explicit confirmation flag.
+
+```bash
+install -d -m 700 /etc/structify /var/backups/structify
+install -m 600 deployment/.env.spring.example /etc/structify/structify.env
+
+deployment/scripts/preflight.sh \
+  --env-file /etc/structify/structify.env
+
+deployment/scripts/deploy.sh \
+  --env-file /etc/structify/structify.env \
+  --release 2026.08.09-001
+
+deployment/scripts/deploy.sh \
+  --env-file /etc/structify/structify.env \
+  --private-root /srv/structify/private \
+  --release 2026.08.09-001 \
+  --execute --confirm DEPLOY-structify.cn
+```
+
+Before the execute step, set `NODE_IMAGE=structify-node:<release>` and
+`SPRING_IMAGE=structify-spring:<release>` in the environment file. `deploy.sh`
+builds those immutable local tags, performs a backup first, starts MySQL, lets
+Spring run Flyway migrations, and then starts Node and Caddy. It never changes
+DNS.
+
+Run local health checks after startup:
+
+```bash
+deployment/scripts/health-check.sh --env-file /etc/structify/structify.env
+deployment/scripts/health-check.sh --env-file /etc/structify/structify.env --execute
+```
+
+The first command prints the plan. The second checks loopback Node `/healthz`,
+loopback Spring `/actuator/health`, and Compose service state. Actuator details
+are not exposed through Caddy.
+
+## Database migration and legacy SQLite
+
+Spring starts with `SPRING_PROFILES_ACTIVE=prod`, `Flyway.clean-disabled=true`,
+`validate-on-migrate=true`, and `baseline-on-migrate=false`. Take and restore-
+test a backup before a release. A migration failure must keep the old release
+serving while the operator diagnoses the failed container; do not run
+`flyway clean` or manually delete migration history.
+
+The DSVP evidence repair does not modify the already published V11 migration:
+it uses V11's `dsvp_request_snapshots.animation_record_id` foreign key and the
+existing chapter columns. After Flyway validation, the authenticated smoke
+fixture must confirm that one source-verified simulation has a non-null linked
+animation ID and matching chapter IDs in both the animation and learning rows.
+Run that check against a disposable smoke user and remove only that fixture;
+never print request payloads, user tokens, or environment values in deployment
+logs.
+
+The legacy importer is intentionally disconnected from MySQL. Its default is
+a read-only audit:
+
+```bash
+deployment/scripts/migrate-sqlite.sh \
+  --sqlite /srv/structify/legacy/data.db \
+  --target staging
+```
+
+Only after a restore-tested staging backup and review may an operator emit a
+new staging SQL file:
+
+```bash
+deployment/scripts/migrate-sqlite.sh \
+  --sqlite /srv/structify/legacy/data.db \
+  --target staging \
+  --emit-sql /srv/structify/migrations/legacy-staging.sql \
+  --execute --confirm MIGRATE-staging
+```
+
+The importer rejects production targets and never copies the SQLite database
+or its legacy scrypt hashes into MySQL. Review the blocked-row and unmapped-
+field report before any staging import. See the data-model difference table in
+[`data-model-node-spring-differences.md`](data-model-node-spring-differences.md).
+
+## Backup and restore
+
+The backup contains a transactional MySQL dump, an online SQLite backup, image
+metadata, and SHA-256 hashes. Private media is included only when the operator
+passes `--private-root`; because it may contain copyrighted course material,
+an object-storage or filesystem snapshot is still recommended.
+
+```bash
+deployment/scripts/backup.sh \
+  --env-file /etc/structify/structify.env \
+  --backup-root /var/backups/structify \
+  --private-root /srv/structify/private
+
+deployment/scripts/backup.sh \
+  --env-file /etc/structify/structify.env \
+  --backup-root /var/backups/structify \
+  --private-root /srv/structify/private \
+  --execute --confirm BACKUP-structify.cn
+```
+
+Restore is destructive and first requires an operator-approved maintenance
+window and an additional current backup:
+
+```bash
+deployment/scripts/restore.sh \
+  --env-file /etc/structify/structify.env \
+  --backup-dir /var/backups/structify/<timestamp>
+
+deployment/scripts/restore.sh \
+  --env-file /etc/structify/structify.env \
+  --backup-dir /var/backups/structify/<timestamp> \
+  --execute --confirm RESTORE-structify.cn
+```
+
+The script verifies `SHA256SUMS`, stops Node/Spring, restores MySQL and the
+Node SQLite volume, then restarts the stack. Private media is not implicitly
+overwritten; restore it from its separately reviewed snapshot.
+
+## Smoke checks and DNS cutover
+
+Do not switch DNS until the new host passes a local health check and a public
+smoke test through the real TLS name. The smoke test is read-only and does not
+send a model prompt or log in:
+
+```bash
+deployment/scripts/smoke.sh --domain https://structify.cn
+deployment/scripts/smoke.sh --domain https://structify.cn --execute \
+  --presentation-path /presentation/<known-rendered-image>.png
+```
+
+For a new address, validate with `curl --resolve` before changing records.
+Lower the DNS TTL in advance, record current A/AAAA/CNAME and proxy settings,
+then switch the records manually through the DNS provider. This repository has
+no provider credentials or provider API integration. `dns-check.sh` only reads
+records:
+
+```bash
+deployment/scripts/dns-check.sh --domain structify.cn
+deployment/scripts/dns-check.sh --domain structify.cn --expected-ip NEW_IP --execute
+```
+
+After the change, repeat the smoke test from a second network and monitor Caddy,
+Node, Spring, MySQL, SMTP, model, and Piston error rates for at least one TTL.
+Restore the recorded DNS values if the old host is still healthy and rollback
+is required.
+
+## Application rollback
+
+`deploy.sh` records the deployed image tags and immutable local image IDs in
+`/var/backups/structify/last-release.env`, then preserves the prior values in
+`/var/backups/structify/previous-release.env` before each replacement.
+`rollback.sh` refuses a mutable tag that no longer resolves to the recorded
+image ID. Roll back only to an image whose Flyway schema is compatible with the
+current database:
+
+```bash
+deployment/scripts/rollback.sh \
+  --env-file /etc/structify/structify.env \
+  --release-env /var/backups/structify/previous-release.env
+
+deployment/scripts/rollback.sh \
+  --env-file /etc/structify/structify.env \
+  --release-env /var/backups/structify/previous-release.env \
+  --execute --confirm ROLLBACK-structify.cn
+```
+
+The rollback changes application images only. It never reverses Flyway or
+restores data implicitly. If the prior binary cannot read the current schema,
+use the restore-tested backup procedure instead, then redeploy the matching
+image and verify health before DNS is restored.
+
+## Release verification checklist
+
+- [ ] Release source revision and image digests are recorded externally.
+- [ ] Secret manager values replaced every placeholder; no secret entered Git.
+- [ ] CORS is exactly `https://structify.cn`; secure cookie is enabled.
+- [ ] Static admin/teacher elevation, debug API, and verification-code capture are off.
+- [ ] Private knowledge, course resources, and rendered PPT directories are mounted read-only.
+- [ ] 8791/8792 bind only loopback; MySQL has no host port; only Caddy is public.
+- [ ] MySQL backup was created and restore-tested; private media snapshot exists.
+- [ ] Flyway completed without `clean`; health and smoke checks passed.
+- [ ] A source-verified DSVP smoke request linked its snapshot to the animation record and appeared in the expected chapter progress; a context-free preview wrote no evidence.
+- [ ] Unsigned `/presentation/*` returns 401/404 and no filesystem path is disclosed.
+- [ ] SSE stream headers/chunks are not buffered; no WebSocket endpoint is claimed.
+- [ ] DNS cutover and rollback owner, time, and previous records are recorded.
+
+## Private resources excluded from this repository
+
+The public source/artifact allowlist must exclude these exact workspace or
+production paths:
+
+| Path/pattern | Reason |
+|---|---|
+| `.env`, `.env.*` except example templates, `.jwt-secret` | Model, SMTP, database, and JWT secrets. |
+| `data.db`, `data.db-wal`, `data.db-shm`, `*.sql`, database dumps | Accounts, messages, learning history, and password hashes. |
+| `knowledge/private/**`, `course-content-private/**` | Copyrighted OCR and reviewed private course material. |
+| `teach_ppt/**`, `presentation-materials/**` | Original teacher PPT/PPTX files, extracted text/notes, labels, manifests, and rendered slide images. |
+| `uploads/**`, private `node-pdfs` volume snapshots | User/teacher uploads and potentially personal content. |
+| `review-records/**`, license/authorization evidence | Internal review identities and contractual evidence. |
+| `/etc/structify/structify.env`, Caddy `/data`, backup directories | Live credentials, ACME private keys, database/media backups. |
+| Internal Judge0/Piston URLs, server IPs, release image IDs | Infrastructure and release-control metadata. |
+
+Some of these directories and database files are present in this working
+checkout and are intentionally ignored or kept outside the image build context.
+The verified Git history still contains an older hard-coded credential marker;
+rotate/revoke that credential before promotion, run a tracked-file/secret scan,
+and create the release from a clean, reviewed commit. Do not publish private
+courseware, local databases, rendered output, or environment files.
