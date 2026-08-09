@@ -22,6 +22,14 @@ the profiled Caddy service. Node and Spring bind the configurable loopback
 ports `18791` and `18792`; MySQL has no host port and is reachable only on the
 internal Compose network.
 
+Host mode is an execute-time handoff, not merely a port choice. Set
+`HOST_CADDY_CONFIG` to the complete existing Caddyfile that imports
+`Caddyfile.host.production`; `preflight.sh --execute` runs `caddy validate`
+against that file before it invokes Docker. It also reads Linux `MemAvailable`
+and refuses a host below `MIN_AVAILABLE_MEMORY_MB` (default `1536`). A host
+with another TLS owner must use an explicitly reviewed proxy integration or a
+dedicated Structify host; do not start the container-Caddy profile alongside it.
+
 The default build bases are the official Node 22 Bookworm and Eclipse Temurin
 21 images. When Docker Hub is unavailable, an operator may set
 `NODE_BASE_IMAGE`, `JAVA_BUILD_IMAGE`, and `JAVA_RUNTIME_IMAGE` in the private

@@ -40,6 +40,11 @@ or a non-expired HMAC URL signature. Never replace that route with `file_server`
 
 1. Obtain a Linux host, Docker Engine, Compose v2, Caddy-compatible DNS, and
    outbound access to the selected model, SMTP, Judge0/Piston, and ACME servers.
+   A shared host must already run Caddy and have a complete Caddyfile that can
+   import the reviewed Structify site block. Execute preflight reads Linux
+   `MemAvailable`; keep at least `1536` MiB available after all unrelated
+   services are accounted for. A non-Caddy TLS owner is not a compatible
+   handoff without a separately reviewed integration.
 2. Create a release tag and record the source revision and image digests. This
      checkout currently has a verified `origin` remote and a recorded
      `origin/main` revision, but this worktree is uncommitted. Create and
@@ -63,8 +68,10 @@ or a non-expired HMAC URL signature. Never replace that route with `file_server`
    [`deployment/.env.spring.example`](../deployment/.env.spring.example), set
    mode `0600`, and replace every `__...__` marker through the secret manager.
    The file must not be copied back into the checkout or included in a support
-   bundle. Keep `CADDY_MODE=host`, `NODE_HOST_PORT=18791`, and
-   `SPRING_HOST_PORT=18792` unless the host is dedicated to Structify.
+   bundle. In shared-host mode, set `HOST_CADDY_CONFIG` to the complete active
+   Caddyfile which imports `Caddyfile.host.production`, and keep
+   `CADDY_MODE=host`, `MIN_AVAILABLE_MEMORY_MB=1536`, `NODE_HOST_PORT=18791`,
+   and `SPRING_HOST_PORT=18792` unless the host is dedicated to Structify.
 
 The Node image keeps reviewed public PDFs in `/app/default-pdfs` and seeds a
 separate `node-pdfs` volume on first boot. That volume is writable only for the
@@ -80,8 +87,13 @@ private directories and SQLite files are not sent to the Docker daemon.
   `deployment/Caddyfile.host.production` into the existing host Caddy config,
   validate the complete Caddy configuration, then reload it. Do not replace
   the existing Caddyfile or start the container Caddy profile on that host.
+  `HOST_CADDY_CONFIG` must be the absolute path to that complete config;
+  execute preflight invokes `caddy validate` against it before Docker work.
   The source Caddy block routes to `127.0.0.1:18791` and
   `127.0.0.1:18792`; both ports must be unused before deployment.
+- `MIN_AVAILABLE_MEMORY_MB=1536` is the default execution floor. It is based
+  on Linux `MemAvailable`, not total RAM, and must include enough room for
+  MySQL, Spring, Node, and normal host activity.
 - Set `CADDY_MODE=container` only on a dedicated host. In that mode,
   `ACME_EMAIL` is required and the profiled Compose Caddy service owns public
   `80/443`.

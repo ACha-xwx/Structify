@@ -86,6 +86,7 @@ async function verifyOptionalServicesDoNotBlockStartup() {
 
 function verifyOptionalDeploymentContract() {
   const compose = fs.readFileSync(path.join(root, "deployment", "docker-compose.production.yml"), "utf8");
+  const productionEnv = fs.readFileSync(path.join(root, "deployment", ".env.spring.example"), "utf8");
   const preflight = fs.readFileSync(path.join(root, "deployment", "scripts", "preflight.sh"), "utf8");
   const deploy = fs.readFileSync(path.join(root, "deployment", "scripts", "deploy.sh"), "utf8");
   const backup = fs.readFileSync(path.join(root, "deployment", "scripts", "backup.sh"), "utf8");
@@ -152,6 +153,11 @@ function verifyOptionalDeploymentContract() {
   assert.match(compose, /NODE_BASE_IMAGE:\s+\$\{NODE_BASE_IMAGE:-node:22-bookworm-slim\}/);
   assert.match(compose, /JAVA_BUILD_IMAGE:\s+\$\{JAVA_BUILD_IMAGE:-eclipse-temurin:21-jdk\}/);
   assert.match(compose, /JAVA_RUNTIME_IMAGE:\s+\$\{JAVA_RUNTIME_IMAGE:-eclipse-temurin:21-jre\}/);
+  assert.match(productionEnv, /^HOST_CADDY_CONFIG=\/etc\/caddy\/Caddyfile$/m);
+  assert.match(productionEnv, /^MIN_AVAILABLE_MEMORY_MB=1536$/m);
+  assert.match(preflight, /HOST_CADDY_CONFIG is required in host Caddy mode/);
+  assert.match(preflight, /caddy validate --config/);
+  assert.match(preflight, /MemAvailable/);
 }
 
 function bashPath(filePath) {
@@ -215,6 +221,109 @@ function verifyHostCaddyPreflight() {
   }
 }
 
+function writeExecutable(filePath, body) {
+  fs.writeFileSync(filePath, `#!/usr/bin/env bash\n${body}\n`, { mode: 0o755 });
+  fs.chmodSync(filePath, 0o755);
+}
+
+function verifyHostCaddyExecuteGate() {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ds-agent-host-caddy-execute-"));
+  const binDir = path.join(fixtureRoot, "bin");
+  const privateRoot = path.join(fixtureRoot, "private");
+  const envFile = path.join(fixtureRoot, "structify.env");
+  const hostCaddyConfig = path.join(fixtureRoot, "Caddyfile");
+  const bashEnv = path.join(fixtureRoot, "bash-env");
+  const privatePaths = [
+    path.join(privateRoot, "knowledge"),
+    path.join(privateRoot, "course-content"),
+    path.join(privateRoot, "presentation-materials")
+  ];
+  fs.mkdirSync(binDir);
+  privatePaths.forEach((privatePath) => fs.mkdirSync(privatePath, { recursive: true }));
+  writeExecutable(path.join(binDir, "docker"), "exit 0");
+  // Git Bash on Windows cannot represent Linux mode bits on a temporary NTFS
+  // fixture. BASH_ENV confines this stable stat result to the test process.
+  fs.writeFileSync(bashEnv, [
+    "stat() { if [[ \"$1\" == \"-c\" && \"$2\" == \"%a\" ]]; then printf '600\\n'; else command stat \"$@\"; fi; }",
+    "awk() { if [[ \"$*\" == *\"/proc/meminfo\"* ]]; then printf '1048576\\n'; else command awk \"$@\"; fi; }"
+  ].join("\n"));
+  fs.writeFileSync(hostCaddyConfig, "structify.test { respond \\\"ok\\\" }\n", { mode: 0o600 });
+
+  const fixture = [
+    "COMPOSE_PROJECT_NAME=structify-test",
+    "CADDY_MODE=host",
+    "NODE_HOST_PORT=18791",
+    "SPRING_HOST_PORT=18792",
+    "NODE_IMAGE=structify-node:test-release",
+    "SPRING_IMAGE=structify-spring:test-release",
+    "MYSQL_DATABASE=structify",
+    "MYSQL_USER=structify_app",
+    "MYSQL_PASSWORD=test-database-password",
+    "MYSQL_ROOT_PASSWORD=test-root-password",
+    `JWT_SECRET=${"j".repeat(64)}`,
+    `NODE_COMPAT_JWT_SECRET=${"n".repeat(64)}`,
+    "NODE_COMPAT_ENABLED=true",
+    "CORS_ALLOWED_ORIGINS=https://structify.cn",
+    "AUTH_COOKIE_SECURE=true",
+    "AUTH_EXPOSE_DEV_CODE=false",
+    "AUTH_MAIL_ENABLED=false",
+    "BOOTSTRAP_ADMIN_EMAIL=",
+    "TEACHER_EMAILS=",
+    "ALLOW_FIRST_USER_TEACHER=false",
+    "MODEL_API_KEY=",
+    "SMTP_HOST=",
+    "SMTP_USER=",
+    "SMTP_PASS=",
+    "SMTP_FROM=",
+    "JUDGE0_BASE_URL=",
+    "PISTON_BASE_URL=",
+    "VERIFICATION_CODE_FILE=",
+    "KNOWLEDGE_DEBUG_API=false",
+    `KNOWLEDGE_DIR_HOST=${bashPath(privatePaths[0])}`,
+    `RESOURCE_DIR_HOST=${bashPath(privatePaths[1])}`,
+    `PRESENTATION_DIR_HOST=${bashPath(privatePaths[2])}`
+  ].join("\n");
+  fs.writeFileSync(envFile, `${fixture}\n`, { mode: 0o600 });
+
+  try {
+    const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "bash";
+    const env = {
+      ...process.env,
+      PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+      BASH_ENV: bashPath(bashEnv)
+    };
+    const missingConfig = spawnSync(shell, [
+      "deployment/scripts/preflight.sh", "--env-file", bashPath(envFile), "--execute"
+    ], { cwd: root, encoding: "utf8", env });
+    const missingConfigOutput = `${missingConfig.stdout || ""}\n${missingConfig.stderr || ""}`;
+    assert.notEqual(missingConfig.status, 0, missingConfigOutput);
+    assert.match(missingConfigOutput, /HOST_CADDY_CONFIG is required in host Caddy mode/);
+
+    writeExecutable(path.join(binDir, "caddy"), "exit 0");
+    fs.appendFileSync(envFile, `HOST_CADDY_CONFIG=${bashPath(hostCaddyConfig)}\nMIN_AVAILABLE_MEMORY_MB=512\n`);
+    const configured = spawnSync(shell, [
+      "deployment/scripts/preflight.sh", "--env-file", bashPath(envFile), "--execute"
+    ], { cwd: root, encoding: "utf8", env });
+    const configuredOutput = `${configured.stdout || ""}\n${configured.stderr || ""}`;
+    assert.equal(configured.status, 0, configuredOutput);
+    assert.match(configuredOutput, /host Caddy configuration validated/);
+    assert.doesNotMatch(configuredOutput, /test-(?:database|root)-password/);
+
+    fs.writeFileSync(envFile, fs.readFileSync(envFile, "utf8").replace(
+      "MIN_AVAILABLE_MEMORY_MB=512",
+      "MIN_AVAILABLE_MEMORY_MB=1536"
+    ), { mode: 0o600 });
+    const insufficientMemory = spawnSync(shell, [
+      "deployment/scripts/preflight.sh", "--env-file", bashPath(envFile), "--execute"
+    ], { cwd: root, encoding: "utf8", env });
+    const insufficientMemoryOutput = `${insufficientMemory.stdout || ""}\n${insufficientMemory.stderr || ""}`;
+    assert.notEqual(insufficientMemory.status, 0, insufficientMemoryOutput);
+    assert.match(insufficientMemoryOutput, /available memory 1024 MiB is below configured floor 1536 MiB/);
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+}
+
 function verifyDatabaseRecoveryDryRun() {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ds-agent-database-recovery-"));
   const envFile = path.join(fixtureRoot, "structify.env");
@@ -269,8 +378,9 @@ const result = spawnSync(process.execPath, ["server.js"], {
   await verifyOptionalServicesDoNotBlockStartup();
   verifyOptionalDeploymentContract();
   verifyHostCaddyPreflight();
+  verifyHostCaddyExecuteGate();
   verifyDatabaseRecoveryDryRun();
-  console.log("production-config-ok jwt-required=1 optional-services-nonblocking=1 host-caddy-preflight=1 database-recovery-dry-run=1 no-secret-output=1");
+  console.log("production-config-ok jwt-required=1 optional-services-nonblocking=1 host-caddy-preflight=1 host-caddy-execute-gate=1 database-recovery-dry-run=1 no-secret-output=1");
 })().catch((error) => {
   console.error(error.message);
   process.exitCode = 1;

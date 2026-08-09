@@ -59,10 +59,37 @@ fi
 if [[ "$mode" == "host" ]]; then
   [[ -f "$DEPLOY_DIR/Caddyfile.host.production" ]] || die "host Caddy site block is missing"
   log "host Caddy mode: Structify will not bind public 80/443"
+  if [[ "$EXECUTE" == "1" ]]; then
+    host_caddy_config="$(env_value HOST_CADDY_CONFIG)"
+    [[ -n "$host_caddy_config" ]] || die "HOST_CADDY_CONFIG is required in host Caddy mode"
+    [[ "$host_caddy_config" == /* ]] || die "HOST_CADDY_CONFIG must be an absolute Linux path"
+    [[ -r "$host_caddy_config" ]] || die "HOST_CADDY_CONFIG is not readable: $host_caddy_config"
+    require_command caddy
+    caddy validate --config "$host_caddy_config" --adapter caddyfile >/dev/null \
+      || die "host Caddy configuration validation failed"
+    log "host Caddy configuration validated"
+  fi
 else
   acme_email="$(env_value ACME_EMAIL)"
   [[ -n "$acme_email" && "$acme_email" != __*__ ]] || die "ACME_EMAIL is required when CADDY_MODE=container"
   log "container Caddy mode: Structify owns public 80/443"
+fi
+
+if [[ "$EXECUTE" == "1" ]]; then
+  minimum_available_memory_mb="$(env_value MIN_AVAILABLE_MEMORY_MB)"
+  minimum_available_memory_mb="${minimum_available_memory_mb:-1536}"
+  [[ "$minimum_available_memory_mb" =~ ^[0-9]+$ ]] \
+    || die "MIN_AVAILABLE_MEMORY_MB must be a whole number of MiB"
+  (( 10#$minimum_available_memory_mb >= 512 )) \
+    || die "MIN_AVAILABLE_MEMORY_MB must be at least 512 MiB"
+
+  available_memory_kib="$(awk '/^MemAvailable:/ { print $2; exit }' /proc/meminfo 2>/dev/null || true)"
+  [[ "$available_memory_kib" =~ ^[0-9]+$ ]] \
+    || die "cannot read MemAvailable from /proc/meminfo; execute deployment only on a Linux host"
+  available_memory_mb=$((10#$available_memory_kib / 1024))
+  (( available_memory_mb >= 10#$minimum_available_memory_mb )) \
+    || die "available memory ${available_memory_mb} MiB is below configured floor ${minimum_available_memory_mb} MiB"
+  log "available memory ${available_memory_mb} MiB meets configured floor ${minimum_available_memory_mb} MiB"
 fi
 
 mail_enabled="$(env_value AUTH_MAIL_ENABLED)"
