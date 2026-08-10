@@ -9,6 +9,12 @@
 data.db
 data.db-shm
 data.db-wal
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
 
 # === Dependencies ===
 node_modules/

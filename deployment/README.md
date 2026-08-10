@@ -22,6 +22,20 @@ the profiled Caddy service. Node and Spring bind the configurable loopback
 ports `18791` and `18792`; MySQL has no host port and is reachable only on the
 internal Compose network.
 
+For a Cloudflare-proxied dedicated host, container Caddy supports either ACME
+or an operator-managed Cloudflare Origin CA certificate. Leave
+`ORIGIN_CERT_DIR_HOST` empty to keep ACME and provide `ACME_EMAIL`. To select
+Origin CA mode, set `ORIGIN_CERT_DIR_HOST` to an absolute, non-symlinked host
+directory with mode `0700`. It must contain `origin.crt` and an `origin.key`
+with mode `0600`; execute preflight verifies the pair and runs a networkless,
+read-only `caddy validate` using the same `CADDY_IMAGE` and mounts before
+Compose starts. Compose mounts the directory read-only at
+`/etc/caddy/origin-ca`, and Caddy uses the pair for both `structify.cn` and
+`www.structify.cn`. Keep the certificate directory outside the repository and
+release bundle; the Origin CA certificate must include both names. In Origin
+CA mode, `ACME_EMAIL` may be empty. This option applies only to container
+Caddy, not a separate host-managed Caddy installation.
+
 Host mode is an execute-time handoff, not merely a port choice. Set
 `HOST_CADDY_CONFIG` to the complete existing Caddyfile that imports
 `Caddyfile.host.production`; `preflight.sh --execute` runs `caddy validate`

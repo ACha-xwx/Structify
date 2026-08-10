@@ -202,7 +202,7 @@ services:
       - data
 
   caddy:
-    image: caddy:2.10-alpine
+    image: ${CADDY_IMAGE:-caddy:2.10-alpine}
     profiles:
       - container-caddy
     restart: unless-stopped
@@ -215,6 +215,29 @@ services:
         condition: service_started
     environment:
       ACME_EMAIL: ${ACME_EMAIL:-}
+      # A non-empty host directory selects Origin CA mode. The directory is
+      # never copied into the image and is mounted read-only below.
+      ORIGIN_CERT_DIR_HOST: ${ORIGIN_CERT_DIR_HOST:-}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        if [ -n "$${ORIGIN_CERT_DIR_HOST}" ]; then
+          export CADDY_TLS_DIRECTIVE="tls /etc/caddy/origin-ca/origin.crt /etc/caddy/origin-ca/origin.key"
+          export CADDY_EMAIL_DIRECTIVE=""
+        else
+          : "$${ACME_EMAIL:?ACME_EMAIL is required when ORIGIN_CERT_DIR_HOST is empty}"
+          # Cloudflare proxying can prevent the ACME TLS-ALPN validation path
+          # from reaching this dedicated origin. HTTP-01 is still served by
+          # Caddy on port 80, so make that verified path the only ACME solver.
+          export CADDY_TLS_DIRECTIVE='tls {
+            issuer acme {
+              disable_tlsalpn_challenge
+            }
+          }'
+          export CADDY_EMAIL_DIRECTIVE="email $${ACME_EMAIL}"
+        fi
+        exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
     ports:
       - 80:80
       - 443:443
@@ -223,6 +246,7 @@ services:
       - ./Caddyfile.production:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
+      - ${ORIGIN_CERT_DIR_HOST:-caddy-origin-ca-empty}:/etc/caddy/origin-ca:ro
     read_only: true
     tmpfs:
       - /tmp:size=32m,mode=1777
@@ -241,6 +265,8 @@ volumes:
   node-pdfs:
   caddy-data:
   caddy-config:
+  # Empty fallback keeps the Origin CA mount valid while preserving ACME mode.
+  caddy-origin-ca-empty:
 
 networks:
   edge:

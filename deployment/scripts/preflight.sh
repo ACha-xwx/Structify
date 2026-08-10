@@ -13,6 +13,33 @@ to exist and checks that Docker can render the production Compose model.
 EOF
 }
 
+validate_origin_ca_caddy() {
+  local origin_cert_dir="$1"
+  local caddy_image
+  caddy_image="$(env_value CADDY_IMAGE)"
+  caddy_image="${caddy_image:-caddy:2.10-alpine}"
+  [[ "$caddy_image" != __*__ ]] || die "CADDY_IMAGE still contains a placeholder"
+
+  # Do not allow preflight to pull a mutable image. The locally available image
+  # must be the exact one Compose will run, so certificate parsing cannot defer
+  # until the public Caddy container is recreated.
+  docker image inspect "$caddy_image" >/dev/null 2>&1 \
+    || die "CADDY_IMAGE is not available locally for Origin CA validation"
+  docker run --rm --network none --read-only --user 0:0 \
+    --cap-drop ALL --security-opt no-new-privileges:true \
+    --tmpfs /tmp:rw,nosuid,nodev,size=16m \
+    --tmpfs /config:rw,nosuid,nodev,size=16m \
+    --tmpfs /data:rw,nosuid,nodev,size=16m \
+    --mount "type=bind,src=$DEPLOY_DIR/Caddyfile.production,dst=/etc/caddy/Caddyfile,readonly" \
+    --mount "type=bind,src=$origin_cert_dir,dst=/etc/caddy/origin-ca,readonly" \
+    --env 'CADDY_EMAIL_DIRECTIVE=' \
+    --env 'CADDY_TLS_DIRECTIVE=tls /etc/caddy/origin-ca/origin.crt /etc/caddy/origin-ca/origin.key' \
+    "$caddy_image" caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile \
+    >/dev/null 2>&1 \
+    || die "container Caddy Origin CA configuration validation failed"
+  log "container Caddy Origin CA configuration validated"
+}
+
 EXECUTE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -70,8 +97,30 @@ if [[ "$mode" == "host" ]]; then
     log "host Caddy configuration validated"
   fi
 else
-  acme_email="$(env_value ACME_EMAIL)"
-  [[ -n "$acme_email" && "$acme_email" != __*__ ]] || die "ACME_EMAIL is required when CADDY_MODE=container"
+  origin_cert_dir="$(env_value ORIGIN_CERT_DIR_HOST)"
+  if [[ -n "$origin_cert_dir" ]]; then
+    [[ "$origin_cert_dir" == /* ]] || die "ORIGIN_CERT_DIR_HOST must be an absolute Linux path"
+    if [[ "$EXECUTE" == "1" ]]; then
+      [[ -d "$origin_cert_dir" ]] || die "ORIGIN_CERT_DIR_HOST does not exist: $origin_cert_dir"
+      [[ ! -L "$origin_cert_dir" ]] || die "ORIGIN_CERT_DIR_HOST must not be a symlink"
+      origin_dir_mode="$(stat -c '%a' "$origin_cert_dir" 2>/dev/null || true)"
+      [[ "$origin_dir_mode" == "700" ]] \
+        || die "ORIGIN_CERT_DIR_HOST must have mode 0700 (got ${origin_dir_mode:-unknown})"
+      for origin_file in origin.crt origin.key; do
+        [[ -f "$origin_cert_dir/$origin_file" ]] || die "ORIGIN_CERT_DIR_HOST must contain $origin_file"
+        [[ ! -L "$origin_cert_dir/$origin_file" ]] || die "ORIGIN_CERT_DIR_HOST/$origin_file must not be a symlink"
+        [[ -r "$origin_cert_dir/$origin_file" ]] || die "ORIGIN_CERT_DIR_HOST/$origin_file is not readable"
+      done
+      origin_key_mode="$(stat -c '%a' "$origin_cert_dir/origin.key" 2>/dev/null || true)"
+      [[ "$origin_key_mode" == "600" ]] \
+        || die "ORIGIN_CERT_DIR_HOST/origin.key must have mode 0600 (got ${origin_key_mode:-unknown})"
+    fi
+    log "container Caddy mode: using operator-managed Origin CA certificate"
+  else
+    acme_email="$(env_value ACME_EMAIL)"
+    [[ -n "$acme_email" && "$acme_email" != __*__ ]] || die "ACME_EMAIL is required when ORIGIN_CERT_DIR_HOST is empty"
+    log "container Caddy mode: using ACME"
+  fi
   log "container Caddy mode: Structify owns public 80/443"
   if [[ "$EXECUTE" == "1" ]]; then
     require_command ss
@@ -81,6 +130,9 @@ else
         || die "public TCP port $public_port is already bound; CADDY_MODE=container requires a dedicated host"
     done
     log "public TCP ports 80 and 443 are available for container Caddy"
+    if [[ -n "${origin_cert_dir:-}" ]]; then
+      validate_origin_ca_caddy "$origin_cert_dir"
+    fi
   fi
 fi
 

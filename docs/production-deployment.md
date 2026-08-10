@@ -111,9 +111,19 @@ private directories and SQLite files are not sent to the Docker daemon.
   `MEMORY_BUDGET_MB` and all declared service hard caps plus
   `MEMORY_RESERVE_MB` (1,344 MiB by default). Do not lower the service limits,
   reservations, or reserve independently to force a host through the gate.
-- Set `CADDY_MODE=container` only on a dedicated host. In that mode,
-  `ACME_EMAIL` is required and the profiled Compose Caddy service owns public
-  `80/443`.
+- Set `CADDY_MODE=container` only on a dedicated host. In the default ACME
+  path, leave `ORIGIN_CERT_DIR_HOST` empty, set `ACME_EMAIL`, and let the
+  profiled Compose Caddy service own public `80/443`. For Cloudflare Full
+  (strict) Origin CA mode, set `ORIGIN_CERT_DIR_HOST` to an absolute external
+  directory with mode `0700` containing `origin.crt` and an `origin.key` with
+  mode `0600`; preflight rejects a missing, unreadable, weak-permissioned, or
+  symlinked pair before Docker runs. It also loads the pair through a networkless
+  read-only `caddy validate` container using the same `CADDY_IMAGE` that Compose
+  will start. Caddy mounts that
+  directory read-only, uses the pair for both `structify.cn` and
+  `www.structify.cn`, and does not require `ACME_EMAIL`. The certificate and
+  key remain outside Git, images, release bundles, and backups sent to source
+  control. This container-only option does not modify host-managed Caddy.
 - HSTS is intentionally not enabled by the shipped Caddy files. Add it only
   after the domain owner confirms that every current and future subdomain is
   HTTPS-only; do not enable `includeSubDomains` as part of the first rollout.
@@ -366,7 +376,7 @@ production paths:
 | `/srv/structify/private/pdfs/**` | Operator-managed release PDF source; keep copyrighted courseware out of the repository and image build context. |
 | `uploads/**`, private `node-pdfs` volume snapshots | User/teacher uploads and potentially personal content. |
 | `review-records/**`, license/authorization evidence | Internal review identities and contractual evidence. |
-| `/etc/structify/structify.env`, Caddy `/data`, backup directories | Live credentials, ACME private keys, database/media backups. |
+| `/etc/structify/structify.env`, Caddy `/data`, Origin CA certificate directories, backup directories | Live credentials, ACME/Origin CA private keys, database/media backups. |
 | Internal Judge0/Piston URLs, server IPs, release image IDs | Infrastructure and release-control metadata. |
 
 Some of these directories and database files are present in this working

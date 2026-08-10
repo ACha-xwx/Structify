@@ -111,6 +111,12 @@ function verifyOptionalDeploymentContract() {
   assert.match(compose, /127\.0\.0\.1:\$\{NODE_HOST_PORT:-18791\}:8791/);
   assert.match(compose, /127\.0\.0\.1:\$\{SPRING_HOST_PORT:-18792\}:8792/);
   assert.match(compose, /profiles:\s*\n\s*- container-caddy/);
+  assert.match(compose, /image:\s+\$\{CADDY_IMAGE:-caddy:2\.10-alpine\}/);
+  assert.match(compose, /ORIGIN_CERT_DIR_HOST:\s+\$\{ORIGIN_CERT_DIR_HOST:-\}/);
+  assert.match(compose, /\$\{ORIGIN_CERT_DIR_HOST:-caddy-origin-ca-empty\}:\/etc\/caddy\/origin-ca:ro/);
+  assert.match(compose, /CADDY_TLS_DIRECTIVE="tls \/etc\/caddy\/origin-ca\/origin\.crt \/etc\/caddy\/origin-ca\/origin\.key"/);
+  assert.match(compose, /CADDY_TLS_DIRECTIVE='tls \{\s+issuer acme \{\s+disable_tlsalpn_challenge\s+\}\s+\}'/);
+  assert.match(compose, /CADDY_EMAIL_DIRECTIVE="email \$\$\{ACME_EMAIL\}"/);
   assert.doesNotMatch(preflight, /required=\([^)]*\bMODEL_API_KEY\b/);
   assert.doesNotMatch(preflight, /required=\([^)]*\bSMTP_PASS\b/);
   assert.doesNotMatch(preflight, /required=\([^)]*\bPISTON_BASE_URL\b/);
@@ -172,6 +178,8 @@ function verifyOptionalDeploymentContract() {
   assert.match(compose, /mem_reservation:\s+\$\{CADDY_MEMORY_RESERVATION:-64m\}/);
   assert.match(compose, /NODE_OPTIONS:\s+"--max-old-space-size=\$\{NODE_MAX_OLD_SPACE_MB:-160\}"/);
   assert.match(productionEnv, /^HOST_CADDY_CONFIG=\/etc\/caddy\/Caddyfile$/m);
+  assert.match(productionEnv, /^ORIGIN_CERT_DIR_HOST=$/m);
+  assert.match(productionEnv, /^CADDY_IMAGE=caddy:2\.10-alpine$/m);
   assert.match(productionEnv, /^MEMORY_PROFILE=low-memory$/m);
   assert.match(productionEnv, /^MEMORY_BUDGET_MB=1024$/m);
   assert.match(productionEnv, /^MEMORY_RESERVE_MB=256$/m);
@@ -187,6 +195,11 @@ function verifyOptionalDeploymentContract() {
   assert.match(productionEnv, /^NODE_MAX_OLD_SPACE_MB=160$/m);
   assert.match(productionEnv, /^PDF_SOURCE_DIR_HOST=\/srv\/structify\/private\/pdfs$/m);
   assert.match(preflight, /HOST_CADDY_CONFIG is required in host Caddy mode/);
+  assert.match(preflight, /ACME_EMAIL is required when ORIGIN_CERT_DIR_HOST is empty/);
+  assert.match(preflight, /ORIGIN_CERT_DIR_HOST must contain \$origin_file/);
+  assert.match(preflight, /ORIGIN_CERT_DIR_HOST must have mode 0700/);
+  assert.match(preflight, /ORIGIN_CERT_DIR_HOST\/origin\.key must have mode 0600/);
+  assert.match(preflight, /docker run --rm --network none/);
   assert.match(preflight, /caddy validate --config/);
   assert.match(preflight, /MemAvailable/);
   assert.match(preflight, /MEMORY_PROFILE/);
@@ -603,6 +616,168 @@ function verifyContainerCaddyExecuteGate() {
   }
 }
 
+function verifyOriginCaPreflightAndWiring() {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ds-agent-origin-ca-"));
+  const binDir = path.join(fixtureRoot, "bin");
+  const privateRoot = path.join(fixtureRoot, "private");
+  const originCertDir = path.join(fixtureRoot, "origin-ca");
+  const envFile = path.join(fixtureRoot, "structify.env");
+  const bashEnv = path.join(fixtureRoot, "bash-env");
+  const dockerMarker = path.join(fixtureRoot, "docker-called");
+  const caddyValidationMarker = path.join(fixtureRoot, "caddy-validation-called");
+  const privatePaths = [
+    path.join(privateRoot, "knowledge"),
+    path.join(privateRoot, "course-content"),
+    path.join(privateRoot, "presentation-materials"),
+    path.join(privateRoot, "pdfs")
+  ];
+  fs.mkdirSync(binDir);
+  privatePaths.forEach((privatePath) => fs.mkdirSync(privatePath, { recursive: true }));
+  fs.mkdirSync(originCertDir, { recursive: true });
+  // These are deliberately invalid fixture bytes. The test only verifies that
+  // deployment wiring requires an operator-managed certificate pair before Docker.
+  fs.writeFileSync(path.join(originCertDir, "origin.crt"), "fixture-origin-certificate\n", { mode: 0o600 });
+  fs.writeFileSync(path.join(originCertDir, "origin.key"), "fixture-origin-key\n", { mode: 0o600 });
+  writeExecutable(path.join(binDir, "docker"), [
+    "if [[ \"$1\" == \"run\" ]]; then",
+    "  printf '%s\\n' \"$*\" > \"$ORIGIN_CA_CADDY_VALIDATE_MARKER\"",
+    "  exit \"${ORIGIN_CA_CADDY_VALIDATE_EXIT_CODE:-0}\"",
+    "fi",
+    "if [[ \"$1\" == \"compose\" ]]; then",
+    "  printf '%s\\n' \"$*\" > \"$ORIGIN_CA_DOCKER_MARKER\"",
+    "fi"
+  ].join("\n"));
+  writeExecutable(path.join(binDir, "ss"), "exit 0");
+  const secureStatStub = [
+    "stat() { if [[ \"$1\" == \"-c\" && \"$2\" == \"%a\" ]]; then case \"$3\" in */origin-ca) printf '700\\n' ;; *) printf '600\\n' ;; esac; else command stat \"$@\"; fi; }",
+    "awk() { if [[ \"$*\" == *\"/proc/meminfo\"* ]]; then printf '1441792\\n'; else command awk \"$@\"; fi; }"
+  ].join("\n");
+  fs.writeFileSync(bashEnv, secureStatStub);
+  const fixture = [
+    "COMPOSE_PROJECT_NAME=structify-test",
+    "CADDY_MODE=container",
+    "ACME_EMAIL=",
+    "NODE_HOST_PORT=18791",
+    "SPRING_HOST_PORT=18792",
+    "NODE_IMAGE=structify-node:test-release",
+    "SPRING_IMAGE=structify-spring:test-release",
+    "MYSQL_DATABASE=structify",
+    "MYSQL_USER=structify_app",
+    "MYSQL_PASSWORD=test-database-password",
+    "MYSQL_ROOT_PASSWORD=test-root-password",
+    `JWT_SECRET=${"j".repeat(64)}`,
+    `NODE_COMPAT_JWT_SECRET=${"n".repeat(64)}`,
+    "NODE_COMPAT_ENABLED=true",
+    "CORS_ALLOWED_ORIGINS=https://structify.cn",
+    "AUTH_COOKIE_SECURE=true",
+    "AUTH_EXPOSE_DEV_CODE=false",
+    "AUTH_MAIL_ENABLED=false",
+    "BOOTSTRAP_ADMIN_EMAIL=",
+    "TEACHER_EMAILS=",
+    "ALLOW_FIRST_USER_TEACHER=false",
+    "MODEL_API_KEY=",
+    "SMTP_HOST=",
+    "SMTP_USER=",
+    "SMTP_PASS=",
+    "SMTP_FROM=",
+    "JUDGE0_BASE_URL=",
+    "PISTON_BASE_URL=",
+    "VERIFICATION_CODE_FILE=",
+    "KNOWLEDGE_DEBUG_API=false",
+    "MEMORY_PROFILE=low-memory",
+    "MEMORY_BUDGET_MB=1024",
+    "MEMORY_RESERVE_MB=256",
+    "MIN_AVAILABLE_MEMORY_MB=1024",
+    `KNOWLEDGE_DIR_HOST=${bashPath(privatePaths[0])}`,
+    `RESOURCE_DIR_HOST=${bashPath(privatePaths[1])}`,
+    `PRESENTATION_DIR_HOST=${bashPath(privatePaths[2])}`,
+    `PDF_SOURCE_DIR_HOST=${bashPath(privatePaths[3])}`,
+    `ORIGIN_CERT_DIR_HOST=${bashPath(originCertDir)}`
+  ].join("\n");
+  fs.writeFileSync(envFile, `${fixture}\n`, { mode: 0o600 });
+
+  try {
+    const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "bash";
+    const env = {
+      ...process.env,
+      PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+      BASH_ENV: bashPath(bashEnv),
+      ORIGIN_CA_DOCKER_MARKER: bashPath(dockerMarker),
+      ORIGIN_CA_CADDY_VALIDATE_MARKER: bashPath(caddyValidationMarker)
+    };
+    const selectedOrigin = spawnSync(shell, [
+      "deployment/scripts/preflight.sh", "--env-file", bashPath(envFile), "--execute"
+    ], { cwd: root, encoding: "utf8", env });
+    const selectedOriginOutput = `${selectedOrigin.stdout || ""}\n${selectedOrigin.stderr || ""}`;
+    assert.equal(selectedOrigin.status, 0, selectedOriginOutput);
+    assert.match(selectedOriginOutput, /container Caddy mode: using operator-managed Origin CA certificate/);
+    assert.doesNotMatch(selectedOriginOutput, /fixture-origin-(?:certificate|key)/);
+    assert.ok(fs.existsSync(dockerMarker), "valid Origin CA wiring must reach Compose validation");
+    assert.ok(fs.existsSync(caddyValidationMarker), "valid Origin CA wiring must validate Caddy with the mounted pair");
+    assert.match(fs.readFileSync(caddyValidationMarker, "utf8"), /run.*caddy.*validate/);
+
+    fs.rmSync(dockerMarker);
+    fs.rmSync(caddyValidationMarker);
+    fs.writeFileSync(bashEnv, [
+      "stat() { if [[ \"$1\" == \"-c\" && \"$2\" == \"%a\" ]]; then case \"$3\" in */origin-ca) printf '700\\n' ;; */origin.key) printf '644\\n' ;; *) printf '600\\n' ;; esac; else command stat \"$@\"; fi; }",
+      "awk() { if [[ \"$*\" == *\"/proc/meminfo\"* ]]; then printf '1441792\\n'; else command awk \"$@\"; fi; }"
+    ].join("\n"));
+    const weakKey = spawnSync(shell, [
+      "deployment/scripts/preflight.sh", "--env-file", bashPath(envFile), "--execute"
+    ], { cwd: root, encoding: "utf8", env });
+    const weakKeyOutput = `${weakKey.stdout || ""}\n${weakKey.stderr || ""}`;
+    assert.notEqual(weakKey.status, 0, weakKeyOutput);
+    assert.match(weakKeyOutput, /ORIGIN_CERT_DIR_HOST\/origin\.key must have mode 0600/);
+    assert.equal(fs.existsSync(dockerMarker), false, "a weak Origin CA private key must fail before Docker");
+    assert.equal(fs.existsSync(caddyValidationMarker), false, "a weak Origin CA private key must not reach Caddy validation");
+
+    fs.writeFileSync(bashEnv, secureStatStub);
+    const invalidCaddy = spawnSync(shell, [
+      "deployment/scripts/preflight.sh", "--env-file", bashPath(envFile), "--execute"
+    ], {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...env, ORIGIN_CA_CADDY_VALIDATE_EXIT_CODE: "23" }
+    });
+    const invalidCaddyOutput = `${invalidCaddy.stdout || ""}\n${invalidCaddy.stderr || ""}`;
+    assert.notEqual(invalidCaddy.status, 0, invalidCaddyOutput);
+    assert.match(invalidCaddyOutput, /container Caddy Origin CA configuration validation failed/);
+    assert.ok(fs.existsSync(caddyValidationMarker), "invalid Origin CA material must reach Caddy validation");
+    assert.equal(fs.existsSync(dockerMarker), false, "invalid Origin CA material must fail before Compose validation");
+
+    fs.rmSync(path.join(originCertDir, "origin.key"));
+    fs.rmSync(dockerMarker, { force: true });
+    fs.rmSync(caddyValidationMarker, { force: true });
+    const missingKey = spawnSync(shell, [
+      "deployment/scripts/preflight.sh", "--env-file", bashPath(envFile), "--execute"
+    ], { cwd: root, encoding: "utf8", env });
+    const missingKeyOutput = `${missingKey.stdout || ""}\n${missingKey.stderr || ""}`;
+    assert.notEqual(missingKey.status, 0, missingKeyOutput);
+    assert.match(missingKeyOutput, /ORIGIN_CERT_DIR_HOST must contain origin\.key/);
+    assert.equal(fs.existsSync(dockerMarker), false, "missing Origin CA key must fail before Docker");
+
+    fs.writeFileSync(envFile, `${fixture.replace("ACME_EMAIL=", "ACME_EMAIL=operator@example.test").replace(
+      `ORIGIN_CERT_DIR_HOST=${bashPath(originCertDir)}`,
+      "ORIGIN_CERT_DIR_HOST="
+    )}\n`, { mode: 0o600 });
+    const acmeFallback = spawnSync(shell, [
+      "deployment/scripts/preflight.sh", "--env-file", bashPath(envFile), "--execute"
+    ], { cwd: root, encoding: "utf8", env });
+    const acmeFallbackOutput = `${acmeFallback.stdout || ""}\n${acmeFallback.stderr || ""}`;
+    assert.equal(acmeFallback.status, 0, acmeFallbackOutput);
+    assert.match(acmeFallbackOutput, /container Caddy mode: using ACME/);
+    assert.ok(fs.existsSync(dockerMarker), "ACME fallback must still reach Compose validation");
+
+    const compose = fs.readFileSync(path.join(root, "deployment", "docker-compose.production.yml"), "utf8");
+    const caddyfile = fs.readFileSync(path.join(root, "deployment", "Caddyfile.production"), "utf8");
+    assert.match(compose, /\$\{ORIGIN_CERT_DIR_HOST:-caddy-origin-ca-empty\}:\/etc\/caddy\/origin-ca:ro/);
+    assert.match(caddyfile, /\{\$CADDY_TLS_DIRECTIVE\}/);
+    assert.match(caddyfile, /\{\$CADDY_EMAIL_DIRECTIVE\}/);
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+}
+
 function verifyProductionEnvGenerator() {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ds-agent-production-env-"));
   const outputParent = path.join(fixtureRoot, "private-secrets");
@@ -651,6 +826,7 @@ function verifyProductionEnvGenerator() {
     assert.equal(values.PISTON_BASE_URL, "");
     assert.equal(values.JUDGE0_BASE_URL, "");
     assert.equal(values.HOST_CADDY_CONFIG, "/etc/caddy/Caddyfile");
+    assert.equal(values.ORIGIN_CERT_DIR_HOST, "");
     assert.equal(values.MEMORY_PROFILE, "low-memory");
     assert.equal(values.MEMORY_BUDGET_MB, "1024");
     assert.equal(values.MEMORY_RESERVE_MB, "256");
@@ -709,7 +885,9 @@ function verifyDatabaseRecoveryDryRun() {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }
 }
-const result = spawnSync(process.execPath, ["server.js"], {
+const originCaOnly = process.argv.includes("--only-origin-ca");
+
+const result = originCaOnly ? null : spawnSync(process.execPath, ["server.js"], {
   cwd: nodeRoot,
   encoding: "utf8",
   env: {
@@ -727,6 +905,12 @@ const result = spawnSync(process.execPath, ["server.js"], {
 });
 
 (async () => {
+  if (originCaOnly) {
+    verifyOptionalDeploymentContract();
+    verifyOriginCaPreflightAndWiring();
+    console.log("production-config-origin-ca-ok");
+    process.exit(0);
+  }
   assert.notEqual(result.status, 0, "production must fail closed without a Node compatibility JWT secret");
   const output = `${result.stdout || ""}\n${result.stderr || ""}`;
   assert.match(output, /NODE_COMPAT_JWT_SECRET is required in production/);
@@ -738,9 +922,10 @@ const result = spawnSync(process.execPath, ["server.js"], {
   verifyLowMemoryBudgetGate();
   verifySkipBuildDeployPlan();
   verifyContainerCaddyExecuteGate();
+  verifyOriginCaPreflightAndWiring();
   verifyProductionEnvGenerator();
   verifyDatabaseRecoveryDryRun();
-  console.log("production-config-ok jwt-required=1 optional-services-nonblocking=1 host-caddy-preflight=1 host-caddy-execute-gate=1 low-memory-budget-gate=1 skip-build-deploy-plan=1 container-caddy-execute-gate=1 production-env-generator=1 database-recovery-dry-run=1 no-secret-output=1");
+  console.log("production-config-ok jwt-required=1 optional-services-nonblocking=1 host-caddy-preflight=1 host-caddy-execute-gate=1 low-memory-budget-gate=1 skip-build-deploy-plan=1 container-caddy-execute-gate=1 origin-ca-preflight=1 production-env-generator=1 database-recovery-dry-run=1 no-secret-output=1");
 })().catch((error) => {
   console.error(error.message);
   process.exitCode = 1;

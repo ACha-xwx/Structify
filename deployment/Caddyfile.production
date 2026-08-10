@@ -1,15 +1,22 @@
 {
-    email {$ACME_EMAIL}
     admin off
+
+    # The container command sets this to `email <operator-address>` for the
+    # default ACME path, or leaves it empty when an Origin CA pair is mounted.
+    {$CADDY_EMAIL_DIRECTIVE}
 }
 
 # Keep the alternate host explicit so certificates cover it and all traffic
 # lands on the canonical origin used by cookies and CORS.
 www.structify.cn {
+    # In Origin CA mode the same certificate must cover both hostnames. In
+    # ACME mode this line expands to an empty line and keeps automatic HTTPS.
+    {$CADDY_TLS_DIRECTIVE}
     redir https://structify.cn{uri} permanent
 }
 
 structify.cn {
+    {$CADDY_TLS_DIRECTIVE}
     encode zstd gzip
 
     log {
