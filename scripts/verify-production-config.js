@@ -885,6 +885,108 @@ function verifyDatabaseRecoveryDryRun() {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }
 }
+
+function verifyReleaseEntrypoint() {
+  const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "bash";
+  const entrypoint = path.join(root, "deployment", "scripts", "release.sh");
+  const result = spawnSync(shell, ["deployment/scripts/release.sh", "--help"], {
+    cwd: root,
+    encoding: "utf8"
+  });
+  const output = `${result.stdout || ""}\n${result.stderr || ""}`;
+  assert.equal(result.status, 0, output);
+  assert.match(output, /Usage: release\.sh --release RELEASE/);
+
+  const source = fs.readFileSync(entrypoint, "utf8");
+  assert.match(source, /deploy\.sh/);
+  assert.match(source, /health-check\.sh/);
+  assert.match(source, /--confirm DEPLOY-structify\.cn/);
+  assert.match(source, /--retain 2/);
+  assert.match(source, /only after deployment health checks succeed/i);
+  assert.match(source, /prune_release_directories/);
+  assert.doesNotMatch(source, /git\s+(?:reset|checkout|clean)/i);
+}
+
+function verifyReleaseRetentionCli() {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ds-agent-release-retention-"));
+  const releaseRoot = path.join(fixtureRoot, "releases");
+  const currentRelease = "v1.0.7-structify";
+  const previousRelease = "v1.0.6-structify";
+  const obsoleteRelease = "v1.0.5-structify";
+  const currentScripts = path.join(releaseRoot, currentRelease, "deployment", "scripts");
+  const binDir = path.join(fixtureRoot, "bin");
+  const imageMarker = path.join(fixtureRoot, "removed-images.txt");
+  const envFile = path.join(fixtureRoot, "structify.env");
+  fs.mkdirSync(currentScripts, { recursive: true });
+  [previousRelease, obsoleteRelease].forEach((release) => {
+    fs.mkdirSync(path.join(releaseRoot, release, "deployment"), { recursive: true });
+    fs.writeFileSync(path.join(releaseRoot, release, "deployment", "docker-compose.production.yml"), "services: {}\n");
+  });
+  fs.writeFileSync(path.join(releaseRoot, currentRelease, "deployment", "docker-compose.production.yml"), "services: {}\n");
+  fs.writeFileSync(path.join(releaseRoot, "active-release"), `${previousRelease}\n`, { mode: 0o600 });
+  fs.mkdirSync(binDir);
+  fs.copyFileSync(path.join(root, "deployment", "scripts", "release.sh"), path.join(currentScripts, "release.sh"));
+  fs.copyFileSync(path.join(root, "deployment", "scripts", "common.sh"), path.join(currentScripts, "common.sh"));
+  writeExecutable(path.join(currentScripts, "deploy.sh"), "exit 0");
+  writeExecutable(path.join(currentScripts, "health-check.sh"), "exit \"${RELEASE_TEST_HEALTH_EXIT:-0}\"");
+  writeExecutable(path.join(binDir, "docker"), [
+    "if [[ \"$1\" == image && \"$2\" == ls ]]; then",
+    "  printf '%s\\n' 'structify-node:v1.0.5-structify|old-node' 'structify-spring:v1.0.5-structify|old-spring' 'unrelated:latest|unrelated'",
+    "  exit 0",
+    "fi",
+    "if [[ \"$1\" == image && \"$2\" == rm ]]; then",
+    "  printf '%s\\n' \"$3\" >> \"$RELEASE_TEST_IMAGE_MARKER\"",
+    "  exit 0",
+    "fi",
+    "exit 0"
+  ].join("\n"));
+  fs.writeFileSync(envFile, "CADDY_MODE=host\n", { mode: 0o600 });
+
+  const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "bash";
+  const run = (extraEnv = {}) => spawnSync(shell, [
+    "deployment/scripts/release.sh",
+    "--release", currentRelease,
+    "--env-file", bashPath(envFile),
+    "--release-root", bashPath(releaseRoot),
+    "--private-root", bashPath(path.join(fixtureRoot, "private")),
+    "--backup-root", bashPath(path.join(fixtureRoot, "backup")),
+    "--execute", "--confirm", "RELEASE-structify.cn"
+  ], {
+    cwd: path.join(releaseRoot, currentRelease),
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+      RELEASE_TEST_IMAGE_MARKER: bashPath(imageMarker),
+      ...extraEnv
+    }
+  });
+
+  try {
+    const success = run();
+    const successOutput = `${success.stdout || ""}\n${success.stderr || ""}`;
+    assert.equal(success.status, 0, successOutput);
+    assert.equal(fs.existsSync(path.join(releaseRoot, currentRelease)), true);
+    assert.equal(fs.existsSync(path.join(releaseRoot, previousRelease)), true);
+    assert.equal(fs.existsSync(path.join(releaseRoot, obsoleteRelease)), false);
+    assert.equal(fs.readFileSync(path.join(releaseRoot, "active-release"), "utf8").trim(), currentRelease);
+    assert.deepEqual(fs.readFileSync(imageMarker, "utf8").trim().split(/\r?\n/).sort(), [
+      "structify-node:v1.0.5-structify",
+      "structify-spring:v1.0.5-structify"
+    ]);
+
+    fs.mkdirSync(path.join(releaseRoot, obsoleteRelease, "deployment"), { recursive: true });
+    fs.writeFileSync(path.join(releaseRoot, obsoleteRelease, "deployment", "docker-compose.production.yml"), "services: {}\n");
+    fs.writeFileSync(path.join(releaseRoot, "active-release"), `${previousRelease}\n`, { mode: 0o600 });
+    const failure = run({ RELEASE_TEST_HEALTH_EXIT: "23" });
+    const failureOutput = `${failure.stdout || ""}\n${failure.stderr || ""}`;
+    assert.notEqual(failure.status, 0, failureOutput);
+    assert.equal(fs.existsSync(path.join(releaseRoot, obsoleteRelease)), true);
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+}
+
 const originCaOnly = process.argv.includes("--only-origin-ca");
 
 const result = originCaOnly ? null : spawnSync(process.execPath, ["server.js"], {
@@ -925,6 +1027,8 @@ const result = originCaOnly ? null : spawnSync(process.execPath, ["server.js"], 
   verifyOriginCaPreflightAndWiring();
   verifyProductionEnvGenerator();
   verifyDatabaseRecoveryDryRun();
+  verifyReleaseEntrypoint();
+  verifyReleaseRetentionCli();
   console.log("production-config-ok jwt-required=1 optional-services-nonblocking=1 host-caddy-preflight=1 host-caddy-execute-gate=1 low-memory-budget-gate=1 skip-build-deploy-plan=1 container-caddy-execute-gate=1 origin-ca-preflight=1 production-env-generator=1 database-recovery-dry-run=1 no-secret-output=1");
 })().catch((error) => {
   console.error(error.message);
