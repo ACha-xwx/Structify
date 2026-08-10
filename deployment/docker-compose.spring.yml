@@ -25,7 +25,7 @@ services:
 
   spring-api:
     build:
-      context: ../apps/server
+      context: ../backend/spring
     restart: unless-stopped
     depends_on:
       mysql:

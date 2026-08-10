@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
-SQLITE="${REPO_DIR}/data.db"
+SQLITE="${REPO_DIR}/private/state/node/data.db"
 TARGET="staging"
 OUTPUT=""
 EXECUTE=0

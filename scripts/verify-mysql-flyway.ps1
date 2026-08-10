@@ -1,5 +1,5 @@
 param(
-    [string]$JarPath = (Join-Path $PSScriptRoot '..\apps\server\target\ds-agent-server-0.0.1-SNAPSHOT.jar')
+    [string]$JarPath = (Join-Path $PSScriptRoot '..\backend\spring\target\ds-agent-server-0.0.1-SNAPSHOT.jar')
 )
 
 $ErrorActionPreference = 'Continue'

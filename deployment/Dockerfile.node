@@ -16,12 +16,13 @@ WORKDIR /app
 
 COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node package.json package-lock.json ./
-COPY --chown=node:node server.js presentation-runtime.js index.html prototype.html ./
-COPY --chown=node:node lib ./lib
+COPY --chown=node:node backend/node/server.js backend/node/presentation-runtime.js ./
+COPY --chown=node:node frontend ./frontend
+COPY --chown=node:node backend/node/lib ./lib
 COPY --chown=node:node deployment/node-entrypoint.sh /usr/local/bin/node-entrypoint
-RUN mkdir -p /app/pdfs /app/data \
-    && chmod 755 /usr/local/bin/node-entrypoint \
-    && chown -R node:node /app/pdfs /app/data
+RUN mkdir -p /app/default-pdfs /app/pdfs /app/data \
+    && chmod 755 /usr/local/bin/node-entrypoint /app/default-pdfs \
+    && chown -R node:node /app/default-pdfs /app/pdfs /app/data
 
 USER node
 EXPOSE 8791

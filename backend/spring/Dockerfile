@@ -21,4 +21,4 @@ COPY --from=build /workspace/target/ds-agent-server-*.jar app.jar
 USER appuser
 EXPOSE 8792
 
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-jar", "/app/app.jar", "--spring.profiles.active=prod"]
+ENTRYPOINT ["java", "-Xms64m", "-Xmx192m", "-Xss512k", "-XX:MaxMetaspaceSize=96m", "-XX:MaxDirectMemorySize=32m", "-XX:+UseSerialGC", "-jar", "/app/app.jar", "--spring.profiles.active=prod"]

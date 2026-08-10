@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const { validateAnimationData } = require("../lib/animation-validator");
+const { validateAnimationData } = require("../backend/node/lib/animation-validator");
 
 function main() {
   const valid = validateAnimationData({
@@ -80,7 +80,7 @@ function main() {
 
   const root = path.join(__dirname, "..");
   for (const filename of ["index.html", "prototype.html"]) {
-    const html = fs.readFileSync(path.join(root, filename), "utf8");
+    const html = fs.readFileSync(path.join(root, "frontend", filename), "utf8");
     assert.match(html, /linked_list: "list"/);
     assert.match(html, /sequential_list: "array"/);
     assert.match(html, /graph: "tree"/);

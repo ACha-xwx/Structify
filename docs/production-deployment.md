@@ -6,7 +6,7 @@ an operator who can review backups. It does not contain credentials. The
 default production mode is an isolated Structify stack behind an existing host
 Caddy site block, so it does not take over unrelated public listeners.
 
-The older root-level `13-cloudflare-deployment-guide.md` is a historical
+The older `docs/project/13-cloudflare-deployment-guide.md` is a historical
 prototype/Cloudflare note and still names `agent.example.com` and placeholder
 server state. It is not an approval record for `structify.cn`; use this runbook
 and the files under `deployment/` for production.
@@ -42,8 +42,10 @@ or a non-expired HMAC URL signature. Never replace that route with `file_server`
    outbound access to the selected model, SMTP, Judge0/Piston, and ACME servers.
    A shared host must already run Caddy and have a complete Caddyfile that can
    import the reviewed Structify site block. Execute preflight reads Linux
-   `MemAvailable`; keep at least `1536` MiB available after all unrelated
-   services are accounted for. A non-Caddy TLS owner is not a compatible
+   `MemAvailable`; the default `low-memory` profile has a 1,344 MiB effective
+   requirement (1,088 MiB service hard caps plus a 256 MiB host reserve), so a
+   host with about 1.4 GiB available can pass only while that budget fits. A
+   non-Caddy TLS owner is not a compatible
    handoff without a separately reviewed integration.
 2. Create a release tag and record the source revision and image digests. This
      checkout currently has a verified `origin` remote and a recorded
@@ -58,6 +60,8 @@ or a non-expired HMAC URL signature. Never replace that route with `file_server`
      slides.json
      lesson-presentation-plans.json
      rendered/<deck>/<page>.png
+   /srv/structify/private/pdfs/
+     <reviewed-release-pdf>.pdf
    ```
 
    Do not place OCR, teacher PPT originals, authorization evidence, student
@@ -74,13 +78,20 @@ or a non-expired HMAC URL signature. Never replace that route with `file_server`
    must not be copied back into the checkout or included in a support bundle.
    In shared-host mode, set `HOST_CADDY_CONFIG` to the complete active
    Caddyfile which imports `Caddyfile.host.production`, and keep
-   `CADDY_MODE=host`, `MIN_AVAILABLE_MEMORY_MB=1536`, `NODE_HOST_PORT=18791`,
-   and `SPRING_HOST_PORT=18792` unless the host is dedicated to Structify.
+   `CADDY_MODE=host`, `MEMORY_PROFILE=low-memory`,
+   `MIN_AVAILABLE_MEMORY_MB=1024`, and the generated memory limits/reservations
+   unless the host is dedicated to Structify.
 
-The Node image keeps reviewed public PDFs in `/app/default-pdfs` and seeds a
-separate `node-pdfs` volume on first boot. That volume is writable only for the
-legacy upload route and is included in the application backup; private PPT and
-course resources remain read-only external mounts.
+Compose mounts the external `PDF_SOURCE_DIR_HOST` at `/app/default-pdfs` as
+read-only; the Node image creates that mount point but never packages
+courseware. On first boot of a new `node-pdfs` volume, the entrypoint copies
+non-conflicting source files and creates `.course-pdfs-seeded`. This marker is
+independent of the historical `.seeded` marker: an existing volume that has
+only the old marker receives the reviewed baseline once, without deleting or
+overwriting user uploads. That volume is writable only for the legacy upload
+route and is included in the application backup; later restarts do not
+overwrite it when the source directory changes. Private PPT, course resources,
+and the PDF source remain read-only external mounts.
 `Dockerfile.node.dockerignore` also allowlists the build context so local
 private directories and SQLite files are not sent to the Docker daemon.
 
@@ -95,9 +106,11 @@ private directories and SQLite files are not sent to the Docker daemon.
   execute preflight invokes `caddy validate` against it before Docker work.
   The source Caddy block routes to `127.0.0.1:18791` and
   `127.0.0.1:18792`; both ports must be unused before deployment.
-- `MIN_AVAILABLE_MEMORY_MB=1536` is the default execution floor. It is based
-  on Linux `MemAvailable`, not total RAM, and must include enough room for
-  MySQL, Spring, Node, and normal host activity.
+- `MEMORY_PROFILE=low-memory` is the default. Its 1,024 MiB configured floor
+  is based on Linux `MemAvailable`, but preflight also requires the larger of
+  `MEMORY_BUDGET_MB` and all declared service hard caps plus
+  `MEMORY_RESERVE_MB` (1,344 MiB by default). Do not lower the service limits,
+  reservations, or reserve independently to force a host through the gate.
 - Set `CADDY_MODE=container` only on a dedicated host. In that mode,
   `ACME_EMAIL` is required and the profiled Compose Caddy service owns public
   `80/443`.
@@ -121,6 +134,13 @@ private directories and SQLite files are not sent to the Docker daemon.
 - `KNOWLEDGE_DEBUG_API=false`, `VERIFICATION_CODE_FILE` empty, and
   `KNOWLEDGE_AUTO_PUBLISH_LOCAL=false`. A file appearing under the private
   knowledge mount does not publish it to retrieval.
+- `PDF_SOURCE_DIR_HOST` is required and must be an absolute host directory
+  containing the reviewed release PDFs. It is mounted read-only and must be
+  readable by the Node container user. Execute-time preflight verifies that
+  the directory exists. Changing its contents does not replace PDFs already
+  copied to an existing `node-pdfs` volume after `.course-pdfs-seeded` exists;
+  perform an explicit, backup-tested data migration when the baseline PDF set
+  must change.
 - `AUTH_EXPOSE_DEV_CODE=false` in every public environment. Set
   `AUTH_MAIL_ENABLED=true` only after SMTP delivery is configured and tested.
   With mail disabled, production verification-code requests return
@@ -323,6 +343,7 @@ image and verify health before DNS is restored.
 - [ ] CORS is exactly `https://structify.cn`; secure cookie is enabled.
 - [ ] Static admin/teacher elevation, debug API, and verification-code capture are off.
 - [ ] Private knowledge, course resources, and rendered PPT directories are mounted read-only.
+- [ ] `PDF_SOURCE_DIR_HOST` exists, contains the reviewed release PDFs, and is readable by the Node container user; its first-boot seed behavior is understood before rollout.
 - [ ] 18791/18792 bind only loopback; MySQL has no host port; only the selected Caddy owner is public.
 - [ ] MySQL backup was created and restore-tested; private media snapshot exists.
 - [ ] Flyway completed without `clean`; health and smoke checks passed.
@@ -342,6 +363,7 @@ production paths:
 | `data.db`, `data.db-wal`, `data.db-shm`, `*.sql`, database dumps | Accounts, messages, learning history, and password hashes. |
 | `knowledge/private/**`, `course-content-private/**` | Copyrighted OCR and reviewed private course material. |
 | `teach_ppt/**`, `presentation-materials/**` | Original teacher PPT/PPTX files, extracted text/notes, labels, manifests, and rendered slide images. |
+| `/srv/structify/private/pdfs/**` | Operator-managed release PDF source; keep copyrighted courseware out of the repository and image build context. |
 | `uploads/**`, private `node-pdfs` volume snapshots | User/teacher uploads and potentially personal content. |
 | `review-records/**`, license/authorization evidence | Internal review identities and contractual evidence. |
 | `/etc/structify/structify.env`, Caddy `/data`, backup directories | Live credentials, ACME private keys, database/media backups. |

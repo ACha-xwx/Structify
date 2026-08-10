@@ -6,6 +6,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.join(__dirname, "..");
+const nodeRoot = path.join(root, "backend", "node");
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ds-agent-dsvp-"));
 const dbPath = path.join(tempDir, "data.db");
 const secret = "dsvp-test-secret-32-characters-long";
@@ -34,7 +35,7 @@ async function waitForHealth(baseUrl, child) {
 
 async function main() {
   const child = spawn(process.execPath, ["server.js"], {
-    cwd: root,
+    cwd: nodeRoot,
     env: {
       ...process.env,
       HOST: "127.0.0.1",

@@ -2,10 +2,10 @@
   "name": "data-structure-agent",
   "version": "2.0.0",
   "description": "数据结构学习陪练台 - 面向课程助教的学习智能体工作台",
-  "main": "server.js",
+  "main": "backend/node/server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
+    "start": "node backend/node/server.js",
+    "dev": "node --watch backend/node/server.js",
     "test": "node scripts/verify-core-regression.js"
   },
   "keywords": [

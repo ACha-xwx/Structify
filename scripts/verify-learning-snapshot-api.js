@@ -5,6 +5,7 @@ const { spawn } = require("child_process");
 const { waitForCapturedCode } = require("./verification-code-fixture");
 
 const root = path.join(__dirname, "..");
+const nodeRoot = path.join(root, "backend", "node");
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ds-learning-snapshot-"));
 const dbPath = path.join(tmpDir, "test.db");
 const verificationCodeFile = path.join(tmpDir, "verification-codes.jsonl");
@@ -43,7 +44,7 @@ async function jsonFetch(url, options = {}) {
 
 (async () => {
   const child = spawn(process.execPath, ["server.js"], {
-    cwd: root,
+    cwd: nodeRoot,
     env: {
       ...process.env,
       HOST: "127.0.0.1",

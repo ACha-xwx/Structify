@@ -1,6 +1,6 @@
 # Data Structure Agent Spring Backend
 
-`apps/server` is the Spring Boot backend for the data-structure learning agent. It is a modular monolith designed for the team's first vertical slice: approved stack-and-queue content, course-grounded chat, a script-driven classroom, structured animations, and sandboxed code experiments.
+`backend/spring` is the Spring Boot backend for the data-structure learning agent. It is a modular monolith designed for the team's first vertical slice: approved stack-and-queue content, course-grounded chat, a script-driven classroom, structured animations, and sandboxed code experiments.
 
 The existing Node.js prototype remains a reference implementation during migration. The Spring API uses `/api/v1/*` on port `8792`; it does not replace the legacy `/api/*` endpoints until the new frontend has completed integration.
 
@@ -19,7 +19,7 @@ The existing Node.js prototype remains a reference implementation during migrati
 Requirements: Java 21. Maven is provided through the wrapper.
 
 ```powershell
-cd apps/server
+cd backend/spring
 .\mvnw.cmd clean test
 .\mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=dev
 ```
@@ -138,7 +138,7 @@ During the frontend compatibility window, the browser tries this Spring endpoint
 ## Verify before merging
 
 ```powershell
-cd apps/server
+cd backend/spring
 .\mvnw.cmd clean test
 .\mvnw.cmd -DskipTests package
 ```

@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.join(__dirname, "..");
-const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+const html = fs.readFileSync(path.join(root, "frontend", "index.html"), "utf8");
 
 assert.match(html, /let animationRecordRequest = null;/);
 assert.match(html, /animationRecordRequest\.generation === generation/);

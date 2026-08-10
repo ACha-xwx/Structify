@@ -5,8 +5,8 @@ const {
   DSVP_VERSION,
   DsvpValidationError,
   adaptDsvp
-} = require("../lib/dsvp-adapter");
-const { validateAnimationData } = require("../lib/animation-validator");
+} = require("../backend/node/lib/dsvp-adapter");
+const { validateAnimationData } = require("../backend/node/lib/animation-validator");
 
 const requests = [
   ["stack", "push", { data: [1], value: 2 }, "stack"],

@@ -35,7 +35,7 @@ node_port="$(node_host_port)"
 spring_port="$(spring_host_port)"
 [[ "$node_port" != "$spring_port" ]] || die "NODE_HOST_PORT and SPRING_HOST_PORT must differ"
 
-required=(MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD JWT_SECRET NODE_COMPAT_JWT_SECRET KNOWLEDGE_DIR_HOST RESOURCE_DIR_HOST PRESENTATION_DIR_HOST NODE_IMAGE SPRING_IMAGE)
+required=(MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD JWT_SECRET NODE_COMPAT_JWT_SECRET KNOWLEDGE_DIR_HOST RESOURCE_DIR_HOST PRESENTATION_DIR_HOST PDF_SOURCE_DIR_HOST NODE_IMAGE SPRING_IMAGE)
 for key in "${required[@]}"; do
   value="$(env_value "$key")"
   [[ -n "$value" ]] || die "$key is empty"
@@ -84,21 +84,105 @@ else
   fi
 fi
 
+memory_mib() {
+  local key="$1"
+  local value="$2"
+  [[ "$value" =~ ^([0-9]+)([mM])$ ]] \
+    || die "$key must be a whole number of MiB with an m suffix"
+  local amount="${BASH_REMATCH[1]}"
+  (( 10#$amount >= 16 )) || die "$key must be at least 16 MiB"
+  printf '%s\n' "$((10#$amount))"
+}
+
+whole_mib() {
+  local key="$1"
+  local value="$2"
+  [[ "$value" =~ ^[0-9]+$ ]] || die "$key must be a whole number of MiB"
+  printf '%s\n' "$((10#$value))"
+}
+
+configured_memory_mib() {
+  local key="$1"
+  local fallback="$2"
+  local value
+  value="$(env_value "$key")"
+  value="${value:-$fallback}"
+  memory_mib "$key" "$value"
+}
+
 if [[ "$EXECUTE" == "1" ]]; then
+  memory_profile="$(env_value MEMORY_PROFILE)"
+  memory_profile="${memory_profile:-low-memory}"
+  case "$memory_profile" in
+    low-memory)
+      profile_minimum_mb=1024
+      profile_reserve_mb=256
+      profile_hard_limit_mb=1088
+      ;;
+    standard)
+      profile_minimum_mb=1536
+      profile_reserve_mb=384
+      profile_hard_limit_mb=2048
+      ;;
+    *) die "MEMORY_PROFILE must be low-memory or standard" ;;
+  esac
+
   minimum_available_memory_mb="$(env_value MIN_AVAILABLE_MEMORY_MB)"
-  minimum_available_memory_mb="${minimum_available_memory_mb:-1536}"
-  [[ "$minimum_available_memory_mb" =~ ^[0-9]+$ ]] \
-    || die "MIN_AVAILABLE_MEMORY_MB must be a whole number of MiB"
-  (( 10#$minimum_available_memory_mb >= 512 )) \
-    || die "MIN_AVAILABLE_MEMORY_MB must be at least 512 MiB"
+  minimum_available_memory_mb="${minimum_available_memory_mb:-$profile_minimum_mb}"
+  minimum_available_memory_mb="$(whole_mib MIN_AVAILABLE_MEMORY_MB "$minimum_available_memory_mb")"
+  (( minimum_available_memory_mb >= profile_minimum_mb )) \
+    || die "MIN_AVAILABLE_MEMORY_MB must be at least ${profile_minimum_mb} MiB for MEMORY_PROFILE=$memory_profile"
+
+  memory_reserve_mb="$(env_value MEMORY_RESERVE_MB)"
+  memory_reserve_mb="${memory_reserve_mb:-$profile_reserve_mb}"
+  memory_reserve_mb="$(whole_mib MEMORY_RESERVE_MB "$memory_reserve_mb")"
+  (( memory_reserve_mb >= 128 )) || die "MEMORY_RESERVE_MB must be at least 128 MiB"
+
+  mysql_limit_mb="$(configured_memory_mib MYSQL_MEMORY_LIMIT 384m)"
+  node_limit_mb="$(configured_memory_mib NODE_MEMORY_LIMIT 256m)"
+  spring_limit_mb="$(configured_memory_mib SPRING_MEMORY_LIMIT 384m)"
+  caddy_limit_mb="$(configured_memory_mib CADDY_MEMORY_LIMIT 64m)"
+  mysql_reservation_mb="$(configured_memory_mib MYSQL_MEMORY_RESERVATION 256m)"
+  node_reservation_mb="$(configured_memory_mib NODE_MEMORY_RESERVATION 160m)"
+  spring_reservation_mb="$(configured_memory_mib SPRING_MEMORY_RESERVATION 288m)"
+  caddy_reservation_mb="$(configured_memory_mib CADDY_MEMORY_RESERVATION 64m)"
+  node_max_old_space_mb="$(env_value NODE_MAX_OLD_SPACE_MB)"
+  node_max_old_space_mb="${node_max_old_space_mb:-160}"
+  node_max_old_space_mb="$(whole_mib NODE_MAX_OLD_SPACE_MB "$node_max_old_space_mb")"
+  (( node_max_old_space_mb < node_limit_mb )) \
+    || die "NODE_MAX_OLD_SPACE_MB must be below NODE_MEMORY_LIMIT"
+
+  for service in mysql node spring caddy; do
+    limit_var="${service}_limit_mb"
+    reservation_var="${service}_reservation_mb"
+    (( ${!reservation_var} <= ${!limit_var} )) \
+      || die "${service^^}_MEMORY_RESERVATION must not exceed ${service^^}_MEMORY_LIMIT"
+  done
+
+  total_hard_limit_mb=$((mysql_limit_mb + node_limit_mb + spring_limit_mb + caddy_limit_mb))
+  total_reservation_mb=$((mysql_reservation_mb + node_reservation_mb + spring_reservation_mb + caddy_reservation_mb))
+  (( total_hard_limit_mb <= profile_hard_limit_mb )) \
+    || die "${memory_profile} service memory limits total ${total_hard_limit_mb} MiB exceeds hard cap ${profile_hard_limit_mb} MiB"
+  evidence_budget_mb=$((total_reservation_mb + memory_reserve_mb))
+  memory_budget_mb="$(env_value MEMORY_BUDGET_MB)"
+  memory_budget_mb="${memory_budget_mb:-$evidence_budget_mb}"
+  memory_budget_mb="$(whole_mib MEMORY_BUDGET_MB "$memory_budget_mb")"
+  (( memory_budget_mb >= evidence_budget_mb )) \
+    || die "MEMORY_BUDGET_MB ${memory_budget_mb} MiB is below declared reservations plus reserve ${evidence_budget_mb} MiB"
+  hard_budget_mb=$((total_hard_limit_mb + memory_reserve_mb))
+  effective_memory_budget_mb="$memory_budget_mb"
+  (( effective_memory_budget_mb >= hard_budget_mb )) || effective_memory_budget_mb="$hard_budget_mb"
 
   available_memory_kib="$(awk '/^MemAvailable:/ { print $2; exit }' /proc/meminfo 2>/dev/null || true)"
   [[ "$available_memory_kib" =~ ^[0-9]+$ ]] \
     || die "cannot read MemAvailable from /proc/meminfo; execute deployment only on a Linux host"
   available_memory_mb=$((10#$available_memory_kib / 1024))
-  (( available_memory_mb >= 10#$minimum_available_memory_mb )) \
+  (( available_memory_mb >= minimum_available_memory_mb )) \
     || die "available memory ${available_memory_mb} MiB is below configured floor ${minimum_available_memory_mb} MiB"
-  log "available memory ${available_memory_mb} MiB meets configured floor ${minimum_available_memory_mb} MiB"
+  (( available_memory_mb >= effective_memory_budget_mb )) \
+    || die "configured memory budget ${memory_budget_mb} MiB (effective minimum ${effective_memory_budget_mb} MiB) exceeds available memory ${available_memory_mb} MiB"
+  log "memory profile ${memory_profile}: service hard cap ${total_hard_limit_mb} MiB; reservations ${total_reservation_mb} MiB + reserve ${memory_reserve_mb} MiB"
+  log "memory budget ${memory_budget_mb} MiB (effective ${effective_memory_budget_mb} MiB) meets available memory ${available_memory_mb} MiB"
 fi
 
 mail_enabled="$(env_value AUTH_MAIL_ENABLED)"
@@ -137,7 +221,7 @@ node_compat_enabled="${node_compat_enabled:-true}"
 [[ -z "$(env_value VERIFICATION_CODE_FILE)" ]] || die "VERIFICATION_CODE_FILE must be empty in production"
 [[ "$(env_value KNOWLEDGE_DEBUG_API)" =~ ^(false|0|no|off)$ ]] || die "KNOWLEDGE_DEBUG_API must be false"
 
-for path_key in KNOWLEDGE_DIR_HOST RESOURCE_DIR_HOST PRESENTATION_DIR_HOST; do
+for path_key in KNOWLEDGE_DIR_HOST RESOURCE_DIR_HOST PRESENTATION_DIR_HOST PDF_SOURCE_DIR_HOST; do
   path_value="$(env_value "$path_key")"
   [[ "$path_value" == /* ]] || die "$path_key must be an absolute Linux path"
   if [[ "$EXECUTE" == "1" && ! -d "$path_value" ]]; then

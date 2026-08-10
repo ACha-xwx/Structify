@@ -4,6 +4,7 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 EXECUTE=0
+SKIP_BUILD=0
 CONFIRM=""
 RELEASE=""
 PRIVATE_ROOT=""
@@ -12,10 +13,11 @@ BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/structify}"
 usage() {
   cat <<'EOF'
 Usage: deploy.sh --release RELEASE [--env-file FILE] [--private-root DIR]
-                 [--execute --confirm DEPLOY-structify.cn]
+                 [--skip-build] [--execute --confirm DEPLOY-structify.cn]
 
 Default mode validates the release name and prints the build/backup/migration
-plan. Execute mode builds immutable local Node/Spring images, captures a backup,
+plan. --skip-build requires the immutable Node/Spring release images to already
+exist locally. Execute mode otherwise builds those images, captures a backup,
 starts MySQL, and lets Spring run Flyway migrations. In host Caddy mode it never
 touches public 80/443; the host operator installs and reloads the reviewed site
 block separately. DNS is never changed by this script.
@@ -27,6 +29,7 @@ while [[ $# -gt 0 ]]; do
     --env-file) ENV_FILE="$2"; shift 2 ;;
     --private-root) PRIVATE_ROOT="$2"; shift 2 ;;
     --backup-root) BACKUP_ROOT="$2"; shift 2 ;;
+    --skip-build) SKIP_BUILD=1; shift ;;
     --execute) EXECUTE=1; shift ;;
     --confirm) CONFIRM="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -59,7 +62,7 @@ bootstrap_data_services() {
   fi
 
   log "bootstrap data services before the first Flyway migration"
-  compose up -d mysql node
+  compose up -d --no-build mysql node
   for attempt in $(seq 1 30); do
     if compose exec -T mysql mysqladmin ping -h 127.0.0.1 --silent >/dev/null 2>&1 \
       && curl --fail --silent --max-time 5 "http://127.0.0.1:$node_port/healthz" >/dev/null 2>&1; then
@@ -70,16 +73,29 @@ bootstrap_data_services() {
   done
 }
 
+verify_release_images() {
+  docker image inspect "$configured_node_image" >/dev/null 2>&1 \
+    || die "NODE_IMAGE is not available locally for --skip-build: $configured_node_image"
+  docker image inspect "$configured_spring_image" >/dev/null 2>&1 \
+    || die "SPRING_IMAGE is not available locally for --skip-build: $configured_spring_image"
+}
+
 if [[ "$EXECUTE" != "1" ]]; then
   log "dry-run deploy plan for release $RELEASE"
   print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --quiet
-  print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build node spring-api
+  if [[ "$SKIP_BUILD" == "1" ]]; then
+    log "--skip-build: verify immutable release images before deployment"
+    print_command docker image inspect "$configured_node_image"
+    print_command docker image inspect "$configured_spring_image"
+  else
+    print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build node spring-api
+  fi
   log "if no Node/MySQL containers are running, bootstrap data services before the persistent-data backup"
-  print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d mysql node
+  print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --no-build mysql node
   print_command "$SCRIPT_DIR/backup.sh" --env-file "$ENV_FILE" --backup-root "$BACKUP_ROOT" --private-root "${PRIVATE_ROOT:-/srv/structify/private}" --execute --confirm BACKUP-structify.cn
-  print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d node spring-api
+  print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --no-build node spring-api
   if [[ "$caddy_mode_value" == "container" ]]; then
-    print_command docker compose --profile container-caddy --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d caddy
+    print_command docker compose --profile container-caddy --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --no-build caddy
   else
     log "host Caddy mode: validate and reload the existing host configuration after the application health checks"
   fi
@@ -98,14 +114,19 @@ if [[ -r "$BACKUP_ROOT/last-release.env" ]]; then
   chmod 600 "$BACKUP_ROOT/previous-release.env"
 fi
 
-compose build --pull=false node spring-api
+if [[ "$SKIP_BUILD" == "1" ]]; then
+  verify_release_images
+  log "--skip-build: using verified immutable local release images"
+else
+  compose build --pull=false node spring-api
+fi
 
 bootstrap_data_services
 "$SCRIPT_DIR/backup.sh" --env-file "$ENV_FILE" --backup-root "$BACKUP_ROOT" --private-root "$PRIVATE_ROOT" --execute --confirm BACKUP-structify.cn
 
-compose up -d node spring-api
+compose up -d --no-build node spring-api
 if [[ "$caddy_mode_value" == "container" ]]; then
-  docker compose --profile container-caddy --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d caddy
+  docker compose --profile container-caddy --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --no-build caddy
 else
   log "host Caddy mode: application services are ready on loopback ports $node_port/$spring_port; no public listener was changed"
 fi

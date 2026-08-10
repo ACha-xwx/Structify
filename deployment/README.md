@@ -25,16 +25,30 @@ internal Compose network.
 Host mode is an execute-time handoff, not merely a port choice. Set
 `HOST_CADDY_CONFIG` to the complete existing Caddyfile that imports
 `Caddyfile.host.production`; `preflight.sh --execute` runs `caddy validate`
-against that file before it invokes Docker. It also reads Linux `MemAvailable`
-and refuses a host below `MIN_AVAILABLE_MEMORY_MB` (default `1536`). A host
-with another TLS owner must use an explicitly reviewed proxy integration or a
-dedicated Structify host; do not start the container-Caddy profile alongside it.
+against that file before it invokes Docker. The default `low-memory` profile
+reads Linux `MemAvailable` and requires the larger of its configured budget and
+the 1,088 MiB service hard-cap total plus its 256 MiB host reserve (1,344 MiB).
+A host with another TLS owner must use an explicitly reviewed proxy integration
+or a dedicated Structify host; do not start the container-Caddy profile alongside it.
 
 The default build bases are the official Node 22 Bookworm and Eclipse Temurin
 21 images. When Docker Hub is unavailable, an operator may set
 `NODE_BASE_IMAGE`, `JAVA_BUILD_IMAGE`, and `JAVA_RUNTIME_IMAGE` in the private
 production environment file to a verified compatible mirror. Record the
 resolved digests with the release; do not add mirror credentials to source.
+
+PDF courseware stays outside the image build context. Set
+`PDF_SOURCE_DIR_HOST` to the absolute host directory that contains the
+reviewed PDFs for a release; Compose mounts it read-only at
+`/app/default-pdfs`. On the first Node boot for a new `node-pdfs` volume, the
+entrypoint copies non-conflicting source files into the writable volume and
+creates `.course-pdfs-seeded`. This marker is independent of the historical
+`.seeded` marker, so an existing volume receives the course-PDF baseline once
+when this source is introduced without overwriting user uploads. Later
+restarts never overwrite uploads or operator-managed files in that volume, so
+updating the source directory alone does not refresh an existing deployment.
+Ensure the source directory and its files are readable by the Node container
+user.
 
 Use [`../docs/production-deployment.md`](../docs/production-deployment.md) as
 the operator runbook. All operational scripts are under `scripts/` and are
@@ -44,7 +58,7 @@ domain-specific `--confirm` value.
 Files:
 
 - `docker-compose.production.yml` - Node, Spring, MySQL, and optional profiled Caddy topology.
-- `Dockerfile.node` / `Dockerfile.node.dockerignore` / `node-entrypoint.sh` - non-root Node compatibility image; the build context allowlist excludes private media and databases, while reviewed public PDFs are seeded into a dedicated writable upload volume.
+- `Dockerfile.node` / `Dockerfile.node.dockerignore` / `node-entrypoint.sh` - non-root Node compatibility image; the build context allowlist excludes private media and databases, while the read-only PDF source is seeded once into a dedicated writable upload volume.
 - `Caddyfile.production` - dedicated-host container Caddy routes and SSE flush behavior.
 - `Caddyfile.host.production` - append-only shared-host site block for `structify.cn`.
 - `.env.spring.example` - placeholder-only production environment template.

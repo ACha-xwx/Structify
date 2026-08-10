@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
-const dir = path.join(root, 'presentation-materials');
+const dir = path.join(root, 'private', 'presentation-materials');
 const slidesPath = path.join(dir, 'slides.json');
 const plansPath = path.join(dir, 'lesson-presentation-plans.json');
 function readJson(p){ try{return JSON.parse(fs.readFileSync(p,'utf8'));}catch{return null;} }
@@ -13,7 +13,7 @@ if (!slides || !plans) {
     process.exit(0);
   }
   console.error('PPT_OFFLINE_NOT_READY');
-  console.error('缺少 presentation-materials/slides.json 或 lesson-presentation-plans.json');
+  console.error('缺少 private/presentation-materials/slides.json 或 lesson-presentation-plans.json');
   console.error('请运行: scripts\\build-ppt-offline.cmd');
   process.exit(2);
 }

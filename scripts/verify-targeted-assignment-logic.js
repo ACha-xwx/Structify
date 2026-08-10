@@ -23,7 +23,7 @@ const http = require("http");
 const assert = require("assert");
 const crypto = require("crypto");
 const Database = require("better-sqlite3");
-require("./server.js");
+require("./backend/node/server.js");
 
 function request(method, path, body, token) {
   return new Promise((resolve, reject) => {

@@ -13,12 +13,19 @@ data.db-wal
 # === Dependencies ===
 node_modules/
 apps/server/target/
+backend/spring/target/
+backend/node/.env
+backend/node/.jwt-secret
+backend/node/data.db
+backend/node/data.db-shm
+backend/node/data.db-wal
 
 # === User Uploads ===
 uploads/
 
 # === Private Course Knowledge ===
 # Full textbook OCR may be copyrighted and must not be pushed to the public repository.
+private/
 knowledge/private/
 lesson-materials/
 presentation-materials/
@@ -29,6 +36,8 @@ pdfs/
 # Rendered PPT output and browser traces are local evidence, not release inputs.
 output/
 .playwright-cli/
+__pycache__/
+*.py[cod]
 
 # === Logs ===
 *.log

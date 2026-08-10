@@ -14,7 +14,7 @@ fs.writeFileSync(path.join(tmp, 'lesson-presentation-plans.json'), JSON.stringif
   '06-03A': { title:'二叉树遍历', scenes:{ 'concept-one':{ slides:['deck-a-s001'], primarySlideId:'deck-a-s001' } }, slideOrder:['deck-a-s001'] }
 } }));
 process.env.PRESENTATION_DIR = tmp;
-const runtime = require('../presentation-runtime');
+const runtime = require('../backend/node/presentation-runtime');
 const bundle = runtime.getLessonPresentationPlan('06-03A');
 assert.equal(bundle.ready, true);
 assert.equal(bundle.plan.scenes['concept-one'].slides[0], 'deck-a-s001');

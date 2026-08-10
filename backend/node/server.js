@@ -47,7 +47,10 @@ const MODEL_NAME = process.env.MODEL_NAME || process.env.DEEPSEEK_MODEL || (proc
 const MODEL_PROVIDER = process.env.MODEL_PROVIDER || (MODEL_BASE_URL.includes("deepseek") ? "deepseek" : "openai-compatible");
 const MODEL_TIMEOUT_MS = Math.max(250, Math.min(120_000, Number(process.env.MODEL_TIMEOUT_MS || 45_000)));
 const MODEL_STREAM_IDLE_TIMEOUT_MS = Math.max(250, Math.min(120_000, Number(process.env.MODEL_STREAM_IDLE_TIMEOUT_MS || 30_000)));
-const KNOWLEDGE_DIR = path.resolve(__dirname, process.env.KNOWLEDGE_DIR || path.join("knowledge", "private", "textbook"));
+const WORKSPACE_ROOT = path.resolve(__dirname, "..", "..");
+const PRIVATE_ROOT = path.resolve(process.env.STRUCTIFY_PRIVATE_ROOT || path.join(WORKSPACE_ROOT, "private"));
+const LOCAL_STATE_DIR = path.resolve(process.env.NODE_STATE_DIR || path.join(PRIVATE_ROOT, "state", "node"));
+const KNOWLEDGE_DIR = path.resolve(process.env.KNOWLEDGE_DIR || path.join(PRIVATE_ROOT, "knowledge"));
 const KNOWLEDGE_SEARCH_LIMIT = Math.max(1, Math.min(6, Number(process.env.KNOWLEDGE_SEARCH_LIMIT || 4)));
 const KNOWLEDGE_CONTEXT_MAX_CHARS = Math.max(800, Math.min(8000, Number(process.env.KNOWLEDGE_CONTEXT_MAX_CHARS || 3600)));
 const KNOWLEDGE_MIN_SCORE = Math.max(0, Number(process.env.KNOWLEDGE_MIN_SCORE || 8));
@@ -72,7 +75,7 @@ function loadNodeCompatibilityJwtSecret() {
   if (process.env.NODE_ENV === "production") {
     throw new Error("NODE_COMPAT_JWT_SECRET is required in production");
   }
-  const secretPath = path.join(__dirname, ".jwt-secret");
+  const secretPath = path.join(LOCAL_STATE_DIR, ".jwt-secret");
   try {
     if (fs.existsSync(secretPath)) {
       const saved = fs.readFileSync(secretPath, "utf8").trim();
@@ -81,6 +84,7 @@ function loadNodeCompatibilityJwtSecret() {
   } catch {}
   const generated = crypto.randomBytes(32).toString("hex");
   try {
+    fs.mkdirSync(LOCAL_STATE_DIR, { recursive: true, mode: 0o700 });
     fs.writeFileSync(secretPath, generated, { mode: 0o600, flag: "wx" });
   } catch {
     try {
@@ -122,10 +126,13 @@ if (process.env.NODE_ENV === "production" && CORS_ALLOWED_ORIGINS.size === 0) {
 }
 
 // Database
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, "data.db");
+const DB_PATH = process.env.DB_PATH || path.join(LOCAL_STATE_DIR, "data.db");
 
-const INDEX_PATH = path.join(__dirname, "index.html");
-const LOCAL_PROTOTYPE_PATH = path.join(__dirname, "prototype.html");
+const localFrontendDir = path.join(__dirname, "frontend");
+const workspaceFrontendDir = path.join(WORKSPACE_ROOT, "frontend");
+const FRONTEND_DIR = path.resolve(process.env.FRONTEND_DIR || (fs.existsSync(localFrontendDir) ? localFrontendDir : workspaceFrontendDir));
+const INDEX_PATH = path.join(FRONTEND_DIR, "index.html");
+const LOCAL_PROTOTYPE_PATH = path.join(FRONTEND_DIR, "prototype.html");
 const DOMPURIFY_PATH = path.join(path.dirname(require.resolve("dompurify")), "purify.min.js");
 const SECURITY_HEADERS = Object.freeze({
   "content-security-policy": [
@@ -151,6 +158,7 @@ const SECURITY_HEADERS = Object.freeze({
 let db;
 function initDatabase() {
   const Database = require("better-sqlite3");
+  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true, mode: 0o700 });
   db = new Database(DB_PATH);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
@@ -2799,7 +2807,7 @@ function serveDomPurify(res) {
 }
 
 /* ===== PDF Upload & Serve ===== */
-const PDF_DIR = process.env.PDF_DIR || path.join(__dirname, "pdfs");
+const PDF_DIR = process.env.PDF_DIR || path.join(PRIVATE_ROOT, "pdfs");
 const PDF_UPLOAD_MAX_BYTES = Math.max(256, Number(process.env.PDF_UPLOAD_MAX_BYTES || 25 * 1024 * 1024));
 const PDF_FILE_MAX_BYTES = Math.max(128, Number(process.env.PDF_FILE_MAX_BYTES || 20 * 1024 * 1024));
 const PDF_UPLOAD_MAX_FILES = Math.max(1, Math.min(10, Number(process.env.PDF_UPLOAD_MAX_FILES || 5)));

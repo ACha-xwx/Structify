@@ -7,6 +7,7 @@ const { spawn } = require("node:child_process");
 const { readCapturedCodes, waitForCapturedCode } = require("./verification-code-fixture");
 
 const root = path.join(__dirname, "..");
+const nodeRoot = path.join(root, "backend", "node");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -80,7 +81,7 @@ async function uploadPdf(baseUrl, token, content, filename, ip) {
 
 async function main() {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ds-agent-security-"));
-  const serverSource = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const serverSource = fs.readFileSync(path.join(nodeRoot, "server.js"), "utf8");
   assert.match(serverSource, /function readMultipartFiles\(/, "multipart uploads must use the streaming parser");
   assert.doesNotMatch(serverSource, /function handleUploadPdf\([\s\S]{0,5000}readRequestBuffer\(/, "PDF uploads must not buffer the whole request");
   assert.doesNotMatch(serverSource, /function handleUpload\([\s\S]{0,5000}readRequestBuffer\(/, "general uploads must not buffer the whole request");
@@ -90,7 +91,7 @@ async function main() {
   const stderrRef = { value: "" };
   const verificationCodeFile = path.join(tempDir, "verification-codes.jsonl");
   const child = spawn(process.execPath, ["server.js"], {
-    cwd: root,
+    cwd: nodeRoot,
     env: {
       ...process.env,
       HOST: "127.0.0.1",

@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$defaultSpringJarPath = Join-Path $repoRoot 'apps\server\target\ds-agent-server-0.0.1-SNAPSHOT.jar'
+$defaultSpringJarPath = Join-Path $repoRoot 'backend\spring\target\ds-agent-server-0.0.1-SNAPSHOT.jar'
 if ([string]::IsNullOrWhiteSpace($SpringJarPath)) {
     $SpringJarPath = $defaultSpringJarPath
 }
@@ -29,6 +29,7 @@ $privateRoot = Join-Path $runRoot 'private'
 $knowledgeRoot = Join-Path $privateRoot 'knowledge'
 $resourceRoot = Join-Path $privateRoot 'course-content'
 $presentationRoot = Join-Path $privateRoot 'presentation-materials'
+$pdfSourceRoot = Join-Path $privateRoot 'pdfs'
 $envFile = Join-Path $runRoot 'rehearsal.env'
 
 $projectName = "structify-backup-restore-$($runId.Substring(0, 12))"
@@ -274,6 +275,22 @@ process.stdout.write(fs.readFileSync('/app/pdfs/backup-restore-marker.txt', 'utf
     return Invoke-NodeScript $script 'Read Node PDF marker'
 }
 
+function Get-SeededPdf {
+    $script = @'
+const fs = require('node:fs');
+process.stdout.write(fs.readFileSync('/app/pdfs/release-seed.pdf', 'utf8'));
+'@
+    return Invoke-NodeScript $script 'Read seeded Node PDF'
+}
+
+function Get-UserUploadPdf {
+    $script = @'
+const fs = require('node:fs');
+process.stdout.write(fs.readFileSync('/app/pdfs/user-upload.pdf', 'utf8'));
+'@
+    return Invoke-NodeScript $script 'Read existing user-uploaded PDF'
+}
+
 function Invoke-MySqlSql([string]$Sql, [string]$Label) {
     $sqlPath = Join-Path $runRoot ("mysql-{0}.sql" -f ([guid]::NewGuid().ToString('N')))
     [IO.File]::WriteAllText($sqlPath, $Sql, [Text.UTF8Encoding]::new($false))
@@ -384,7 +401,7 @@ if (-not (Test-Path -LiteralPath $restoreScript -PathType Leaf)) { throw "Restor
 if (-not (Test-Path -LiteralPath $SpringJarPath -PathType Leaf)) { throw "Spring executable JAR is missing: $SpringJarPath" }
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw 'Docker is required.' }
 
-New-Item -ItemType Directory -Force -Path $logRoot, $permissionShimRoot, $springStage, $backupRoot, $knowledgeRoot, $resourceRoot, $presentationRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $logRoot, $permissionShimRoot, $springStage, $backupRoot, $knowledgeRoot, $resourceRoot, $presentationRoot, $pdfSourceRoot | Out-Null
 $mkdirShim = @'
 #!/usr/bin/env bash
 set -eu
@@ -416,6 +433,14 @@ $mysqlMarker = "mysql-marker-$runId"
 $sqliteMarker = "sqlite-marker-$runId"
 $pdfMarker = "pdf-marker-$runId"
 $mutatedMarker = "mutated-$runId"
+$sourcePdfInitial = "source-pdf-v1-$runId"
+$sourcePdfUpdated = "source-pdf-v2-$runId"
+$sourcePdfPath = Join-Path $pdfSourceRoot 'release-seed.pdf'
+$sourcePdfCollision = "source-pdf-collision-$runId"
+$sourcePdfCollisionPath = Join-Path $pdfSourceRoot 'user-upload.pdf'
+$legacyUpload = "user-upload-v1-$runId"
+[IO.File]::WriteAllText($sourcePdfPath, $sourcePdfInitial, [Text.Encoding]::ASCII)
+[IO.File]::WriteAllText($sourcePdfCollisionPath, $sourcePdfCollision, [Text.Encoding]::ASCII)
 $gitBash = Get-GitBash
 
 $composePrefix = @('compose', '--env-file', $envFile, '-f', $composeFile, '-p', $projectName)
@@ -455,6 +480,7 @@ try {
         "KNOWLEDGE_DIR_HOST=$(ConvertTo-ComposePath $knowledgeRoot)",
         "RESOURCE_DIR_HOST=$(ConvertTo-ComposePath $resourceRoot)",
         "PRESENTATION_DIR_HOST=$(ConvertTo-ComposePath $presentationRoot)",
+        "PDF_SOURCE_DIR_HOST=$(ConvertTo-ComposePath $pdfSourceRoot)",
         'KNOWLEDGE_DEBUG_API=false',
         'KNOWLEDGE_SEARCH_LIMIT=4',
         'KNOWLEDGE_CONTEXT_MAX_CHARS=3600',
@@ -517,6 +543,11 @@ ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-jar", "/app/app.jar", "--spri
         Write-Check 'Temporary Spring image built from the local executable JAR'
     }
 
+    Invoke-Compose @(
+        'run', '--rm', '--no-deps', '-T', '--entrypoint', '/bin/sh', 'node',
+        '-c', "set -eu; touch /app/pdfs/.seeded; printf '%s' '$legacyUpload' > /app/pdfs/user-upload.pdf"
+    ) 'Prepare legacy Node PDF volume' | Out-Null
+
     Invoke-Compose @('up', '--detach', '--no-build', 'mysql', 'node', 'spring-api') 'Start isolated Compose services' | Out-Null
     $composeStarted = $true
     $mysqlContainer = Get-ServiceContainer 'mysql'
@@ -536,6 +567,14 @@ ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-jar", "/app/app.jar", "--spri
     Write-Check 'MySQL, Node, and Spring containers have explicit project-scoped names'
     Wait-Services
     Write-Check 'Initial Compose services became healthy'
+    Assert-Equal (Get-SeededPdf) $sourcePdfInitial 'Course PDF source seeded despite legacy volume marker'
+    Assert-Equal (Get-UserUploadPdf) $legacyUpload 'Existing user-uploaded PDF was not overwritten by course seed'
+
+    [IO.File]::WriteAllText($sourcePdfPath, $sourcePdfUpdated, [Text.Encoding]::ASCII)
+    Invoke-Compose @('restart', 'node') 'Restart Node to verify PDF seed is first-boot only' | Out-Null
+    Wait-Services
+    Assert-Equal (Get-SeededPdf) $sourcePdfInitial 'Existing Node PDF volume was not overwritten after restart'
+    Assert-Equal (Get-UserUploadPdf) $legacyUpload 'Existing user-uploaded PDF remained after restart'
 
     Set-MySqlMarker $mysqlMarker
     Set-NodeMarker $sqliteMarker

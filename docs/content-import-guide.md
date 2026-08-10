@@ -102,7 +102,7 @@ ON DUPLICATE KEY UPDATE
 先验证脚本 JSON，再导入：
 
 ```powershell
-cd apps/server
+cd backend/spring
 .\mvnw.cmd "-Dtest=ContractExampleCompatibilityTest,ClassroomScriptParserTest" test
 ```
 

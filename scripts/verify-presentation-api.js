@@ -7,6 +7,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const root = path.join(__dirname, "..");
+const backendRoot = path.join(root, "backend", "node");
 const secret = "presentation-api-test-secret-32-characters";
 
 function getFreePort() {
@@ -91,7 +92,7 @@ async function main() {
   const port = await getFreePort();
   const baseUrl = `http://127.0.0.1:${port}`;
   const child = spawn(process.execPath, ["server.js"], {
-    cwd: root,
+    cwd: backendRoot,
     env: {
       ...process.env,
       HOST: "127.0.0.1",
@@ -99,6 +100,7 @@ async function main() {
       DB_PATH: fixture.dbPath,
       JWT_SECRET: secret,
       PRESENTATION_DIR: fixture.presentationDir,
+      FRONTEND_DIR: path.join(root, "frontend"),
       MODEL_API_KEY: "",
       MIMO_API_KEY: "",
       SMTP_HOST: "",

@@ -3,9 +3,9 @@ const path = require('node:path');
 const assert = require('node:assert');
 const vm = require('node:vm');
 const root = path.join(__dirname, '..');
-const html = fs.readFileSync(path.join(root,'index.html'),'utf8');
-const server = fs.readFileSync(path.join(root,'server.js'),'utf8');
-const plansPath = path.join(root, 'presentation-materials', 'lesson-presentation-plans.json');
+const html = fs.readFileSync(path.join(root,'frontend','index.html'),'utf8');
+const server = fs.readFileSync(path.join(root,'backend','node','server.js'),'utf8');
+const plansPath = path.join(root, 'private', 'presentation-materials', 'lesson-presentation-plans.json');
 const plansDocument = fs.existsSync(plansPath)
   ? JSON.parse(fs.readFileSync(plansPath, 'utf8'))
   : null;

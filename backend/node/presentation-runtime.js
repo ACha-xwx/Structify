@@ -1,7 +1,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const PRESENTATION_DIR = process.env.PRESENTATION_DIR || path.join(__dirname, 'presentation-materials');
+const WORKSPACE_ROOT = path.resolve(__dirname, '..', '..');
+const PRIVATE_ROOT = path.resolve(process.env.STRUCTIFY_PRIVATE_ROOT || path.join(WORKSPACE_ROOT, 'private'));
+const PRESENTATION_DIR = process.env.PRESENTATION_DIR || path.join(PRIVATE_ROOT, 'presentation-materials');
 const PRESENTATION_RENDERED_DIR = path.join(PRESENTATION_DIR, 'rendered');
 const SLIDES_PATH = path.join(PRESENTATION_DIR, 'slides.json');
 const PLANS_PATH = path.join(PRESENTATION_DIR, 'lesson-presentation-plans.json');

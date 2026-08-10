@@ -115,7 +115,7 @@ function main() {
 
 function parseArguments(args) {
   const options = {
-    sqlitePath: path.resolve(__dirname, "..", "data.db"),
+    sqlitePath: path.resolve(__dirname, "..", "private", "state", "node", "data.db"),
     outputPath: null,
     target: null,
     backupConfirmed: false,
@@ -513,7 +513,7 @@ function usage() {
     "Default behavior is a read-only dry-run audit. No file is written.",
     "",
     "Options:",
-    "  --sqlite <file>          SQLite source (defaults to repository data.db)",
+    "  --sqlite <file>          SQLite source (defaults to private/state/node/data.db)",
     "  --emit-sql <new.sql>     Generate SQL; never connects to MySQL",
     "  --target <environment>   development, test, or staging only",
     "  --backup-confirmed       Confirm a restore-tested MySQL backup exists",
