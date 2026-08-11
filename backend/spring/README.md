@@ -30,6 +30,8 @@ The explicit `dev` profile starts with an in-memory H2 database at `http://127.0
 GET http://127.0.0.1:8792/actuator/health
 ```
 
+For a packaged-JAR health check without development conveniences, use the `verification` profile. It binds only to `127.0.0.1:8793`, uses a separate in-memory H2 database, disables mail and local knowledge publishing, and expects temporary empty resource directories through `KNOWLEDGE_DIR` and `RESOURCE_DIR` when those paths need to be exercised.
+
 Without `MODEL_API_KEY`, authentication, chapters, resources, classroom sessions, and progress still start. Chat, animation generation, and code analysis return `MODEL_NOT_CONFIGURED` instead of silently inventing an answer.
 
 ## Environment variables
@@ -41,7 +43,7 @@ Use [`deployment/.env.spring.example`](../../deployment/.env.spring.example) as 
 | `DB_URL`, `DB_USER`, `DB_PASSWORD` | MySQL JDBC connection. Local development defaults to H2. |
 | `JWT_SECRET` | Random Spring session-token secret with at least 64 characters. Do not provide it to the Node container. |
 | `NODE_COMPAT_ENABLED`, `NODE_COMPAT_JWT_SECRET` | Temporary Node-to-Spring migration bridge. Use a different 64+ character key; Node Bearer tokens are accepted only for the documented learning/animation evidence endpoints while enabled. |
-| `CORS_ALLOWED_ORIGINS` | Comma-separated exact frontend origins allowed to call the API with credentials. |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated exact frontend origins allowed to call the API with credentials. Production requires `https://structify.cn,https://admin.structify.cn`. |
 | `BOOTSTRAP_ADMIN_EMAIL` | Leave empty in production. Static administrator elevation is intentionally disabled. |
 | `TEACHER_EMAILS` | Leave empty in production; role changes require an audited operator workflow. |
 | `MODEL_PROVIDER`, `MODEL_API_KEY`, `MODEL_BASE_URL`, `MODEL_NAME` | OpenAI-compatible model configuration. DeepSeek/OpenAI-compatible providers use Bearer auth; `azure` / `azure-openai` use the `api-key` header. |
@@ -61,7 +63,7 @@ For implicit TLS, normally on port 465, set `SMTP_SSL=true`, `SMTP_STARTTLS=fals
 
 ## Production deployment
 
-The complete `structify.cn` deployment, including Caddy routing, Node 8791,
+The complete `structify.cn` and `admin.structify.cn` deployment, including Caddy routing, Node 8791,
 Spring 8792, MySQL, private course/PPT paths, backups, smoke checks, and
 rollback is documented in [`docs/production-deployment.md`](../../docs/production-deployment.md).
 The executable Compose topology is [`deployment/docker-compose.production.yml`](../../deployment/docker-compose.production.yml).
@@ -85,7 +87,7 @@ details.
 Private OCR textbook files, teacher PPT files, and other restricted course material must remain outside the public Git repository. The recommended private directory is:
 
 ```text
-course-content-private/
+private/course-content/
   chapters/
     03-stack-queue/
       slides/
@@ -122,7 +124,7 @@ Unknown or foreign-owned run, animation, classroom, and chat identifiers are ret
 
 The full HTTP contract is [`contracts/openapi-v1.yaml`](../../contracts/openapi-v1.yaml). Important integration endpoints include:
 
-- `POST /api/v1/chat` and `POST /api/v1/chat/stream`: guest-compatible course chat; signed-in sessions persist.
+- `POST /api/v1/chat` and `POST /api/v1/chat/stream`: authenticated formal course chat only. Published authorized evidence, an enabled model, and an available per-user quota are required; streaming uses named `sources`, `delta`, `done`, and `error` events and releases its reservation on failure, timeout, or disconnect.
 - `GET /api/v1/chat/sessions`: signed-in users receive their 50 most recently active sessions.
 - `GET|DELETE /api/v1/chat/sessions/{id}`: signed-in users can read or delete only their own sessions; reads include the latest 200 messages in chronological order.
 - `GET /api/v1/resources/{id}/content`: published resource file streaming.

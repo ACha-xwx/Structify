@@ -5,6 +5,7 @@ source "$SCRIPT_DIR/common.sh"
 
 EXECUTE=0
 SKIP_BUILD=0
+REFRESH_CADDY=0
 CONFIRM=""
 RELEASE=""
 PRIVATE_ROOT=""
@@ -13,14 +14,17 @@ BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/structify}"
 usage() {
   cat <<'EOF'
 Usage: deploy.sh --release RELEASE [--env-file FILE] [--private-root DIR]
-                 [--skip-build] [--execute --confirm DEPLOY-structify.cn]
+                 [--skip-build] [--refresh-caddy]
+                 [--execute --confirm DEPLOY-structify.cn]
 
 Default mode validates the release name and prints the build/backup/migration
 plan. --skip-build requires the immutable Node/Spring release images to already
 exist locally. Execute mode otherwise builds those images, captures a backup,
 starts MySQL, and lets Spring run Flyway migrations. In host Caddy mode it never
 touches public 80/443; the host operator installs and reloads the reviewed site
-block separately. DNS is never changed by this script.
+block separately. --refresh-caddy is container mode only; it intentionally
+recreates the verified Compose Caddy and requires
+--confirm REFRESH-CADDY-structify.cn. DNS is never changed by this script.
 EOF
 }
 while [[ $# -gt 0 ]]; do
@@ -30,6 +34,7 @@ while [[ $# -gt 0 ]]; do
     --private-root) PRIVATE_ROOT="$2"; shift 2 ;;
     --backup-root) BACKUP_ROOT="$2"; shift 2 ;;
     --skip-build) SKIP_BUILD=1; shift ;;
+    --refresh-caddy) REFRESH_CADDY=1; shift ;;
     --execute) EXECUTE=1; shift ;;
     --confirm) CONFIRM="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -45,6 +50,9 @@ configured_spring_image="$(env_value SPRING_IMAGE)"
 [[ "$configured_node_image" == "structify-node:$RELEASE" ]] || die "NODE_IMAGE must be structify-node:$RELEASE in the environment file"
 [[ "$configured_spring_image" == "structify-spring:$RELEASE" ]] || die "SPRING_IMAGE must be structify-spring:$RELEASE in the environment file"
 caddy_mode_value="$(caddy_mode)"
+if [[ "$REFRESH_CADDY" == "1" && "$caddy_mode_value" != "container" ]]; then
+  die "--refresh-caddy requires CADDY_MODE=container"
+fi
 node_port="$(node_host_port)"
 spring_port="$(spring_host_port)"
 
@@ -80,6 +88,158 @@ verify_release_images() {
     || die "SPRING_IMAGE is not available locally for --skip-build: $configured_spring_image"
 }
 
+container_caddy_config_dir() {
+  local value
+  value="$(env_value CADDY_CONFIG_DIR_HOST)"
+  [[ -n "$value" ]] || value="/srv/structify/caddy"
+  [[ "$value" == /* ]] || die "CADDY_CONFIG_DIR_HOST must be an absolute Linux path"
+  printf '%s\n' "$value"
+}
+
+running_compose_caddy() {
+  local expected_project caddy_container caddy_project caddy_service caddy_running
+  local -a caddy_containers=()
+
+  expected_project="$(env_value COMPOSE_PROJECT_NAME)"
+  [[ -n "$expected_project" ]] || expected_project="structify"
+  mapfile -t caddy_containers < <(compose ps -q caddy 2>/dev/null || true)
+  (( ${#caddy_containers[@]} == 1 )) || return 1
+  caddy_container="${caddy_containers[0]}"
+  [[ -n "$caddy_container" ]] || return 1
+
+  caddy_running="$(docker inspect --format '{{.State.Running}}' "$caddy_container" 2>/dev/null || true)"
+  [[ "$caddy_running" == "true" ]] || return 1
+  caddy_project="$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' "$caddy_container" 2>/dev/null || true)"
+  [[ "$caddy_project" == "$expected_project" ]] || return 1
+  caddy_service="$(docker inspect --format '{{index .Config.Labels "com.docker.compose.service"}}' "$caddy_container" 2>/dev/null || true)"
+  [[ "$caddy_service" == "caddy" ]] || return 1
+
+  printf '%s\n' "$caddy_container"
+}
+
+caddy_uses_stable_config_bind() {
+  local caddy_container="$1"
+  local config_dir="$2"
+  local expected_source mount_source
+
+  expected_source="$(realpath -e "$config_dir" 2>/dev/null || true)"
+  [[ -n "$expected_source" ]] || return 1
+  mount_source="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy"}}{{.Source}}{{end}}{{end}}' "$caddy_container" 2>/dev/null || true)"
+  [[ -n "$mount_source" ]] || return 1
+  mount_source="$(realpath -e "$mount_source" 2>/dev/null || true)"
+  [[ "$mount_source" == "$expected_source" ]]
+}
+
+caddy_has_loopback_admin() {
+  local caddy_container="$1"
+  local status=0
+
+  docker exec "$caddy_container" /bin/sh -ec \
+    "grep -Eq '^[[:space:]]*admin[[:space:]]+127\\.0\\.0\\.1:2019([[:space:]]|$)' /etc/caddy/Caddyfile || exit 42" \
+    >/dev/null 2>&1 || status=$?
+  if (( status == 0 )); then
+    return 0
+  fi
+  if (( status == 42 )); then
+    return 1
+  fi
+  die "cannot inspect the running Compose Caddy admin configuration"
+}
+
+sync_container_caddyfile() {
+  local config_dir="$1"
+  local config_dir_real origin_ca_mountpoint temporary_file
+  local source_file="$DEPLOY_DIR/Caddyfile.production"
+
+  [[ -f "$source_file" ]] || die "container Caddyfile is missing: $source_file"
+  if [[ -e "$config_dir" ]]; then
+    [[ -d "$config_dir" && ! -L "$config_dir" ]] \
+      || die "CADDY_CONFIG_DIR_HOST must be a real directory: $config_dir"
+  else
+    mkdir -m 755 -p "$config_dir"
+  fi
+  [[ -d "$config_dir" && ! -L "$config_dir" ]] \
+    || die "CADDY_CONFIG_DIR_HOST must be a real directory: $config_dir"
+  config_dir_real="$(realpath -e "$config_dir")"
+  origin_ca_mountpoint="$config_dir_real/origin-ca"
+  if [[ -e "$origin_ca_mountpoint" || -L "$origin_ca_mountpoint" ]]; then
+    [[ -d "$origin_ca_mountpoint" && ! -L "$origin_ca_mountpoint" ]] \
+      || die "container Caddy Origin CA mountpoint must be a real directory: $origin_ca_mountpoint"
+  else
+    mkdir -m 755 -p "$origin_ca_mountpoint"
+  fi
+
+  temporary_file="$(mktemp "$config_dir_real/.Caddyfile.XXXXXX")"
+  cp -- "$source_file" "$temporary_file"
+  chmod 644 "$temporary_file"
+  mv -f -- "$temporary_file" "$config_dir_real/Caddyfile"
+  log "atomically synchronized the container Caddyfile into $config_dir_real"
+}
+
+reload_container_caddy() {
+  local caddy_container="$1"
+  local origin_cert_dir acme_email acme_tls_directive
+
+  origin_cert_dir="$(env_value ORIGIN_CERT_DIR_HOST)"
+  if [[ -n "$origin_cert_dir" ]]; then
+    docker exec \
+      --env 'CADDY_TLS_DIRECTIVE=tls /etc/caddy/origin-ca/origin.crt /etc/caddy/origin-ca/origin.key' \
+      --env 'CADDY_EMAIL_DIRECTIVE=' \
+      "$caddy_container" caddy reload --address 127.0.0.1:2019 --config /etc/caddy/Caddyfile --adapter caddyfile
+    return
+  fi
+
+  acme_email="$(env_value ACME_EMAIL)"
+  [[ -n "$acme_email" ]] || die "ACME_EMAIL is required to reload container Caddy"
+  acme_tls_directive=$'tls {\n  issuer acme {\n    disable_tlsalpn_challenge\n  }\n}'
+  docker exec \
+    --env "CADDY_TLS_DIRECTIVE=$acme_tls_directive" \
+    --env "CADDY_EMAIL_DIRECTIVE=email $acme_email" \
+    "$caddy_container" caddy reload --address 127.0.0.1:2019 --config /etc/caddy/Caddyfile --adapter caddyfile
+}
+
+start_container_caddy() {
+  docker compose --profile container-caddy --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --no-build caddy
+}
+
+reconcile_container_caddy() {
+  local config_dir caddy_container stable_caddy=0
+
+  config_dir="$(container_caddy_config_dir)"
+  caddy_container="$(running_compose_caddy || true)"
+  if [[ -n "$caddy_container" ]] \
+    && caddy_uses_stable_config_bind "$caddy_container" "$config_dir" \
+    && caddy_has_loopback_admin "$caddy_container"; then
+    stable_caddy=1
+  fi
+  sync_container_caddyfile "$config_dir"
+
+  if [[ -z "$caddy_container" ]]; then
+    log "container Caddy is not running; creating it with the stable configuration bind"
+    start_container_caddy
+    return
+  fi
+
+  if [[ "$REFRESH_CADDY" == "1" ]]; then
+    log "explicitly refreshing the running Compose Caddy"
+    docker stop "$caddy_container"
+    docker rm "$caddy_container"
+    start_container_caddy
+    return
+  fi
+
+  if [[ "$stable_caddy" == "1" ]]; then
+    log "reloading the running Compose Caddy from its stable configuration bind"
+    reload_container_caddy "$caddy_container"
+    return
+  fi
+
+  log "migrating legacy Compose Caddy to the stable configuration bind"
+  docker stop "$caddy_container"
+  docker rm "$caddy_container"
+  start_container_caddy
+}
+
 if [[ "$EXECUTE" != "1" ]]; then
   log "dry-run deploy plan for release $RELEASE"
   print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" config --quiet
@@ -95,15 +255,30 @@ if [[ "$EXECUTE" != "1" ]]; then
   print_command "$SCRIPT_DIR/backup.sh" --env-file "$ENV_FILE" --backup-root "$BACKUP_ROOT" --private-root "${PRIVATE_ROOT:-/srv/structify/private}" --execute --confirm BACKUP-structify.cn
   print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --no-build node spring-api
   if [[ "$caddy_mode_value" == "container" ]]; then
-    print_command docker compose --profile container-caddy --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --no-build caddy
+    if [[ "$REFRESH_CADDY" == "1" ]]; then
+      log "container Caddy mode: explicit refresh stops/removes the verified running Compose Caddy before creation"
+      log "execute requires --confirm REFRESH-CADDY-structify.cn"
+    else
+      log "container Caddy mode: synchronize the stable Caddyfile bind and reload a matching running Compose Caddy"
+      log "a legacy release-bound or admin-disabled Caddy is stopped and removed before one replacement is created"
+    fi
   else
     log "host Caddy mode: validate and reload the existing host configuration after the application health checks"
   fi
-  log "re-run with --execute --confirm DEPLOY-structify.cn after review"
+  if [[ "$REFRESH_CADDY" == "1" ]]; then
+    log "re-run with --execute --confirm REFRESH-CADDY-structify.cn after review"
+  else
+    log "re-run with --execute --confirm DEPLOY-structify.cn after review"
+  fi
   exit 0
 fi
 
-[[ "$CONFIRM" == "DEPLOY-structify.cn" ]] || die "deploy requires --confirm DEPLOY-structify.cn"
+if [[ "$REFRESH_CADDY" == "1" ]]; then
+  [[ "$CONFIRM" == "REFRESH-CADDY-structify.cn" ]] \
+    || die "--refresh-caddy requires --confirm REFRESH-CADDY-structify.cn"
+else
+  [[ "$CONFIRM" == "DEPLOY-structify.cn" ]] || die "deploy requires --confirm DEPLOY-structify.cn"
+fi
 [[ -n "$PRIVATE_ROOT" ]] || PRIVATE_ROOT="/srv/structify/private"
 require_command curl
 "$SCRIPT_DIR/preflight.sh" --env-file "$ENV_FILE" --compose-file "$COMPOSE_FILE" --execute
@@ -126,7 +301,7 @@ bootstrap_data_services
 
 compose up -d --no-build node spring-api
 if [[ "$caddy_mode_value" == "container" ]]; then
-  docker compose --profile container-caddy --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --no-build caddy
+  reconcile_container_caddy
 else
   log "host Caddy mode: application services are ready on loopback ports $node_port/$spring_port; no public listener was changed"
 fi

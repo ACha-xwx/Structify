@@ -46,9 +46,9 @@ class JdbcKnowledgeChunkRepository implements KnowledgeChunkRepository {
             LEFT JOIN chapters kc ON kc.id = k.chapter_id
             LEFT JOIN resources r ON r.id = k.resource_id
             LEFT JOIN chapters rc ON rc.id = r.chapter_id
-            WHERE k.review_status = 'PUBLISHED'
+            WHERE k.review_status IN ('PUBLISHED', 'VERIFIED')
               AND (k.chapter_id IS NULL OR kc.status = 'PUBLISHED')
-              AND (k.resource_id IS NULL OR (r.review_status = 'PUBLISHED' AND rc.status = 'PUBLISHED'))
+              AND (k.resource_id IS NULL OR (r.review_status IN ('PUBLISHED', 'VERIFIED') AND rc.status = 'PUBLISHED'))
             ORDER BY k.source_path, k.id
             """,
             (row, index) -> new KnowledgeChunk(

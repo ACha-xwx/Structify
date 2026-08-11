@@ -7,6 +7,7 @@ public record ChatSource(
     String content,
     String source,
     String pageLabel,
-    double score
+    double score,
+    String evidenceHash
 ) {
 }

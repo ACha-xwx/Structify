@@ -7,6 +7,9 @@ const { spawn, spawnSync } = require("node:child_process");
 
 const root = path.join(__dirname, "..");
 const nodeRoot = path.join(root, "backend", "node");
+const publicOrigin = "https://structify.cn";
+const adminOrigin = "https://admin.structify.cn";
+const productionCorsOrigins = `${publicOrigin},${adminOrigin}`;
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -46,7 +49,7 @@ async function verifyOptionalServicesDoNotBlockStartup() {
       HOST: "127.0.0.1",
       PORT: String(port),
       NODE_COMPAT_JWT_SECRET: "n".repeat(64),
-      CORS_ALLOWED_ORIGINS: "https://structify.cn",
+      CORS_ALLOWED_ORIGINS: productionCorsOrigins,
       MODEL_API_KEY: "",
       SMTP_HOST: "",
       SMTP_USER: "",
@@ -79,7 +82,61 @@ async function verifyOptionalServicesDoNotBlockStartup() {
     });
     assert.equal(executionResponse.status, 503);
     assert.equal((await executionResponse.json()).code, "COMPILER_NOT_CONFIGURED");
+    for (const origin of [publicOrigin, adminOrigin]) {
+      const corsResponse = await fetch(`http://127.0.0.1:${port}/api/auth/me`, {
+        headers: { origin }
+      });
+      assert.equal(corsResponse.headers.get("access-control-allow-origin"), origin);
+      assert.equal(corsResponse.headers.get("access-control-allow-credentials"), "true");
+    }
+    const rejectedCorsResponse = await fetch(`http://127.0.0.1:${port}/api/auth/me`, {
+      headers: { origin: "https://untrusted.example.test" }
+    });
+    assert.equal(rejectedCorsResponse.headers.get("access-control-allow-origin"), null);
     assert.doesNotMatch(stderr, /(?:api[_ -]?key|password|secret)\s*[:=]\s*\S+/i);
+  } finally {
+    child.kill();
+  }
+}
+
+async function verifyIncompleteModelConfigurationFailsClosed() {
+  const port = await getFreePort();
+  const dbPath = path.join(os.tmpdir(), `ds-agent-incomplete-model-config-${process.pid}.db`);
+  const child = spawn(process.execPath, ["server.js"], {
+    cwd: nodeRoot,
+    env: {
+      ...process.env,
+      NODE_ENV: "production",
+      HOST: "127.0.0.1",
+      PORT: String(port),
+      NODE_COMPAT_JWT_SECRET: "n".repeat(64),
+      CORS_ALLOWED_ORIGINS: productionCorsOrigins,
+      MODEL_API_KEY: "test-key-must-not-enable-model",
+      MODEL_PROVIDER: "",
+      MODEL_BASE_URL: "",
+      MODEL_NAME: "",
+      DEEPSEEK_API_KEY: "",
+      DEEPSEEK_BASE_URL: "",
+      DEEPSEEK_MODEL: "",
+      MIMO_API_KEY: "",
+      MIMO_BASE_URL: "",
+      MIMO_MODEL: "",
+      SMTP_HOST: "",
+      SMTP_USER: "",
+      SMTP_PASS: "",
+      SMTP_FROM: "",
+      JUDGE0_BASE_URL: "",
+      PISTON_BASE_URL: "",
+      DB_PATH: dbPath
+    },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  let stderr = "";
+  child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+  try {
+    const health = await waitForHealth(`http://127.0.0.1:${port}`, child);
+    assert.equal(health.modelConfigured, false);
+    assert.doesNotMatch(stderr, /test-key-must-not-enable-model/);
   } finally {
     child.kill();
   }
@@ -93,19 +150,27 @@ function verifyOptionalDeploymentContract() {
   const backup = fs.readFileSync(path.join(root, "deployment", "scripts", "backup.sh"), "utf8");
   const restore = fs.readFileSync(path.join(root, "deployment", "scripts", "restore.sh"), "utf8");
   const health = fs.readFileSync(path.join(root, "deployment", "scripts", "health-check.sh"), "utf8");
+  const smoke = fs.readFileSync(path.join(root, "deployment", "scripts", "smoke.sh"), "utf8");
   const hostCaddy = fs.readFileSync(path.join(root, "deployment", "Caddyfile.host.production"), "utf8");
   const productionCaddy = fs.readFileSync(path.join(root, "deployment", "Caddyfile.production"), "utf8");
   const productionApplication = fs.readFileSync(path.join(root, "backend", "spring", "src", "main", "resources", "application-prod.yml"), "utf8");
+  const springApplication = fs.readFileSync(path.join(root, "backend", "spring", "src", "main", "resources", "application.yml"), "utf8");
+  const nodeServer = fs.readFileSync(path.join(root, "backend", "node", "server.js"), "utf8");
   const nodeDockerfile = fs.readFileSync(path.join(root, "deployment", "Dockerfile.node"), "utf8");
   const nodeDockerignore = fs.readFileSync(path.join(root, "deployment", "Dockerfile.node.dockerignore"), "utf8");
   const nodeEntrypoint = fs.readFileSync(path.join(root, "deployment", "node-entrypoint.sh"), "utf8");
   const springDockerfile = fs.readFileSync(path.join(root, "backend", "spring", "Dockerfile"), "utf8");
 
   assert.match(compose, /MODEL_API_KEY:\s+\$\{MODEL_API_KEY:-\}/);
+  assert.match(compose, /MODEL_PROVIDER:\s+\$\{MODEL_PROVIDER:-\}/);
+  assert.match(compose, /MODEL_BASE_URL:\s+\$\{MODEL_BASE_URL:-\}/);
+  assert.match(compose, /MODEL_NAME:\s+\$\{MODEL_NAME:-\}/);
+  assert.doesNotMatch(compose, /deepseek-v4-pro|https:\/\/api\.deepseek\.com/i);
   assert.match(compose, /SMTP_HOST:\s+\$\{SMTP_HOST:-\}/);
   assert.match(compose, /AUTH_MAIL_ENABLED:\s+\$\{AUTH_MAIL_ENABLED:-false\}/);
   assert.match(compose, /NODE_COMPAT_JWT_SECRET:\s+\$\{NODE_COMPAT_JWT_SECRET:\?set a strong NODE_COMPAT_JWT_SECRET\}/);
   assert.match(compose, /NODE_COMPAT_ENABLED:\s+\$\{NODE_COMPAT_ENABLED:-true\}/);
+  assert.match(compose, /CORS_ALLOWED_ORIGINS:\s+\$\{CORS_ALLOWED_ORIGINS:\?set CORS_ALLOWED_ORIGINS\}/);
   assert.match(compose, /PISTON_BASE_URL:\s+\$\{PISTON_BASE_URL:-\}/);
   assert.match(compose, /-\s+\$\{PDF_SOURCE_DIR_HOST:\?set PDF_SOURCE_DIR_HOST\}:\/app\/default-pdfs:ro/);
   assert.match(compose, /127\.0\.0\.1:\$\{NODE_HOST_PORT:-18791\}:8791/);
@@ -114,6 +179,9 @@ function verifyOptionalDeploymentContract() {
   assert.match(compose, /image:\s+\$\{CADDY_IMAGE:-caddy:2\.10-alpine\}/);
   assert.match(compose, /ORIGIN_CERT_DIR_HOST:\s+\$\{ORIGIN_CERT_DIR_HOST:-\}/);
   assert.match(compose, /\$\{ORIGIN_CERT_DIR_HOST:-caddy-origin-ca-empty\}:\/etc\/caddy\/origin-ca:ro/);
+  assert.match(compose, /\$\{CADDY_CONFIG_DIR_HOST:-\/srv\/structify\/caddy\}:\/etc\/caddy:ro/);
+  assert.doesNotMatch(compose, /\.\/Caddyfile\.production:\/etc\/caddy\/Caddyfile:ro/);
+  assert.doesNotMatch(compose, /-\s*2019:2019(?:\/tcp)?\s*$/m);
   assert.match(compose, /CADDY_TLS_DIRECTIVE="tls \/etc\/caddy\/origin-ca\/origin\.crt \/etc\/caddy\/origin-ca\/origin\.key"/);
   assert.match(compose, /CADDY_TLS_DIRECTIVE='tls \{\s+issuer acme \{\s+disable_tlsalpn_challenge\s+\}\s+\}'/);
   assert.match(compose, /CADDY_EMAIL_DIRECTIVE="email \$\$\{ACME_EMAIL\}"/);
@@ -146,11 +214,28 @@ function verifyOptionalDeploymentContract() {
   );
   assert.match(restore, /for attempt in \$\(seq 1 30\)/, "restore must wait for application health");
   assert.match(health, /node_host_port/);
+  assert.match(health, /for attempt in \$\(seq 1 30\)/, "health checks must tolerate service startup convergence");
+  assert.match(smoke, /https:\/\/admin\.structify\.cn/);
+  assert.match(smoke, /admin\/capabilities/);
   assert.match(hostCaddy, /reverse_proxy 127\.0\.0\.1:18791/);
   assert.match(hostCaddy, /reverse_proxy 127\.0\.0\.1:18792/);
+  assert.match(hostCaddy, /admin\.structify\.cn\s*\{/);
+  assert.match(productionCaddy, /admin\.structify\.cn\s*\{/);
+  assert.match(productionCaddy, /^\s*admin 127\.0\.0\.1:2019\s*$/m);
+  assert.doesNotMatch(productionCaddy, /^\s*admin off\s*$/m);
+  assert.match(hostCaddy, /header Origin https:\/\/admin\.structify\.cn/);
+  assert.match(productionCaddy, /header Origin https:\/\/admin\.structify\.cn/);
+  assert.match(hostCaddy, /Access-Control-Allow-Methods "GET, POST, PATCH, DELETE, OPTIONS"/);
   assert.doesNotMatch(hostCaddy, /Strict-Transport-Security/, "HSTS requires an explicit production decision");
   assert.doesNotMatch(productionCaddy, /Strict-Transport-Security/, "HSTS requires an explicit production decision");
   assert.match(productionApplication, /mail-enabled:\s+\$\{AUTH_MAIL_ENABLED:false\}/);
+  assert.match(productionApplication, /cors-allowed-origins:\s+\$\{CORS_ALLOWED_ORIGINS:https:\/\/structify\.cn,https:\/\/admin\.structify\.cn\}/);
+  assert.match(springApplication, /provider:\s+\$\{MODEL_PROVIDER:\}/);
+  assert.match(springApplication, /base-url:\s+\$\{MODEL_BASE_URL:\}/);
+  assert.match(springApplication, /name:\s+\$\{MODEL_NAME:\}/);
+  assert.doesNotMatch(springApplication, /deepseek-v4-pro|https:\/\/api\.deepseek\.com/i);
+  assert.doesNotMatch(nodeServer, /https:\/\/api\.deepseek\.com\/v1|deepseek-v4-pro/i);
+  assert.match(nodeServer, /MODEL_PROVIDER = process\.env\.MODEL_PROVIDER \|\| \(MODEL_BASE_URL \? "openai-compatible" : "unconfigured"\)/);
   assert.doesNotMatch(nodeDockerfile, /COPY[^\n]*\bpdfs\b/i, "release image must not package courseware");
   assert.doesNotMatch(nodeDockerignore, /!pdfs(?:\/\*\*)?\s*$/m, "build context must not re-include courseware");
   assert.match(nodeDockerfile, /mkdir -p \/app\/default-pdfs \/app\/pdfs \/app\/data/);
@@ -159,9 +244,9 @@ function verifyOptionalDeploymentContract() {
   assert.match(nodeEntrypoint, /cp -R -n \/app\/default-pdfs\/\. \/app\/pdfs\//, "course PDFs must seed the writable volume without overwriting uploads");
   assert.match(nodeEntrypoint, /touch \/app\/pdfs\/\.course-pdfs-seeded/, "course PDF seed must record completion separately from the legacy marker");
   assert.match(nodeEntrypoint, /if \[ ! -e \/app\/pdfs\/\.seeded \]; then/, "legacy PDF marker behavior must remain available");
-  assert.match(nodeDockerfile, /apt-get update/);
-  assert.match(nodeDockerfile, /python3/);
-  assert.match(nodeDockerfile, /build-essential/);
+  assert.match(nodeDockerfile, /npm ci --omit=dev --ignore-scripts=false/);
+  assert.doesNotMatch(nodeDockerfile, /apt-get\s+(?:update|install)/i, "Node dependencies must use published prebuilds rather than downloading a compiler toolchain");
+  assert.doesNotMatch(nodeDockerfile, /\b(?:python3|build-essential)\b/, "Node runtime image must not carry unused compiler dependencies");
   assert.match(nodeDockerfile, /ARG NODE_BASE_IMAGE=node:22-bookworm-slim/);
   assert.match(springDockerfile, /ARG JAVA_BUILD_IMAGE=eclipse-temurin:21-jdk/);
   assert.match(springDockerfile, /ARG JAVA_RUNTIME_IMAGE=eclipse-temurin:21-jre/);
@@ -178,8 +263,14 @@ function verifyOptionalDeploymentContract() {
   assert.match(compose, /mem_reservation:\s+\$\{CADDY_MEMORY_RESERVATION:-64m\}/);
   assert.match(compose, /NODE_OPTIONS:\s+"--max-old-space-size=\$\{NODE_MAX_OLD_SPACE_MB:-160\}"/);
   assert.match(productionEnv, /^HOST_CADDY_CONFIG=\/etc\/caddy\/Caddyfile$/m);
+  assert.match(productionEnv, /^CORS_ALLOWED_ORIGINS=https:\/\/structify\.cn,https:\/\/admin\.structify\.cn$/m);
+  assert.match(productionEnv, /^MODEL_PROVIDER=$/m);
+  assert.match(productionEnv, /^MODEL_API_KEY=$/m);
+  assert.match(productionEnv, /^MODEL_BASE_URL=$/m);
+  assert.match(productionEnv, /^MODEL_NAME=$/m);
   assert.match(productionEnv, /^ORIGIN_CERT_DIR_HOST=$/m);
   assert.match(productionEnv, /^CADDY_IMAGE=caddy:2\.10-alpine$/m);
+  assert.match(productionEnv, /^CADDY_CONFIG_DIR_HOST=\/srv\/structify\/caddy$/m);
   assert.match(productionEnv, /^MEMORY_PROFILE=low-memory$/m);
   assert.match(productionEnv, /^MEMORY_BUDGET_MB=1024$/m);
   assert.match(productionEnv, /^MEMORY_RESERVE_MB=256$/m);
@@ -196,6 +287,7 @@ function verifyOptionalDeploymentContract() {
   assert.match(productionEnv, /^PDF_SOURCE_DIR_HOST=\/srv\/structify\/private\/pdfs$/m);
   assert.match(preflight, /HOST_CADDY_CONFIG is required in host Caddy mode/);
   assert.match(preflight, /ACME_EMAIL is required when ORIGIN_CERT_DIR_HOST is empty/);
+  assert.match(preflight, /CADDY_CONFIG_DIR_HOST must be outside the release directory/);
   assert.match(preflight, /ORIGIN_CERT_DIR_HOST must contain \$origin_file/);
   assert.match(preflight, /ORIGIN_CERT_DIR_HOST must have mode 0700/);
   assert.match(preflight, /ORIGIN_CERT_DIR_HOST\/origin\.key must have mode 0600/);
@@ -207,6 +299,8 @@ function verifyOptionalDeploymentContract() {
   assert.match(preflight, /MEMORY_RESERVE_MB/);
   assert.match(preflight, /memory budget/);
   assert.match(deploy, /--skip-build/);
+  assert.match(deploy, /--refresh-caddy/);
+  assert.match(deploy, /REFRESH-CADDY-structify\.cn/);
   assert.match(deploy, /--no-build/);
   assert.match(springDockerfile, /-Xmx192m/);
   assert.match(productionApplication, /maximum-pool-size:\s+\$\{DB_MAX_POOL_SIZE:4\}/);
@@ -236,7 +330,7 @@ function verifyHostCaddyPreflight() {
     `JWT_SECRET=${"j".repeat(64)}`,
     `NODE_COMPAT_JWT_SECRET=${"n".repeat(64)}`,
     "NODE_COMPAT_ENABLED=true",
-    "CORS_ALLOWED_ORIGINS=https://structify.cn",
+    `CORS_ALLOWED_ORIGINS=${productionCorsOrigins}`,
     "AUTH_COOKIE_SECURE=true",
     "AUTH_EXPOSE_DEV_CODE=false",
     "AUTH_MAIL_ENABLED=false",
@@ -318,7 +412,7 @@ function verifyHostCaddyExecuteGate() {
     `JWT_SECRET=${"j".repeat(64)}`,
     `NODE_COMPAT_JWT_SECRET=${"n".repeat(64)}`,
     "NODE_COMPAT_ENABLED=true",
-    "CORS_ALLOWED_ORIGINS=https://structify.cn",
+    `CORS_ALLOWED_ORIGINS=${productionCorsOrigins}`,
     "AUTH_COOKIE_SECURE=true",
     "AUTH_EXPOSE_DEV_CODE=false",
     "AUTH_MAIL_ENABLED=false",
@@ -418,7 +512,7 @@ function verifyLowMemoryBudgetGate() {
     `JWT_SECRET=${"j".repeat(64)}`,
     `NODE_COMPAT_JWT_SECRET=${"n".repeat(64)}`,
     "NODE_COMPAT_ENABLED=true",
-    "CORS_ALLOWED_ORIGINS=https://structify.cn",
+    `CORS_ALLOWED_ORIGINS=${productionCorsOrigins}`,
     "AUTH_COOKIE_SECURE=true",
     "AUTH_EXPOSE_DEV_CODE=false",
     "AUTH_MAIL_ENABLED=false",
@@ -549,11 +643,41 @@ function verifyContainerCaddyExecuteGate() {
   ];
   fs.mkdirSync(binDir);
   privatePaths.forEach((privatePath) => fs.mkdirSync(privatePath, { recursive: true }));
-  writeExecutable(path.join(binDir, "docker"), "exit 0");
+  writeExecutable(path.join(binDir, "docker"), [
+    "if [[ \"$1\" == \"compose\" ]]; then",
+    "  for argument in \"$@\"; do",
+    "    if [[ \"$argument\" == \"ps\" ]]; then",
+    "      case \"${PREFLIGHT_TEST_CADDY_STATE:-missing}\" in",
+    "        running|stopped|mismatched-project|mismatched-service) printf 'caddy-test-container\\n' ;;",
+    "      esac",
+    "      break",
+    "    fi",
+    "  done",
+    "  exit 0",
+    "fi",
+    "if [[ \"$1\" == \"inspect\" ]]; then",
+    "  case \"$*\" in",
+    "    *\".State.Running\"*) [[ \"${PREFLIGHT_TEST_CADDY_STATE:-missing}\" == \"stopped\" ]] && printf 'false\\n' || printf 'true\\n' ;;",
+    "    *\"com.docker.compose.project\"*) [[ \"${PREFLIGHT_TEST_CADDY_STATE:-missing}\" == \"mismatched-project\" ]] && printf 'other-project\\n' || printf 'structify-test\\n' ;;",
+    "    *\"com.docker.compose.service\"*) [[ \"${PREFLIGHT_TEST_CADDY_STATE:-missing}\" == \"mismatched-service\" ]] && printf 'other-service\\n' || printf 'caddy\\n' ;;",
+    "  esac",
+    "  exit 0",
+    "fi",
+    "if [[ \"$1\" == \"port\" ]]; then",
+    "  case \"$3\" in",
+    "    80/tcp) printf '0.0.0.0:80\\n' ;;",
+    "    443/tcp) printf '0.0.0.0:443\\n' ;;",
+    "  esac",
+    "  exit 0",
+    "fi",
+    "exit 0"
+  ].join("\n"));
   writeExecutable(path.join(binDir, "ss"), "printf 'LISTEN 0 4096 0.0.0.0:80 0.0.0.0:*\\n'");
   fs.writeFileSync(bashEnv, [
+    "docker() { \"$PREFLIGHT_TEST_DOCKER_BIN\" \"$@\"; }",
+    "ss() { \"$PREFLIGHT_TEST_SS_BIN\" \"$@\"; }",
     "stat() { if [[ \"$1\" == \"-c\" && \"$2\" == \"%a\" ]]; then printf '600\\n'; else command stat \"$@\"; fi; }",
-    "awk() { if [[ \"$*\" == *\"/proc/meminfo\"* ]]; then printf '1048576\\n'; else command awk \"$@\"; fi; }"
+    "awk() { if [[ \"$*\" == *\"/proc/meminfo\"* ]]; then printf '1441792\\n'; else command awk \"$@\"; fi; }"
   ].join("\n"));
   const fixture = [
     "COMPOSE_PROJECT_NAME=structify-test",
@@ -570,7 +694,7 @@ function verifyContainerCaddyExecuteGate() {
     `JWT_SECRET=${"j".repeat(64)}`,
     `NODE_COMPAT_JWT_SECRET=${"n".repeat(64)}`,
     "NODE_COMPAT_ENABLED=true",
-    "CORS_ALLOWED_ORIGINS=https://structify.cn",
+    `CORS_ALLOWED_ORIGINS=${productionCorsOrigins}`,
     "AUTH_COOKIE_SECURE=true",
     "AUTH_EXPOSE_DEV_CODE=false",
     "AUTH_MAIL_ENABLED=false",
@@ -602,15 +726,207 @@ function verifyContainerCaddyExecuteGate() {
     const env = {
       ...process.env,
       PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
-      BASH_ENV: bashPath(bashEnv)
+      BASH_ENV: bashPath(bashEnv),
+      PREFLIGHT_TEST_DOCKER_BIN: bashPath(path.join(binDir, "docker")),
+      PREFLIGHT_TEST_SS_BIN: bashPath(path.join(binDir, "ss"))
     };
-    const result = spawnSync(shell, [
+    const runPreflight = (caddyState) => spawnSync(shell, [
       "deployment/scripts/preflight.sh", "--env-file", bashPath(envFile), "--execute"
-    ], { cwd: root, encoding: "utf8", env });
-    const output = `${result.stdout || ""}\n${result.stderr || ""}`;
-    assert.notEqual(result.status, 0, output);
-    assert.match(output, /public TCP port 80 is already bound/);
-    assert.doesNotMatch(output, /test-(?:database|root)-password/);
+    ], {
+      cwd: root,
+      encoding: "utf8",
+      env: { ...env, PREFLIGHT_TEST_CADDY_STATE: caddyState }
+    });
+    const repeatRelease = runPreflight("running");
+    const repeatReleaseOutput = `${repeatRelease.stdout || ""}\n${repeatRelease.stderr || ""}`;
+    assert.equal(repeatRelease.status, 0, repeatReleaseOutput);
+    assert.match(repeatReleaseOutput, /public TCP port 80 is already served by the running caddy service/);
+
+    for (const caddyState of ["missing", "stopped", "mismatched-project", "mismatched-service"]) {
+      const result = runPreflight(caddyState);
+      const output = `${result.stdout || ""}\n${result.stderr || ""}`;
+      assert.notEqual(result.status, 0, `${caddyState}: ${output}`);
+      assert.match(output, /public TCP port 80 is already bound/);
+      assert.doesNotMatch(output, /test-(?:database|root)-password/);
+    }
+  } finally {
+    fs.rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+}
+
+function verifyContainerCaddyStableReloadCli() {
+  const productionCaddy = fs.readFileSync(path.join(root, "deployment", "Caddyfile.production"), "utf8");
+  const compose = fs.readFileSync(path.join(root, "deployment", "docker-compose.production.yml"), "utf8");
+  assert.match(productionCaddy, /^\s*admin 127\.0\.0\.1:2019\s*$/m);
+  assert.doesNotMatch(productionCaddy, /^\s*admin off\s*$/m);
+  assert.doesNotMatch(compose, /-\s*2019:2019(?:\/tcp)?\s*$/m);
+
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ds-agent-caddy-reload-"));
+  const fixtureDeployDir = path.join(fixtureRoot, "deployment");
+  const fixtureScriptsDir = path.join(fixtureDeployDir, "scripts");
+  const binDir = path.join(fixtureRoot, "bin");
+  const envFile = path.join(fixtureRoot, "structify.env");
+  const caddyConfigDir = path.join(fixtureRoot, "caddy");
+  const legacyConfig = path.join(fixtureRoot, "legacy-release", "Caddyfile.production");
+  const marker = path.join(fixtureRoot, "docker-commands");
+  const backupRoot = path.join(fixtureRoot, "backups");
+  const bashEnv = path.join(fixtureRoot, "bash-env");
+
+  fs.mkdirSync(fixtureScriptsDir, { recursive: true });
+  fs.mkdirSync(binDir);
+  fs.mkdirSync(caddyConfigDir);
+  fs.mkdirSync(path.dirname(legacyConfig), { recursive: true });
+  fs.copyFileSync(path.join(root, "deployment", "scripts", "deploy.sh"), path.join(fixtureScriptsDir, "deploy.sh"));
+  fs.copyFileSync(path.join(root, "deployment", "scripts", "common.sh"), path.join(fixtureScriptsDir, "common.sh"));
+  fs.copyFileSync(path.join(root, "deployment", "Caddyfile.production"), path.join(fixtureDeployDir, "Caddyfile.production"));
+  fs.copyFileSync(path.join(root, "deployment", "Caddyfile.production"), path.join(caddyConfigDir, "Caddyfile"));
+  fs.writeFileSync(legacyConfig, "legacy Caddyfile\n");
+  writeExecutable(path.join(fixtureScriptsDir, "preflight.sh"), "exit 0");
+  writeExecutable(path.join(fixtureScriptsDir, "backup.sh"), "exit 0");
+  writeExecutable(path.join(binDir, "curl"), "exit 0");
+  fs.writeFileSync(bashEnv, [
+    "mkdir() { if [[ \"$1\" == \"-m\" ]]; then shift 2; command mkdir -p \"$@\"; else command mkdir \"$@\"; fi; }",
+    "chmod() { return 0; }",
+    "curl() { return 0; }",
+    "sleep() { return 0; }"
+  ].join("\n"));
+  writeExecutable(path.join(binDir, "docker"), [
+    "printf '%s\\n' \"$*\" >> \"$CADDY_RELEASE_MARKER\"",
+    "if [[ \"$1\" == \"image\" && \"$2\" == \"inspect\" ]]; then exit 0; fi",
+    "if [[ \"$1\" == \"compose\" ]]; then",
+    "  case \" $* \" in",
+    "    *\" ps \"*)",
+    "      case \"$*\" in",
+    "        *\" caddy\"*) printf 'caddy-test-container\\n' ;;",
+    "        *\" mysql\"*) printf 'mysql-test-container\\n' ;;",
+    "        *\" node\"*) printf 'node-test-container\\n' ;;",
+    "        *\" spring-api\"*) printf 'spring-test-container\\n' ;;",
+    "      esac",
+    "      ;;",
+    "  esac",
+    "  exit 0",
+    "fi",
+    "if [[ \"$1\" == \"inspect\" ]]; then",
+    "  case \"$*\" in",
+    "    *\".Mounts\"*) printf '%s\\n' \"$CADDY_RELEASE_MOUNT\" ;;",
+    "    *\".State.Running\"*) printf 'true\\n' ;;",
+    "    *\"com.docker.compose.project\"*) printf 'structify-test\\n' ;;",
+    "    *\"com.docker.compose.service\"*) printf 'caddy\\n' ;;",
+    "    *\".Image\"*) case \"$*\" in *\"node-test-container\"*) printf 'node-image-id\\n' ;; *) printf 'spring-image-id\\n' ;; esac ;;",
+    "  esac",
+    "  exit 0",
+    "fi",
+    "if [[ \"$1\" == \"exec\" ]]; then",
+    "  if [[ \"$*\" == *\"/bin/sh -ec\"* && \"$CADDY_RELEASE_ADMIN_MODE\" == \"off\" ]]; then exit 42; fi",
+    "  exit 0",
+    "fi",
+    "if [[ \"$1\" == \"stop\" || \"$1\" == \"rm\" ]]; then exit 0; fi",
+    "exit 0"
+  ].join("\n"));
+
+  const fixture = [
+    "COMPOSE_PROJECT_NAME=structify-test",
+    "CADDY_MODE=container",
+    "ACME_EMAIL=operator@example.test",
+    "CADDY_CONFIG_DIR_HOST=" + bashPath(caddyConfigDir),
+    "NODE_HOST_PORT=18791",
+    "SPRING_HOST_PORT=18792",
+    "NODE_IMAGE=structify-node:test-release",
+    "SPRING_IMAGE=structify-spring:test-release"
+  ].join("\n");
+  fs.writeFileSync(envFile, fixture + "\n", { mode: 0o600 });
+
+  const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\bash.exe" : "bash";
+  const runDeploy = (mount, suffix, refreshCaddy = false, adminMode = "loopback") => {
+    fs.writeFileSync(marker, "");
+    const args = [
+      bashPath(path.join(fixtureScriptsDir, "deploy.sh")),
+      "--env-file", bashPath(envFile),
+      "--release", "test-release",
+      "--private-root", bashPath(path.join(fixtureRoot, "private")),
+      "--backup-root", bashPath(path.join(backupRoot, suffix)),
+      "--skip-build"
+    ];
+    if (refreshCaddy) args.push("--refresh-caddy");
+    args.push("--execute", "--confirm", refreshCaddy ? "REFRESH-CADDY-structify.cn" : "DEPLOY-structify.cn");
+    const result = spawnSync(shell, args, {
+      cwd: fixtureRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: binDir + path.delimiter + process.env.PATH,
+        BASH_ENV: bashPath(bashEnv),
+        CADDY_RELEASE_MARKER: bashPath(marker),
+        CADDY_RELEASE_MOUNT: bashPath(mount),
+        CADDY_RELEASE_ADMIN_MODE: adminMode
+      }
+    });
+    const output = (result.stdout || "") + "\n" + (result.stderr || "");
+    assert.equal(result.status, 0, output);
+    return fs.readFileSync(marker, "utf8");
+  };
+
+  try {
+    const rejectedRefresh = spawnSync(shell, [
+      bashPath(path.join(fixtureScriptsDir, "deploy.sh")),
+      "--env-file", bashPath(envFile),
+      "--release", "test-release",
+      "--skip-build",
+      "--refresh-caddy",
+      "--execute",
+      "--confirm", "DEPLOY-structify.cn"
+    ], {
+      cwd: fixtureRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: binDir + path.delimiter + process.env.PATH,
+        BASH_ENV: bashPath(bashEnv),
+        CADDY_RELEASE_MARKER: bashPath(marker),
+        CADDY_RELEASE_MOUNT: bashPath(caddyConfigDir),
+        CADDY_RELEASE_ADMIN_MODE: "loopback"
+      }
+    });
+    const rejectedRefreshOutput = (rejectedRefresh.stdout || "") + "\n" + (rejectedRefresh.stderr || "");
+    assert.notEqual(rejectedRefresh.status, 0, rejectedRefreshOutput);
+    assert.match(rejectedRefreshOutput, /--refresh-caddy requires --confirm REFRESH-CADDY-structify\.cn/);
+
+    const stableCommands = runDeploy(caddyConfigDir, "stable");
+    assert.match(stableCommands, /exec[\s\S]* caddy reload --address 127\.0\.0\.1:2019 --config \/etc\/caddy\/Caddyfile --adapter caddyfile/);
+    assert.doesNotMatch(stableCommands, /compose .*container-caddy.* up -d --no-build caddy/);
+    assert.equal(
+      fs.readFileSync(path.join(caddyConfigDir, "Caddyfile"), "utf8"),
+      fs.readFileSync(path.join(fixtureDeployDir, "Caddyfile.production"), "utf8")
+    );
+    assert.equal(
+      fs.statSync(path.join(caddyConfigDir, "origin-ca")).isDirectory(),
+      true,
+      "stable Caddy config must contain the nested Origin CA mountpoint before container creation"
+    );
+
+    const legacyCommands = runDeploy(legacyConfig, "legacy");
+    const stopIndex = legacyCommands.indexOf("stop caddy-test-container");
+    const removeIndex = legacyCommands.indexOf("rm caddy-test-container");
+    const createIndex = legacyCommands.indexOf("compose --profile container-caddy");
+    assert.ok(stopIndex >= 0, "legacy Caddy must be stopped before migration");
+    assert.ok(removeIndex > stopIndex, "legacy Caddy must be removed after it stops");
+    assert.ok(createIndex > removeIndex, "replacement Caddy must be created only after legacy removal");
+
+    const adminOffCommands = runDeploy(caddyConfigDir, "admin-off", false, "off");
+    const adminOffStopIndex = adminOffCommands.indexOf("stop caddy-test-container");
+    const adminOffRemoveIndex = adminOffCommands.indexOf("rm caddy-test-container");
+    const adminOffCreateIndex = adminOffCommands.indexOf("compose --profile container-caddy");
+    assert.ok(adminOffStopIndex >= 0, "an admin-disabled Caddy must be migrated");
+    assert.ok(adminOffRemoveIndex > adminOffStopIndex, "admin-disabled Caddy must be removed after it stops");
+    assert.ok(adminOffCreateIndex > adminOffRemoveIndex, "admin-disabled Caddy must be recreated only after removal");
+
+    const refreshCommands = runDeploy(caddyConfigDir, "refresh", true);
+    const refreshStopIndex = refreshCommands.indexOf("stop caddy-test-container");
+    const refreshRemoveIndex = refreshCommands.indexOf("rm caddy-test-container");
+    const refreshCreateIndex = refreshCommands.indexOf("compose --profile container-caddy");
+    assert.ok(refreshStopIndex >= 0, "explicit Caddy refresh must stop the running Caddy");
+    assert.ok(refreshRemoveIndex > refreshStopIndex, "explicit Caddy refresh must remove Caddy after it stops");
+    assert.ok(refreshCreateIndex > refreshRemoveIndex, "explicit Caddy refresh must recreate only after removal");
   } finally {
     fs.rmSync(fixtureRoot, { recursive: true, force: true });
   }
@@ -668,7 +984,7 @@ function verifyOriginCaPreflightAndWiring() {
     `JWT_SECRET=${"j".repeat(64)}`,
     `NODE_COMPAT_JWT_SECRET=${"n".repeat(64)}`,
     "NODE_COMPAT_ENABLED=true",
-    "CORS_ALLOWED_ORIGINS=https://structify.cn",
+    `CORS_ALLOWED_ORIGINS=${productionCorsOrigins}`,
     "AUTH_COOKIE_SECURE=true",
     "AUTH_EXPOSE_DEV_CODE=false",
     "AUTH_MAIL_ENABLED=false",
@@ -826,6 +1142,7 @@ function verifyProductionEnvGenerator() {
     assert.equal(values.PISTON_BASE_URL, "");
     assert.equal(values.JUDGE0_BASE_URL, "");
     assert.equal(values.HOST_CADDY_CONFIG, "/etc/caddy/Caddyfile");
+    assert.equal(values.CADDY_CONFIG_DIR_HOST, "/srv/structify/caddy");
     assert.equal(values.ORIGIN_CERT_DIR_HOST, "");
     assert.equal(values.MEMORY_PROFILE, "low-memory");
     assert.equal(values.MEMORY_BUDGET_MB, "1024");
@@ -904,6 +1221,29 @@ function verifyReleaseEntrypoint() {
   assert.match(source, /--retain 2/);
   assert.match(source, /only after deployment health checks succeed/i);
   assert.match(source, /prune_release_directories/);
+  assert.doesNotMatch(source, /git\s+(?:reset|checkout|clean)/i);
+}
+
+function verifyReleaseUploader() {
+  const uploader = path.join(root, "deployment", "scripts", "upload-release.ps1");
+  assert.equal(fs.existsSync(uploader), true, "production release uploader is missing");
+
+  const source = fs.readFileSync(uploader, "utf8");
+  assert.match(source, /UPLOAD-structify\.cn/);
+  assert.match(source, /StrictHostKeyChecking=yes/);
+  assert.match(source, /BatchMode=yes/);
+  assert.match(source, /PubkeyAuthentication=no/);
+  assert.match(source, /-EncodedCommand/);
+  assert.match(source, /RemoteUploadRoot/);
+  assert.match(source, /sudo -n true/);
+  assert.match(source, /base64 -d \| sudo -n bash/);
+  assert.match(source, /Get-FileHash\s+-Algorithm\s+SHA256/);
+  assert.match(source, /sha256sum/);
+  assert.match(source, /deployment\/scripts\/release\.sh/);
+  assert.match(source, /docker-compose\.production\.yml/);
+  assert.match(source, /test\s+!\s+-e/);
+  assert.match(source, /realpath\s+-m/);
+  assert.doesNotMatch(source, /StrictHostKeyChecking=(?:no|accept-new)/i);
   assert.doesNotMatch(source, /git\s+(?:reset|checkout|clean)/i);
 }
 
@@ -988,8 +1328,9 @@ function verifyReleaseRetentionCli() {
 }
 
 const originCaOnly = process.argv.includes("--only-origin-ca");
+const containerCaddyOnly = process.argv.includes("--only-container-caddy");
 
-const result = originCaOnly ? null : spawnSync(process.execPath, ["server.js"], {
+const result = originCaOnly || containerCaddyOnly ? null : spawnSync(process.execPath, ["server.js"], {
   cwd: nodeRoot,
   encoding: "utf8",
   env: {
@@ -997,7 +1338,7 @@ const result = originCaOnly ? null : spawnSync(process.execPath, ["server.js"], 
     NODE_ENV: "production",
     JWT_SECRET: "",
     NODE_COMPAT_JWT_SECRET: "",
-    CORS_ALLOWED_ORIGINS: "https://structify.cn",
+    CORS_ALLOWED_ORIGINS: productionCorsOrigins,
     SMTP_HOST: "",
     SMTP_USER: "",
     SMTP_PASS: "",
@@ -1013,21 +1354,30 @@ const result = originCaOnly ? null : spawnSync(process.execPath, ["server.js"], 
     console.log("production-config-origin-ca-ok");
     process.exit(0);
   }
+  if (containerCaddyOnly) {
+    verifyContainerCaddyExecuteGate();
+    verifyContainerCaddyStableReloadCli();
+    console.log("production-config-container-caddy-ok");
+    process.exit(0);
+  }
   assert.notEqual(result.status, 0, "production must fail closed without a Node compatibility JWT secret");
   const output = `${result.stdout || ""}\n${result.stderr || ""}`;
   assert.match(output, /NODE_COMPAT_JWT_SECRET is required in production/);
   assert.doesNotMatch(output, /(?:api[_ -]?key|password|secret)\s*[:=]\s*\S+/i);
   await verifyOptionalServicesDoNotBlockStartup();
+  await verifyIncompleteModelConfigurationFailsClosed();
   verifyOptionalDeploymentContract();
   verifyHostCaddyPreflight();
   verifyHostCaddyExecuteGate();
   verifyLowMemoryBudgetGate();
   verifySkipBuildDeployPlan();
   verifyContainerCaddyExecuteGate();
+  verifyContainerCaddyStableReloadCli();
   verifyOriginCaPreflightAndWiring();
   verifyProductionEnvGenerator();
   verifyDatabaseRecoveryDryRun();
   verifyReleaseEntrypoint();
+  verifyReleaseUploader();
   verifyReleaseRetentionCli();
   console.log("production-config-ok jwt-required=1 optional-services-nonblocking=1 host-caddy-preflight=1 host-caddy-execute-gate=1 low-memory-budget-gate=1 skip-build-deploy-plan=1 container-caddy-execute-gate=1 origin-ca-preflight=1 production-env-generator=1 database-recovery-dry-run=1 no-secret-output=1");
 })().catch((error) => {

@@ -1,5 +1,6 @@
 package com.feng.dsagent.animation;
 
+import com.feng.dsagent.aiquota.AiQuotaExecution;
 import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.model.ModelClient;
 import com.feng.dsagent.model.ModelClientException;
@@ -10,6 +11,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
@@ -30,7 +32,7 @@ public class AnimationGenerationService {
         note 必须描述可观察的状态变化，不得包含脚本、标签或外部链接。
         """;
 
-    private final ModelClient model;
+    private final AiQuotaExecution execution;
     private final AnimationValidator validator;
     private final AnimationRepository repository;
     private final ObjectMapper objectMapper;
@@ -41,13 +43,28 @@ public class AnimationGenerationService {
         AnimationRepository repository,
         ObjectMapper objectMapper
     ) {
-        this.model = model;
+        this(AiQuotaExecution.unmetered(model), validator, repository, objectMapper);
+    }
+
+    @Autowired
+    AnimationGenerationService(
+        AiQuotaExecution execution,
+        AnimationValidator validator,
+        AnimationRepository repository,
+        ObjectMapper objectMapper
+    ) {
+        this.execution = execution;
         this.validator = validator;
         this.repository = repository;
         this.objectMapper = objectMapper;
     }
 
     public AnimationGenerationResponse generate(AnimationGenerationCommand command, Long userId) {
+        return generate(command, userId, null);
+    }
+
+    public AnimationGenerationResponse generate(AnimationGenerationCommand command, Long userId, String requestId) {
+        execution.requireFormalAuthentication(userId);
         String prompt = normalizePrompt(command.prompt());
         String preferredType = normalizeType(command.preferredType());
         String chapterId = normalizeChapterId(command.chapterId());
@@ -57,7 +74,7 @@ public class AnimationGenerationService {
 
         String raw;
         try {
-            raw = model.complete(new ModelRequest(
+            raw = execution.complete(userId, "animation", requestId, new ModelRequest(
                 List.of(
                     new ModelMessage("system", SYSTEM_PROMPT),
                     new ModelMessage("user", userPrompt)

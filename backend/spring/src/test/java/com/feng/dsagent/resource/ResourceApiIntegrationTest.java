@@ -211,8 +211,10 @@ class ResourceApiIntegrationTest {
             "team.pdf", "课程组", "1.0", "PUBLISHED", "TEAM_ONLY"
         );
 
-        String student = tokens.issue(8601L, "student-resource@example.com", Set.of("STUDENT"));
-        String teacher = tokens.issue(8602L, "teacher-resource@example.com", Set.of("STUDENT", "TEACHER"));
+        long studentId = seedUser("student-resource@example.com", "STUDENT");
+        long teacherId = seedUser("teacher-resource@example.com", "STUDENT", "TEACHER");
+        String student = tokens.issue(studentId, "student-resource@example.com", Set.of("STUDENT"));
+        String teacher = tokens.issue(teacherId, "teacher-resource@example.com", Set.of("STUDENT", "TEACHER"));
 
         mockMvc.perform(get("/api/v1/chapters/03-stack-queue/resources"))
             .andExpect(status().isOk())
@@ -239,6 +241,22 @@ class ResourceApiIntegrationTest {
             .andExpect(jsonPath("$.licenseScope").value("TEAM_ONLY"));
     }
 
+    @Test
+    void verifiedResourceRemainsAvailableUnderTheSameAuthorizationRules() throws Exception {
+        insertResource(
+            "resource-api-verified", "03-stack-queue", "PDF", "Verified lecture", "Source-chain verified",
+            "verified.pdf", "Course team", "2.0", "VERIFIED", "CLASSROOM_ONLY"
+        );
+
+        long studentId = seedUser("verified-resource@example.com", "STUDENT");
+        String student = tokens.issue(studentId, "verified-resource@example.com", Set.of("STUDENT"));
+
+        mockMvc.perform(get("/api/v1/resources/resource-api-verified")
+                .header("Authorization", "Bearer " + student))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.reviewStatus").value("VERIFIED"));
+    }
+
     private void insertChapter(String id, int number, String title, String summary, String status) {
         jdbc.update(
             "INSERT INTO chapters (id, chapter_number, title, summary, status) VALUES (?, ?, ?, ?, ?)",
@@ -248,6 +266,15 @@ class ResourceApiIntegrationTest {
             summary,
             status
         );
+    }
+
+    private long seedUser(String email, String... roles) {
+        jdbc.update("INSERT INTO users (email, password_hash, status) VALUES (?, ?, 'ACTIVE')", email, "test-password-hash");
+        long userId = jdbc.queryForObject("SELECT id FROM users WHERE email = ?", Long.class, email);
+        for (String role : roles) {
+            jdbc.update("INSERT INTO user_roles (user_id, role) VALUES (?, ?)", userId, role);
+        }
+        return userId;
     }
 
     private void insertResource(

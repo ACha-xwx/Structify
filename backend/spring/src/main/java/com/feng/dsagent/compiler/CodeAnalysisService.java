@@ -1,5 +1,6 @@
 package com.feng.dsagent.compiler;
 
+import com.feng.dsagent.aiquota.AiQuotaExecution;
 import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.learning.LearningEventCommand;
 import com.feng.dsagent.learning.LearningEventService;
@@ -29,23 +30,32 @@ public final class CodeAnalysisService {
         """;
 
     private final CompilerProperties properties;
-    private final ModelClient model;
+    private final AiQuotaExecution execution;
     private final CodeRunRepository runs;
     private final LearningEventService learningEvents;
 
     CodeAnalysisService(CompilerProperties properties, ModelClient model) {
-        this(properties, model, null, null);
+        this(properties, AiQuotaExecution.unmetered(model), null, null);
     }
 
-    @Autowired
     CodeAnalysisService(
         CompilerProperties properties,
         ModelClient model,
         CodeRunRepository runs,
         LearningEventService learningEvents
     ) {
+        this(properties, AiQuotaExecution.unmetered(model), runs, learningEvents);
+    }
+
+    @Autowired
+    CodeAnalysisService(
+        CompilerProperties properties,
+        AiQuotaExecution execution,
+        CodeRunRepository runs,
+        LearningEventService learningEvents
+    ) {
         this.properties = properties;
-        this.model = model;
+        this.execution = execution;
         this.runs = runs;
         this.learningEvents = learningEvents;
     }
@@ -55,6 +65,11 @@ public final class CodeAnalysisService {
     }
 
     public CodeAnalysisResponse analyze(CodeAnalysisRequest request, Long userId) {
+        return analyze(request, userId, null);
+    }
+
+    public CodeAnalysisResponse analyze(CodeAnalysisRequest request, Long userId, String requestId) {
+        execution.requireFormalAuthentication(userId);
         if (request == null) {
             throw badRequest("COMPILER_ANALYSIS_INVALID", "请输入代码分析参数");
         }
@@ -84,7 +99,7 @@ public final class CodeAnalysisService {
                 input.stderr()
             );
         try {
-            String analysis = model.complete(new ModelRequest(
+            String analysis = execution.complete(userId, "code-analysis", requestId, new ModelRequest(
                 List.of(
                     new ModelMessage("system", SYSTEM_PROMPT),
                     new ModelMessage("user", content)

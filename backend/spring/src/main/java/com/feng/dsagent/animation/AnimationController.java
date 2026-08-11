@@ -1,5 +1,6 @@
 package com.feng.dsagent.animation;
 
+import com.feng.dsagent.aiquota.AiQuotaRequestId;
 import com.feng.dsagent.model.ModelFeatureRateLimiter;
 import com.feng.dsagent.security.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
@@ -82,7 +83,8 @@ public class AnimationController {
         rateLimiter.check("animation", userId, servletRequest.getRemoteAddr());
         return animations.generate(
             new AnimationGenerationCommand(request.prompt(), request.preferredType(), request.chapterId()),
-            userId
+            userId,
+            AiQuotaRequestId.from(servletRequest)
         );
     }
 

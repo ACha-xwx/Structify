@@ -12,7 +12,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MockMvc;
 
 @SpringBootTest(properties = {
-    "app.security.cors-allowed-origins=https://frontend.example.test"
+    "app.security.cors-allowed-origins=https://frontend.example.test,https://admin.frontend.example.test"
 })
 @AutoConfigureMockMvc
 class CorsConfigurationIntegrationTest {
@@ -28,6 +28,17 @@ class CorsConfigurationIntegrationTest {
                 .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "authorization,content-type,x-request-id"))
             .andExpect(status().isOk())
             .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "https://frontend.example.test"))
+            .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"));
+    }
+
+    @Test
+    void allowsConfiguredAdminOriginWithCredentials() throws Exception {
+        mockMvc.perform(options("/api/v1/admin/capabilities")
+                .header(HttpHeaders.ORIGIN, "https://admin.frontend.example.test")
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD, "GET")
+                .header(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS, "authorization,content-type,x-request-id"))
+            .andExpect(status().isOk())
+            .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "https://admin.frontend.example.test"))
             .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true"));
     }
 

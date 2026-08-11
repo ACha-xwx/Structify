@@ -83,7 +83,7 @@ try {
         JWT_SECRET = $jwtSecret
         NODE_COMPAT_ENABLED = 'true'
         NODE_COMPAT_JWT_SECRET = $nodeCompatSecret
-        CORS_ALLOWED_ORIGINS = 'https://structify.cn'
+    CORS_ALLOWED_ORIGINS = 'https://structify.cn,https://admin.structify.cn'
         AUTH_COOKIE_SECURE = 'true'
         AUTH_MAIL_ENABLED = 'false'
         AUTH_EXPOSE_DEV_CODE = 'false'

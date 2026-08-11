@@ -37,6 +37,24 @@ public final class KnowledgeSearchService {
         chunks.set(List.copyOf(replacement));
     }
 
+    /**
+     * Returns only the chunks that the active retrieval path can use before a question is supplied.
+     * This keeps readiness reporting aligned with {@link #search(String, String, int, KnowledgeAudience)}.
+     */
+    public EvidenceInventory inventory(String chapterId, KnowledgeAudience audience) {
+        int chunkCount = 0;
+        Set<String> sources = new LinkedHashSet<>();
+        for (KnowledgeChunk chunk : chunks.get()) {
+            if (!allows(chunk, chapterId, audience)) {
+                continue;
+            }
+            String sourceKey = chunk.source() == null ? chunk.id() : chunk.source();
+            chunkCount++;
+            sources.add(sourceKey);
+        }
+        return new EvidenceInventory(chunkCount, sources.size());
+    }
+
     public List<KnowledgeSearchResult> search(
         String query,
         String chapterId,
@@ -54,10 +72,7 @@ public final class KnowledgeSearchService {
 
         Map<String, KnowledgeSearchResult> uniqueBySource = new LinkedHashMap<>();
         for (KnowledgeChunk chunk : chunks.get()) {
-            if (audience == null || !audience.allows(chunk.licenseScope())) {
-                continue;
-            }
-            if (chapterId != null && !chapterId.isBlank() && !chapterId.equals(chunk.chapterId())) {
+            if (!allows(chunk, chapterId, audience)) {
                 continue;
             }
             double score = score(chunk, queryTokens);
@@ -75,19 +90,42 @@ public final class KnowledgeSearchService {
             .toList();
     }
 
+    private boolean allows(KnowledgeChunk chunk, String chapterId, KnowledgeAudience audience) {
+        return audience != null
+            && audience.allows(chunk.licenseScope())
+            && (chapterId == null || chapterId.isBlank() || chapterId.equals(chunk.chapterId()));
+    }
+
     private double score(KnowledgeChunk chunk, Set<String> queryTokens) {
         String normalizedTitle = normalize(chunk.title());
         String normalizedContent = normalize(chunk.content());
         double score = 0;
         for (String token : queryTokens) {
-            if (normalizedTitle.contains(token)) {
-                score += token.length() >= 3 ? 5 : 3;
-            }
-            if (normalizedContent.contains(token)) {
-                score += token.length() >= 3 ? 2.5 : 1.5;
-            }
+            int titleHits = countOccurrences(normalizedTitle, token);
+            int contentHits = countOccurrences(normalizedContent, token);
+            double titleWeight = token.length() >= 3 ? 5 : 3;
+            double contentWeight = token.length() >= 3 ? 2.5 : 1.5;
+            score += titleHits * titleWeight;
+            score += contentHits * contentWeight;
         }
         return score;
+    }
+
+    private int countOccurrences(String text, String token) {
+        if (text.isEmpty() || token.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        int start = 0;
+        while (count < 4) {
+            int index = text.indexOf(token, start);
+            if (index < 0) {
+                break;
+            }
+            count++;
+            start = index + token.length();
+        }
+        return count;
     }
 
     private Set<String> tokens(String text) {
@@ -120,5 +158,8 @@ public final class KnowledgeSearchService {
 
     private String normalize(String value) {
         return value == null ? "" : value.toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
+    }
+
+    public record EvidenceInventory(int knowledgeChunkCount, int sourceCount) {
     }
 }

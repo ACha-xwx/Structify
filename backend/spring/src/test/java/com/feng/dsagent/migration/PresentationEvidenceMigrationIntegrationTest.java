@@ -89,7 +89,7 @@ class PresentationEvidenceMigrationIntegrationTest {
         assertThat(legacyObservation).containsEntry("source_type", "LEGACY");
         assertThat(legacyObservation).containsEntry("source_ref", "animation_records.observation");
         assertThat(legacyObservation).containsEntry("version_label", "1.0");
-        assertThat(legacyObservation).containsEntry("review_status", "UNREVIEWED");
+        assertThat(legacyObservation).containsEntry("review_status", "LEGACY_UNVERIFIED");
 
         assertThatThrownBy(() -> jdbc.update(
             """

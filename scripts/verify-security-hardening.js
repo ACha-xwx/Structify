@@ -126,8 +126,8 @@ async function main() {
     const html = await rootResponse.text();
     assert.match(rootResponse.headers.get("content-security-policy") || "", /script-src-attr 'none'/);
     assert.equal(rootResponse.headers.get("x-content-type-options"), "nosniff");
-    assert.match(html, /\/vendor\/dompurify\.min\.js/);
-    assert.match(html, /DOMPurify\.sanitize/);
+    assert.match(html, /<div id="app"><\/div>/, "canonical Vue entry must expose the application mount");
+    assert.match(html, /<script type="module"/, "canonical Vue entry must load its module");
     assert.doesNotMatch(html, /\son[a-z]+\s*=/i, "CSP-blocked inline event handlers should not remain");
 
     const healthPayload = await (await fetch(`${baseUrl}/healthz`)).json();
@@ -138,6 +138,19 @@ async function main() {
     const purifyResponse = await fetch(`${baseUrl}/vendor/dompurify.min.js`);
     assert.equal(purifyResponse.status, 200);
     assert.match(purifyResponse.headers.get("content-type") || "", /javascript/);
+
+    const missingCodePurpose = await jsonFetch(baseUrl, "/api/auth/request-code", {
+      email: "missing-purpose@example.com"
+    }, { "x-forwarded-for": "10.0.0.9" });
+    assert.equal(missingCodePurpose.response.status, 400);
+    assert.equal(missingCodePurpose.body.code, "CODE_PURPOSE_INVALID");
+
+    const invalidCodePurpose = await jsonFetch(baseUrl, "/api/auth/request-code", {
+      email: "invalid-purpose@example.com",
+      purpose: "unsupported"
+    }, { "x-forwarded-for": "10.0.0.10" });
+    assert.equal(invalidCodePurpose.response.status, 400);
+    assert.equal(invalidCodePurpose.body.code, "CODE_PURPOSE_INVALID");
 
     const teacherToken = await register(baseUrl, verificationCodeFile, "teacher@example.com", "10.0.0.1");
     const studentToken = await register(baseUrl, verificationCodeFile, "student@example.com", "10.0.0.2");

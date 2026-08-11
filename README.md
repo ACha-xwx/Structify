@@ -50,7 +50,7 @@ cd backend/spring
 
 后端环境变量、管理员初始化、知识库、编译器安全和部署说明见 [`backend/spring/README.md`](backend/spring/README.md)，冻结的接口契约见 [`contracts/openapi-v1.yaml`](contracts/openapi-v1.yaml)。
 
-生产环境目标为 `https://structify.cn`。完整的 Node 8791 / Spring 8792 / MySQL / Caddy 拓扑、私有教材和 PPT 路径、备份、迁移、健康检查、DNS 切换与回滚手册见 [`docs/production-deployment.md`](docs/production-deployment.md)。接口差异和数据模型差异分别见 [`docs/api-node-spring-differences.md`](docs/api-node-spring-differences.md) 与 [`docs/data-model-node-spring-differences.md`](docs/data-model-node-spring-differences.md)。Git 来源已恢复并核验：远程 `origin` 为 `https://github.com/feng129685/data-structure-agent.git`，截至本次核验 `origin/main` 为 `82b073790d28cffc47fbcbe500d111078d2660c3`（可用 `git ls-remote https://github.com/feng129685/data-structure-agent.git refs/heads/main` 复核）。当前工作区以该 revision 为基线但融合修改尚未提交，不能据此宣称生产线上版本等同；发布前必须创建并记录不可变 release commit/tag 和镜像摘要。
+生产学习站为 `https://structify.cn`，管理端统一使用 `https://admin.structify.cn`。完整的 Node 8791 / Spring 8792 / MySQL / Caddy 拓扑、私有教材和 PPT 路径、备份、迁移、健康检查、DNS 切换与回滚手册见 [`docs/production-deployment.md`](docs/production-deployment.md)。接口差异和数据模型差异分别见 [`docs/api-node-spring-differences.md`](docs/api-node-spring-differences.md) 与 [`docs/data-model-node-spring-differences.md`](docs/data-model-node-spring-differences.md)。Git 来源已恢复并核验：远程 `origin` 为 `https://github.com/feng129685/data-structure-agent.git`，截至本次核验 `origin/main` 为 `82b073790d28cffc47fbcbe500d111078d2660c3`（可用 `git ls-remote https://github.com/feng129685/data-structure-agent.git refs/heads/main` 复核）。当前工作区以该 revision 为基线但融合修改尚未提交，不能据此宣称生产线上版本等同；发布前必须创建并记录不可变 release commit/tag 和镜像摘要。
 
 ## 快速开始
 
@@ -72,10 +72,10 @@ npm install
 复制环境变量模板并填写：
 
 ```bash
-cp .env.example .env
+cp .env.example backend/node/.env
 ```
 
-`.env.example` 是无凭据模板。生产部署不要在仓库内编辑它；请使用 [`deployment/.env.spring.example`](deployment/.env.spring.example) 复制到 `/etc/structify/structify.env`，通过 secret manager 填入模型、SMTP、MySQL 和 JWT 值，并设置 `CORS_ALLOWED_ORIGINS=https://structify.cn`、安全 Cookie、关闭调试/验证码捕获和静态管理员提升。
+`.env.example` 是无凭据模板。生产部署不要在仓库内编辑它；请使用 [`deployment/.env.spring.example`](deployment/.env.spring.example) 复制到 `/etc/structify/structify.env`，通过 secret manager 填入模型、SMTP、MySQL 和 JWT 值，并设置 `CORS_ALLOWED_ORIGINS=https://structify.cn,https://admin.structify.cn`、安全 Cookie、关闭调试/验证码捕获和静态管理员提升。
 
 ### 启动
 
@@ -99,7 +99,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\import-knowledge-pack.ps1 "D:
 
 导入后重启服务。访问 `/healthz` 可查看 `knowledge.ready`、课时数和检索片段数。详细说明见 `knowledge/README.md`。
 
-为了避免公开教材内容，`knowledge/private/` 已加入 `.gitignore`；公网环境也应保持 `KNOWLEDGE_DEBUG_API=false`。
+为了避免公开教材内容，`private/knowledge/` 已加入 `.gitignore`；公网环境也应保持 `KNOWLEDGE_DEBUG_API=false`。
 
 ### 运行测试
 

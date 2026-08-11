@@ -63,22 +63,26 @@ app:
     mail-enabled: ${AUTH_MAIL_ENABLED:false}
     mail-from: ${SMTP_FROM:no-reply@example.com}
   model:
-    provider: ${MODEL_PROVIDER:deepseek}
+    provider: ${MODEL_PROVIDER:}
     api-key: ${MODEL_API_KEY:}
-    base-url: ${MODEL_BASE_URL:https://api.deepseek.com}
-    name: ${MODEL_NAME:deepseek-v4-pro}
+    base-url: ${MODEL_BASE_URL:}
+    name: ${MODEL_NAME:}
     timeout: ${MODEL_TIMEOUT:PT45S}
     stream-idle-timeout: ${MODEL_STREAM_IDLE_TIMEOUT:PT30S}
     maximum-response-bytes: ${MODEL_MAX_RESPONSE_BYTES:1048576}
+  ai-quota:
+    daily-token-quota: ${AI_DAILY_TOKEN_QUOTA:0}
+    maximum-concurrent-requests: ${AI_MAX_CONCURRENT_REQUESTS:1}
+    reservation-ttl: ${AI_QUOTA_RESERVATION_TTL:PT2M}
   knowledge:
     enabled: ${KNOWLEDGE_ENABLED:true}
     auto-publish-local: ${KNOWLEDGE_AUTO_PUBLISH_LOCAL:false}
-    directory: ${KNOWLEDGE_DIR:../../knowledge/private/textbook}
+    directory: ${KNOWLEDGE_DIR:../../private/knowledge}
     minimum-score: ${KNOWLEDGE_MIN_SCORE:8}
     search-limit: ${KNOWLEDGE_SEARCH_LIMIT:4}
     chunk-size: ${KNOWLEDGE_CHUNK_SIZE:1100}
   resources:
-    directory: ${RESOURCE_DIR:../../course-content-private}
+    directory: ${RESOURCE_DIR:../../private/course-content}
   animation:
     maximum-concurrent-simulations: ${ANIMATION_MAX_CONCURRENT:4}
   compiler:

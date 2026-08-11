@@ -73,6 +73,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     JWT_SECRET=*) line="JWT_SECRET=$jwt_secret" ;;
     NODE_COMPAT_JWT_SECRET=*) line="NODE_COMPAT_JWT_SECRET=$node_compat_jwt_secret" ;;
     HOST_CADDY_CONFIG=*) line="HOST_CADDY_CONFIG=/etc/caddy/Caddyfile" ;;
+    CADDY_CONFIG_DIR_HOST=*) line="CADDY_CONFIG_DIR_HOST=/srv/structify/caddy" ;;
     MEMORY_PROFILE=*) line="MEMORY_PROFILE=low-memory" ;;
     MEMORY_BUDGET_MB=*) line="MEMORY_BUDGET_MB=1024" ;;
     MEMORY_RESERVE_MB=*) line="MEMORY_RESERVE_MB=256" ;;

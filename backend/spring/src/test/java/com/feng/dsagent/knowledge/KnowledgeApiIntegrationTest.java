@@ -25,6 +25,10 @@ import org.springframework.transaction.annotation.Transactional;
 @Rollback
 class KnowledgeApiIntegrationTest {
 
+    private static final long STUDENT_ID = 98001L;
+    private static final long TEACHER_ID = 98002L;
+    private static final long LIMIT_TEACHER_ID = 98003L;
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -44,6 +48,9 @@ class KnowledgeApiIntegrationTest {
     void resetFixtures() {
         jdbc.update("DELETE FROM knowledge_chunks WHERE id LIKE 'knowledge-api-%'");
         jdbc.update("DELETE FROM resources WHERE id LIKE 'knowledge-api-%'");
+        seedUser(STUDENT_ID, "knowledge-student@example.com", "STUDENT");
+        seedUser(TEACHER_ID, "knowledge-teacher@example.com", "STUDENT", "TEACHER");
+        seedUser(LIMIT_TEACHER_ID, "knowledge-limit@example.com", "STUDENT", "TEACHER");
         insertResource("knowledge-api-public", "PUBLIC", "PUBLISHED");
         insertResource("knowledge-api-classroom", "CLASSROOM_ONLY", "PUBLISHED");
         insertResource("knowledge-api-team", "TEAM_ONLY", "PUBLISHED");
@@ -75,8 +82,8 @@ class KnowledgeApiIntegrationTest {
 
     @Test
     void authenticatedAudienceCanSearchClassroomMaterialButNotTeamMaterial() throws Exception {
-        String student = tokens.issue(8801L, "knowledge-student@example.com", Set.of("STUDENT"));
-        String teacher = tokens.issue(8802L, "knowledge-teacher@example.com", Set.of("STUDENT", "TEACHER"));
+        String student = tokens.issue(STUDENT_ID, "knowledge-student@example.com", Set.of("STUDENT"));
+        String teacher = tokens.issue(TEACHER_ID, "knowledge-teacher@example.com", Set.of("STUDENT", "TEACHER"));
 
         mockMvc.perform(get("/api/v1/knowledge/search")
                 .param("q", "哈希冲突处理")
@@ -117,7 +124,7 @@ class KnowledgeApiIntegrationTest {
 
     @Test
     void numericLimitIsClampedToThePublicBounds() throws Exception {
-        String teacher = tokens.issue(8803L, "knowledge-limit@example.com", Set.of("STUDENT", "TEACHER"));
+        String teacher = tokens.issue(LIMIT_TEACHER_ID, "knowledge-limit@example.com", Set.of("STUDENT", "TEACHER"));
 
         mockMvc.perform(get("/api/v1/knowledge/search")
                 .param("q", "哈希冲突处理")
@@ -147,6 +154,13 @@ class KnowledgeApiIntegrationTest {
             reviewStatus,
             licenseScope
         );
+    }
+
+    private void seedUser(long id, String email, String... roles) {
+        jdbc.update("INSERT INTO users (id, email, password_hash) VALUES (?, ?, 'hash')", id, email);
+        for (String role : roles) {
+            jdbc.update("INSERT INTO user_roles (user_id, role) VALUES (?, ?)", id, role);
+        }
     }
 
     private void insertChunk(String id, String resourceId, String sourcePath) {

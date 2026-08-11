@@ -34,17 +34,17 @@ loadEnvFile();
 
 const HOST = process.env.HOST || "127.0.0.1";
 const PORT = Number(process.env.PORT || 8791);
-const MODEL_API_KEY = process.env.MODEL_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.MIMO_API_KEY || "";
+const MODEL_API_KEY = String(process.env.MODEL_API_KEY || process.env.DEEPSEEK_API_KEY || process.env.MIMO_API_KEY || "").trim();
 function normalizeModelBaseUrl(value) {
-  const baseUrl = (value || process.env.DEEPSEEK_BASE_URL || process.env.MIMO_BASE_URL || "https://api.deepseek.com/v1").trim().replace(/\/+$/, "");
+  const baseUrl = String(value || process.env.DEEPSEEK_BASE_URL || process.env.MIMO_BASE_URL || "").trim().replace(/\/+$/, "");
+  if (!baseUrl) return "";
   return /\/v\d+$/i.test(baseUrl) ? baseUrl : `${baseUrl}/v1`;
 }
 
 const MODEL_BASE_URL = normalizeModelBaseUrl(process.env.MODEL_BASE_URL);
-const MODEL_NAME = process.env.MODEL_NAME || process.env.DEEPSEEK_MODEL || (process.env.MIMO_MODEL === "mimo-v2.5"
-  ? "mimo-v2.5-pro"
-  : (process.env.MIMO_MODEL || "deepseek-v4-pro"));
-const MODEL_PROVIDER = process.env.MODEL_PROVIDER || (MODEL_BASE_URL.includes("deepseek") ? "deepseek" : "openai-compatible");
+const MODEL_NAME = String(process.env.MODEL_NAME || process.env.DEEPSEEK_MODEL || process.env.MIMO_MODEL || "").trim();
+const MODEL_PROVIDER = process.env.MODEL_PROVIDER || (MODEL_BASE_URL ? "openai-compatible" : "unconfigured");
+const MODEL_CONFIGURED = Boolean(MODEL_API_KEY && MODEL_BASE_URL && MODEL_NAME && MODEL_PROVIDER !== "unconfigured");
 const MODEL_TIMEOUT_MS = Math.max(250, Math.min(120_000, Number(process.env.MODEL_TIMEOUT_MS || 45_000)));
 const MODEL_STREAM_IDLE_TIMEOUT_MS = Math.max(250, Math.min(120_000, Number(process.env.MODEL_STREAM_IDLE_TIMEOUT_MS || 30_000)));
 const WORKSPACE_ROOT = path.resolve(__dirname, "..", "..");
@@ -54,7 +54,8 @@ const KNOWLEDGE_DIR = path.resolve(process.env.KNOWLEDGE_DIR || path.join(PRIVAT
 const KNOWLEDGE_SEARCH_LIMIT = Math.max(1, Math.min(6, Number(process.env.KNOWLEDGE_SEARCH_LIMIT || 4)));
 const KNOWLEDGE_CONTEXT_MAX_CHARS = Math.max(800, Math.min(8000, Number(process.env.KNOWLEDGE_CONTEXT_MAX_CHARS || 3600)));
 const KNOWLEDGE_MIN_SCORE = Math.max(0, Number(process.env.KNOWLEDGE_MIN_SCORE || 8));
-const KNOWLEDGE_DEBUG_API = /^(1|true|yes|on)$/i.test(String(process.env.KNOWLEDGE_DEBUG_API || ""));
+const KNOWLEDGE_DEBUG_API = process.env.NODE_ENV !== "production"
+  && /^(1|true|yes|on)$/i.test(String(process.env.KNOWLEDGE_DEBUG_API || ""));
 const knowledgeRetriever = createKnowledgeRetriever({
   rootDir: KNOWLEDGE_DIR,
   maxChunkChars: Number(process.env.KNOWLEDGE_CHUNK_MAX_CHARS || 1100),
@@ -133,6 +134,13 @@ const workspaceFrontendDir = path.join(WORKSPACE_ROOT, "frontend");
 const FRONTEND_DIR = path.resolve(process.env.FRONTEND_DIR || (fs.existsSync(localFrontendDir) ? localFrontendDir : workspaceFrontendDir));
 const INDEX_PATH = path.join(FRONTEND_DIR, "index.html");
 const LOCAL_PROTOTYPE_PATH = path.join(FRONTEND_DIR, "prototype.html");
+const SPA_HISTORY_EXACT_PATHS = new Set([
+  "/login",
+  "/register",
+  "/reset-password",
+  "/403",
+  "/404"
+]);
 const DOMPURIFY_PATH = path.join(path.dirname(require.resolve("dompurify")), "purify.min.js");
 const SECURITY_HEADERS = Object.freeze({
   "content-security-policy": [
@@ -155,6 +163,14 @@ const SECURITY_HEADERS = Object.freeze({
 });
 
 /* ===== Database ===== */
+function isSpaHistoryPath(pathname) {
+  return SPA_HISTORY_EXACT_PATHS.has(pathname)
+    || pathname === "/user"
+    || pathname.startsWith("/user/")
+    || pathname === "/admin"
+    || pathname.startsWith("/admin/");
+}
+
 let db;
 function initDatabase() {
   const Database = require("better-sqlite3");
@@ -328,8 +344,8 @@ function generateCode() {
 }
 
 function normalizeCodePurpose(value) {
-  const purpose = normalizeText(value || "login", 20).toLowerCase();
-  return CODE_PURPOSES.has(purpose) ? purpose : "login";
+  const purpose = normalizeText(value, 20).toLowerCase();
+  return CODE_PURPOSES.has(purpose) ? purpose : null;
 }
 
 function codeKey(email, purpose) {
@@ -1418,8 +1434,8 @@ async function readModelStreamChunk(reader) {
 
 /* ===== Chat Handler ===== */
 async function handleChat(req, res, preloadedBody = null) {
-  if (!MODEL_API_KEY) {
-    sendJson(res, 500, { error: "服务器未配置模型 API Key" });
+  if (!MODEL_CONFIGURED) {
+    sendJson(res, 503, { error: "模型服务尚未完整配置", code: "MODEL_NOT_CONFIGURED" });
     return;
   }
 
@@ -1498,8 +1514,7 @@ async function handleChat(req, res, preloadedBody = null) {
       res.writeHead(200, {
         "content-type": "text/event-stream; charset=utf-8",
         "cache-control": "no-cache",
-        "connection": "keep-alive",
-        "access-control-allow-origin": "*"
+        "connection": "keep-alive"
       });
 
       if (knowledgeSources.length) {
@@ -1698,6 +1713,9 @@ async function handleRequestCode(req, res) {
   const purpose = normalizeCodePurpose(body.purpose);
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     sendJson(res, 400, { error: "请输入有效的邮箱地址" }); return;
+  }
+  if (!purpose) {
+    sendJson(res, 400, { code: "CODE_PURPOSE_INVALID", error: "验证码用途无效" }); return;
   }
   if (process.env.NODE_ENV === "production" && !SMTP_CONFIGURED) {
     sendJson(res, 503, { code: "SMTP_NOT_CONFIGURED", error: "验证码邮件服务未配置" }); return;
@@ -2503,11 +2521,10 @@ async function handleCreateTeacherAssignment(req, res) {
   try {
     const body = await readJson(req);
     const assignment = normalizeTeacherAssignment(body, teacher.id);
-    db.prepare(`
+    const writeResult = db.prepare(`
       INSERT INTO teacher_assignments (id, teacher_id, scenario, topic, title, description, steps, target_student_ids, status, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
       ON CONFLICT(id) DO UPDATE SET
-        teacher_id = excluded.teacher_id,
         scenario = excluded.scenario,
         topic = excluded.topic,
         title = excluded.title,
@@ -2516,6 +2533,7 @@ async function handleCreateTeacherAssignment(req, res) {
         target_student_ids = excluded.target_student_ids,
         status = excluded.status,
         updated_at = datetime('now')
+      WHERE teacher_assignments.teacher_id = excluded.teacher_id
     `).run(
       assignment.id,
       assignment.teacherId,
@@ -2527,6 +2545,10 @@ async function handleCreateTeacherAssignment(req, res) {
       JSON.stringify(assignment.targetStudentIds),
       assignment.status
     );
+    if (writeResult.changes === 0) {
+      sendJson(res, 403, { error: "只有创建该任务的教师可以修改它" });
+      return;
+    }
     const row = db.prepare(`
       SELECT id, scenario, topic, title, description, steps, target_student_ids, status, created_at, updated_at
       FROM teacher_assignments
@@ -2546,11 +2568,15 @@ function handleArchiveTeacherAssignment(req, res, assignmentId) {
     sendJson(res, 400, { error: "任务 ID 无效" });
     return;
   }
-  db.prepare(`
+  const archiveResult = db.prepare(`
     UPDATE teacher_assignments
     SET status = 'archived', updated_at = datetime('now')
-    WHERE id = ?
-  `).run(id);
+    WHERE id = ? AND teacher_id = ?
+  `).run(id, teacher.id);
+  if (archiveResult.changes === 0) {
+    sendJson(res, 403, { error: "只有创建该任务的教师可以归档它" });
+    return;
+  }
   sendJson(res, 200, { ok: true });
 }
 
@@ -2784,11 +2810,11 @@ function servePresentationAsset(req, url, res) {
 }
 
 /* ===== Static File ===== */
-function serveIndex(res, file = INDEX_PATH) {
+function serveIndex(res, file = INDEX_PATH, headOnly = false) {
   fs.readFile(file, (error, data) => {
     if (error) { res.writeHead(500, { "content-type": "text/plain; charset=utf-8" }); res.end("index file not found"); return; }
     res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" });
-    res.end(data);
+    res.end(headOnly ? undefined : data);
   });
 }
 
@@ -3254,7 +3280,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && pathname === "/healthz") {
       sendJson(res, 200, {
         ok: true,
-        modelConfigured: Boolean(MODEL_API_KEY),
+        modelConfigured: MODEL_CONFIGURED,
         smtpConfigured: SMTP_CONFIGURED,
         codeExecutionConfigured: CODE_EXECUTION_CONFIGURED,
         knowledge: getPublicKnowledgeStats(),
@@ -3506,8 +3532,13 @@ const server = http.createServer(async (req, res) => {
     }
 
     // Static files
-    if (req.method === "GET" && (pathname === "/" || pathname === "/index.html" || pathname === "/prototype.html")) {
-      serveIndex(res, pathname === "/prototype.html" ? LOCAL_PROTOTYPE_PATH : INDEX_PATH);
+    if ((req.method === "GET" || req.method === "HEAD") && (pathname === "/" || pathname === "/index.html" || pathname === "/prototype.html")) {
+      serveIndex(res, pathname === "/prototype.html" ? LOCAL_PROTOTYPE_PATH : INDEX_PATH, req.method === "HEAD");
+      return;
+    }
+
+    if ((req.method === "GET" || req.method === "HEAD") && isSpaHistoryPath(pathname)) {
+      serveIndex(res, INDEX_PATH, req.method === "HEAD");
       return;
     }
 
@@ -3523,7 +3554,7 @@ initDatabase();
 
 server.listen(PORT, HOST, () => {
   console.log(`data-structure-agent listening on http://${HOST}:${PORT}`);
-  console.log(`Model: ${MODEL_PROVIDER}/${MODEL_NAME}`);
+  console.log(`Model: ${MODEL_CONFIGURED ? `${MODEL_PROVIDER}/${MODEL_NAME}` : "not configured"}`);
   console.log(`SMTP: ${SMTP_HOST ? `${SMTP_HOST}:${SMTP_PORT}` : "not configured (mail delivery disabled)"}`);
   console.log(`Database: ${DB_PATH}`);
   const knowledge = getPublicKnowledgeStats();

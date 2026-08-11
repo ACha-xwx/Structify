@@ -28,6 +28,8 @@ import org.springframework.test.web.servlet.MockMvc;
 class ResourceContentApiIntegrationTest {
 
     private static final Path CONTENT_ROOT = createContentRoot();
+    private static final long STUDENT_ID = 97001L;
+    private static final long TEACHER_ID = 97002L;
 
     @Autowired
     private MockMvc mockMvc;
@@ -47,6 +49,10 @@ class ResourceContentApiIntegrationTest {
     void clearData() {
         jdbc.update("DELETE FROM resources WHERE id LIKE 'resource-content-api%'");
         jdbc.update("DELETE FROM chapters WHERE id LIKE 'resource-content-api%'");
+        jdbc.update("DELETE FROM user_roles WHERE user_id IN (?, ?)", STUDENT_ID, TEACHER_ID);
+        jdbc.update("DELETE FROM users WHERE id IN (?, ?)", STUDENT_ID, TEACHER_ID);
+        seedUser(STUDENT_ID, "student-content@example.com", "STUDENT");
+        seedUser(TEACHER_ID, "teacher-content@example.com", "STUDENT", "TEACHER");
     }
 
     @Test
@@ -93,8 +99,8 @@ class ResourceContentApiIntegrationTest {
         insertRestricted("resource-content-api-classroom", "CLASSROOM_ONLY", "03-stack-queue/restricted.pdf");
         insertRestricted("resource-content-api-team", "TEAM_ONLY", "03-stack-queue/restricted.pdf");
 
-        String student = tokens.issue(8701L, "student-content@example.com", Set.of("STUDENT"));
-        String teacher = tokens.issue(8702L, "teacher-content@example.com", Set.of("STUDENT", "TEACHER"));
+        String student = tokens.issue(STUDENT_ID, "student-content@example.com", Set.of("STUDENT"));
+        String teacher = tokens.issue(TEACHER_ID, "teacher-content@example.com", Set.of("STUDENT", "TEACHER"));
 
         mockMvc.perform(get("/api/v1/resources/resource-content-api-classroom/content"))
             .andExpect(status().isNotFound());
@@ -153,6 +159,13 @@ class ResourceContentApiIntegrationTest {
             filePath,
             licenseScope
         );
+    }
+
+    private void seedUser(long id, String email, String... roles) {
+        jdbc.update("INSERT INTO users (id, email, password_hash) VALUES (?, ?, 'hash')", id, email);
+        for (String role : roles) {
+            jdbc.update("INSERT INTO user_roles (user_id, role) VALUES (?, ?)", id, role);
+        }
     }
 
     private static Path createContentRoot() {

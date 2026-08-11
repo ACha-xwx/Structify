@@ -3,6 +3,7 @@ package com.feng.dsagent.common;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
@@ -19,6 +20,16 @@ public final class ApiExceptionHandler {
         return ResponseEntity.status(error.status()).body(new ApiError(
             error.code(),
             error.getMessage(),
+            requestId(request),
+            List.of()
+        ));
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    ResponseEntity<ApiError> handleAccessDenied(AccessDeniedException error, HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ApiError(
+            "AUTH_FORBIDDEN",
+            "当前账号无权执行该操作",
             requestId(request),
             List.of()
         ));

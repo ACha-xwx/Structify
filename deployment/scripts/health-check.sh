@@ -29,7 +29,20 @@ fi
 
 require_command curl
 require_command docker
-curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:$node_port/healthz" >/dev/null
-curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:$spring_port/actuator/health" >/dev/null
+
+wait_for_loopback_health() {
+  local service="$1"
+  local url="$2"
+  for attempt in $(seq 1 30); do
+    if curl --fail --silent --show-error --max-time 10 "$url" >/dev/null 2>&1; then
+      return 0
+    fi
+    [[ "$attempt" -lt 30 ]] || die "$service did not become healthy on loopback"
+    sleep 2
+  done
+}
+
+wait_for_loopback_health "Node" "http://127.0.0.1:$node_port/healthz"
+wait_for_loopback_health "Spring" "http://127.0.0.1:$spring_port/actuator/health"
 compose ps
 log "loopback health checks passed"

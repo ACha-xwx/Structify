@@ -16,7 +16,7 @@
 - [ ] 响应式：1180px 以下右侧面板正常折叠到下方
 
 ## File Scope
-**Can modify:** `C:/Users/Lenovo/Desktop/智能体/data-structure-agent/prototype.html`
+**Can modify:** `frontend/prototype.html`
 **Must NOT touch:** 其他所有 .md 文件
 
 ## Context

@@ -71,25 +71,28 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
         }
 
         if (!isSuccess(response.statusCode())) {
-            closeQuietly(response.body());
-            throw failure(MODEL_UPSTREAM_ERROR);
+            String responseBody = readResponseBody(response.body());
+            throw failure(MODEL_UPSTREAM_ERROR, reportedTotalTokens(responseBody));
         }
         String responseBody = readResponseBody(response.body());
         String content;
+        Long totalTokens;
         try {
-            content = objectMapper.readTree(responseBody)
+            JsonNode payload = objectMapper.readTree(responseBody);
+            content = payload
                 .path("choices")
                 .path(0)
                 .path("message")
                 .path("content")
                 .asText();
+            totalTokens = reportedTotalTokens(payload);
         } catch (Exception error) {
             throw failure(MODEL_RESPONSE_READ_FAILED);
         }
         if (content == null || content.isBlank()) {
             throw failure(MODEL_EMPTY_RESPONSE);
         }
-        return new ModelResponse(content);
+        return new ModelResponse(content, totalTokens);
     }
 
     @Override
@@ -305,6 +308,27 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
 
     private ModelClientException failure(ModelErrorCode errorCode) {
         return new ModelClientException(errorCode);
+    }
+
+    private ModelClientException failure(ModelErrorCode errorCode, Long consumedTokens) {
+        return new ModelClientException(errorCode, consumedTokens);
+    }
+
+    private Long reportedTotalTokens(String responseBody) {
+        try {
+            return reportedTotalTokens(objectMapper.readTree(responseBody));
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private Long reportedTotalTokens(JsonNode payload) {
+        JsonNode value = payload.path("usage").path("total_tokens");
+        if (value.isMissingNode() || value.isNull()) {
+            return null;
+        }
+        long tokens = value.asLong(-1L);
+        return tokens < 0 ? null : tokens;
     }
 
     private void closeQuietly(InputStream input) {

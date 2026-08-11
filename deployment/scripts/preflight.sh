@@ -26,7 +26,7 @@ validate_origin_ca_caddy() {
   docker image inspect "$caddy_image" >/dev/null 2>&1 \
     || die "CADDY_IMAGE is not available locally for Origin CA validation"
   docker run --rm --network none --read-only --user 0:0 \
-    --cap-drop ALL --security-opt no-new-privileges:true \
+    --cap-drop ALL --cap-add NET_BIND_SERVICE --security-opt no-new-privileges:true \
     --tmpfs /tmp:rw,nosuid,nodev,size=16m \
     --tmpfs /config:rw,nosuid,nodev,size=16m \
     --tmpfs /data:rw,nosuid,nodev,size=16m \
@@ -38,6 +38,44 @@ validate_origin_ca_caddy() {
     >/dev/null 2>&1 \
     || die "container Caddy Origin CA configuration validation failed"
   log "container Caddy Origin CA configuration validated"
+}
+
+running_compose_caddy() {
+  local expected_project
+  local caddy_container
+  local caddy_project
+  local caddy_service
+  local caddy_running
+  local -a caddy_containers=()
+
+  expected_project="$(env_value COMPOSE_PROJECT_NAME)"
+  expected_project="${expected_project:-structify}"
+  mapfile -t caddy_containers < <(compose ps -q caddy 2>/dev/null || true)
+  (( ${#caddy_containers[@]} == 1 )) || return 1
+  caddy_container="${caddy_containers[0]}"
+  [[ -n "$caddy_container" ]] || return 1
+
+  caddy_running="$(docker inspect --format '{{.State.Running}}' "$caddy_container" 2>/dev/null || true)"
+  [[ "$caddy_running" == "true" ]] || return 1
+  caddy_project="$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' "$caddy_container" 2>/dev/null || true)"
+  [[ "$caddy_project" == "$expected_project" ]] || return 1
+  caddy_service="$(docker inspect --format '{{index .Config.Labels "com.docker.compose.service"}}' "$caddy_container" 2>/dev/null || true)"
+  [[ "$caddy_service" == "caddy" ]] || return 1
+
+  printf '%s\n' "$caddy_container"
+}
+
+caddy_binds_public_tcp_port() {
+  local caddy_container="$1"
+  local public_port="$2"
+  local binding
+
+  while IFS= read -r binding; do
+    case "$binding" in
+      "0.0.0.0:$public_port"|"[::]:$public_port"|":::$public_port") return 0 ;;
+    esac
+  done < <(docker port "$caddy_container" "$public_port/tcp" 2>/dev/null || true)
+  return 1
 }
 
 EXECUTE=0
@@ -97,6 +135,20 @@ if [[ "$mode" == "host" ]]; then
     log "host Caddy configuration validated"
   fi
 else
+  caddy_config_dir="$(env_value CADDY_CONFIG_DIR_HOST)"
+  [[ -n "$caddy_config_dir" ]] || caddy_config_dir="/srv/structify/caddy"
+  [[ "$caddy_config_dir" == /* ]] || die "CADDY_CONFIG_DIR_HOST must be an absolute Linux path"
+  caddy_config_dir_real="$(realpath -m "$caddy_config_dir" 2>/dev/null || true)"
+  deploy_dir_real="$(realpath -m "$DEPLOY_DIR" 2>/dev/null || true)"
+  [[ -n "$caddy_config_dir_real" && -n "$deploy_dir_real" ]] \
+    || die "cannot resolve CADDY_CONFIG_DIR_HOST outside the release directory"
+  [[ "$caddy_config_dir_real" != "$deploy_dir_real" && "$caddy_config_dir_real" != "$deploy_dir_real/"* ]] \
+    || die "CADDY_CONFIG_DIR_HOST must be outside the release directory"
+  if [[ "$EXECUTE" == "1" && -e "$caddy_config_dir" ]]; then
+    [[ -d "$caddy_config_dir" && ! -L "$caddy_config_dir" ]] \
+      || die "CADDY_CONFIG_DIR_HOST must be a real directory: $caddy_config_dir"
+  fi
+
   origin_cert_dir="$(env_value ORIGIN_CERT_DIR_HOST)"
   if [[ -n "$origin_cert_dir" ]]; then
     [[ "$origin_cert_dir" == /* ]] || die "ORIGIN_CERT_DIR_HOST must be an absolute Linux path"
@@ -124,12 +176,20 @@ else
   log "container Caddy mode: Structify owns public 80/443"
   if [[ "$EXECUTE" == "1" ]]; then
     require_command ss
+    require_command docker
+    caddy_container=""
     for public_port in 80 443; do
       public_listeners="$(ss -H -ltn "sport = :$public_port" 2>/dev/null || true)"
-      [[ -z "$public_listeners" ]] \
-        || die "public TCP port $public_port is already bound; CADDY_MODE=container requires a dedicated host"
+      if [[ -n "$public_listeners" ]]; then
+        if [[ -z "$caddy_container" ]]; then
+          caddy_container="$(running_compose_caddy || true)"
+        fi
+        [[ -n "$caddy_container" ]] && caddy_binds_public_tcp_port "$caddy_container" "$public_port" \
+          || die "public TCP port $public_port is already bound; CADDY_MODE=container requires a dedicated host"
+        log "public TCP port $public_port is already served by the running caddy service for this Compose project"
+      fi
     done
-    log "public TCP ports 80 and 443 are available for container Caddy"
+    log "public TCP ports 80 and 443 are available for container Caddy or served by the running Compose Caddy service"
     if [[ -n "${origin_cert_dir:-}" ]]; then
       validate_origin_ca_caddy "$origin_cert_dir"
     fi
@@ -257,7 +317,9 @@ for key in JUDGE0_BASE_URL PISTON_BASE_URL; do
   fi
 done
 
-[[ "$(env_value CORS_ALLOWED_ORIGINS)" == "https://structify.cn" ]] || die "CORS_ALLOWED_ORIGINS must be exactly https://structify.cn"
+expected_cors_origins="https://structify.cn,https://admin.structify.cn"
+[[ "$(env_value CORS_ALLOWED_ORIGINS)" == "$expected_cors_origins" ]] \
+  || die "CORS_ALLOWED_ORIGINS must be exactly $expected_cors_origins"
 [[ -z "$(env_value BOOTSTRAP_ADMIN_EMAIL)" ]] || die "BOOTSTRAP_ADMIN_EMAIL must be empty in production"
 [[ -z "$(env_value TEACHER_EMAILS)" ]] || die "TEACHER_EMAILS must be empty in production"
 [[ "$(env_value ALLOW_FIRST_USER_TEACHER)" =~ ^(false|0|no|off)$ ]] || die "ALLOW_FIRST_USER_TEACHER must be false"

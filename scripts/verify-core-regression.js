@@ -36,7 +36,10 @@ const nodeCheckFiles = [
   "scripts/verify-case-demo-static.js",
   "scripts/verify-compiler-response-behavior.js",
   "scripts/execute-security-check.js",
-  "scripts/verify-production-config.js"
+  "scripts/verify-production-config.js",
+  "scripts/verify-api-contract-fixtures.js",
+  "scripts/verify-node-production-debug-knowledge.js",
+  "scripts/verify-teacher-assignment-ownership.js"
 ];
 const verifierScripts = [
   "scripts/verify-knowledge-retrieval.js",
@@ -50,6 +53,9 @@ const verifierScripts = [
   "scripts/verify-compiler-response-behavior.js",
   "scripts/execute-security-check.js",
   "scripts/verify-production-config.js",
+  "scripts/verify-api-contract-fixtures.js",
+  "scripts/verify-node-production-debug-knowledge.js",
+  "scripts/verify-teacher-assignment-ownership.js",
   "scripts/verify-dsvp-adapter.js",
   "scripts/verify-dsvp-api.js",
   "scripts/verify-presentation-runtime.js",
@@ -88,6 +94,15 @@ const verifierScripts = [
   "scripts/verify-teacher-assignment-step-evidence-static.js",
   "scripts/verify-teacher-step-evidence-coverage-static.js"
 ];
+
+const hasVueCanonicalEntry = fs.existsSync(path.join(root, "frontend", "src", "main.ts"));
+const legacyFrontendVerifierScripts = new Set(
+  verifierScripts.filter((script) => script.endsWith("-static.js"))
+);
+legacyFrontendVerifierScripts.add("scripts/verify-animation-record-flow.js");
+const activeVerifierScripts = hasVueCanonicalEntry
+  ? verifierScripts.filter((script) => !legacyFrontendVerifierScripts.has(script))
+  : verifierScripts;
 
 const checks = [];
 
@@ -164,9 +179,13 @@ for (const file of nodeCheckFiles) {
   runNode(["--check", file], `node-check ${file}`);
 }
 
-for (const script of verifierScripts) {
+for (const script of activeVerifierScripts) {
   assertFileExists(script);
   runNode([script], rel(script));
+}
+
+if (hasVueCanonicalEntry) {
+  console.log(`legacy-frontend-static-verifiers-skipped count=${verifierScripts.length - activeVerifierScripts.length}`);
 }
 
 console.log(`\ncore-regression-ok checks=${checks.length}`);

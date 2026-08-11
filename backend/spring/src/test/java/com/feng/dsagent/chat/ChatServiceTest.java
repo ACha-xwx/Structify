@@ -53,7 +53,7 @@ class ChatServiceTest {
     );
 
     @Test
-    void guestChatUsesReviewedKnowledgeButDoesNotPersist() {
+    void unmeteredServiceAdapterKeepsEvidenceFilteringIsolatedFromPersistence() {
         model.response = "栈遵循后进先出。";
 
         ChatResponse response = service.complete(
@@ -70,6 +70,7 @@ class ChatServiceTest {
             assertThat(source.content()).contains("后进先出");
         });
         assertThat(repository.saved).isEmpty();
+        assertThat(response.sources().getFirst().evidenceHash()).matches("[a-f0-9]{64}");
         assertThat(model.lastRequest.messages().getFirst().content())
             .contains("经过审核的课程资料")
             .contains("动画演示");
@@ -88,7 +89,7 @@ class ChatServiceTest {
         ));
 
         ChatResponse response = service.complete(
-            new ChatCommand("继续解释", "03-stack-queue", "session-1", List.of()),
+            new ChatCommand("解释栈的操作", "03-stack-queue", "session-1", List.of()),
             7L,
             KnowledgeAudience.STUDENT
         );
@@ -96,12 +97,12 @@ class ChatServiceTest {
         assertThat(response.sessionId()).isEqualTo("session-1");
         assertThat(repository.saved).singleElement().satisfies(saved -> {
             assertThat(saved.userId()).isEqualTo(7);
-            assertThat(saved.prompt()).isEqualTo("继续解释");
+            assertThat(saved.prompt()).isEqualTo("解释栈的操作");
             assertThat(saved.answer()).isEqualTo("继续回答。");
         });
         assertThat(model.lastRequest.messages())
             .extracting(ModelMessage::content)
-            .containsSubsequence("上一问", "上一答", "继续解释");
+            .containsSubsequence("上一问", "上一答", "解释栈的操作");
     }
 
     @Test
@@ -154,6 +155,29 @@ class ChatServiceTest {
             assertThat(saved.answer()).isEqualTo("先入后出");
             assertThat(saved.sessionId()).isEqualTo(response.sessionId());
         });
+    }
+
+    @Test
+    void rejectsFactualGenerationWhenNoAuthorizedEvidenceCanBeCited() {
+        CapturingModelClient noEvidenceModel = new CapturingModelClient();
+        ChatService noEvidence = new ChatService(
+            noEvidenceModel,
+            new KnowledgeSearchService(List.of(), 4),
+            repository,
+            new KnowledgeProperties(true, true, "unused", 4, 4, 1100)
+        );
+
+        assertThatThrownBy(() -> noEvidence.complete(
+            new ChatCommand("Explain a stack", "03-stack-queue", null, List.of()),
+            7L,
+            KnowledgeAudience.STUDENT
+        )).isInstanceOfSatisfying(ApiException.class, error -> {
+            assertThat(error.status()).isEqualTo(HttpStatus.CONFLICT);
+            assertThat(error.code()).isEqualTo("CHAT_EVIDENCE_UNAVAILABLE");
+        });
+
+        assertThat(noEvidenceModel.lastRequest).isNull();
+        assertThat(repository.saved).isEmpty();
     }
 
     private static final class CapturingModelClient implements ModelClient {

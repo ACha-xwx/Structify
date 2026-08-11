@@ -1,5 +1,6 @@
 package com.feng.dsagent.compiler;
 
+import com.feng.dsagent.aiquota.AiQuotaRequestId;
 import com.feng.dsagent.model.ModelFeatureRateLimiter;
 import com.feng.dsagent.security.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,6 +30,6 @@ public class CodeAnalysisController {
     ) {
         Long userId = user == null ? null : user.userId();
         rateLimiter.check("code-analysis", userId, servletRequest.getRemoteAddr());
-        return analysis.analyze(request, userId);
+        return analysis.analyze(request, userId, AiQuotaRequestId.from(servletRequest));
     }
 }

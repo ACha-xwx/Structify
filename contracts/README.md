@@ -16,7 +16,7 @@ These files are the integration boundary between the Spring Boot backend, the ne
 1. Change a contract before changing an API response or a shared content shape.
 2. Preserve existing fields unless all consumers migrate in the same release.
 3. Do not put API keys, private textbook text, teacher PPT files, or server paths in this directory.
-4. New animation and classroom examples must pass `ContractExampleCompatibilityTest` in `apps/server`.
+4. New animation and classroom examples must pass `ContractExampleCompatibilityTest` in `backend/spring`.
 
 The server is the final validator: it rejects unsupported animation operations, prevents a student's classroom stage from exposing `expected` answers and `misconceptions`, and only streams published resource files from the configured private resource directory. DSVP `1.0` uses an explicit `structure`/`operation` request and is adapted to the legacy renderer payload; classroom scripts may reference a stable animation ID or an inline, validated request.
 

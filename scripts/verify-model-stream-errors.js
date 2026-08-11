@@ -43,13 +43,13 @@ async function waitForHealth(baseUrl, child, stderrRef) {
   throw new Error(`server health timeout\n${stderrRef.value}`);
 }
 
-async function postChat(baseUrl, prompt, timeoutMs = 2_000) {
+async function postChat(baseUrl, prompt, timeoutMs = 2_000, origin = "https://admin.structify.cn") {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(`${baseUrl}/api/chat`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", origin },
       body: JSON.stringify({
         prompt,
         scenario: { chapter: "test", title: "test", lead: "", summary: [], references: [] },
@@ -101,6 +101,7 @@ async function main() {
       MODEL_NAME: "fixture-model",
       MODEL_TIMEOUT_MS: "300",
       MODEL_STREAM_IDLE_TIMEOUT_MS: "300",
+      CORS_ALLOWED_ORIGINS: "https://structify.cn,https://admin.structify.cn",
       SMTP_HOST: "",
       SMTP_USER: "",
       SMTP_PASS: "",
@@ -131,9 +132,11 @@ async function main() {
     ]);
     assert.match(stalledText, /模型流读取超时/);
 
-    const success = await postChat(appBaseUrl, "STREAM_OK");
+    const success = await postChat(appBaseUrl, "STREAM_OK", 2_000, "https://admin.structify.cn");
     assert.equal(success.status, 200);
     assert.match(success.headers.get("content-type") || "", /text\/event-stream/);
+    assert.equal(success.headers.get("access-control-allow-origin"), "https://admin.structify.cn");
+    assert.equal(success.headers.get("access-control-allow-credentials"), "true");
     assert.match(await success.text(), /"content":"ok"/);
 
     console.log("model-stream-errors-ok status=429 timeout=504 stall=handled success=200");

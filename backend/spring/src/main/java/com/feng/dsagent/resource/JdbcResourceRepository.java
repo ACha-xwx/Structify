@@ -46,7 +46,7 @@ public class JdbcResourceRepository implements ResourceRepository {
             "SELECT " + RESOURCE_COLUMNS + """
                 FROM resources r
                 INNER JOIN chapters c ON c.id = r.chapter_id
-                WHERE r.chapter_id = ? AND r.review_status = 'PUBLISHED' AND c.status = 'PUBLISHED'
+                WHERE r.chapter_id = ? AND r.review_status IN ('PUBLISHED', 'VERIFIED') AND c.status = 'PUBLISHED'
                   AND (
                     r.license_scope = 'PUBLIC'
                     OR (r.license_scope = 'CLASSROOM_ONLY' AND ?)
@@ -67,7 +67,7 @@ public class JdbcResourceRepository implements ResourceRepository {
             "SELECT " + RESOURCE_COLUMNS + """
                 FROM resources r
                 INNER JOIN chapters c ON c.id = r.chapter_id
-                WHERE r.id = ? AND r.review_status = 'PUBLISHED' AND c.status = 'PUBLISHED'
+                WHERE r.id = ? AND r.review_status IN ('PUBLISHED', 'VERIFIED') AND c.status = 'PUBLISHED'
                   AND (
                     r.license_scope = 'PUBLIC'
                     OR (r.license_scope = 'CLASSROOM_ONLY' AND ?)

@@ -91,9 +91,10 @@ final class DsvpEvidenceResolver {
             JOIN presentation_manifests m ON m.id = p.manifest_id
             JOIN chapters c ON c.id = m.chapter_id
             LEFT JOIN resources r ON r.id = m.resource_id
-            WHERE p.id = ? AND p.review_status = 'PUBLISHED' AND m.review_status = 'PUBLISHED'
+            WHERE p.id = ? AND p.review_status IN ('PUBLISHED', 'VERIFIED')
+              AND m.review_status IN ('PUBLISHED', 'VERIFIED')
               AND c.status = 'PUBLISHED'
-              AND (r.id IS NULL OR r.review_status = 'PUBLISHED')
+              AND (r.id IS NULL OR r.review_status IN ('PUBLISHED', 'VERIFIED'))
             """,
             (row, index) -> {
                 String actualPresentationId = row.getString("presentation_id");
@@ -136,7 +137,7 @@ final class DsvpEvidenceResolver {
             FROM resources r
             JOIN chapters c ON c.id = r.chapter_id
             WHERE r.id = ? AND r.resource_type = 'ANIMATION'
-              AND r.review_status = 'PUBLISHED' AND c.status = 'PUBLISHED'
+              AND r.review_status IN ('PUBLISHED', 'VERIFIED') AND c.status = 'PUBLISHED'
             """,
             (row, index) -> {
                 String license = row.getString("license_scope");

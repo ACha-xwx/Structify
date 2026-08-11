@@ -199,7 +199,8 @@ class JdbcChatRepository implements ChatRepository, ChatHistoryRepository {
                     node.path("content").asText(),
                     node.path("source").asText(),
                     nullableText(node, "pageLabel"),
-                    node.path("score").asDouble(0)
+                    node.path("score").asDouble(0),
+                    evidenceHash(node)
                 ));
             }
             return List.copyOf(sources);
@@ -210,6 +211,19 @@ class JdbcChatRepository implements ChatRepository, ChatHistoryRepository {
 
     private String nullableText(tools.jackson.databind.JsonNode node, String field) {
         return node.path(field).isNull() || node.path(field).isMissingNode() ? null : node.path(field).asText();
+    }
+
+    private String evidenceHash(tools.jackson.databind.JsonNode node) {
+        String stored = nullableText(node, "evidenceHash");
+        if (stored != null && stored.matches("[a-fA-F0-9]{64}")) {
+            return stored.toLowerCase(java.util.Locale.ROOT);
+        }
+        return ChatEvidenceFingerprint.hash(
+            node.path("title").asText(),
+            node.path("content").asText(),
+            node.path("source").asText(),
+            nullableText(node, "pageLabel")
+        );
     }
 
     private java.time.Instant instant(Timestamp timestamp) {

@@ -14,9 +14,9 @@ database.
 | `chat_threads` | `chat_sessions` + `chat_messages` | Thread ID/title/messages and valid created/updated timestamps are preserved. `type`, `scenario`, and `classroom_state` have no lossless Spring columns and are reported as unmapped. |
 | `learning_snapshots` | No direct row target; rebuild `learning_records` from trusted evidence | Aggregate progress, weak memory, report, stats, and teacher tasks are not losslessly event-sourced. They remain an audit-only unmapped report; do not convert JSON guesses into completed evidence. |
 | `teacher_assignments` | No Spring assignment aggregate in the current schema | Rows are audit-only. Do not import them as classroom scripts or learning events. |
-| `presentation-materials/` JSON and `rendered/` media | `presentation_manifests`, `presentation_pages`, `resources` | Node's offline slide index is filesystem data. Spring V11 stores reviewed manifest/page metadata and optional resource references in MySQL; binary media still belongs under a private `RESOURCE_DIR` or Node `PRESENTATION_DIR`. |
-| Node `knowledge/private/textbook` Markdown | `knowledge_chunks` + `resources` + `content_reviews` | File presence does not publish content. Production keeps local auto-publish off; reviewed chunks must carry chapter/resource/license/status metadata. |
-| Node `pdfs/` and uploads | Spring `resources.file_path` under `RESOURCE_DIR` | Do not copy a directory into public web space. Insert relative, normalized paths only after review; Spring rejects absolute paths, traversal, and symlink escapes. |
+| `private/presentation-materials/` JSON and `rendered/` media | `presentation_manifests`, `presentation_pages`, `resources` | Node's offline slide index is filesystem data. Spring V11 stores reviewed manifest/page metadata and optional resource references in MySQL; binary media still belongs under a private `RESOURCE_DIR` or Node `PRESENTATION_DIR`. |
+| Node `private/knowledge` Markdown | `knowledge_chunks` + `resources` + `content_reviews` | File presence does not publish content. Production keeps local auto-publish off; reviewed chunks must carry chapter/resource/license/status metadata. |
+| Node `private/pdfs` and uploads | Spring `resources.file_path` under `RESOURCE_DIR` | Do not copy a directory into public web space. Insert relative, normalized paths only after review; Spring rejects absolute paths, traversal, and symlink escapes. |
 
 ## Spring schema additions after V1
 

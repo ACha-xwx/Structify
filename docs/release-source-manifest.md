@@ -4,9 +4,8 @@ This release repository contains the reviewed application source, contracts, tes
 
 The release source intentionally excludes private courseware and local state. The following paths stay outside Git and are mounted or provisioned separately in production:
 
-- `private/` (including `source-ppt/`, `pdfs/`, `knowledge/`, and
-  `presentation-materials/`), plus any legacy root resource directories
-- `knowledge/private/`
+- `private/` (including `source-ppt/`, `pdfs/`, `knowledge/`,
+  `presentation-materials/`, and `course-content/`)
 - `data.db*`, `.jwt-secret`, `.env` files, uploads, and backups
 - `node_modules/`, `backend/spring/target/`, `private/state/node/data.db*`,
   `private/artifacts/`, `output/`, and `.playwright-cli/`

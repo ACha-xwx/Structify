@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node backend/node/server.js",
     "dev": "node --watch backend/node/server.js",
-    "test": "node scripts/verify-core-regression.js"
+    "test": "node scripts/verify-backend-layout.js && node scripts/verify-core-regression.js"
   },
   "keywords": [
     "data-structure",

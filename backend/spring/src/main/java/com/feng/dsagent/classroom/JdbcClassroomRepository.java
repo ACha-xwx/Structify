@@ -20,13 +20,13 @@ class JdbcClassroomRepository implements ClassroomRepository {
         if (chapterId == null || chapterId.isBlank()) {
             return jdbc.query(
                 "SELECT id, chapter_id, title, version_label, script_json FROM classroom_scripts "
-                    + "WHERE review_status = 'PUBLISHED' ORDER BY chapter_id, title, id",
+                    + "WHERE review_status IN ('PUBLISHED', 'VERIFIED') ORDER BY chapter_id, title, id",
                 (row, index) -> script(row)
             );
         }
         return jdbc.query(
             "SELECT id, chapter_id, title, version_label, script_json FROM classroom_scripts "
-                + "WHERE review_status = 'PUBLISHED' AND chapter_id = ? ORDER BY title, id",
+                + "WHERE review_status IN ('PUBLISHED', 'VERIFIED') AND chapter_id = ? ORDER BY title, id",
             (row, index) -> script(row),
             chapterId
         );
@@ -36,7 +36,7 @@ class JdbcClassroomRepository implements ClassroomRepository {
     public Optional<ClassroomScript> findPublishedScript(String id) {
         return jdbc.query(
             "SELECT id, chapter_id, title, version_label, script_json FROM classroom_scripts "
-                + "WHERE id = ? AND review_status = 'PUBLISHED'",
+                + "WHERE id = ? AND review_status IN ('PUBLISHED', 'VERIFIED')",
             (row, index) -> script(row),
             id
         ).stream().findFirst();

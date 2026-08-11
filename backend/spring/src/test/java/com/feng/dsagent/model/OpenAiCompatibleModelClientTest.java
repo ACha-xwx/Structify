@@ -45,7 +45,7 @@ class OpenAiCompatibleModelClientTest {
             apiKey.set(exchange.getRequestHeaders().getFirst("api-key"));
             requestBody.set(objectMapper.readTree(exchange.getRequestBody()));
             respond(exchange, 200, "application/json", """
-                {"choices":[{"message":{"content":"A stack is LIFO."}}]}
+                {"choices":[{"message":{"content":"A stack is LIFO."}}],"usage":{"total_tokens":37}}
                 """);
         }).resolve("/v1/");
         ModelClient client = client(baseUrl, API_KEY, Duration.ofSeconds(2), Duration.ofSeconds(2));
@@ -61,6 +61,7 @@ class OpenAiCompatibleModelClientTest {
         ModelResponse response = client.complete(request);
 
         assertThat(response.content()).isEqualTo("A stack is LIFO.");
+        assertThat(response.totalTokens()).isEqualTo(37L);
         assertThat(authorization.get()).isEqualTo("Bearer " + API_KEY);
         assertThat(apiKey.get()).isNull();
         assertThat(requestBody.get().path("model").asText()).isEqualTo("test-model");

@@ -15,10 +15,10 @@ and the files under `deployment/` for production.
 
 ```text
                          public 80/443
-Internet -> structify.cn -> existing host Caddy
-                             |-- /api/v1/* ----------> Spring loopback :18792
-                             |-- /api/* --------------> Node loopback :18791
-                             |-- /presentation/* -----> Node signed/auth route
+Internet -> structify.cn / admin.structify.cn -> existing host Caddy
+                                                 |-- /api/v1/* ----------> Spring loopback :18792
+                                                 |-- /api/* --------------> Node loopback :18791
+                                                 |-- /presentation/* -----> Node signed/auth route
                              `-- /, /pdfs/* ----------> Node static/legacy route
 
 Spring :8792 -> MySQL 8.4 (private data network)
@@ -97,7 +97,11 @@ private directories and SQLite files are not sent to the Docker daemon.
 
 ## Required production values
 
-- `CORS_ALLOWED_ORIGINS` must be exactly `https://structify.cn`.
+- `CORS_ALLOWED_ORIGINS` must be exactly `https://structify.cn,https://admin.structify.cn`.
+- Create the `admin.structify.cn` DNS record only after the reviewed Caddy site
+  block is installed and reloaded. In Cloudflare Origin CA mode, the installed
+  certificate must include `admin.structify.cn`; do not rely on a certificate
+  issued only for the learning host.
 - `CADDY_MODE=host` is the default for a shared host. Import
   `deployment/Caddyfile.host.production` into the existing host Caddy config,
   validate the complete Caddy configuration, then reload it. Do not replace
@@ -133,7 +137,9 @@ private directories and SQLite files are not sent to the Docker daemon.
   `NODE_COMPAT_JWT_SECRET`; while `NODE_COMPAT_ENABLED=true`, Spring accepts a
   Node Bearer token only for progress, learning-event, DSVP simulation, and
   owned animation-observation endpoints. It never trusts the Node user ID or
-  roles and maps identity by the verified email in MySQL.
+  roles. Existing Spring accounts are mapped by verified email and retain only
+  their database roles; a missing account may be mirrored only as `STUDENT`,
+  never as teacher or administrator.
 - `AUTH_COOKIE_SECURE=true`; Spring emits an `HttpOnly; Secure; SameSite=Strict`
   `ds_session` cookie and accepts the documented Bearer token as well.
 - `BOOTSTRAP_ADMIN_EMAIL`, `TEACHER_EMAILS`, and
@@ -157,7 +163,7 @@ private directories and SQLite files are not sent to the Docker daemon.
   `SMTP_NOT_CONFIGURED` rather than pretending a message was delivered.
 - `MODEL_API_KEY`, `SMTP_PASS`, database passwords, `JWT_SECRET`, and
   `NODE_COMPAT_JWT_SECRET` are secret-manager values only. The model base URL must include the provider's
-  OpenAI-compatible `/v1` path (for example, `https://api.deepseek.com/v1`).
+  documented OpenAI-compatible `/v1` path for the selected provider.
   Model configuration is optional for a degraded rollout; unconfigured model
   requests return a documented unavailable error.
 - When mail is enabled, SMTP must use either implicit TLS (`SMTP_PORT=465`,
@@ -371,8 +377,8 @@ production paths:
 |---|---|
 | `.env`, `.env.*` except example templates, `.jwt-secret` | Model, SMTP, database, and JWT secrets. |
 | `data.db`, `data.db-wal`, `data.db-shm`, `*.sql`, database dumps | Accounts, messages, learning history, and password hashes. |
-| `knowledge/private/**`, `course-content-private/**` | Copyrighted OCR and reviewed private course material. |
-| `teach_ppt/**`, `presentation-materials/**` | Original teacher PPT/PPTX files, extracted text/notes, labels, manifests, and rendered slide images. |
+| `private/knowledge/**`, `private/course-content/**` | Copyrighted OCR and reviewed private course material. |
+| `private/source-ppt/**`, `private/presentation-materials/**` | Original teacher PPT/PPTX files, extracted text/notes, labels, manifests, and rendered slide images. |
 | `/srv/structify/private/pdfs/**` | Operator-managed release PDF source; keep copyrighted courseware out of the repository and image build context. |
 | `uploads/**`, private `node-pdfs` volume snapshots | User/teacher uploads and potentially personal content. |
 | `review-records/**`, license/authorization evidence | Internal review identities and contractual evidence. |

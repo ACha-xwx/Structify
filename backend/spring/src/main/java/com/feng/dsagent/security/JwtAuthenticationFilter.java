@@ -1,5 +1,6 @@
 package com.feng.dsagent.security;
 
+import com.feng.dsagent.auth.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
@@ -18,17 +19,20 @@ public final class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenService tokens;
     private final SecurityProperties properties;
+    private final UserRepository users;
     private final NodeCompatibilityTokenVerifier nodeCompatibilityTokens;
     private final NodeCompatibilityUserResolver nodeCompatibilityUsers;
 
     public JwtAuthenticationFilter(
         JwtTokenService tokens,
         SecurityProperties properties,
+        UserRepository users,
         NodeCompatibilityTokenVerifier nodeCompatibilityTokens,
         NodeCompatibilityUserResolver nodeCompatibilityUsers
     ) {
         this.tokens = tokens;
         this.properties = properties;
+        this.users = users;
         this.nodeCompatibilityTokens = nodeCompatibilityTokens;
         this.nodeCompatibilityUsers = nodeCompatibilityUsers;
     }
@@ -42,7 +46,13 @@ public final class JwtAuthenticationFilter extends OncePerRequestFilter {
         RequestToken token = token(request);
         if (token.value() != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             try {
-                AuthenticatedUser user = tokens.verify(token.value());
+                AuthenticatedUser signedUser = tokens.verify(token.value());
+                // Role and active-state changes take effect immediately instead of
+                // waiting for the JWT TTL. The signed token identifies the account;
+                // authorization always comes from the current database record.
+                AuthenticatedUser user = users.findById(signedUser.userId())
+                    .map(account -> new AuthenticatedUser(account.id(), account.email(), account.roles()))
+                    .orElseThrow(() -> new InvalidTokenException("account is no longer active"));
                 authenticate(user, token.value());
             } catch (InvalidTokenException standardTokenRejected) {
                 if (!token.fromBearerHeader() || !isNodeCompatibilityEndpoint(request) || !nodeCompatibilityTokens.enabled()) {

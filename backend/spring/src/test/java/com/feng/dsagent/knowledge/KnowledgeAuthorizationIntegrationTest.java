@@ -48,6 +48,19 @@ class KnowledgeAuthorizationIntegrationTest {
             .doesNotContain("knowledge-auth-draft");
     }
 
+    @Test
+    void verifiedSourceAndChunkRemainSearchableWhileUnverifiedLegacyContentStaysExcluded() {
+        insertResource("knowledge-auth-verified", "CLASSROOM_ONLY", "VERIFIED");
+        insertChunk("knowledge-auth-verified", "knowledge-auth-verified", "verified/hash.md", "VERIFIED");
+        insertChunk("knowledge-auth-legacy", null, "legacy/hash.md", "LEGACY_UNVERIFIED");
+
+        KnowledgeSearchService search = new KnowledgeSearchService(repository.findPublished(), 4);
+
+        assertThat(ids(search.search("哈希冲突处理", "08-search", 6, KnowledgeAudience.STUDENT)))
+            .contains("knowledge-auth-verified")
+            .doesNotContain("knowledge-auth-legacy");
+    }
+
     private void insertResource(String id, String licenseScope, String reviewStatus) {
         jdbc.update(
             """
@@ -64,16 +77,21 @@ class KnowledgeAuthorizationIntegrationTest {
     }
 
     private void insertChunk(String id, String resourceId, String sourcePath) {
+        insertChunk(id, resourceId, sourcePath, "PUBLISHED");
+    }
+
+    private void insertChunk(String id, String resourceId, String sourcePath, String reviewStatus) {
         jdbc.update(
             """
             INSERT INTO knowledge_chunks (
                 id, chapter_id, resource_id, title, content, source_path, review_status
-            ) VALUES (?, '08-search', ?, ?, '哈希冲突处理采用开放地址法或链地址法。', ?, 'PUBLISHED')
+            ) VALUES (?, '08-search', ?, ?, '哈希冲突处理采用开放地址法或链地址法。', ?, ?)
             """,
             id,
             resourceId,
             id,
-            sourcePath
+            sourcePath,
+            reviewStatus
         );
     }
 

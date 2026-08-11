@@ -1,5 +1,6 @@
 package com.feng.dsagent.chat;
 
+import com.feng.dsagent.aiquota.AiQuotaExecution;
 import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.knowledge.KnowledgeProperties;
 import com.feng.dsagent.knowledge.KnowledgeAudience;
@@ -14,6 +15,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.function.Consumer;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -29,7 +31,7 @@ public class ChatService {
         在回答结尾用一句自然的话询问用户是否需要生成对应的交互式动画演示；在用户确认前不要直接生成动画数据。
         """;
 
-    private final ModelClient model;
+    private final AiQuotaExecution execution;
     private final KnowledgeSearchService knowledge;
     private final ChatRepository repository;
     private final KnowledgeProperties properties;
@@ -40,17 +42,32 @@ public class ChatService {
         ChatRepository repository,
         KnowledgeProperties properties
     ) {
-        this.model = model;
+        this(AiQuotaExecution.unmetered(model), knowledge, repository, properties);
+    }
+
+    @Autowired
+    ChatService(
+        AiQuotaExecution execution,
+        KnowledgeSearchService knowledge,
+        ChatRepository repository,
+        KnowledgeProperties properties
+    ) {
+        this.execution = execution;
         this.knowledge = knowledge;
         this.repository = repository;
         this.properties = properties;
     }
 
     public ChatResponse complete(ChatCommand command, Long userId, KnowledgeAudience audience) {
+        return complete(command, userId, audience, null);
+    }
+
+    public ChatResponse complete(ChatCommand command, Long userId, KnowledgeAudience audience, String requestId) {
+        execution.requireFormalAuthentication(userId);
         PreparedChat prepared = prepare(command, userId, audience);
         String answer;
         try {
-            answer = model.complete(prepared.request()).content();
+            answer = execution.complete(userId, "chat", requestId, prepared.request()).content();
         } catch (ModelClientException error) {
             throw modelFailure(error);
         }
@@ -64,11 +81,23 @@ public class ChatService {
         Consumer<List<ChatSource>> sourceConsumer,
         Consumer<String> contentConsumer
     ) {
+        return stream(command, userId, audience, null, sourceConsumer, contentConsumer);
+    }
+
+    public ChatResponse stream(
+        ChatCommand command,
+        Long userId,
+        KnowledgeAudience audience,
+        String requestId,
+        Consumer<List<ChatSource>> sourceConsumer,
+        Consumer<String> contentConsumer
+    ) {
+        execution.requireFormalAuthentication(userId);
         PreparedChat prepared = prepare(command, userId, audience);
         sourceConsumer.accept(prepared.sources());
         StringBuilder answer = new StringBuilder();
         try {
-            model.stream(prepared.request(), content -> {
+            execution.stream(userId, "chat", requestId, prepared.request(), content -> {
                 answer.append(content);
                 contentConsumer.accept(content);
             });
@@ -78,12 +107,23 @@ public class ChatService {
         return finish(command, userId, prepared.chapterId(), prepared.sources(), answer.toString());
     }
 
+    public void requireFormalAuthentication(Long userId) {
+        execution.requireFormalAuthentication(userId);
+    }
+
     private PreparedChat prepare(ChatCommand command, Long userId, KnowledgeAudience audience) {
         String prompt = normalizePrompt(command.prompt());
         String chapterId = normalizeChapterId(command.chapterId());
         List<ChatTurn> history = history(command, userId);
         int searchLimit = Math.max(1, Math.min(properties.searchLimit(), 6));
         List<KnowledgeSearchResult> results = knowledge.search(prompt, chapterId, searchLimit, audience);
+        if (results.isEmpty()) {
+            throw new ApiException(
+                HttpStatus.CONFLICT,
+                "CHAT_EVIDENCE_UNAVAILABLE",
+                "No authorized published evidence is available for this question"
+            );
+        }
         List<ChatSource> sources = results.stream().map(this::source).toList();
 
         List<ModelMessage> messages = new ArrayList<>();
@@ -151,7 +191,8 @@ public class ChatService {
             truncate(chunk.content().replaceAll("\\s+", " ").trim(), 500),
             chunk.source(),
             chunk.pageLabel(),
-            result.score()
+            result.score(),
+            ChatEvidenceFingerprint.hash(chunk.title(), chunk.content(), chunk.source(), chunk.pageLabel())
         );
     }
 

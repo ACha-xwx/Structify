@@ -51,6 +51,7 @@ class DsvpSourceApiIntegrationTest {
             OWNER, "dsvp-source-owner@example.com");
         jdbc.update("INSERT INTO users (id, email, password_hash) VALUES (?, ?, 'hash')",
             OTHER_USER, "dsvp-source-other@example.com");
+        jdbc.update("INSERT INTO user_roles (user_id, role) VALUES (?, 'TEACHER')", OTHER_USER);
         jdbc.update(
             """
             INSERT INTO resources (
@@ -186,7 +187,7 @@ class DsvpSourceApiIntegrationTest {
                 + "WHERE id = 'dsvp-source-presentation'"
         );
         String studentToken = tokens.issue(OWNER, "dsvp-source-owner@example.com", Set.of("STUDENT"));
-        String teacherToken = tokens.issue(OWNER, "dsvp-source-owner@example.com", Set.of("TEACHER"));
+        String teacherToken = tokens.issue(OTHER_USER, "dsvp-source-other@example.com", Set.of("TEACHER"));
         String body = """
             {"version":"1.0","structure":"linked_list","operation":"append","params":{"value":2},"initial_state":{"data":[1]},"context":{"presentation_id":"dsvp-source-presentation","presentation_page_id":"dsvp-source-page","source_type":"PPT"}}
             """;

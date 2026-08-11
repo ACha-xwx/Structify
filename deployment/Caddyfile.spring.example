@@ -10,7 +10,7 @@ www.structify.cn {
     redir https://structify.cn{uri} permanent
 }
 
-structify.cn {
+(structify_routes) {
     encode zstd gzip
 
     route {
@@ -42,4 +42,14 @@ structify.cn {
             reverse_proxy 127.0.0.1:18791
         }
     }
+}
+
+structify.cn {
+    import structify_routes
+}
+
+# This transition topology keeps the management domain on the same Node/Spring
+# proxy pair. Spring performs the actual administrator authorization.
+admin.structify.cn {
+    import structify_routes
 }
