@@ -245,8 +245,13 @@ function verifyOptionalDeploymentContract() {
   assert.match(nodeEntrypoint, /touch \/app\/pdfs\/\.course-pdfs-seeded/, "course PDF seed must record completion separately from the legacy marker");
   assert.match(nodeEntrypoint, /if \[ ! -e \/app\/pdfs\/\.seeded \]; then/, "legacy PDF marker behavior must remain available");
   assert.match(nodeDockerfile, /npm ci --omit=dev --ignore-scripts=false/);
-  assert.doesNotMatch(nodeDockerfile, /apt-get\s+(?:update|install)/i, "Node dependencies must use published prebuilds rather than downloading a compiler toolchain");
-  assert.doesNotMatch(nodeDockerfile, /\b(?:python3|build-essential)\b/, "Node runtime image must not carry unused compiler dependencies");
+  assert.match(nodeDockerfile, /FROM \$\{NODE_BASE_IMAGE\} AS dependencies[\s\S]*apt-get install -y --no-install-recommends python3 make g\+\+/,
+    "the dependency-only stage must provide a native build fallback for better-sqlite3");
+  assert.match(nodeDockerfile, /npm_config_build_from_source=true npm ci --omit=dev --ignore-scripts=false/,
+    "native dependencies must compile deterministically instead of relying on a registry prebuild download");
+  const runtimeStage = nodeDockerfile.slice(nodeDockerfile.lastIndexOf("FROM ${NODE_BASE_IMAGE}"));
+  assert.doesNotMatch(runtimeStage, /apt-get\s+(?:update|install)|\b(?:python3|make|g\+\+)\b/i,
+    "the Node runtime image must not carry compiler dependencies");
   assert.match(nodeDockerfile, /ARG NODE_BASE_IMAGE=node:22-bookworm-slim/);
   assert.match(springDockerfile, /ARG JAVA_BUILD_IMAGE=eclipse-temurin:21-jdk/);
   assert.match(springDockerfile, /ARG JAVA_RUNTIME_IMAGE=eclipse-temurin:21-jre/);
