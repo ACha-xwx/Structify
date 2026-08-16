@@ -49,7 +49,14 @@ structify.cn {
 }
 
 # This transition topology keeps the management domain on the same Node/Spring
-# proxy pair. Spring performs the actual administrator authorization.
+# proxy pair. Spring performs the actual administrator authorization. Keep the
+# historical direct-host sample aligned with the production host boundary.
 admin.structify.cn {
+    @admin_root path /
+    redir @admin_root /admin 308
+    @admin_non_management_spa {
+        not path / /admin /admin/* /api /api/* /presentation /presentation/* /healthz /login /reset-password /403
+    }
+    redir @admin_non_management_spa https://structify.cn{uri} 308
     import structify_routes
 }

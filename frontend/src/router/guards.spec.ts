@@ -9,6 +9,56 @@ function adminSettingsMeta() {
 }
 
 describe("路由守卫公共边界", () => {
+  it("admin 主机内导航到学习路径时跳转到公共主机并保留书签", async () => {
+    let redirectedTo = "";
+    let restoreAttempts = 0;
+    const guard = createRouteGuard({
+      auth: {
+        state: { status: "idle", user: null, capabilities: null, error: null },
+        restoreSession: async () => { restoreAttempts += 1; },
+      } as never,
+      location: { hostname: "admin.structify.cn" },
+      redirectToPublic: (url) => { redirectedTo = url; },
+    });
+
+    await expect(guard({
+      path: "/user/chapters",
+      fullPath: "/user/chapters?chapter=03#resources",
+      meta: { requiresAuth: true },
+    } as never)).resolves.toBe(false);
+
+    expect(redirectedTo).toBe("https://structify.cn/user/chapters?chapter=03#resources");
+    expect(restoreAttempts).toBe(0);
+  });
+
+  it("admin 主机根路径在前端导航时也回到管理总览", async () => {
+    const guard = createRouteGuard({
+      auth: {
+        state: { status: "anonymous", user: null, capabilities: null, error: null },
+        restoreSession: async () => undefined,
+      } as never,
+      location: { hostname: "admin.structify.cn" },
+      redirectToPublic: () => { throw new Error("根路径不应跳转到公共主机"); },
+    });
+
+    await expect(guard({ path: "/", fullPath: "/", meta: {} } as never)).resolves.toEqual({ path: "/admin" });
+  });
+
+  it("admin 登录与管理路径不触发公共主机跳转", async () => {
+    let redirected = false;
+    const guard = createRouteGuard({
+      auth: {
+        state: { status: "anonymous", user: null, capabilities: null, error: null },
+        restoreSession: async () => undefined,
+      } as never,
+      location: { hostname: "admin.structify.cn" },
+      redirectToPublic: () => { redirected = true; },
+    });
+
+    await expect(guard({ path: "/login", fullPath: "/login?redirect=%2Fadmin", meta: {} } as never)).resolves.toBe(true);
+    expect(redirected).toBe(false);
+  });
+
   it("未登录访问受保护路由时保留回跳地址", async () => {
     const guard = createRouteGuard({
       auth: {

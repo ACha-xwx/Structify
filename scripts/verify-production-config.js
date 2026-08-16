@@ -153,6 +153,7 @@ function verifyOptionalDeploymentContract() {
   const smoke = fs.readFileSync(path.join(root, "deployment", "scripts", "smoke.sh"), "utf8");
   const hostCaddy = fs.readFileSync(path.join(root, "deployment", "Caddyfile.host.production"), "utf8");
   const productionCaddy = fs.readFileSync(path.join(root, "deployment", "Caddyfile.production"), "utf8");
+  const directHostCaddy = fs.readFileSync(path.join(root, "deployment", "Caddyfile.spring.example"), "utf8");
   const productionApplication = fs.readFileSync(path.join(root, "backend", "spring", "src", "main", "resources", "application-prod.yml"), "utf8");
   const springApplication = fs.readFileSync(path.join(root, "backend", "spring", "src", "main", "resources", "application.yml"), "utf8");
   const nodeServer = fs.readFileSync(path.join(root, "backend", "node", "server.js"), "utf8");
@@ -231,9 +232,16 @@ function verifyOptionalDeploymentContract() {
   assert.match(hostCaddy, /header Origin https:\/\/admin\.structify\.cn/);
   assert.match(productionCaddy, /header Origin https:\/\/admin\.structify\.cn/);
   assert.match(hostCaddy, /Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"/);
-  assert.match(hostCaddy, /admin\.structify\.cn\s*\{\s*@admin_root path \/\s*redir @admin_root \/admin 302/s);
   assert.match(productionCaddy, /Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"/);
-  assert.match(productionCaddy, /admin\.structify\.cn\s*\{[\s\S]*@admin_root path \/[\s\S]*redir @admin_root \/admin 302/s);
+  const adminHostBoundary = /@admin_root path \/\s*redir @admin_root \/admin 308\s*@admin_non_management_spa\s*\{\s*not path \/ \/admin \/admin\/\* \/api \/api\/\* \/presentation \/presentation\/\* \/healthz \/login \/reset-password \/403\s*\}\s*redir @admin_non_management_spa https:\/\/structify\.cn\{uri\} 308/s;
+  for (const [name, caddy] of [["host", hostCaddy], ["container", productionCaddy], ["direct-host example", directHostCaddy]]) {
+    assert.match(caddy, /admin\.structify\.cn\s*\{/, `${name} Caddy configuration must declare the admin host`);
+    assert.match(caddy, adminHostBoundary, `${name} Caddy configuration must isolate non-management SPA paths`);
+    assert.doesNotMatch(caddy, /redir @admin_root \/admin 302/, `${name} Caddy configuration must not retain the temporary admin-root redirect`);
+  }
+  assert.match(smoke, /^PUBLIC_ORIGIN="https:\/\/structify\.cn"$/m);
+  assert.match(smoke, /expect_redirect "\$ADMIN_DOMAIN\/" "\/admin"/);
+  assert.match(smoke, /expect_redirect "\$ADMIN_DOMAIN\/user\/chapters\?admin-host-contract=1" "\$PUBLIC_ORIGIN\/user\/chapters\?admin-host-contract=1"/);
   assert.doesNotMatch(hostCaddy, /Strict-Transport-Security/, "HSTS requires an explicit production decision");
   assert.doesNotMatch(productionCaddy, /Strict-Transport-Security/, "HSTS requires an explicit production decision");
   assert.match(productionApplication, /mail-enabled:\s+\$\{AUTH_MAIL_ENABLED:false\}/);
@@ -270,15 +278,15 @@ function verifyOptionalDeploymentContract() {
   assert.match(compose, /NODE_BASE_IMAGE:\s+\$\{NODE_BASE_IMAGE:-node:22-bookworm-slim\}/);
   assert.match(compose, /JAVA_BUILD_IMAGE:\s+\$\{JAVA_BUILD_IMAGE:-eclipse-temurin:21-jdk\}/);
   assert.match(compose, /JAVA_RUNTIME_IMAGE:\s+\$\{JAVA_RUNTIME_IMAGE:-eclipse-temurin:21-jre\}/);
-  assert.match(compose, /mem_limit:\s+\$\{MYSQL_MEMORY_LIMIT:-384m\}/);
-  assert.match(compose, /mem_limit:\s+\$\{NODE_MEMORY_LIMIT:-256m\}/);
-  assert.match(compose, /mem_limit:\s+\$\{SPRING_MEMORY_LIMIT:-384m\}/);
+  assert.match(compose, /mem_limit:\s+\$\{MYSQL_MEMORY_LIMIT:-320m\}/);
+  assert.match(compose, /mem_limit:\s+\$\{NODE_MEMORY_LIMIT:-192m\}/);
+  assert.match(compose, /mem_limit:\s+\$\{SPRING_MEMORY_LIMIT:-320m\}/);
   assert.match(compose, /mem_limit:\s+\$\{CADDY_MEMORY_LIMIT:-64m\}/);
   assert.match(compose, /mem_reservation:\s+\$\{MYSQL_MEMORY_RESERVATION:-256m\}/);
-  assert.match(compose, /mem_reservation:\s+\$\{NODE_MEMORY_RESERVATION:-160m\}/);
-  assert.match(compose, /mem_reservation:\s+\$\{SPRING_MEMORY_RESERVATION:-288m\}/);
+  assert.match(compose, /mem_reservation:\s+\$\{NODE_MEMORY_RESERVATION:-128m\}/);
+  assert.match(compose, /mem_reservation:\s+\$\{SPRING_MEMORY_RESERVATION:-256m\}/);
   assert.match(compose, /mem_reservation:\s+\$\{CADDY_MEMORY_RESERVATION:-64m\}/);
-  assert.match(compose, /NODE_OPTIONS:\s+"--max-old-space-size=\$\{NODE_MAX_OLD_SPACE_MB:-160\}"/);
+  assert.match(compose, /NODE_OPTIONS:\s+"--max-old-space-size=\$\{NODE_MAX_OLD_SPACE_MB:-128\}"/);
   assert.match(compose, /BOOTSTRAP_ADMIN_PROVISION_ENABLED:\s+\$\{BOOTSTRAP_ADMIN_PROVISION_ENABLED:-false\}/);
   assert.match(compose, /BOOTSTRAP_ADMIN_PROVISION_RECONCILE_EXISTING:\s+\$\{BOOTSTRAP_ADMIN_PROVISION_RECONCILE_EXISTING:-false\}/);
   assert.match(compose, /BOOTSTRAP_ADMIN_PROVISION_EMAIL:\s+\$\{BOOTSTRAP_ADMIN_PROVISION_EMAIL:-\}/);
@@ -295,17 +303,17 @@ function verifyOptionalDeploymentContract() {
   assert.match(productionEnv, /^CADDY_CONFIG_DIR_HOST=\/srv\/structify\/caddy$/m);
   assert.match(productionEnv, /^MEMORY_PROFILE=low-memory$/m);
   assert.match(productionEnv, /^MEMORY_BUDGET_MB=1024$/m);
-  assert.match(productionEnv, /^MEMORY_RESERVE_MB=256$/m);
+  assert.match(productionEnv, /^MEMORY_RESERVE_MB=128$/m);
   assert.match(productionEnv, /^MIN_AVAILABLE_MEMORY_MB=1024$/m);
-  assert.match(productionEnv, /^MYSQL_MEMORY_LIMIT=384m$/m);
-  assert.match(productionEnv, /^NODE_MEMORY_LIMIT=256m$/m);
-  assert.match(productionEnv, /^SPRING_MEMORY_LIMIT=384m$/m);
+  assert.match(productionEnv, /^MYSQL_MEMORY_LIMIT=320m$/m);
+  assert.match(productionEnv, /^NODE_MEMORY_LIMIT=192m$/m);
+  assert.match(productionEnv, /^SPRING_MEMORY_LIMIT=320m$/m);
   assert.match(productionEnv, /^CADDY_MEMORY_LIMIT=64m$/m);
   assert.match(productionEnv, /^MYSQL_MEMORY_RESERVATION=256m$/m);
-  assert.match(productionEnv, /^NODE_MEMORY_RESERVATION=160m$/m);
-  assert.match(productionEnv, /^SPRING_MEMORY_RESERVATION=288m$/m);
+  assert.match(productionEnv, /^NODE_MEMORY_RESERVATION=128m$/m);
+  assert.match(productionEnv, /^SPRING_MEMORY_RESERVATION=256m$/m);
   assert.match(productionEnv, /^CADDY_MEMORY_RESERVATION=64m$/m);
-  assert.match(productionEnv, /^NODE_MAX_OLD_SPACE_MB=160$/m);
+  assert.match(productionEnv, /^NODE_MAX_OLD_SPACE_MB=128$/m);
   assert.match(productionEnv, /^PDF_SOURCE_DIR_HOST=\/srv\/structify\/private\/pdfs$/m);
   assert.match(productionEnv, /^BOOTSTRAP_ADMIN_PROVISION_ENABLED=false$/m);
   assert.match(productionEnv, /^BOOTSTRAP_ADMIN_PROVISION_RECONCILE_EXISTING=false$/m);
@@ -520,8 +528,8 @@ function verifyLowMemoryBudgetGate() {
   writeExecutable(path.join(binDir, "caddy"), "exit 0");
   fs.writeFileSync(bashEnv, [
     "stat() { if [[ \"$1\" == \"-c\" && \"$2\" == \"%a\" ]]; then printf '600\\n'; else command stat \"$@\"; fi; }",
-    // 1,408 MiB available: low profile is allowed because hard limits plus reserve fit.
-    "awk() { if [[ \"$*\" == *\"/proc/meminfo\"* ]]; then printf '1441792\\n'; else command awk \"$@\"; fi; }"
+    // Exactly 1,024 MiB available: the low profile must fit its declared envelope.
+    "awk() { if [[ \"$*\" == *\"/proc/meminfo\"* ]]; then printf '1048576\\n'; else command awk \"$@\"; fi; }"
   ].join("\n"));
   fs.writeFileSync(hostCaddyConfig, "structify.test { respond \\\"ok\\\" }\\n", { mode: 0o600 });
 
@@ -559,10 +567,10 @@ function verifyLowMemoryBudgetGate() {
     "MEMORY_PROFILE=low-memory",
     "MEMORY_BUDGET_MB=1024",
     "MIN_AVAILABLE_MEMORY_MB=1024",
-    "MEMORY_RESERVE_MB=256",
-    "MYSQL_MEMORY_LIMIT=384m",
-    "NODE_MEMORY_LIMIT=256m",
-    "SPRING_MEMORY_LIMIT=384m",
+    "MEMORY_RESERVE_MB=128",
+    "MYSQL_MEMORY_LIMIT=320m",
+    "NODE_MEMORY_LIMIT=192m",
+    "SPRING_MEMORY_LIMIT=320m",
     "CADDY_MEMORY_LIMIT=64m",
     `KNOWLEDGE_DIR_HOST=${bashPath(privatePaths[0])}`,
     `RESOURCE_DIR_HOST=${bashPath(privatePaths[1])}`,
@@ -584,22 +592,22 @@ function verifyLowMemoryBudgetGate() {
     const fitsOutput = `${fits.stdout || ""}\\n${fits.stderr || ""}`;
     assert.equal(fits.status, 0, fitsOutput);
     assert.match(fitsOutput, /memory budget .* meets available memory/);
-    assert.match(fitsOutput, /effective 1344 MiB/);
+    assert.match(fitsOutput, /effective 1024 MiB/);
 
     fs.writeFileSync(bashEnv, fs.readFileSync(bashEnv, "utf8").replace(
-      "1441792",
-      "1310720"
+      "1048576",
+      "1047552"
     ));
     const belowHardEnvelope = spawnSync(shell, [
       "deployment/scripts/preflight.sh", "--env-file", bashPath(envFile), "--execute"
     ], { cwd: root, encoding: "utf8", env });
     const belowHardEnvelopeOutput = `${belowHardEnvelope.stdout || ""}\\n${belowHardEnvelope.stderr || ""}`;
     assert.notEqual(belowHardEnvelope.status, 0, belowHardEnvelopeOutput);
-    assert.match(belowHardEnvelopeOutput, /configured memory budget 1024 MiB \(effective minimum 1344 MiB\) exceeds available memory 1280 MiB/);
+    assert.match(belowHardEnvelopeOutput, /available memory 1023 MiB is below configured floor 1024 MiB/);
 
     fs.writeFileSync(bashEnv, fs.readFileSync(bashEnv, "utf8").replace(
-      "1310720",
-      "1441792"
+      "1047552",
+      "1048576"
     ));
 
     fs.writeFileSync(envFile, fs.readFileSync(envFile, "utf8").replace(
@@ -1173,13 +1181,13 @@ function verifyProductionEnvGenerator() {
     assert.equal(values.ORIGIN_CERT_DIR_HOST, "");
     assert.equal(values.MEMORY_PROFILE, "low-memory");
     assert.equal(values.MEMORY_BUDGET_MB, "1024");
-    assert.equal(values.MEMORY_RESERVE_MB, "256");
+    assert.equal(values.MEMORY_RESERVE_MB, "128");
     assert.equal(values.MIN_AVAILABLE_MEMORY_MB, "1024");
-    assert.equal(values.MYSQL_MEMORY_LIMIT, "384m");
-    assert.equal(values.NODE_MEMORY_LIMIT, "256m");
-    assert.equal(values.SPRING_MEMORY_LIMIT, "384m");
+    assert.equal(values.MYSQL_MEMORY_LIMIT, "320m");
+    assert.equal(values.NODE_MEMORY_LIMIT, "192m");
+    assert.equal(values.SPRING_MEMORY_LIMIT, "320m");
     assert.equal(values.CADDY_MEMORY_LIMIT, "64m");
-    assert.equal(values.NODE_MAX_OLD_SPACE_MB, "160");
+    assert.equal(values.NODE_MAX_OLD_SPACE_MB, "128");
     assert.equal(values.PDF_SOURCE_DIR_HOST, "/srv/structify/private/pdfs");
     if (process.platform !== "win32") {
       assert.equal(fs.statSync(outputParent).mode & 0o777, 0o700);

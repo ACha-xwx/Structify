@@ -421,7 +421,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
           <header class="mail-card__header"><div><h2>测试投递</h2><p>使用当前设置发送到当前管理员邮箱。</p></div></header>
           <div class="mail-test-row">
             <label class="admin-field"><span>测试收件人</span><input v-model="testRecipient" type="email" :readonly="Boolean(actorEmail)" :placeholder="actorEmail || '当前管理员邮箱'" required /></label>
-            <LiquidMetalButton :disabled="saving || testing || sending || !testRecipient" @click="sendTestMail">{{ sending ? "发送中…" : "发送测试邮件" }}</LiquidMetalButton>
+            <LiquidMetalButton class="mail-test-send-button" :disabled="saving || testing || sending || !testRecipient" @click="sendTestMail">{{ sending ? "发送中…" : "发送测试邮件" }}</LiquidMetalButton>
           </div>
         </section>
       </form>
@@ -822,6 +822,18 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
   box-shadow: inset 1px 0 0 rgba(57, 193, 221, 0.1), inset -1px 0 0 rgba(226, 102, 151, 0.1), 0 8px 20px rgba(32, 61, 65, 0.05);
 }
 
+/* The test-send action intentionally uses the same raised white-metal rim as the approved liquid button. */
+.mail-operations :deep(.mail-test-send-button) {
+  --liquid-width: 148px;
+  --liquid-height: 52px;
+}
+
+.mail-operations :deep(.mail-test-send-button .liquid-metal-button__content-layer) {
+  font-family: var(--font-serif, "SimSun", serif);
+  font-size: 17px;
+  font-weight: 700;
+}
+
 .mail-operations .mail-test-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -923,5 +935,185 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
   .mail-operations .mail-card,
   .mail-operations .admin-field :is(input, select, textarea),
   .mail-operations .mail-preview__frame { border-color: #29444a; }
+}
+
+/* Keep the configuration workspace quiet: the material is glass, not decoration. */
+:deep(.admin-page[data-admin-view="邮件设置"] .admin-page__header) {
+  overflow: visible;
+  padding: 2px 0 22px;
+  border: 0;
+  border-bottom: 1px solid rgba(32, 32, 32, 0.14);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+:deep(.admin-page[data-admin-view="邮件设置"] .admin-page__header::before),
+:deep(.admin-page[data-admin-view="邮件设置"] .admin-page__header::after) { display: none; }
+
+.mail-operations {
+  --mail-ink: #202020;
+  --mail-muted: #707070;
+  --mail-line: rgba(32, 32, 32, 0.16);
+  --mail-line-strong: rgba(32, 32, 32, 0.3);
+  --mail-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mail-operations .mail-card {
+  border-color: var(--mail-line);
+  border-top-color: rgba(255, 255, 255, 0.96);
+  border-right-color: rgba(32, 32, 32, 0.16);
+  border-bottom-color: rgba(32, 32, 32, 0.14);
+  border-left-color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    inset 0 -1px 0 rgba(32, 32, 32, 0.04),
+    0 10px 26px rgba(18, 18, 18, 0.07);
+  -webkit-backdrop-filter: blur(16px) saturate(0.9);
+  backdrop-filter: blur(16px) saturate(0.9);
+}
+
+.mail-operations .mail-card::before {
+  background: linear-gradient(112deg, rgba(255, 255, 255, 0.58), transparent 36%, rgba(255, 255, 255, 0.16) 64%, rgba(255, 255, 255, 0.38));
+  opacity: 0.54;
+}
+
+.mail-operations .mail-card::after {
+  background: linear-gradient(118deg, rgba(255, 255, 255, 0.84), rgba(96, 96, 96, 0.22) 30%, rgba(255, 255, 255, 0.08) 58%, rgba(32, 32, 32, 0.24));
+  opacity: 0.44;
+}
+
+.mail-operations .mail-card__header { border-bottom-color: rgba(32, 32, 32, 0.12); }
+.mail-operations .mail-card__header h2 { color: var(--mail-ink); font-family: var(--admin-display, Georgia, serif); font-weight: 500; }
+.mail-operations .mail-card__header p,
+.mail-operations .mail-last-test,
+.mail-operations .admin-field,
+.mail-operations .admin-field small,
+.mail-operations .mail-preview__subject span { color: var(--mail-muted); }
+
+.mail-operations .admin-field :is(input, select, textarea) {
+  border-color: rgba(32, 32, 32, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.94);
+  border-right-color: rgba(32, 32, 32, 0.14);
+  border-bottom-color: rgba(32, 32, 32, 0.16);
+  border-left-color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), inset 0 -1px 0 rgba(32, 32, 32, 0.04);
+  color: var(--mail-ink);
+}
+
+.mail-operations .admin-field :is(input, select, textarea):hover { border-color: rgba(32, 32, 32, 0.34); }
+.mail-operations .admin-field :is(input, select, textarea):focus {
+  border-color: rgba(32, 32, 32, 0.58);
+  box-shadow: 0 0 0 3px rgba(32, 32, 32, 0.13), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+.mail-operations .admin-field :is(input, select, textarea)[readonly] { background: rgba(238, 238, 236, 0.9); color: #6b6b6b; }
+
+.mail-operations .mail-toggle { color: var(--mail-ink); }
+.mail-operations .mail-toggle__control {
+  border-color: rgba(32, 32, 32, 0.28);
+  background: rgba(32, 32, 32, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+}
+.mail-operations .mail-toggle__control > span { box-shadow: 0 1px 3px rgba(18, 18, 18, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.72); }
+.mail-operations .mail-toggle input:checked + .mail-toggle__control {
+  border-color: #303030;
+  background: linear-gradient(180deg, #4a4a4a, #282828);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24), inset 0 -1px 0 rgba(0, 0, 0, 0.42);
+}
+.mail-operations .mail-toggle input:checked + .mail-toggle__control > span { box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.82); }
+.mail-operations .mail-toggle input:focus-visible + .mail-toggle__control { box-shadow: 0 0 0 3px rgba(32, 32, 32, 0.18); }
+.mail-operations .mail-clear-password input { accent-color: #303030; }
+.mail-operations .mail-card__actions { border-top-color: rgba(32, 32, 32, 0.12); }
+
+.mail-operations .mail-preview__subject strong,
+.mail-operations code { color: var(--mail-ink); }
+.mail-operations code {
+  border-color: rgba(32, 32, 32, 0.16);
+  background: rgba(255, 255, 255, 0.56);
+}
+.mail-operations .mail-preview__frame {
+  border-color: rgba(32, 32, 32, 0.2);
+  border-top-color: rgba(255, 255, 255, 0.94);
+  background: #ffffff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.94), 0 8px 20px rgba(18, 18, 18, 0.05);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mail-operations .mail-card:hover {
+    border-color: rgba(32, 32, 32, 0.28);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.98), inset 0 -1px 0 rgba(32, 32, 32, 0.04), 0 14px 28px rgba(18, 18, 18, 0.09);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :deep(.admin-page[data-admin-view="邮件设置"] .admin-page__header),
+  .mail-operations .mail-card,
+  .mail-operations .admin-field :is(input, select, textarea) { background: var(--surface); }
+}
+
+@media (prefers-contrast: more) {
+  .mail-operations .mail-card,
+  .mail-operations .admin-field :is(input, select, textarea),
+  .mail-operations .mail-preview__frame { border-color: #4a4a4a; }
+}
+
+:global([data-theme="dark"]) .mail-operations {
+  --mail-ink: var(--text);
+  --mail-muted: var(--text-muted);
+  --mail-line: var(--line);
+  --mail-line-strong: var(--line-strong);
+}
+
+:global([data-theme="dark"]) .mail-operations .mail-card {
+  border-top-color: color-mix(in srgb, var(--surface) 72%, transparent);
+  border-right-color: color-mix(in srgb, var(--text) 18%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--text) 24%, transparent);
+  border-left-color: color-mix(in srgb, var(--surface) 54%, transparent);
+  background:
+    linear-gradient(112deg, color-mix(in srgb, var(--surface) 58%, transparent), transparent 36%, color-mix(in srgb, var(--surface) 16%, transparent) 64%, color-mix(in srgb, var(--surface) 30%, transparent)),
+    color-mix(in srgb, var(--surface) 82%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 56%, transparent), inset 0 -1px 0 rgba(0, 0, 0, 0.28), 0 10px 26px rgba(0, 0, 0, 0.23);
+}
+
+:global([data-theme="dark"]) .mail-operations .mail-card::before {
+  background: linear-gradient(112deg, color-mix(in srgb, var(--surface) 42%, transparent), transparent 36%, color-mix(in srgb, var(--surface) 12%, transparent) 64%, color-mix(in srgb, var(--surface) 24%, transparent));
+}
+
+:global([data-theme="dark"]) .mail-operations .mail-card::after {
+  background: linear-gradient(118deg, color-mix(in srgb, var(--surface) 48%, transparent), color-mix(in srgb, var(--text-muted) 22%, transparent) 30%, transparent 58%, color-mix(in srgb, var(--text) 22%, transparent));
+}
+
+:global([data-theme="dark"]) .mail-operations .mail-card__header,
+:global([data-theme="dark"]) :deep(.admin-page[data-admin-view="邮件设置"] .admin-page__header) { border-color: var(--line); }
+
+:global([data-theme="dark"]) .mail-operations .admin-field :is(input, select, textarea) {
+  border-top-color: color-mix(in srgb, var(--surface) 58%, transparent);
+  border-right-color: color-mix(in srgb, var(--text) 18%, transparent);
+  border-bottom-color: color-mix(in srgb, var(--text) 24%, transparent);
+  border-left-color: color-mix(in srgb, var(--surface) 38%, transparent);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 54%, transparent), inset 0 -1px 0 rgba(0, 0, 0, 0.22);
+  color: var(--mail-ink);
+}
+
+:global([data-theme="dark"]) .mail-operations .admin-field :is(input, select, textarea):hover { border-color: color-mix(in srgb, var(--text) 36%, transparent); }
+:global([data-theme="dark"]) .mail-operations .admin-field :is(input, select, textarea):focus { border-color: color-mix(in srgb, var(--text) 58%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 14%, transparent), inset 0 1px 0 color-mix(in srgb, var(--surface) 54%, transparent); }
+:global([data-theme="dark"]) .mail-operations .admin-field :is(input, select, textarea)[readonly] { background: var(--surface-subtle); color: var(--mail-muted); }
+
+:global([data-theme="dark"]) .mail-operations .mail-toggle__control { border-color: color-mix(in srgb, var(--text) 30%, transparent); background: color-mix(in srgb, var(--text) 16%, transparent); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 28%, transparent), inset 0 -1px 0 rgba(0, 0, 0, 0.28); }
+:global([data-theme="dark"]) .mail-operations .mail-toggle input:checked + .mail-toggle__control { border-color: var(--text); background: var(--text); }
+:global([data-theme="dark"]) .mail-operations .mail-toggle input:checked + .mail-toggle__control > span { box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.82); }
+:global([data-theme="dark"]) .mail-operations code { border-color: color-mix(in srgb, var(--text) 18%, transparent); background: color-mix(in srgb, var(--surface) 72%, transparent); }
+:global([data-theme="dark"]) .mail-operations .mail-preview__frame { border-color: color-mix(in srgb, var(--text) 24%, transparent); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28); }
+
+@media (hover: hover) and (pointer: fine) {
+  :global([data-theme="dark"]) .mail-operations .mail-card:hover {
+    border-color: color-mix(in srgb, var(--text) 30%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 62%, transparent), inset 0 -1px 0 rgba(0, 0, 0, 0.32), 0 14px 28px rgba(0, 0, 0, 0.3);
+  }
 }
 </style>

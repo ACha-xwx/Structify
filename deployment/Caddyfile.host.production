@@ -116,9 +116,14 @@ structify.cn {
 }
 
 # The management frontend shares this release bundle. Administrator roles are
-# enforced by Spring on every /api/v1/admin/* request.
+# enforced by Spring on every /api/v1/admin/* request. Keep copied learning
+# bookmarks on the public host before the shared SPA can render them here.
 admin.structify.cn {
     @admin_root path /
-    redir @admin_root /admin 302
+    redir @admin_root /admin 308
+    @admin_non_management_spa {
+        not path / /admin /admin/* /api /api/* /presentation /presentation/* /healthz /login /reset-password /403
+    }
+    redir @admin_non_management_spa https://structify.cn{uri} 308
     import structify_routes
 }

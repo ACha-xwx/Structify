@@ -140,9 +140,15 @@ structify.cn {
 
 # The management frontend shares the same release bundle and API routes. The
 # Spring API remains the authority for administrator authentication and roles.
+# Keep this hostname scoped to management navigation: a copied learning URL
+# must leave the shared SPA before Vue can render a student screen here.
 admin.structify.cn {
     {$CADDY_TLS_DIRECTIVE}
     @admin_root path /
-    redir @admin_root /admin 302
+    redir @admin_root /admin 308
+    @admin_non_management_spa {
+        not path / /admin /admin/* /api /api/* /presentation /presentation/* /healthz /login /reset-password /403
+    }
+    redir @admin_non_management_spa https://structify.cn{uri} 308
     import structify_routes
 }

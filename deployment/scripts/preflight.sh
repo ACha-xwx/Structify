@@ -228,8 +228,8 @@ if [[ "$EXECUTE" == "1" ]]; then
   case "$memory_profile" in
     low-memory)
       profile_minimum_mb=1024
-      profile_reserve_mb=256
-      profile_hard_limit_mb=1088
+      profile_reserve_mb=128
+      profile_hard_limit_mb=896
       ;;
     standard)
       profile_minimum_mb=1536
@@ -250,16 +250,16 @@ if [[ "$EXECUTE" == "1" ]]; then
   memory_reserve_mb="$(whole_mib MEMORY_RESERVE_MB "$memory_reserve_mb")"
   (( memory_reserve_mb >= 128 )) || die "MEMORY_RESERVE_MB must be at least 128 MiB"
 
-  mysql_limit_mb="$(configured_memory_mib MYSQL_MEMORY_LIMIT 384m)"
-  node_limit_mb="$(configured_memory_mib NODE_MEMORY_LIMIT 256m)"
-  spring_limit_mb="$(configured_memory_mib SPRING_MEMORY_LIMIT 384m)"
+  mysql_limit_mb="$(configured_memory_mib MYSQL_MEMORY_LIMIT 320m)"
+  node_limit_mb="$(configured_memory_mib NODE_MEMORY_LIMIT 192m)"
+  spring_limit_mb="$(configured_memory_mib SPRING_MEMORY_LIMIT 320m)"
   caddy_limit_mb="$(configured_memory_mib CADDY_MEMORY_LIMIT 64m)"
   mysql_reservation_mb="$(configured_memory_mib MYSQL_MEMORY_RESERVATION 256m)"
-  node_reservation_mb="$(configured_memory_mib NODE_MEMORY_RESERVATION 160m)"
-  spring_reservation_mb="$(configured_memory_mib SPRING_MEMORY_RESERVATION 288m)"
+  node_reservation_mb="$(configured_memory_mib NODE_MEMORY_RESERVATION 128m)"
+  spring_reservation_mb="$(configured_memory_mib SPRING_MEMORY_RESERVATION 256m)"
   caddy_reservation_mb="$(configured_memory_mib CADDY_MEMORY_RESERVATION 64m)"
   node_max_old_space_mb="$(env_value NODE_MAX_OLD_SPACE_MB)"
-  node_max_old_space_mb="${node_max_old_space_mb:-160}"
+  node_max_old_space_mb="${node_max_old_space_mb:-128}"
   node_max_old_space_mb="$(whole_mib NODE_MAX_OLD_SPACE_MB "$node_max_old_space_mb")"
   (( node_max_old_space_mb < node_limit_mb )) \
     || die "NODE_MAX_OLD_SPACE_MB must be below NODE_MEMORY_LIMIT"

@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import LiquidMetalButton from "../../admin/components/LiquidMetalButton.vue";
+import ThemeToggle from "../design/ThemeToggle.vue";
 import { ApiClientError } from "../api";
 import { classifyAuthError } from "../auth";
 import { auth } from "../../app/providers/runtime";
@@ -184,14 +185,13 @@ onBeforeUnmount(clearCooldown);
 
 <template>
   <main class="auth-stage auth-screen" :class="{ 'auth-stage--admin': isAdminEntry, 'auth-screen--admin': isAdminEntry }" aria-labelledby="auth-title">
-    <div class="auth-stage__refraction" aria-hidden="true"></div>
-
     <header class="auth-brand">
       <RouterLink class="auth-brand__link" to="/" aria-label="返回 Structify">
         <span class="auth-brand__mark" aria-hidden="true">S</span>
         <span class="auth-brand__name">Structify</span>
       </RouterLink>
     </header>
+    <div class="auth-stage__theme"><ThemeToggle /></div>
 
     <section class="auth-flow" :class="{ 'auth-flow--credentials': isCredentialsStep }">
       <Transition name="auth-copy" mode="out-in">
@@ -301,9 +301,9 @@ onBeforeUnmount(clearCooldown);
 
 <style scoped>
 .auth-stage.auth-screen {
-  --auth-ink: #202426;
-  --auth-muted: #687074;
-  --auth-accent: #1f6872;
+  --auth-ink: var(--text);
+  --auth-muted: var(--text-muted);
+  --auth-accent: var(--text);
   --auth-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --auth-ease: cubic-bezier(0.25, 1, 0.5, 1);
   position: relative;
@@ -316,54 +316,18 @@ onBeforeUnmount(clearCooldown);
   overflow: hidden;
   place-items: center;
   isolation: isolate;
-  background-color: #f3f3f1;
+  background-color: var(--bg);
   background-image:
-    linear-gradient(0deg, transparent 24%, rgba(57, 66, 68, 0.06) 25%, rgba(57, 66, 68, 0.06) 26%, transparent 27%, transparent 74%, rgba(57, 66, 68, 0.06) 75%, rgba(57, 66, 68, 0.06) 76%, transparent 77%, transparent),
-    linear-gradient(90deg, transparent 24%, rgba(57, 66, 68, 0.06) 25%, rgba(57, 66, 68, 0.06) 26%, transparent 27%, transparent 74%, rgba(57, 66, 68, 0.06) 75%, rgba(57, 66, 68, 0.06) 76%, transparent 77%, transparent);
+    linear-gradient(0deg, transparent 24%, color-mix(in srgb, var(--text) 6%, transparent) 25%, color-mix(in srgb, var(--text) 6%, transparent) 26%, transparent 27%, transparent 74%, color-mix(in srgb, var(--text) 6%, transparent) 75%, color-mix(in srgb, var(--text) 6%, transparent) 76%, transparent 77%, transparent),
+    linear-gradient(90deg, transparent 24%, color-mix(in srgb, var(--text) 6%, transparent) 25%, color-mix(in srgb, var(--text) 6%, transparent) 26%, transparent 27%, transparent 74%, color-mix(in srgb, var(--text) 6%, transparent) 75%, color-mix(in srgb, var(--text) 6%, transparent) 76%, transparent 77%, transparent);
   background-size: 58px 58px;
   color: var(--auth-ink);
-  color-scheme: light;
+  color-scheme: inherit;
   font-family: var(--font-sans, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif);
 }
 
-.auth-stage__refraction,
-.auth-stage__refraction::before,
-.auth-stage__refraction::after { position: absolute; inset: 0; pointer-events: none; }
-
-.auth-stage__refraction {
-  z-index: -1;
-  overflow: hidden;
-  background:
-    linear-gradient(126deg, transparent 16%, rgba(101, 209, 219, 0.22) 37%, transparent 55%),
-    linear-gradient(306deg, transparent 23%, rgba(241, 148, 192, 0.18) 45%, transparent 66%);
-  filter: blur(0.2px);
-}
-
-.auth-stage__refraction::before {
-  top: auto;
-  right: -18%;
-  bottom: 6%;
-  left: auto;
-  width: 76%;
-  height: 24%;
-  background: linear-gradient(90deg, transparent, rgba(255, 219, 132, 0.26), rgba(102, 210, 234, 0.23), transparent);
-  filter: blur(24px);
-  transform: rotate(-12deg);
-}
-
-.auth-stage__refraction::after {
-  top: 16%;
-  right: auto;
-  bottom: auto;
-  left: -18%;
-  width: 64%;
-  height: 20%;
-  background: linear-gradient(90deg, transparent, rgba(112, 222, 208, 0.2), rgba(248, 203, 126, 0.18), transparent);
-  filter: blur(24px);
-  transform: rotate(-13deg);
-}
-
 .auth-brand { position: absolute; top: 20px; left: 22px; z-index: 1; }
+.auth-stage__theme { position: absolute; top: 22px; right: 22px; z-index: 2; }
 
 .auth-brand__link {
   display: inline-flex;
@@ -381,12 +345,12 @@ onBeforeUnmount(clearCooldown);
   width: 32px;
   height: 32px;
   place-items: center;
-  border: 1px solid rgba(22, 33, 35, 0.76);
+  border: 1px solid var(--text);
   border-radius: 9px;
-  background: #23292a;
-  box-shadow: inset 1px 1px rgba(255, 255, 255, 0.16), 0 5px 12px rgba(32, 44, 44, 0.13);
-  color: #f8fbfa;
-  font-family: Georgia, "Times New Roman", serif;
+  background: var(--text);
+  box-shadow: inset 1px 1px color-mix(in srgb, var(--surface) 18%, transparent), 0 5px 12px color-mix(in srgb, var(--text) 13%, transparent);
+  color: var(--surface);
+  font-family: var(--font-serif);
   font-size: 18px;
   font-weight: 700;
 }
@@ -398,7 +362,7 @@ onBeforeUnmount(clearCooldown);
 .auth-flow h1 {
   margin: 0;
   color: var(--auth-ink);
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--font-serif);
   font-size: clamp(40px, 5vw, 58px);
   font-weight: 400;
   letter-spacing: 0;
@@ -418,10 +382,10 @@ onBeforeUnmount(clearCooldown);
   gap: 8px;
   padding: 5px 6px 5px 9px;
   overflow: visible;
-  border: 1px double rgba(47, 57, 58, 0.16);
+  border: 1px double color-mix(in srgb, var(--text) 16%, transparent);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.09);
-  box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.9), inset -2px 2px 1px -1px rgba(255, 255, 255, 0.9), inset 6px -6px 1px -6px rgba(255, 255, 255, 0.55), inset -6px 6px 1px -6px rgba(255, 255, 255, 0.55), inset 0 0 2px rgba(0, 0, 0, 0.44), 0 7px 13px rgba(32, 43, 44, 0.12);
+  background: color-mix(in srgb, var(--surface) 18%, transparent);
+  box-shadow: inset 2px -2px 1px -1px color-mix(in srgb, var(--surface) 90%, transparent), inset -2px 2px 1px -1px color-mix(in srgb, var(--surface) 90%, transparent), inset 6px -6px 1px -6px color-mix(in srgb, var(--surface) 55%, transparent), inset -6px 6px 1px -6px color-mix(in srgb, var(--surface) 55%, transparent), inset 0 0 2px color-mix(in srgb, var(--text) 44%, transparent), 0 7px 13px color-mix(in srgb, var(--text) 12%, transparent);
   -webkit-backdrop-filter: blur(7px) saturate(1.08);
   backdrop-filter: blur(7px) saturate(1.08);
   transition: transform 180ms var(--auth-ease), box-shadow 180ms ease, background-color 180ms ease;
@@ -434,8 +398,8 @@ onBeforeUnmount(clearCooldown);
   z-index: 2;
   inset: -1px;
   padding: 1.2px;
-  background: conic-gradient(from var(--field-angle) at 50% 50%, rgba(95, 229, 246, 0.72), rgba(255, 255, 255, 0.74) 15%, transparent 29% 40%, rgba(247, 128, 206, 0.67) 53%, rgba(255, 222, 122, 0.67) 61%, transparent 74% 86%, rgba(110, 238, 203, 0.64));
-  opacity: 0.68;
+  background: conic-gradient(from var(--field-angle) at 50% 50%, color-mix(in srgb, var(--text) 52%, transparent), color-mix(in srgb, var(--surface) 86%, transparent) 15%, transparent 29% 40%, color-mix(in srgb, var(--text-muted) 56%, transparent) 53%, color-mix(in srgb, var(--surface) 82%, transparent) 61%, transparent 74% 86%, color-mix(in srgb, var(--text) 48%, transparent));
+  opacity: 0.58;
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -447,25 +411,25 @@ onBeforeUnmount(clearCooldown);
   z-index: 1;
   inset: 2px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  background: linear-gradient(118deg, transparent 0 35%, rgba(255, 255, 255, 0.48) 47%, transparent 59%);
+  border: 1px solid color-mix(in srgb, var(--surface) 24%, transparent);
+  background: linear-gradient(118deg, transparent 0 35%, color-mix(in srgb, var(--surface) 48%, transparent) 47%, transparent 59%);
   mix-blend-mode: screen;
   opacity: 0.74;
   transition: opacity 180ms ease, transform 180ms var(--auth-ease-out);
 }
 
-.auth-field:focus-within { background: rgba(255, 255, 255, 0.18); box-shadow: inset 2px -2px 1px -1px rgba(255, 255, 255, 0.94), inset -2px 2px 1px -1px rgba(255, 255, 255, 0.94), inset 0 0 2px rgba(0, 0, 0, 0.52), 0 10px 17px rgba(32, 43, 44, 0.16); transform: translateY(-1px); }
+.auth-field:focus-within { background: color-mix(in srgb, var(--surface) 28%, transparent); box-shadow: inset 2px -2px 1px -1px color-mix(in srgb, var(--surface) 94%, transparent), inset -2px 2px 1px -1px color-mix(in srgb, var(--surface) 94%, transparent), inset 0 0 2px color-mix(in srgb, var(--text) 52%, transparent), 0 10px 17px color-mix(in srgb, var(--text) 16%, transparent); transform: translateY(-1px); }
 .auth-field:focus-within::before { filter: saturate(1.18) brightness(1.08); opacity: 0.96; }
 .auth-field:focus-within::after { opacity: 1; transform: translateX(9%); }
 
 .auth-stage .auth-field input { position: relative; z-index: 4; width: 0; height: 40px; min-height: 0; flex: 1 1 auto; min-width: 0; padding: 0; border: 0; border-radius: 0; outline: 0; background: transparent; box-shadow: none; color: var(--auth-ink); font-size: 14px; font-weight: 520; line-height: 1; }
 .auth-stage .auth-field input:focus { border: 0; background: transparent; box-shadow: none; }
-.auth-field input::placeholder { color: rgba(32, 36, 38, 0.55); }
+.auth-field input::placeholder { color: var(--text-muted); }
 .auth-field input:-webkit-autofill { -webkit-text-fill-color: var(--auth-ink); -webkit-box-shadow: 0 0 0 100px transparent inset; transition: background-color 9999s ease-out; }
 
-.auth-field__symbol { position: relative; z-index: 4; display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: rgba(32, 36, 38, 0.82); font-size: 16px; font-weight: 700; line-height: 1; }
-.auth-field__symbol--code { color: #a86c2e; }
-.auth-field__symbol--toggle { cursor: pointer; color: #29676f; font-size: 15px; }
+.auth-field__symbol { position: relative; z-index: 4; display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text-muted); font-size: 16px; font-weight: 700; line-height: 1; }
+.auth-field__symbol--code { color: var(--text-muted); }
+.auth-field__symbol--toggle { cursor: pointer; color: var(--text); font-size: 15px; }
 .auth-field__floating-label { position: absolute; z-index: 6; top: -17px; left: 14px; color: var(--auth-muted); font-size: 11px; font-weight: 700; line-height: 1; }
 .auth-field--identity-compact { margin-top: 10px; }
 .auth-field--credential { min-height: 54px; }
@@ -473,29 +437,35 @@ onBeforeUnmount(clearCooldown);
 
 .auth-step-action { position: relative; z-index: 5; width: 42px; min-width: 42px; height: 42px; min-height: 42px; padding: 0; font-size: 20px; }
 
-.auth-code-action { position: relative; z-index: 5; min-width: 52px; min-height: 34px; padding: 0 11px; border: 1px solid rgba(31, 70, 76, 0.16); border-radius: 999px; background: rgba(255, 255, 255, 0.44); box-shadow: inset 0 1px rgba(255, 255, 255, 0.92), 0 3px 7px rgba(32, 54, 55, 0.08); color: var(--auth-accent); cursor: pointer; font: inherit; font-size: 12px; font-weight: 730; transition: transform 150ms var(--auth-ease), background-color 150ms ease, box-shadow 150ms ease; }
-.auth-code-action:hover:not(:disabled) { background: rgba(255, 255, 255, 0.72); transform: scale(0.975); }
+.auth-code-action { position: relative; z-index: 5; min-width: 52px; min-height: 34px; padding: 0 11px; border: 1px solid color-mix(in srgb, var(--text) 16%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--surface) 44%, transparent); box-shadow: inset 0 1px color-mix(in srgb, var(--surface) 92%, transparent), 0 3px 7px color-mix(in srgb, var(--text) 8%, transparent); color: var(--auth-accent); cursor: pointer; font: inherit; font-size: 12px; font-weight: 730; transition: transform 150ms var(--auth-ease), background-color 150ms ease, box-shadow 150ms ease; }
+.auth-code-action:hover:not(:disabled) { background: color-mix(in srgb, var(--surface) 72%, transparent); transform: scale(0.975); }
 .auth-code-action:active:not(:disabled) { transform: scale(0.95); }
 .auth-code-action:disabled { cursor: not-allowed; opacity: 0.48; }
 
-.form-feedback { margin: 0; padding: 9px 11px; border: 1px solid rgba(31, 104, 114, 0.18); border-radius: 8px; background: rgba(255, 255, 255, 0.35); color: #22616a; font-size: 12px; line-height: 1.5; text-align: left; }
-.form-feedback--error { border-color: rgba(170, 65, 88, 0.32); color: #96384e; }
+.form-feedback { margin: 0; padding: 9px 11px; border: 1px solid color-mix(in srgb, var(--text) 18%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--surface) 35%, transparent); color: var(--text); font-size: 12px; line-height: 1.5; text-align: left; }
+.form-feedback--error { border-color: color-mix(in srgb, var(--text) 34%, transparent); color: var(--text); }
 
-.auth-back { justify-self: start; min-height: 30px; padding: 0; border: 0; background: transparent; color: rgba(32, 36, 38, 0.68); cursor: pointer; font: inherit; font-size: 13px; font-weight: 650; transition: color 150ms ease, transform 150ms var(--auth-ease); }
+.auth-back { justify-self: start; min-height: 30px; padding: 0; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; font: inherit; font-size: 13px; font-weight: 650; transition: color 150ms ease, transform 150ms var(--auth-ease); }
 .auth-back:hover:not(:disabled) { color: var(--auth-ink); transform: translateX(-2px); }
 .auth-back:disabled { cursor: not-allowed; opacity: 0.5; }
 
-.auth-links { display: flex; width: 100%; justify-content: space-between; gap: 16px; padding-top: 4px; color: rgba(32, 36, 38, 0.72); font-size: 13px; font-weight: 650; text-align: left; }
-.auth-links a { color: inherit; text-underline-offset: 4px; }
-.auth-links a:hover { color: var(--auth-accent); }
+.auth-links { display: flex; width: 100%; justify-content: space-between; gap: 16px; padding-top: 4px; color: var(--text-muted); font-size: 13px; font-weight: 650; text-align: left; }
+.auth-links a { position: relative; display: inline-flex; color: inherit; text-decoration: none; transition: color 150ms ease, transform 150ms var(--auth-ease); }
+.auth-links a::after { position: absolute; right: 0; bottom: -4px; left: 0; height: 1px; background: var(--text); content: ""; transform: scaleX(0); transform-origin: left; transition: transform 160ms var(--auth-ease-out); }
+.auth-links a:focus-visible { color: var(--text); outline: 0; }
+.auth-links a:focus-visible::after { transform: scaleX(1); }
 
 .auth-copy-enter-active, .auth-copy-leave-active, .auth-fields-enter-active, .auth-fields-leave-active { transition: opacity 220ms var(--auth-ease-out), transform 220ms var(--auth-ease-out), filter 220ms ease; }
 .auth-copy-enter-from, .auth-copy-leave-to { opacity: 0; filter: blur(3px); transform: translateY(7px) scale(0.985); }
 .auth-fields-enter-from, .auth-fields-leave-to { opacity: 0; filter: blur(3px); transform: translateY(-6px) scale(0.99); }
 
-@media (hover: hover) and (pointer: fine) { .auth-brand__link:hover .auth-brand__mark { transform: translateY(-1px); } }
+@media (hover: hover) and (pointer: fine) {
+  .auth-brand__link:hover .auth-brand__mark { transform: translateY(-1px); }
+  .auth-links a:hover { color: var(--text); transform: translateY(-1px); }
+  .auth-links a:hover::after { transform: scaleX(1); }
+}
 @media (min-width: 640px) { .auth-brand { left: 50%; transform: translateX(-50%); } }
-@media (max-width: 520px) { .auth-stage.auth-screen { padding-right: 16px; padding-left: 16px; } .auth-brand { top: 18px; left: 18px; } .auth-flow { width: min(100%, 340px); gap: 22px; } .auth-flow h1 { font-size: 42px; } }
+@media (max-width: 520px) { .auth-stage.auth-screen { padding-right: 16px; padding-left: 16px; } .auth-brand { top: 18px; left: 18px; } .auth-stage__theme { top: 18px; right: 16px; } .auth-flow { width: min(100%, 340px); gap: 22px; } .auth-flow h1 { font-size: 42px; } }
 @media (prefers-reduced-motion: reduce) { .auth-stage *, .auth-stage *::before, .auth-stage *::after { animation: none !important; transition-duration: 1ms !important; } }
-@media (prefers-reduced-transparency: reduce) { .auth-stage__refraction { display: none; } .auth-field, .auth-code-action { background: rgba(255, 255, 255, 0.94); -webkit-backdrop-filter: none; backdrop-filter: none; } .auth-field::after { display: none; } }
+@media (prefers-reduced-transparency: reduce) { .auth-field, .auth-code-action { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; } .auth-field::after { display: none; } }
 </style>

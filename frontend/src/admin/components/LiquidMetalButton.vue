@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { Comment, computed, nextTick, onBeforeUnmount, onMounted, ref, Text, useAttrs, useSlots, watch, type VNode } from "vue";
 import { liquidMetalFragmentShader, ShaderMount } from "@paper-design/shaders";
 
 defineOptions({ inheritAttrs: false });
@@ -9,6 +9,7 @@ const props = withDefaults(defineProps<{
   type?: "button" | "submit" | "reset";
   disabled?: boolean;
   loading?: boolean;
+  viewMode?: "text" | "icon";
 }>(), {
   variant: "primary",
   type: "button",
@@ -20,111 +21,68 @@ const emit = defineEmits<{
   click: [event: MouseEvent];
 }>();
 
+const attrs = useAttrs();
+const slots = useSlots();
 const button = ref<HTMLButtonElement | null>(null);
 const shaderHost = ref<HTMLElement | null>(null);
+const hovered = ref(false);
 const pressed = ref(false);
-const ripple = ref({ active: false, key: 0, x: "50%", y: "50%" });
+const ripples = ref<Array<{ id: number; x: string; y: string }>>([]);
+
 let shader: ShaderMount | null = null;
-let settleTimer: number | undefined;
-let rippleTimer: number | undefined;
+let shaderSpeedTimer: number | undefined;
+let rippleId = 0;
 let reducedMotion = false;
 let motionQuery: MediaQueryList | null = null;
+const rippleTimers = new Set<number>();
 
-function setPointerPosition(event: PointerEvent) {
-  const element = button.value;
-  if (!element) return;
-  const bounds = element.getBoundingClientRect();
-  const x = Math.max(0, Math.min(1, (event.clientX - bounds.left) / Math.max(bounds.width, 1)));
-  const y = Math.max(0, Math.min(1, (event.clientY - bounds.top) / Math.max(bounds.height, 1)));
-  element.style.setProperty("--metal-x", `${Math.round(x * 100)}%`);
-  element.style.setProperty("--metal-y", `${Math.round(y * 100)}%`);
-  if (!reducedMotion) {
-    shader?.setUniforms({
-      u_offsetX: (x - 0.5) * 0.24,
-      u_offsetY: (0.5 - y) * 0.16,
-      u_distortion: pressed.value ? 0.34 : 0.18,
-    });
-  }
-  return { x: `${Math.round(x * 100)}%`, y: `${Math.round(y * 100)}%` };
+function isAriaHidden(node: VNode) {
+  return node.props?.["aria-hidden"] === true || node.props?.["aria-hidden"] === "true";
 }
 
-function setSpeed(speed: number) {
-  shader?.setSpeed(reducedMotion ? 0 : speed);
+function isVisibleSlotNode(node: VNode): boolean {
+  if (node.type === Comment) return false;
+  if (isAriaHidden(node)) return false;
+  if (node.type === Text) return String(node.children ?? "").trim().length > 0;
+  if (typeof node.children === "string") return node.children.trim().length > 0;
+  return true;
 }
 
-function clearSettleTimer() {
-  if (settleTimer !== undefined) {
-    window.clearTimeout(settleTimer);
-    settleTimer = undefined;
-  }
+const iconOnly = computed(() => {
+  if (props.viewMode === "icon") return true;
+  if (props.viewMode === "text") return false;
+
+  const defaultNodes = slots.default?.() ?? [];
+  const hasVisibleDefault = defaultNodes.some(isVisibleSlotNode);
+  const hasDecorativeDefault = defaultNodes.some(isAriaHidden);
+  return !hasVisibleDefault && (hasDecorativeDefault || Boolean(slots.icon));
+});
+
+function slotText(node: unknown): string {
+  if (Array.isArray(node)) return node.map(slotText).join("");
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (!node || typeof node !== "object") return "";
+
+  const vnode = node as VNode;
+  if (vnode.type === Comment || isAriaHidden(vnode)) return "";
+  if (vnode.type === Text || typeof vnode.children === "string") return String(vnode.children ?? "");
+  if (Array.isArray(vnode.children)) return vnode.children.map(slotText).join("");
+  return "";
 }
 
-function clearRippleTimer() {
-  if (rippleTimer !== undefined) {
-    window.clearTimeout(rippleTimer);
-    rippleTimer = undefined;
-  }
-}
+const defaultSlotLabel = computed(() => (slots.default?.() ?? []).map(slotText).join(" ").replace(/\s+/g, " ").trim());
 
-function startRipple(x = "50%", y = "50%") {
-  if (reducedMotion) return;
-  clearRippleTimer();
-  ripple.value = { active: true, key: ripple.value.key + 1, x, y };
-  rippleTimer = window.setTimeout(() => {
-    ripple.value.active = false;
-    rippleTimer = undefined;
-  }, 620);
-}
+const ariaLabel = computed<string | undefined>(() => {
+  const label = attrs["aria-label"];
+  if (typeof label === "string" && label.trim()) return label;
+  if (props.loading) return "正在提交";
+  return attrs["aria-labelledby"] ? undefined : defaultSlotLabel.value || undefined;
+});
 
-function handlePointerEnter(event: PointerEvent) {
-  if (props.disabled || props.loading) return;
-  setPointerPosition(event);
-  setSpeed(0.65);
-}
-
-function handlePointerMove(event: PointerEvent) {
-  if (props.disabled || props.loading) return;
-  setPointerPosition(event);
-}
-
-function handlePointerDown(event: PointerEvent) {
-  if (props.disabled || props.loading || (event.pointerType === "mouse" && event.button !== 0)) return;
-  pressed.value = true;
-  const position = setPointerPosition(event);
-  startRipple(position?.x, position?.y);
-  setSpeed(1.35);
-}
-
-function handlePointerUp() {
-  pressed.value = false;
-  setSpeed(0.72);
-}
-
-function handlePointerLeave() {
-  pressed.value = false;
-  setSpeed(0.16);
-}
-
-function handleKeydown(event: KeyboardEvent) {
-  if (props.disabled || props.loading || event.repeat || (event.key !== "Enter" && event.key !== " ")) return;
-  pressed.value = true;
-  startRipple();
-}
-
-function handleKeyup(event: KeyboardEvent) {
-  if (event.key === "Enter" || event.key === " ") handlePointerUp();
-}
-
-function handleClick(event: MouseEvent) {
-  if (props.disabled || props.loading) {
-    event.preventDefault();
-    return;
-  }
-  clearSettleTimer();
-  setSpeed(2.1);
-  settleTimer = window.setTimeout(() => setSpeed(0.42), 190);
-  emit("click", event);
-}
+const buttonAttrs = computed(() => {
+  const { class: _class, style: _style, ...nativeAttrs } = attrs;
+  return nativeAttrs;
+});
 
 function supportsWebGlShader() {
   if (typeof window === "undefined" || /jsdom/i.test(navigator.userAgent)) return false;
@@ -132,15 +90,162 @@ function supportsWebGlShader() {
   return Boolean(canvas.getContext("webgl2"));
 }
 
+function setShaderSpeed(speed: number) {
+  shader?.setSpeed(reducedMotion || props.loading ? 0 : speed);
+}
+
+function clearShaderSpeedTimer() {
+  if (shaderSpeedTimer !== undefined) {
+    window.clearTimeout(shaderSpeedTimer);
+    shaderSpeedTimer = undefined;
+  }
+}
+
+function clearRipples() {
+  rippleTimers.forEach((timer) => window.clearTimeout(timer));
+  rippleTimers.clear();
+  ripples.value = [];
+}
+
+function disposeShader() {
+  shader?.dispose();
+  shader = null;
+}
+
+function mountShader() {
+  if (props.loading || !shaderHost.value || !supportsWebGlShader()) return;
+  disposeShader();
+  try {
+    shader = new ShaderMount(
+      shaderHost.value,
+      liquidMetalFragmentShader,
+      {
+        u_repetition: 4,
+        u_softness: 0.5,
+        u_shiftRed: 0.3,
+        u_shiftBlue: 0.3,
+        u_distortion: 0,
+        u_contour: 0,
+        u_angle: 45,
+        u_scale: 8,
+        u_shape: 1,
+        u_offsetX: 0.1,
+        u_offsetY: -0.1,
+      },
+      undefined,
+      reducedMotion ? 0 : 0.6,
+    );
+    if (reducedMotion) shader.setFrame(0);
+  } catch {
+    shaderHost.value?.replaceChildren();
+    shader = null;
+  }
+}
+
+function handlePointerEnter() {
+  if (props.disabled || props.loading) return;
+  hovered.value = true;
+  setShaderSpeed(1);
+}
+
+function handlePointerLeave() {
+  hovered.value = false;
+  pressed.value = false;
+  setShaderSpeed(0.6);
+}
+
+function handlePointerDown(event: PointerEvent) {
+  if (props.disabled || props.loading || (event.pointerType === "mouse" && event.button !== 0)) return;
+  pressed.value = true;
+}
+
+function handlePointerUp() {
+  pressed.value = false;
+}
+
+function handleKeydown(event: KeyboardEvent) {
+  if (props.disabled || props.loading || event.repeat || (event.key !== "Enter" && event.key !== " ")) return;
+  pressed.value = true;
+}
+
+function handleKeyup(event: KeyboardEvent) {
+  if (event.key === "Enter" || event.key === " ") handlePointerUp();
+}
+
+function ripplePosition(event: MouseEvent) {
+  const element = button.value;
+  if (!element) return { x: "50%", y: "50%" };
+  const bounds = element.getBoundingClientRect();
+  if (
+    bounds.width <= 0
+    || bounds.height <= 0
+    || event.clientX < bounds.left
+    || event.clientX > bounds.right
+    || event.clientY < bounds.top
+    || event.clientY > bounds.bottom
+  ) {
+    return { x: "50%", y: "50%" };
+  }
+  return {
+    x: `${Math.round(event.clientX - bounds.left)}px`,
+    y: `${Math.round(event.clientY - bounds.top)}px`,
+  };
+}
+
+function startRipple(event: MouseEvent) {
+  if (reducedMotion) return;
+  const position = ripplePosition(event);
+  const id = rippleId++;
+  ripples.value = [...ripples.value, { id, ...position }];
+  const timer = window.setTimeout(() => {
+    rippleTimers.delete(timer);
+    ripples.value = ripples.value.filter((ripple) => ripple.id !== id);
+  }, 420);
+  rippleTimers.add(timer);
+}
+
+function handleClick(event: MouseEvent) {
+  if (props.disabled || props.loading) {
+    event.preventDefault();
+    return;
+  }
+
+  clearShaderSpeedTimer();
+  setShaderSpeed(2.4);
+  shaderSpeedTimer = window.setTimeout(() => {
+    shaderSpeedTimer = undefined;
+    setShaderSpeed(hovered.value ? 1 : 0.6);
+  }, 300);
+  startRipple(event);
+  emit("click", event);
+}
+
 function handleMotionPreferenceChange(event: MediaQueryListEvent) {
   reducedMotion = event.matches;
   if (reducedMotion) {
     shader?.setSpeed(0);
     shader?.setFrame(0);
-  } else {
-    shader?.setSpeed(0.16);
+    clearRipples();
+    return;
   }
+  setShaderSpeed(hovered.value ? 1 : 0.6);
 }
+
+watch(
+  () => props.loading,
+  async (loading) => {
+    pressed.value = false;
+    clearShaderSpeedTimer();
+    clearRipples();
+    if (loading) {
+      disposeShader();
+      return;
+    }
+    await nextTick();
+    mountShader();
+    setShaderSpeed(hovered.value ? 1 : 0.6);
+  },
+);
 
 onMounted(() => {
   if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
@@ -148,298 +253,374 @@ onMounted(() => {
     reducedMotion = motionQuery.matches;
     motionQuery.addEventListener("change", handleMotionPreferenceChange);
   }
-  if (!shaderHost.value || !supportsWebGlShader()) return;
-  try {
-    shader = new ShaderMount(shaderHost.value, liquidMetalFragmentShader, {
-      u_repetition: 4.4,
-      u_softness: 0.48,
-      u_shiftRed: 0.33,
-      u_shiftBlue: 0.31,
-      u_distortion: 0.18,
-      u_contour: 0.3,
-      u_angle: 32,
-      u_scale: 7.8,
-      u_shape: 1,
-      u_offsetX: 0,
-      u_offsetY: 0,
-    }, undefined, reducedMotion ? 0 : 0.16, undefined, 1, 220000);
-    if (reducedMotion) shader.setFrame(0);
-  } catch {
-    // CSS material remains usable when WebGL is unavailable.
-    shaderHost.value?.replaceChildren();
-    shader = null;
-  }
+  mountShader();
 });
 
 onBeforeUnmount(() => {
-  clearSettleTimer();
-  clearRippleTimer();
+  clearShaderSpeedTimer();
+  clearRipples();
   motionQuery?.removeEventListener("change", handleMotionPreferenceChange);
   motionQuery = null;
-  shader?.dispose();
-  shader = null;
+  disposeShader();
 });
 </script>
 
 <template>
-  <button
-    ref="button"
-    v-bind="$attrs"
+  <div
     class="liquid-metal-button"
-    :class="[`liquid-metal-button--${props.variant}`, { 'is-pressed': pressed, 'is-loading': props.loading }]"
-    :type="props.type"
-    :disabled="props.disabled || props.loading"
-    :aria-busy="props.loading ? 'true' : undefined"
-    @blur="handlePointerLeave"
-    @click="handleClick"
-    @keydown="handleKeydown"
-    @keyup="handleKeyup"
-    @pointerdown="handlePointerDown"
-    @pointerenter="handlePointerEnter"
-    @pointerleave="handlePointerLeave"
-    @pointermove="handlePointerMove"
-    @pointerup="handlePointerUp"
-    @pointercancel="handlePointerLeave"
+    :class="[
+      `liquid-metal-button--${props.variant}`,
+      attrs.class,
+      {
+        'liquid-metal-button--icon-only': iconOnly,
+        'is-hovered': hovered,
+        'is-pressed': pressed,
+        'is-disabled': props.disabled || props.loading,
+        'is-loading': props.loading,
+      },
+    ]"
+    :style="attrs.style"
   >
-    <span ref="shaderHost" class="liquid-metal-button__shader" aria-hidden="true"></span>
-    <span class="liquid-metal-button__lens" aria-hidden="true"></span>
-    <span
-      v-if="ripple.active"
-      :key="ripple.key"
-      class="liquid-metal-button__ripple"
-      :style="{ '--ripple-x': ripple.x, '--ripple-y': ripple.y }"
-      aria-hidden="true"
-    ></span>
-    <span v-if="props.loading" class="liquid-metal-button__spinner" aria-hidden="true"></span>
-    <span v-if="$slots.icon" class="liquid-metal-button__icon" aria-hidden="true"><slot name="icon" /></span>
-    <span class="liquid-metal-button__content"><slot /></span>
-  </button>
+    <span class="liquid-metal-button__stage">
+      <span v-if="!props.loading" class="liquid-metal-button__scene" aria-hidden="true">
+        <span class="liquid-metal-button__content-layer">
+          <span v-if="$slots.icon" class="liquid-metal-button__icon"><slot name="icon" /></span>
+          <slot />
+        </span>
+        <span class="liquid-metal-button__surface-layer" aria-hidden="true"><span class="liquid-metal-button__surface"></span></span>
+        <span class="liquid-metal-button__shader-layer" aria-hidden="true">
+          <span class="liquid-metal-button__refractive-rim" aria-hidden="true"></span>
+          <span ref="shaderHost" class="liquid-metal-button__shader"></span>
+        </span>
+      </span>
+      <button
+        ref="button"
+        v-bind="buttonAttrs"
+        class="liquid-metal-button__native"
+        :type="props.type"
+        :disabled="props.disabled || props.loading"
+        :aria-busy="props.loading ? 'true' : undefined"
+        :aria-label="ariaLabel"
+        @blur="handlePointerLeave"
+        @click="handleClick"
+        @keydown="handleKeydown"
+        @keyup="handleKeyup"
+        @pointerdown="handlePointerDown"
+        @pointerenter="handlePointerEnter"
+        @pointerleave="handlePointerLeave"
+        @pointerup="handlePointerUp"
+        @pointercancel="handlePointerLeave"
+      >
+        <span
+          v-if="!props.loading && defaultSlotLabel"
+          class="liquid-metal-button__native-label"
+          aria-hidden="true"
+        >{{ defaultSlotLabel }}</span>
+        <span
+          v-for="ripple in ripples"
+          :key="ripple.id"
+          class="liquid-metal-button__ripple"
+          :style="{ '--ripple-x': ripple.x, '--ripple-y': ripple.y }"
+          aria-hidden="true"
+        ></span>
+        <span v-if="props.loading" class="liquid-metal-button__spinner" aria-hidden="true"></span>
+      </button>
+    </span>
+  </div>
 </template>
 
 <style scoped>
 .liquid-metal-button {
-  --metal-x: 50%;
-  --metal-y: 50%;
+  --liquid-width: 142px;
+  --liquid-height: 46px;
+  --liquid-rim-inset: 3px;
+  --liquid-ease-out: cubic-bezier(0.16, 0.82, 0.27, 1);
   position: relative;
-  isolation: isolate;
-  display: inline-flex;
-  min-height: 42px;
+  display: inline-block;
+  width: var(--liquid-width);
+  min-width: var(--liquid-width);
   max-width: 100%;
-  min-width: 0;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  overflow: hidden;
-  padding: 0 16px;
-  border: 1px solid rgba(20, 39, 45, 0.58);
-  border-radius: 999px;
-  background:
-    radial-gradient(100% 180% at var(--metal-x) var(--metal-y), rgba(255, 255, 255, 0.24), transparent 55%),
-    linear-gradient(180deg, rgba(33, 44, 48, 0.98), rgba(8, 15, 17, 0.99));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.44),
-    0 10px 18px rgba(26, 45, 49, 0.14),
-    0 2px 4px rgba(22, 37, 41, 0.24);
-  color: #f8fffd;
-  cursor: pointer;
-  font: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: 0;
-  text-decoration: none;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.38);
-  transform: translateZ(0);
-  transition: transform 150ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 150ms ease, border-color 150ms ease;
+  height: var(--liquid-height);
+  min-height: var(--liquid-height);
+  perspective: 1000px;
+  perspective-origin: 50% 50%;
+  overflow: visible;
 }
 
-.liquid-metal-button::before,
-.liquid-metal-button::after {
+.liquid-metal-button--icon-only {
+  --liquid-width: 46px;
+}
+
+.liquid-metal-button__scene,
+.liquid-metal-button__content-layer,
+.liquid-metal-button__surface-layer,
+.liquid-metal-button__shader-layer {
   position: absolute;
-  z-index: 3;
   inset: 0;
-  border-radius: inherit;
-  content: "";
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
   pointer-events: none;
 }
 
-/* A true chromatic ring, not an external glow. */
-.liquid-metal-button::before {
-  padding: 1.35px;
-  background: conic-gradient(
-    from 205deg at var(--metal-x) var(--metal-y),
-    rgba(81, 233, 255, 0.98),
-    rgba(255, 255, 255, 0.84) 16%,
-    rgba(246, 120, 217, 0.92) 37%,
-    rgba(255, 219, 110, 0.86) 58%,
-    rgba(82, 255, 194, 0.9) 76%,
-    rgba(81, 233, 255, 0.98)
-  );
-  opacity: 0.86;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  transition: opacity 150ms ease, filter 150ms ease;
+.liquid-metal-button__stage {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  transition: width 220ms ease, height 220ms ease;
+  transform: none;
 }
 
-.liquid-metal-button::after {
-  inset: 2px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+.liquid-metal-button__native {
+  position: absolute;
+  z-index: 40;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 100px;
+  outline: none;
+  background: transparent;
+  color: #26373d;
+  cursor: pointer;
+  font: inherit;
+  transform: translateZ(25px);
+  transform-style: preserve-3d;
+  transition: transform 140ms ease-out, width 220ms ease, height 220ms ease;
+}
+
+.liquid-metal-button__native-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.liquid-metal-button__content-layer {
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #26373d;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.88);
+  white-space: nowrap;
+  transform: translateZ(20px);
+  transition: transform 160ms var(--liquid-ease-out), width 220ms ease, height 220ms ease, gap 180ms ease;
+}
+
+.liquid-metal-button--icon-only .liquid-metal-button__content-layer { font-size: 16px; }
+
+.liquid-metal-button__icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.liquid-metal-button__content-layer :deep(svg) {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.88));
+}
+
+.liquid-metal-button__surface-layer {
+  z-index: 20;
+  transform: translateZ(10px) translateY(0) scale(1);
+  transition: transform 160ms var(--liquid-ease-out), width 220ms ease, height 220ms ease;
+}
+
+.liquid-metal-button__surface {
+  position: absolute;
+  inset: var(--liquid-rim-inset);
+  border-radius: 100px;
+  background:
+    linear-gradient(106deg, transparent 0 27%, rgba(255, 255, 255, 0.78) 43%, transparent 59%),
+    linear-gradient(180deg, #ffffff 0%, #f6f8f9 31%, #e8ecee 68%, #d5dce0 100%);
   box-shadow:
-    inset 1px 0 rgba(100, 229, 255, 0.46),
-    inset -1px 0 rgba(255, 130, 204, 0.45),
-    inset 0 -1px rgba(128, 250, 204, 0.34),
-    inset 0 1px rgba(255, 241, 181, 0.22);
-  mix-blend-mode: screen;
-  opacity: 0.72;
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    inset 0 -1px 0 rgba(67, 83, 92, 0.17),
+    inset 1px 0 0 rgba(255, 255, 255, 0.72);
+  transition: background 180ms ease, box-shadow 140ms ease, width 220ms ease, height 220ms ease;
+}
+
+.liquid-metal-button--quiet .liquid-metal-button__surface {
+  background:
+    linear-gradient(106deg, transparent 0 27%, rgba(255, 255, 255, 0.88) 43%, transparent 59%),
+    linear-gradient(180deg, #ffffff 0%, #fafbfb 31%, #edf0f1 68%, #dde3e6 100%);
+}
+
+.liquid-metal-button__shader-layer {
+  z-index: 10;
+  transform: translateZ(0) translateY(0) scale(1);
+  transition: transform 160ms var(--liquid-ease-out), width 220ms ease, height 220ms ease;
+}
+
+.liquid-metal-button__shader-layer::before {
+  position: absolute;
+  inset: 0;
+  border-radius: 100px;
+  background: rgb(0 0 0 / 0);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.3),
+    0 36px 14px rgba(0, 0, 0, 0.02),
+    0 20px 12px rgba(0, 0, 0, 0.08),
+    0 9px 9px rgba(0, 0, 0, 0.12),
+    0 2px 5px rgba(0, 0, 0, 0.15);
+  content: "";
+  transition: box-shadow 140ms ease, width 220ms ease, height 220ms ease;
 }
 
 .liquid-metal-button__shader {
   position: absolute;
   z-index: 0;
-  inset: -1px;
+  inset: 0;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
   overflow: hidden;
-  border-radius: inherit;
-  opacity: 0.72;
-  mix-blend-mode: screen;
-  transform: scaleX(1.08) scaleY(1.46);
-  transition: opacity 150ms ease, transform 150ms cubic-bezier(0.22, 1, 0.36, 1);
+  border-radius: 100px;
+  transform: scaleX(1.045) scaleY(1.14);
+  transform-origin: 50% 50%;
+  transition: transform 180ms ease, width 400ms ease, height 400ms ease;
+  will-change: transform;
+}
+
+.liquid-metal-button__refractive-rim {
+  position: absolute;
+  z-index: 1;
+  inset: -1px;
+  padding: 1.25px;
+  border-radius: 100px;
+  background: conic-gradient(
+    from 212deg at 50% 50%,
+    rgba(97, 225, 255, 0.88),
+    rgba(220, 244, 255, 0.54) 13%,
+    rgba(143, 156, 255, 0.64) 27%,
+    rgba(255, 255, 255, 0.22) 42%,
+    rgba(255, 214, 119, 0.82) 62%,
+    rgba(255, 145, 218, 0.76) 77%,
+    rgba(103, 233, 255, 0.84) 91%,
+    rgba(97, 225, 255, 0.88)
+  );
+  opacity: 0.76;
+  pointer-events: none;
+  transform: scaleX(1.025) scaleY(1.075);
+  transform-origin: 50% 50%;
+  transition: transform 180ms ease, opacity 150ms ease;
+  will-change: transform;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
 }
 
 .liquid-metal-button__shader :deep(canvas) {
   position: absolute !important;
-  inset: 0 !important;
+  top: 0 !important;
+  left: 0 !important;
   display: block !important;
   width: 100% !important;
   height: 100% !important;
-  border-radius: inherit !important;
+  border-radius: 100px !important;
 }
 
-.liquid-metal-button__lens {
-  position: absolute;
-  z-index: 1;
-  inset: 1px;
-  border-radius: inherit;
-  background:
-    radial-gradient(56% 180% at var(--metal-x) var(--metal-y), rgba(255, 255, 255, 0.24), transparent 64%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.1), transparent 32%);
-  mix-blend-mode: screen;
-  pointer-events: none;
+.liquid-metal-button.is-hovered .liquid-metal-button__shader-layer::before {
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.4),
+    0 12px 6px rgba(0, 0, 0, 0.05),
+    0 8px 5px rgba(0, 0, 0, 0.1),
+    0 4px 4px rgba(0, 0, 0, 0.15),
+    0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.liquid-metal-button.is-hovered .liquid-metal-button__shader {
+  transform: scaleX(1.075) scaleY(1.2);
+}
+
+.liquid-metal-button.is-hovered .liquid-metal-button__refractive-rim {
+  opacity: 0.92;
+  transform: scaleX(1.045) scaleY(1.14);
+}
+
+.liquid-metal-button.is-pressed .liquid-metal-button__surface-layer,
+.liquid-metal-button.is-pressed .liquid-metal-button__shader-layer {
+  transform: translateZ(10px) translateY(1px) scale(0.98);
+}
+
+.liquid-metal-button.is-pressed .liquid-metal-button__shader-layer {
+  transform: translateZ(0) translateY(1px) scale(0.98);
+}
+
+.liquid-metal-button.is-pressed .liquid-metal-button__surface {
+  box-shadow:
+    inset 0 2px 4px rgba(68, 84, 94, 0.22),
+    inset 0 1px 2px rgba(68, 84, 94, 0.16),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.liquid-metal-button.is-pressed .liquid-metal-button__shader-layer::before {
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.liquid-metal-button.is-pressed .liquid-metal-button__shader {
+  transform: scaleX(1.09) scaleY(1.25);
+}
+
+.liquid-metal-button.is-pressed .liquid-metal-button__refractive-rim {
+  opacity: 1;
+  transform: scaleX(1.06) scaleY(1.18);
 }
 
 .liquid-metal-button__ripple {
   position: absolute;
-  z-index: 2;
+  z-index: 40;
   top: var(--ripple-y);
   left: var(--ripple-x);
-  width: max(12rem, 150%);
-  aspect-ratio: 1;
-  border: 1px solid rgba(255, 255, 255, 0.74);
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.58) 0 4%, rgba(98, 230, 246, 0.26) 17%, rgba(247, 133, 208, 0.2) 33%, transparent 62%);
-  mix-blend-mode: screen;
-  opacity: 0;
+  background: radial-gradient(circle, rgba(43, 61, 71, 0.22) 0%, rgba(43, 61, 71, 0) 70%);
   pointer-events: none;
-  transform: translate(-50%, -50%) scale(0.06);
-  animation: liquid-metal-ripple 620ms cubic-bezier(0.16, 0.82, 0.24, 1) both;
-}
-
-.liquid-metal-button__icon,
-.liquid-metal-button__spinner,
-.liquid-metal-button__content {
-  position: relative;
-  z-index: 4;
-}
-
-.liquid-metal-button__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  line-height: 0;
-}
-
-.liquid-metal-button__icon :deep(svg) {
-  width: 1.1em;
-  height: 1.1em;
+  transform: translate(-50%, -50%) scale(0);
+  animation: liquid-metal-ripple 420ms ease-out both;
 }
 
 .liquid-metal-button__spinner {
-  width: 0.95em;
-  height: 0.95em;
-  flex: 0 0 auto;
-  border: 2px solid rgba(248, 255, 253, 0.32);
-  border-right-color: rgba(95, 232, 248, 0.96);
-  border-bottom-color: rgba(246, 133, 207, 0.88);
+  position: absolute;
+  z-index: 40;
+  inset: 0;
+  width: 18px;
+  height: 18px;
+  margin: auto;
+  border: 2px solid rgba(112, 112, 112, 0.24);
+  border-right-color: #6b6b6b;
+  border-bottom-color: #b5b5b5;
   border-radius: 50%;
   animation: liquid-metal-spin 720ms linear infinite;
 }
 
-.liquid-metal-button__content {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  overflow-wrap: anywhere;
-  white-space: normal;
-  transition: transform 150ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.liquid-metal-button--quiet {
-  border-color: rgba(25, 47, 53, 0.36);
-  background:
-    radial-gradient(100% 180% at var(--metal-x) var(--metal-y), rgba(255, 255, 255, 0.92), transparent 58%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(235, 244, 244, 0.88));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.98),
-    inset 0 -1px 0 rgba(21, 53, 57, 0.1),
-    0 7px 14px rgba(30, 61, 65, 0.08);
-  color: #213c41;
-  text-shadow: none;
-}
-
-.liquid-metal-button--quiet .liquid-metal-button__shader { opacity: 0.37; mix-blend-mode: multiply; }
-
-@media (hover: hover) and (pointer: fine) {
-  .liquid-metal-button:not(:disabled):hover {
-    border-color: rgba(123, 238, 255, 0.76);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.3),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.46),
-      0 12px 20px rgba(29, 62, 66, 0.18),
-      0 2px 4px rgba(19, 40, 44, 0.22);
-    transform: translateY(-1px) scaleX(1.012) scaleY(1.018);
-  }
-
-  .liquid-metal-button:not(:disabled):hover::before { filter: saturate(1.24) brightness(1.12); opacity: 1; }
-  .liquid-metal-button:not(:disabled):hover .liquid-metal-button__shader { opacity: 0.92; transform: scaleX(1.14) scaleY(1.58); }
-}
-
-.liquid-metal-button:not(:disabled):active,
-.liquid-metal-button.is-pressed {
-  box-shadow:
-    inset 0 2px 5px rgba(0, 0, 0, 0.48),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 3px 7px rgba(21, 43, 47, 0.22);
-  transform: translateY(1px) scaleX(0.982) scaleY(0.955);
-}
-
-.liquid-metal-button:not(:disabled):active .liquid-metal-button__content,
-.liquid-metal-button.is-pressed .liquid-metal-button__content { transform: scaleX(1.018) scaleY(1.038); }
-.liquid-metal-button:not(:disabled):active .liquid-metal-button__shader,
-.liquid-metal-button.is-pressed .liquid-metal-button__shader { opacity: 1; transform: scaleX(1.2) scaleY(1.84); }
-
-.liquid-metal-button:focus-visible { outline: 3px solid rgba(25, 132, 155, 0.36); outline-offset: 3px; }
-.liquid-metal-button:disabled { cursor: not-allowed; opacity: 0.5; }
-.liquid-metal-button.is-loading .liquid-metal-button__content,
-.liquid-metal-button.is-loading .liquid-metal-button__icon { opacity: 0.72; }
+.liquid-metal-button__native:focus-visible { outline: 2px solid rgba(74, 74, 74, 0.6); outline-offset: 3px; }
+.liquid-metal-button__native:disabled { cursor: not-allowed; opacity: 0.52; }
+.liquid-metal-button.is-disabled:not(.is-loading) { opacity: 0.52; }
+.liquid-metal-button.is-loading .liquid-metal-button__native:disabled { opacity: 1; }
 
 @keyframes liquid-metal-ripple {
-  0% { opacity: 0.74; transform: translate(-50%, -50%) scale(0.06); }
-  70% { opacity: 0.26; }
-  100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+  from { opacity: 0.6; transform: translate(-50%, -50%) scale(0); }
+  to { opacity: 0; transform: translate(-50%, -50%) scale(4); }
 }
 
 @keyframes liquid-metal-spin {
@@ -448,17 +629,17 @@ onBeforeUnmount(() => {
 
 @media (prefers-reduced-motion: reduce) {
   .liquid-metal-button,
-  .liquid-metal-button::before,
-  .liquid-metal-button__shader,
-  .liquid-metal-button__content { transition: none; }
+  .liquid-metal-button__stage,
+  .liquid-metal-button__native,
+  .liquid-metal-button__content-layer,
+  .liquid-metal-button__surface-layer,
+  .liquid-metal-button__surface,
+  .liquid-metal-button__shader-layer,
+  .liquid-metal-button__shader-layer::before,
+  .liquid-metal-button__refractive-rim,
+  .liquid-metal-button__shader { transition: none; }
 
   .liquid-metal-button__ripple { display: none; }
   .liquid-metal-button__spinner { animation: none; }
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  .liquid-metal-button__shader,
-  .liquid-metal-button__lens { display: none; }
-  .liquid-metal-button::before { opacity: 0.48; }
 }
 </style>

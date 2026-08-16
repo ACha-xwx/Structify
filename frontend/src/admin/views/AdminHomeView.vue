@@ -102,7 +102,6 @@ onMounted(load);
             <div><dt>配置</dt><dd>以服务端状态为准</dd></div>
           </dl>
         </div>
-        <span class="admin-hero-rail__pulse" :aria-label="capability.service.status === 'AVAILABLE' ? '服务可用' : '服务不可用'"></span>
       </section>
 
       <section class="admin-module-rail" aria-labelledby="admin-module-title">

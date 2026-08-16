@@ -132,25 +132,31 @@ describe("AppShell retained session presentation", () => {
     try {
       await wrapper.get(".admin-menu-toggle").trigger("click");
 
-      const closeButton = wrapper.get(".admin-mobile-nav-layer__close");
-      const navLinks = wrapper.findAll("#admin-mobile-navigation a");
-      const lastNavLink = navLinks[navLinks.length - 1];
-      const closeButtonElement = closeButton.element as HTMLButtonElement;
-      const lastNavLinkElement = lastNavLink.element as HTMLAnchorElement;
-      lastNavLinkElement.focus();
+      const layer = wrapper.get("#admin-mobile-navigation").element;
+      const focusableElements = Array.from(layer.querySelectorAll<HTMLElement>([
+        "a[href]",
+        "button:not([disabled])",
+        "input:not([disabled]):not([type='hidden'])",
+        "select:not([disabled])",
+        "textarea:not([disabled])",
+        "[tabindex]:not([tabindex='-1'])",
+      ].join(", "))).filter((element) => element.tabIndex >= 0);
+      const firstFocusableElement = focusableElements[0];
+      const lastFocusableElement = focusableElements[focusableElements.length - 1];
+      lastFocusableElement.focus();
 
       const tabEvent = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
       window.dispatchEvent(tabEvent);
 
       expect(tabEvent.defaultPrevented).toBe(true);
-      expect(document.activeElement).toBe(closeButtonElement);
+      expect(document.activeElement).toBe(firstFocusableElement);
 
-      closeButtonElement.focus();
+      firstFocusableElement.focus();
       const reverseTabEvent = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true });
       window.dispatchEvent(reverseTabEvent);
 
       expect(reverseTabEvent.defaultPrevented).toBe(true);
-      expect(document.activeElement).toBe(lastNavLinkElement);
+      expect(document.activeElement).toBe(lastFocusableElement);
     } finally {
       wrapper.unmount();
     }
@@ -162,6 +168,19 @@ describe("AppShell retained session presentation", () => {
     expect(wrapper.find("header nav[aria-label=\"学习端导航\"]").exists()).toBe(true);
     expect(wrapper.find("aside[data-layout=\"admin-sidebar\"]").exists()).toBe(false);
     expect(wrapper.get(".app-frame").classes()).not.toContain("app-frame--admin");
+    wrapper.unmount();
+  });
+
+  it("uses the requested collapsed desktop sidebar and expands it for pointer or keyboard access", async () => {
+    const { wrapper } = await mountAdminShell();
+    const sidebar = wrapper.get("aside[data-layout=\"admin-sidebar\"]");
+    const workspace = wrapper.get(".admin-workspace");
+
+    expect(workspace.classes()).not.toContain("is-sidebar-expanded");
+    await sidebar.trigger("mouseenter");
+    expect(workspace.classes()).toContain("is-sidebar-expanded");
+    await sidebar.trigger("mouseleave");
+    expect(workspace.classes()).not.toContain("is-sidebar-expanded");
     wrapper.unmount();
   });
 });

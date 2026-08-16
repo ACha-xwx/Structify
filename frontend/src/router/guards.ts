@@ -4,8 +4,52 @@ import type { AppRouteMeta } from "./route-meta";
 
 export interface GuardRoute extends Pick<RouteLocationNormalized, "path" | "fullPath"> { meta: AppRouteMeta }
 
-export function createRouteGuard(options: { auth: AuthStore }) {
-  return async (to: GuardRoute): Promise<true | RouteLocationRaw> => {
+interface BrowserLocation {
+  hostname: string;
+}
+
+const ADMIN_HOSTNAME = "admin.structify.cn";
+const PUBLIC_ORIGIN = "https://structify.cn";
+
+function currentBrowserLocation(): BrowserLocation | undefined {
+  if (typeof window === "undefined") return undefined;
+  return window.location;
+}
+
+function isAdminHostPath(path: string): boolean {
+  return path === "/admin"
+    || path.startsWith("/admin/")
+    || path === "/login"
+    || path === "/reset-password"
+    || path === "/403";
+}
+
+function publicUrl(fullPath: string): string {
+  const safePath = fullPath.startsWith("/") && !fullPath.startsWith("//") ? fullPath : "/";
+  return `${PUBLIC_ORIGIN}${safePath}`;
+}
+
+function replaceBrowserLocation(url: string) {
+  window.location.replace(url);
+}
+
+export function createRouteGuard(options: {
+  auth: AuthStore;
+  location?: BrowserLocation;
+  redirectToPublic?: (url: string) => void;
+}) {
+  const location = options.location ?? currentBrowserLocation();
+  const redirectToPublic = options.redirectToPublic ?? replaceBrowserLocation;
+
+  return async (to: GuardRoute): Promise<true | false | RouteLocationRaw> => {
+    if (location?.hostname.toLowerCase() === ADMIN_HOSTNAME) {
+      if (to.path === "/") return { path: "/admin" };
+      if (!isAdminHostPath(to.path)) {
+        redirectToPublic(publicUrl(to.fullPath || to.path));
+        return false;
+      }
+    }
+
     const auth = options.auth;
     if (auth.state.status === "idle" || auth.state.status === "restoring") await auth.restoreSession();
     const meta = to.meta || {};
