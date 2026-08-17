@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import LiquidMetalButton from "../../admin/components/LiquidMetalButton.vue";
 import ThemeToggle from "../design/ThemeToggle.vue";
+import DirectionalArrowIcon from "../components/DirectionalArrowIcon.vue";
 import { ApiClientError } from "../api";
 import { classifyAuthError } from "../auth";
 import { auth } from "../../app/providers/runtime";
@@ -13,8 +14,14 @@ type AuthStep = "identity" | "credentials";
 
 const router = useRouter();
 const route = useRoute();
-const email = ref("");
-const password = ref("");
+const localAcceptanceHost = typeof window !== "undefined"
+  && import.meta.env.DEV
+  && import.meta.env.MODE === "development"
+  && /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(window.location.hostname);
+const localAcceptanceEmail = localAcceptanceHost ? (import.meta.env.VITE_LOCAL_LOGIN_EMAIL?.trim() || "") : "";
+const localAcceptancePassword = localAcceptanceHost ? (import.meta.env.VITE_LOCAL_LOGIN_PASSWORD || "") : "";
+const email = ref(localAcceptanceEmail);
+const password = ref(localAcceptancePassword);
 const code = ref("");
 const pending = ref(false);
 const codePending = ref(false);
@@ -225,7 +232,7 @@ onBeforeUnmount(clearCooldown);
             aria-label="继续填写密码"
             :disabled="pending"
             @click="advanceFromIdentity"
-          ><span aria-hidden="true">&rarr;</span></LiquidMetalButton>
+          ><DirectionalArrowIcon direction="right" /></LiquidMetalButton>
         </label>
 
         <Transition name="auth-fields">
@@ -293,7 +300,7 @@ onBeforeUnmount(clearCooldown);
                 :aria-label="props.mode === 'login' ? '登录' : props.mode === 'register' ? '创建账号' : '更新密码'"
                 :loading="pending"
                 :disabled="pending || codePending"
-              ><span aria-hidden="true">&rarr;</span></LiquidMetalButton>
+              ><DirectionalArrowIcon direction="right" /></LiquidMetalButton>
             </label>
           </div>
         </Transition>
@@ -301,7 +308,7 @@ onBeforeUnmount(clearCooldown);
         <p v-if="error" class="form-feedback form-feedback--error" role="alert">{{ error }}</p>
         <p v-if="feedback" class="form-feedback" role="status">{{ feedback }}</p>
 
-        <button v-if="isCredentialsStep" class="auth-back" type="button" :disabled="pending" @click="goBack"><span aria-hidden="true">&larr;</span> 返回</button>
+        <button v-if="isCredentialsStep" class="auth-back" type="button" :disabled="pending" @click="goBack"><DirectionalArrowIcon direction="left" /> 返回</button>
       </form>
 
       <nav class="auth-links" aria-label="账户操作">
@@ -464,7 +471,8 @@ onBeforeUnmount(clearCooldown);
 .form-feedback { margin: 0; padding: 9px 11px; border: 1px solid color-mix(in srgb, var(--text) 18%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--surface) 35%, transparent); color: var(--text); font-size: 12px; line-height: 1.5; text-align: left; }
 .form-feedback--error { border-color: color-mix(in srgb, var(--text) 34%, transparent); color: var(--text); }
 
-.auth-back { justify-self: start; min-height: 30px; padding: 0; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; font: inherit; font-size: 13px; font-weight: 650; transition: color 150ms ease, transform 150ms var(--auth-ease); }
+.auth-back { display: inline-flex; align-items: center; justify-self: start; gap: 6px; min-height: 30px; padding: 0; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; font: inherit; font-size: 13px; font-weight: 650; transition: color 150ms ease, transform 150ms var(--auth-ease); }
+.auth-back .directional-arrow-icon { width: 17px; height: 17px; }
 .auth-back:hover:not(:disabled) { color: var(--auth-ink); transform: translateX(-2px); }
 .auth-back:disabled { cursor: not-allowed; opacity: 0.5; }
 

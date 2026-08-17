@@ -15,3 +15,5 @@ export { default as StatusBadge } from "./StatusBadge.vue";
 export { default as ResponsiveDrawer } from "./ResponsiveDrawer.vue";
 export { default as BottomSheet } from "./BottomSheet.vue";
 export { default as ContextRail } from "./ContextRail.vue";
+export { default as DirectionalArrowIcon } from "./DirectionalArrowIcon.vue";
+export { default as ExitArrowIcon } from "./ExitArrowIcon.vue";

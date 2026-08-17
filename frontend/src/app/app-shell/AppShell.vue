@@ -4,6 +4,8 @@ import { useRoute, useRouter } from "vue-router";
 import ThemeToggle from "../../shared/design/ThemeToggle.vue";
 import { auth } from "../providers/runtime";
 import LiquidMetalButton from "../../admin/components/LiquidMetalButton.vue";
+import DirectionalArrowIcon from "../../shared/components/DirectionalArrowIcon.vue";
+import ExitArrowIcon from "../../shared/components/ExitArrowIcon.vue";
 
 type NavigationIcon = "overview" | "users" | "reviews" | "tasks" | "audit" | "settings" | "mail";
 type NavigationItem = { to: string; label: string };
@@ -206,7 +208,7 @@ onBeforeUnmount(() => {
           </nav>
           <div class="admin-mobile-nav__footer">
             <div class="admin-mobile-nav__identity"><span class="admin-mobile-nav__email">{{ auth.state.user?.email || '访客' }}</span><ThemeToggle /></div>
-            <LiquidMetalButton v-if="hasRetainedSession" class="admin-mobile-nav__signout admin-signout-metal" view-mode="text" aria-label="退出" @click="signOut"><template #icon><span class="admin-signout-glyph" aria-hidden="true">↵</span></template>退出</LiquidMetalButton>
+            <LiquidMetalButton v-if="hasRetainedSession" class="admin-mobile-nav__signout admin-signout-metal" view-mode="text" aria-label="退出" @click="signOut"><template #icon><span class="admin-signout-glyph" aria-hidden="true"><ExitArrowIcon /></span></template>退出</LiquidMetalButton>
             <RouterLink v-else class="admin-mobile-nav__signout" to="/login">登录</RouterLink>
           </div>
         </div>
@@ -217,7 +219,7 @@ onBeforeUnmount(() => {
           <div class="admin-sidebar__brand-row">
             <RouterLink class="admin-sidebar__brand" to="/admin" aria-label="返回管理总览" title="管理后台"><span class="admin-brand-mark" aria-hidden="true"></span><span class="admin-sidebar__label">管理后台</span></RouterLink>
             <button class="admin-sidebar__pin" type="button" :aria-pressed="desktopSidebarPinned" :aria-label="desktopSidebarPinned ? '取消固定管理端导航' : '固定管理端导航'" :title="desktopSidebarPinned ? '取消固定侧边栏' : '固定侧边栏'" @click.stop="toggleDesktopSidebarPinned">
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8 4 8 8-3 1 3 5-2 2-5-5-1 3-4-4z" /></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11.9999 17V21M6.9999 12.6667V6C6.9999 4.89543 7.89533 4 8.9999 4H14.9999C16.1045 4 16.9999 4.89543 16.9999 6V12.6667L18.9135 15.4308C19.3727 16.094 18.898 17 18.0913 17H5.90847C5.1018 17 4.62711 16.094 5.08627 15.4308L6.9999 12.6667Z" /></svg>
             </button>
           </div>
           <nav class="admin-sidebar__nav" aria-label="管理端导航">
@@ -226,10 +228,10 @@ onBeforeUnmount(() => {
           <div class="admin-sidebar__footer">
             <div class="admin-sidebar__identity"><span class="admin-sidebar__email">{{ auth.state.user?.email || '访客' }}</span><ThemeToggle /></div>
             <div v-if="hasRetainedSession" class="admin-sidebar__signout" title="退出">
-              <LiquidMetalButton v-if="desktopSidebarVisible" class="admin-signout-metal" view-mode="text" aria-label="退出" @click="signOut"><template #icon><span class="admin-signout-glyph" aria-hidden="true">↵</span></template>退出</LiquidMetalButton>
-              <LiquidMetalButton v-else class="admin-signout-metal" view-mode="icon" aria-label="退出" @click="signOut"><span class="admin-signout-glyph" aria-hidden="true">↵</span></LiquidMetalButton>
+              <LiquidMetalButton v-if="desktopSidebarVisible" class="admin-signout-metal" view-mode="text" aria-label="退出" @click="signOut"><template #icon><span class="admin-signout-glyph" aria-hidden="true"><ExitArrowIcon /></span></template>退出</LiquidMetalButton>
+              <LiquidMetalButton v-else class="admin-signout-metal" view-mode="icon" aria-label="退出" @click="signOut"><ExitArrowIcon class="admin-signout-glyph" /></LiquidMetalButton>
             </div>
-            <RouterLink v-else class="admin-sidebar__signout" to="/login" title="登录"><span aria-hidden="true">&rarr;</span><span class="admin-sidebar__label">登录</span></RouterLink>
+            <RouterLink v-else class="admin-sidebar__signout" to="/login" title="登录"><DirectionalArrowIcon direction="right" class="admin-sidebar__login-icon" /><span class="admin-sidebar__label">登录</span></RouterLink>
           </div>
         </aside>
         <main class="app-main admin-workspace__main" id="main-content"><slot /></main>
@@ -326,25 +328,28 @@ onBeforeUnmount(() => {
   top: 24px;
   right: 10px;
   display: grid;
-  width: 25px;
-  height: 25px;
+  width: 32px;
+  height: 32px;
   place-items: center;
   padding: 0;
-  border: 1px solid transparent;
+  border: 1px solid color-mix(in srgb, var(--admin-line-strong) 86%, transparent);
   border-radius: 50%;
-  background: transparent;
+  background: color-mix(in srgb, var(--surface) 74%, transparent);
   color: var(--admin-muted);
   cursor: pointer;
-  opacity: 0;
-  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, opacity 150ms ease, transform 180ms ease;
+  opacity: 0.82;
+  box-shadow: inset 1px 1px 0 color-mix(in srgb, var(--surface) 72%, transparent), inset -1px -1px 0 color-mix(in srgb, var(--text) 10%, transparent), 0 5px 12px color-mix(in srgb, var(--text) 12%, transparent);
+  -webkit-backdrop-filter: blur(12px) saturate(1.05);
+  backdrop-filter: blur(12px) saturate(1.05);
+  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, opacity 150ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 .admin-sidebar:hover .admin-sidebar__pin,
 .admin-sidebar:focus-within .admin-sidebar__pin,
 .admin-workspace.is-sidebar-pinned .admin-sidebar__pin { opacity: 1; }
 .admin-sidebar__pin:hover,
-.admin-sidebar__pin:focus-visible { border-color: var(--admin-line-strong); background: color-mix(in srgb, var(--surface) 82%, transparent); color: var(--admin-ink); }
-.admin-sidebar__pin:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
-.admin-sidebar__pin svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transform: rotate(-45deg); transition: transform 180ms ease; }
+.admin-sidebar__pin:focus-visible { outline: 0; border-color: var(--admin-ink); background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--admin-ink); box-shadow: var(--focus-ring), inset 1px 1px 0 color-mix(in srgb, var(--surface) 76%, transparent), 0 7px 16px color-mix(in srgb, var(--text) 16%, transparent); }
+.admin-sidebar__pin:active { transform: scale(0.94); }
+.admin-sidebar__pin svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transform: rotate(90deg); transform-box: fill-box; transform-origin: center; transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1); }
 .admin-sidebar__pin[aria-pressed="true"] svg { transform: rotate(0deg); }
 
 .admin-brand-mark {
@@ -455,6 +460,7 @@ onBeforeUnmount(() => {
 .admin-workspace:not(.is-sidebar-expanded) .admin-sidebar__signout { display: flex; justify-content: center; }
 
 .admin-workspace__main {
+  grid-column: 2;
   width: 100%;
   min-width: 0;
   max-width: none;
@@ -470,7 +476,7 @@ onBeforeUnmount(() => {
 @media (max-width: 920px) {
   .admin-workspace { display: block; min-height: calc(100dvh - 60px); }
   .admin-sidebar { display: none; }
-  .admin-workspace__main { min-height: calc(100dvh - 60px); padding: 22px 14px 40px; }
+  .admin-workspace__main { grid-column: auto; min-height: calc(100dvh - 60px); padding: 22px 14px 40px; }
   .admin-mobile-bar {
     position: sticky;
     z-index: 70;

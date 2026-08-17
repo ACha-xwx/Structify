@@ -20,7 +20,12 @@ describe("管理端详情布局样式契约", () => {
 
     expect(shell).toMatch(/\.admin-sidebar\s*\{[\s\S]*?position:\s*fixed;/);
     expect(shell).toContain("固定管理端导航");
-    expect(source).toContain("#e90000");
-    expect(source).toContain("#a80000");
+    expect(source).toContain("#920000");
+    expect(shell).toContain("ExitArrowIcon");
+    expect(shell).toContain('stroke="currentColor"');
+    expect(shell).toContain('.admin-sidebar__pin[aria-pressed="true"] svg { transform: rotate(0deg); }');
+    expect(shell).toContain('transform: rotate(90deg)');
+    expect(shell).toContain('grid-column: 2;');
+    expect(shell).not.toContain("↵");
   });
 });

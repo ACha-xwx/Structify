@@ -9,6 +9,7 @@ import ErrorState from "../../shared/components/ErrorState.vue";
 import EmptyState from "../../shared/components/EmptyState.vue";
 import RetryButton from "../../shared/components/RetryButton.vue";
 import InlineNotice from "../../shared/components/InlineNotice.vue";
+import DirectionalArrowIcon from "../../shared/components/DirectionalArrowIcon.vue";
 
 const page = ref(0); const size = 50; const total = ref(0); const items = ref<AdminAuditEvent[]>([]); const loading = ref(true); const error = ref(""); const selected = ref<AdminAuditEvent | null>(null);
 const filters = reactive({ actorUserId: "", action: "", targetType: "", targetId: "", from: "", to: "" });
@@ -191,7 +192,7 @@ onMounted(load);
         </section>
       </div>
 
-      <div class="admin-pagination admin-pagination--rail"><span class="admin-code">第 {{ page + 1 }} 页 · {{ total }} 条事件</span><div class="admin-pagination__actions"><button class="button button--small" type="button" :disabled="page === 0 || loading" @click="page--; load({ clearCurrentSelection: true })">上一页</button><button class="button button--small" type="button" :disabled="(page + 1) * size >= total || loading" @click="page++; load({ clearCurrentSelection: true })">下一页</button></div></div>
+      <div class="admin-pagination admin-pagination--rail"><span class="admin-code">第 {{ page + 1 }} 页 · {{ total }} 条事件</span><div class="admin-pagination__actions"><button class="button button--small" type="button" :disabled="page === 0 || loading" @click="page--; load({ clearCurrentSelection: true })"><DirectionalArrowIcon direction="left" />上一页</button><button class="button button--small" type="button" :disabled="(page + 1) * size >= total || loading" @click="page++; load({ clearCurrentSelection: true })">下一页<DirectionalArrowIcon direction="right" /></button></div></div>
     </template>
   </AdminPageFrame>
 </template>

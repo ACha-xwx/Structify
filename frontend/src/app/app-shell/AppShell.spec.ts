@@ -223,7 +223,8 @@ describe("AppShell retained session presentation", () => {
     const logout = wrapper.get(".admin-sidebar__signout");
     expect(logout.find(".liquid-metal-button").exists()).toBe(true);
     expect(logout.get(".liquid-metal-button__native").attributes("aria-label")).toBe("退出");
-    expect(logout.find(".admin-signout-glyph").text()).toBe("↵");
+    expect(logout.find(".admin-signout-glyph").exists()).toBe(true);
+    expect(logout.html()).toContain("M13 8L9 12");
     wrapper.unmount();
   });
 });
