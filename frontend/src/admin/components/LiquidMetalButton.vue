@@ -58,6 +58,8 @@ const iconOnly = computed(() => {
   return !hasVisibleDefault && (hasDecorativeDefault || Boolean(slots.icon));
 });
 
+const liquidGeometry = computed(() => (iconOnly.value ? "circle" : "pill"));
+
 function slotText(node: unknown): string {
   if (Array.isArray(node)) return node.map(slotText).join("");
   if (typeof node === "string" || typeof node === "number") return String(node);
@@ -268,6 +270,7 @@ onBeforeUnmount(() => {
 <template>
   <div
     class="liquid-metal-button"
+    :data-liquid-geometry="liquidGeometry"
     :class="[
       `liquid-metal-button--${props.variant}`,
       attrs.class,
@@ -289,7 +292,6 @@ onBeforeUnmount(() => {
         </span>
         <span class="liquid-metal-button__surface-layer" aria-hidden="true"><span class="liquid-metal-button__surface"></span></span>
         <span class="liquid-metal-button__shader-layer" aria-hidden="true">
-          <span class="liquid-metal-button__refractive-rim" aria-hidden="true"></span>
           <span ref="shaderHost" class="liquid-metal-button__shader"></span>
         </span>
       </span>
@@ -333,7 +335,7 @@ onBeforeUnmount(() => {
 .liquid-metal-button {
   --liquid-width: 142px;
   --liquid-height: 46px;
-  --liquid-rim-inset: 3px;
+  --liquid-rim-inset: 2px;
   --liquid-ease-out: cubic-bezier(0.16, 0.82, 0.27, 1);
   position: relative;
   display: inline-block;
@@ -349,6 +351,16 @@ onBeforeUnmount(() => {
 
 .liquid-metal-button--icon-only {
   --liquid-width: 46px;
+  --liquid-height: var(--liquid-width);
+  aspect-ratio: 1 / 1;
+}
+
+.liquid-metal-button[data-liquid-geometry="circle"],
+.liquid-metal-button[data-liquid-geometry="circle"] .liquid-metal-button__native,
+.liquid-metal-button[data-liquid-geometry="circle"] .liquid-metal-button__surface,
+.liquid-metal-button[data-liquid-geometry="circle"] .liquid-metal-button__shader,
+.liquid-metal-button[data-liquid-geometry="circle"] .liquid-metal-button__shader :deep(canvas) {
+  border-radius: 50%;
 }
 
 .liquid-metal-button__scene,
@@ -493,39 +505,10 @@ onBeforeUnmount(() => {
   height: 100%;
   overflow: hidden;
   border-radius: 100px;
-  transform: scaleX(1.045) scaleY(1.14);
+  transform: none;
   transform-origin: 50% 50%;
-  transition: transform 180ms ease, width 400ms ease, height 400ms ease;
-  will-change: transform;
-}
-
-.liquid-metal-button__refractive-rim {
-  position: absolute;
-  z-index: 1;
-  inset: -1px;
-  padding: 1.25px;
-  border-radius: 100px;
-  background: conic-gradient(
-    from 212deg at 50% 50%,
-    rgba(97, 225, 255, 0.88),
-    rgba(220, 244, 255, 0.54) 13%,
-    rgba(143, 156, 255, 0.64) 27%,
-    rgba(255, 255, 255, 0.22) 42%,
-    rgba(255, 214, 119, 0.82) 62%,
-    rgba(255, 145, 218, 0.76) 77%,
-    rgba(103, 233, 255, 0.84) 91%,
-    rgba(97, 225, 255, 0.88)
-  );
-  opacity: 0.76;
-  pointer-events: none;
-  transform: scaleX(1.025) scaleY(1.075);
-  transform-origin: 50% 50%;
-  transition: transform 180ms ease, opacity 150ms ease;
-  will-change: transform;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
+  transition: filter 160ms ease, opacity 160ms ease, width 220ms ease, height 220ms ease;
+  will-change: filter, opacity;
 }
 
 .liquid-metal-button__shader :deep(canvas) {
@@ -548,12 +531,7 @@ onBeforeUnmount(() => {
 }
 
 .liquid-metal-button.is-hovered .liquid-metal-button__shader {
-  transform: scaleX(1.075) scaleY(1.2);
-}
-
-.liquid-metal-button.is-hovered .liquid-metal-button__refractive-rim {
-  opacity: 0.92;
-  transform: scaleX(1.045) scaleY(1.14);
+  filter: saturate(1.12) brightness(1.04);
 }
 
 .liquid-metal-button.is-pressed .liquid-metal-button__surface-layer,
@@ -574,15 +552,6 @@ onBeforeUnmount(() => {
 
 .liquid-metal-button.is-pressed .liquid-metal-button__shader-layer::before {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.3);
-}
-
-.liquid-metal-button.is-pressed .liquid-metal-button__shader {
-  transform: scaleX(1.09) scaleY(1.25);
-}
-
-.liquid-metal-button.is-pressed .liquid-metal-button__refractive-rim {
-  opacity: 1;
-  transform: scaleX(1.06) scaleY(1.18);
 }
 
 .liquid-metal-button__ripple {
@@ -636,7 +605,6 @@ onBeforeUnmount(() => {
   .liquid-metal-button__surface,
   .liquid-metal-button__shader-layer,
   .liquid-metal-button__shader-layer::before,
-  .liquid-metal-button__refractive-rim,
   .liquid-metal-button__shader { transition: none; }
 
   .liquid-metal-button__ripple { display: none; }

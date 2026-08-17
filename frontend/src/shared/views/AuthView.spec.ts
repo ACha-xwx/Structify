@@ -129,4 +129,25 @@ describe("verification-code auth flow", () => {
 
     expect(wrapper.classes()).not.toContain("auth-screen--admin");
   });
+
+  it("uses an open and closed eye to toggle password visibility", async () => {
+    const wrapper = await mountAuth("login");
+    await wrapper.get('input[autocomplete="username"]').setValue("demo-user");
+    await wrapper.get('[aria-label="继续填写密码"]').trigger("click");
+
+    const toggle = wrapper.get('[data-testid="password-visibility"]');
+    const passwordField = wrapper.get('[aria-label="密码"]');
+
+    expect(toggle.attributes("aria-pressed")).toBe("false");
+    expect(toggle.attributes("aria-label")).toBe("显示密码");
+    expect(toggle.find(".auth-field__toggle-icon--closed").exists()).toBe(true);
+    expect(passwordField.attributes("type")).toBe("password");
+
+    await toggle.trigger("click");
+
+    expect(toggle.attributes("aria-pressed")).toBe("true");
+    expect(toggle.attributes("aria-label")).toBe("隐藏密码");
+    expect(toggle.find(".auth-field__toggle-icon--open").exists()).toBe(true);
+    expect(passwordField.attributes("type")).toBe("text");
+  });
 });

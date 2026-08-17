@@ -1,5 +1,7 @@
 import { mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import LiquidMetalButton from "./LiquidMetalButton.vue";
 
 describe("LiquidMetalButton", () => {
@@ -41,6 +43,18 @@ describe("LiquidMetalButton", () => {
     expect(wrapper.get(".liquid-metal-button").classes()).toContain("liquid-metal-button--icon-only");
   });
 
+  it("图标动作保持真正的圆形，并且外圈不做非等比例拉伸", () => {
+    const wrapper = mount(LiquidMetalButton, {
+      attrs: { "aria-label": "继续" },
+      slots: { default: "<span aria-hidden=\"true\">&rarr;</span>" },
+    });
+    const source = readFileSync(resolve(process.cwd(), "src/admin/components/LiquidMetalButton.vue"), "utf8");
+
+    expect(wrapper.get(".liquid-metal-button").attributes("data-liquid-geometry")).toBe("circle");
+    expect(source).toContain("aspect-ratio: 1 / 1");
+    expect(source).not.toMatch(/scaleX\([^)]*\)\s+scaleY\([^)]*\)/);
+  });
+
   it("将文本 slot 作为独立原生点击层的无障碍名称", () => {
     const wrapper = mount(LiquidMetalButton, { slots: { default: "保存设置" } });
 
@@ -50,16 +64,14 @@ describe("LiquidMetalButton", () => {
     expect(wrapper.find(".liquid-metal-button__scene").attributes("aria-hidden")).toBe("true");
   });
 
-  it("正常态提供独立的色散折射边缘层，加载态不渲染彩色层", () => {
+  it("正常态只保留原生 shader，不叠加额外的彩色圆环", () => {
     const normal = mount(LiquidMetalButton, { slots: { default: "保存设置" } });
-    const rim = normal.find(".liquid-metal-button__refractive-rim");
 
-    expect(rim.exists()).toBe(true);
-    expect(rim.attributes("aria-hidden")).toBe("true");
-    expect(rim.element.parentElement?.classList.contains("liquid-metal-button__shader-layer")).toBe(true);
+    expect(normal.find(".liquid-metal-button__shader").exists()).toBe(true);
+    expect(normal.find(".liquid-metal-button__refractive-rim").exists()).toBe(false);
 
     const loading = mount(LiquidMetalButton, { props: { loading: true }, slots: { default: "保存设置" } });
-    expect(loading.find(".liquid-metal-button__refractive-rim").exists()).toBe(false);
+    expect(loading.find(".liquid-metal-button__shader").exists()).toBe(false);
   });
 
   it("click 生成短促涟漪并在结束后移除", async () => {

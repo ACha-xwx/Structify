@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ThemeToggle from "../../shared/design/ThemeToggle.vue";
 import { auth } from "../providers/runtime";
 
-type NavigationItem = { to: string; label: string; mark?: string };
+type NavigationIcon = "overview" | "users" | "reviews" | "tasks" | "audit" | "settings" | "mail";
+type NavigationItem = { to: string; label: string };
+type AdminNavigationItem = NavigationItem & { icon: NavigationIcon };
 
 const route = useRoute();
 const router = useRouter();
@@ -18,14 +20,14 @@ let mobileNavScrollLock: { bodyOverflow: string; rootOverflow: string } | null =
 
 // Transport failures keep the last verified user in the store; that is still a usable session.
 const hasRetainedSession = computed(() => Boolean(auth.state.user));
-const adminNavItems: NavigationItem[] = [
-  { to: "/admin", label: "总览", mark: "总" },
-  { to: "/admin/users", label: "用户", mark: "用" },
-  { to: "/admin/reviews", label: "审核", mark: "审" },
-  { to: "/admin/tasks", label: "后台任务", mark: "任" },
-  { to: "/admin/audit", label: "审计", mark: "录" },
-  { to: "/admin/settings", label: "模型设置", mark: "模" },
-  { to: "/admin/mail", label: "邮件设置", mark: "邮" },
+const adminNavItems: AdminNavigationItem[] = [
+  { to: "/admin", label: "总览", icon: "overview" },
+  { to: "/admin/users", label: "用户", icon: "users" },
+  { to: "/admin/reviews", label: "审核", icon: "reviews" },
+  { to: "/admin/tasks", label: "后台任务", icon: "tasks" },
+  { to: "/admin/audit", label: "审计", icon: "audit" },
+  { to: "/admin/settings", label: "模型设置", icon: "settings" },
+  { to: "/admin/mail", label: "邮件设置", icon: "mail" },
 ];
 const learningNavItems: NavigationItem[] = [
   { to: "/user/chapters", label: "章节" },
@@ -33,6 +35,34 @@ const learningNavItems: NavigationItem[] = [
   { to: "/user/classroom", label: "课堂" },
   { to: "/user/animation", label: "舞台" },
 ];
+
+const navigationIconPaths: Record<NavigationIcon, string[]> = {
+  overview: ["M4 4h6v6H4z", "M14 4h6v6h-6z", "M4 14h6v6H4z", "M14 14h6v6h-6z"],
+  users: ["M16 20v-1.6a3.4 3.4 0 0 0-3.4-3.4H7.4A3.4 3.4 0 0 0 4 18.4V20", "M10 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7", "M16 4.5a3.5 3.5 0 0 1 0 6.8", "M20 20v-1.6a3.4 3.4 0 0 0-2.4-3.25"],
+  reviews: ["M12 3.5a8.5 8.5 0 1 0 8.5 8.5A8.5 8.5 0 0 0 12 3.5Z", "m8.5 12 2.25 2.25 4.75-4.75"],
+  tasks: ["M8 4h8a2 2 0 0 1 2 2v14H6V6a2 2 0 0 1 2-2Z", "M9 3h6v3H9z", "M9 11h6", "M9 15h4"],
+  audit: ["M8 6h11", "M8 12h11", "M8 18h11", "M4.5 6h.01", "M4.5 12h.01", "M4.5 18h.01"],
+  settings: ["M4 6h16", "M4 12h16", "M4 18h16", "M8 4v4", "M16 10v4", "M10 16v4"],
+  mail: ["M4 6h16v12H4z", "m4 7 8 6 8-6"],
+};
+
+const AdminNavIcon = (props: { name: NavigationIcon }) => h(
+  "svg",
+  {
+    class: "admin-nav__icon",
+    viewBox: "0 0 24 24",
+    width: "18",
+    height: "18",
+    fill: "none",
+    stroke: "currentColor",
+    "stroke-width": "1.8",
+    "stroke-linecap": "round",
+    "stroke-linejoin": "round",
+    "aria-hidden": "true",
+    focusable: "false",
+  },
+  navigationIconPaths[props.name].map((d) => h("path", { d })),
+);
 
 watch(() => route.fullPath, () => closeMobileNavWithoutRestoringFocus());
 
@@ -162,7 +192,7 @@ onBeforeUnmount(() => {
             <button ref="mobileNavClose" class="admin-mobile-nav-layer__close" type="button" aria-label="关闭管理端导航" @click="closeMobileNav"><span aria-hidden="true">x</span></button>
           </div>
           <nav class="admin-mobile-nav" aria-label="管理端移动导航">
-            <RouterLink v-for="item in adminNavItems" :key="item.to" :to="item.to" :aria-label="item.label"><span class="admin-nav__mark" aria-hidden="true">{{ item.mark }}</span><span>{{ item.label }}</span></RouterLink>
+            <RouterLink v-for="item in adminNavItems" :key="item.to" :to="item.to" :aria-label="item.label"><span class="admin-nav__mark"><AdminNavIcon :name="item.icon" /></span><span>{{ item.label }}</span></RouterLink>
           </nav>
           <div class="admin-mobile-nav__footer">
             <div class="admin-mobile-nav__identity"><span class="admin-mobile-nav__email">{{ auth.state.user?.email || '访客' }}</span><ThemeToggle /></div>
@@ -176,7 +206,7 @@ onBeforeUnmount(() => {
         <aside class="admin-sidebar" data-layout="admin-sidebar" :aria-label="desktopSidebarExpanded ? '管理端导航，已展开' : '管理端导航，已收拢'" @mouseenter="expandDesktopSidebar" @mouseleave="collapseDesktopSidebar" @focusin="expandDesktopSidebar" @focusout="handleDesktopSidebarFocusOut">
           <RouterLink class="admin-sidebar__brand" to="/admin" aria-label="返回管理总览" title="管理后台"><span class="admin-brand-mark" aria-hidden="true"></span><span class="admin-sidebar__label">管理后台</span></RouterLink>
           <nav class="admin-sidebar__nav" aria-label="管理端导航">
-            <RouterLink v-for="item in adminNavItems" :key="item.to" :to="item.to" :aria-label="item.label" :title="desktopSidebarExpanded ? undefined : item.label"><span class="admin-nav__mark" aria-hidden="true">{{ item.mark }}</span><span class="admin-sidebar__label">{{ item.label }}</span></RouterLink>
+            <RouterLink v-for="item in adminNavItems" :key="item.to" :to="item.to" :aria-label="item.label" :title="desktopSidebarExpanded ? undefined : item.label"><span class="admin-nav__mark"><AdminNavIcon :name="item.icon" /></span><span class="admin-sidebar__label">{{ item.label }}</span></RouterLink>
           </nav>
           <div class="admin-sidebar__footer">
             <div class="admin-sidebar__identity"><span class="admin-sidebar__email">{{ auth.state.user?.email || '访客' }}</span><ThemeToggle /></div>
@@ -312,20 +342,18 @@ onBeforeUnmount(() => {
 }
 .admin-nav__mark {
   display: grid;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
   place-items: center;
-  border: 1px solid color-mix(in srgb, var(--admin-line-strong) 68%, transparent);
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--surface) 54%, transparent);
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
   color: var(--admin-ink);
-  font-family: var(--font-serif);
-  font-size: 15px;
-  font-weight: 700;
   line-height: 1;
-  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), background-color 150ms ease, border-color 150ms ease;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), background-color 150ms ease, color 150ms ease;
 }
+.admin-nav__icon { display: block; width: 18px; height: 18px; flex: 0 0 18px; }
 .admin-sidebar__label {
   display: block;
   max-width: 0;
@@ -342,7 +370,7 @@ onBeforeUnmount(() => {
 .admin-sidebar__nav a:focus-visible .admin-nav__mark { transform: translateX(1px); }
 .admin-sidebar__nav a.router-link-exact-active { border-color: color-mix(in srgb, var(--admin-line-strong) 76%, transparent); background: color-mix(in srgb, var(--text) 8%, var(--surface)); color: var(--admin-ink); }
 .admin-sidebar__nav a.router-link-exact-active::before { opacity: 1; transform: translateY(-50%) scaleY(1); }
-.admin-sidebar__nav a.router-link-exact-active .admin-nav__mark { border-color: var(--admin-ink); background: var(--admin-ink); color: var(--surface); }
+.admin-sidebar__nav a.router-link-exact-active .admin-nav__mark { background: var(--admin-ink); color: var(--surface); }
 .admin-sidebar__nav a:focus-visible,
 .admin-sidebar__signout:focus-visible,
 .admin-mobile-nav a:focus-visible,
@@ -350,6 +378,8 @@ onBeforeUnmount(() => {
 
 .admin-sidebar__footer { display: grid; gap: 10px; margin-top: auto; padding: 14px 10px 18px; border-top: 1px solid var(--admin-line); }
 .admin-sidebar__identity { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 10px; padding: 0 4px; }
+.admin-workspace:not(.is-sidebar-expanded) .admin-sidebar__footer { padding-right: 4px; padding-left: 4px; }
+.admin-workspace:not(.is-sidebar-expanded) .admin-sidebar__identity { justify-content: center; gap: 0; padding-right: 0; padding-left: 0; }
 .admin-sidebar__email {
   max-width: 0;
   overflow: hidden;
@@ -431,7 +461,7 @@ onBeforeUnmount(() => {
   .admin-mobile-nav { display: grid; gap: 8px; margin-top: 28px; }
   .admin-mobile-nav a { min-height: 54px; padding: 0 12px; border-color: var(--admin-line); border-radius: 8px; background: color-mix(in srgb, var(--surface) 62%, transparent); color: var(--admin-ink); }
   .admin-mobile-nav a.router-link-exact-active { border-color: var(--admin-ink); background: color-mix(in srgb, var(--text) 8%, var(--surface)); }
-  .admin-mobile-nav a.router-link-exact-active .admin-nav__mark { border-color: var(--admin-ink); background: var(--admin-ink); color: var(--surface); }
+  .admin-mobile-nav a.router-link-exact-active .admin-nav__mark { background: var(--admin-ink); color: var(--surface); }
   .admin-mobile-nav__footer { display: grid; gap: 14px; margin-top: auto; padding-top: 24px; border-top: 1px solid var(--admin-line); }
   .admin-mobile-nav__identity { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 16px; }
   .admin-mobile-nav__email { overflow: hidden; color: var(--admin-muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }

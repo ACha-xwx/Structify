@@ -275,7 +275,7 @@ async function save() {
   try {
     const updated = await adminApi.updateMailConfig(payload);
     fill(updated);
-    savedMessage.value = "SMTP 设置已保存。密码输入仅用于本次请求，页面不会回填。";
+    savedMessage.value = "SMTP 设置已保存。";
   } catch (failure) {
     error.value = adminErrorMessage(failure, "保存邮件配置");
   } finally {

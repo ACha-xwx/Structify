@@ -65,7 +65,7 @@ describe("AppShell retained session presentation", () => {
     const { wrapper } = await mountShell();
 
     expect(wrapper.text()).toContain("student@example.com");
-    expect(wrapper.get("button").text()).toContain("退出");
+    expect(wrapper.get(".app-user button").text()).toContain("退出");
     expect(wrapper.find("a[href=\"/login\"]").exists()).toBe(false);
     wrapper.unmount();
   });
@@ -83,6 +83,18 @@ describe("AppShell retained session presentation", () => {
     expect(nav.find("a[href=\"/admin/settings\"]").exists()).toBe(true);
     expect(nav.find("a[href=\"/admin/mail\"]").exists()).toBe(true);
     expect(wrapper.find("header nav[aria-label=\"管理端导航\"]").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("uses compact semantic icons instead of single-character navigation thumbnails", async () => {
+    const { wrapper } = await mountAdminShell();
+    const marks = wrapper.get("aside[data-layout=\"admin-sidebar\"] nav").findAll(".admin-nav__mark");
+    const icons = wrapper.get("aside[data-layout=\"admin-sidebar\"] nav").findAll("svg.admin-nav__icon");
+
+    expect(marks).toHaveLength(7);
+    expect(icons).toHaveLength(7);
+    expect(marks.every((mark) => mark.text().trim() === "")).toBe(true);
+    expect(icons.every((icon) => icon.attributes("aria-hidden") === "true")).toBe(true);
     wrapper.unmount();
   });
 

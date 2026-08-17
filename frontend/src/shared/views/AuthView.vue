@@ -220,6 +220,7 @@ onBeforeUnmount(clearCooldown);
             v-show="authStep === 'identity' && identityValid"
             class="auth-step-action"
             variant="quiet"
+            view-mode="icon"
             type="button"
             aria-label="继续填写密码"
             :disabled="pending"
@@ -257,10 +258,22 @@ onBeforeUnmount(clearCooldown);
               <span class="auth-field__floating-label">密码</span>
               <button
                 class="auth-field__symbol auth-field__symbol--toggle"
+                data-testid="password-visibility"
                 type="button"
                 :aria-label="passwordVisible ? '隐藏密码' : '显示密码'"
+                :aria-pressed="passwordVisible"
+                :title="passwordVisible ? '隐藏密码' : '显示密码'"
                 @click="passwordVisible = !passwordVisible"
-              >{{ passwordVisible ? "○" : "●" }}</button>
+              >
+                <svg v-if="passwordVisible" class="auth-field__toggle-icon auth-field__toggle-icon--open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+                  <circle cx="12" cy="12" r="2.5" />
+                </svg>
+                <svg v-else class="auth-field__toggle-icon auth-field__toggle-icon--closed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M2.5 12s3.5-6 9.5-6c1.74 0 3.19.51 4.39 1.22M21.5 12s-3.5 6-9.5 6c-1.74 0-3.19-.51-4.39-1.22" />
+                  <path d="m4 4 16 16" />
+                </svg>
+              </button>
               <input
                 ref="passwordInput"
                 v-model="password"
@@ -275,6 +288,7 @@ onBeforeUnmount(clearCooldown);
                 v-show="credentialsReady"
                 class="auth-step-action"
                 variant="quiet"
+                view-mode="icon"
                 type="submit"
                 :aria-label="props.mode === 'login' ? '登录' : props.mode === 'register' ? '创建账号' : '更新密码'"
                 :loading="pending"
@@ -429,13 +443,18 @@ onBeforeUnmount(clearCooldown);
 
 .auth-field__symbol { position: relative; z-index: 4; display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--text-muted); font-size: 16px; font-weight: 700; line-height: 1; }
 .auth-field__symbol--code { color: var(--text-muted); }
-.auth-field__symbol--toggle { cursor: pointer; color: var(--text); font-size: 15px; }
+.auth-field__symbol--toggle { cursor: pointer; color: var(--auth-ink); font-size: 0; transition: background-color 140ms ease, color 140ms ease, transform 120ms ease; }
+.auth-field__symbol--toggle:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.auth-field__symbol--toggle:active { transform: scale(0.92); }
+.auth-field__symbol--toggle:focus-visible { outline: 2px solid var(--auth-ink); outline-offset: 2px; }
+.auth-field__symbol--toggle[aria-pressed="true"] { color: var(--auth-accent); }
+.auth-field__toggle-icon { display: block; width: 18px; height: 18px; }
 .auth-field__floating-label { position: absolute; z-index: 6; top: -17px; left: 14px; color: var(--auth-muted); font-size: 11px; font-weight: 700; line-height: 1; }
 .auth-field--identity-compact { margin-top: 10px; }
 .auth-field--credential { min-height: 54px; }
 .auth-credentials { display: grid; gap: 22px; }
 
-.auth-step-action { position: relative; z-index: 5; width: 42px; min-width: 42px; height: 42px; min-height: 42px; padding: 0; font-size: 20px; }
+.auth-step-action { --liquid-width: 42px; --liquid-height: var(--liquid-width); position: relative; z-index: 5; flex: 0 0 var(--liquid-width); aspect-ratio: 1 / 1; padding: 0; font-size: 20px; }
 
 .auth-code-action { position: relative; z-index: 5; min-width: 52px; min-height: 34px; padding: 0 11px; border: 1px solid color-mix(in srgb, var(--text) 16%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--surface) 44%, transparent); box-shadow: inset 0 1px color-mix(in srgb, var(--surface) 92%, transparent), 0 3px 7px color-mix(in srgb, var(--text) 8%, transparent); color: var(--auth-accent); cursor: pointer; font: inherit; font-size: 12px; font-weight: 730; transition: transform 150ms var(--auth-ease), background-color 150ms ease, box-shadow 150ms ease; }
 .auth-code-action:hover:not(:disabled) { background: color-mix(in srgb, var(--surface) 72%, transparent); transform: scale(0.975); }
