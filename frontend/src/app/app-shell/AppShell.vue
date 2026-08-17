@@ -3,6 +3,7 @@ import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from "v
 import { useRoute, useRouter } from "vue-router";
 import ThemeToggle from "../../shared/design/ThemeToggle.vue";
 import { auth } from "../providers/runtime";
+import LiquidMetalButton from "../../admin/components/LiquidMetalButton.vue";
 
 type NavigationIcon = "overview" | "users" | "reviews" | "tasks" | "audit" | "settings" | "mail";
 type NavigationItem = { to: string; label: string };
@@ -12,6 +13,8 @@ const route = useRoute();
 const router = useRouter();
 const isAdmin = computed(() => route.meta.layout === "admin");
 const desktopSidebarExpanded = ref(false);
+const desktopSidebarPinned = ref(false);
+const desktopSidebarVisible = computed(() => desktopSidebarExpanded.value || desktopSidebarPinned.value);
 const mobileNavOpen = ref(false);
 const mobileMenuToggle = ref<HTMLButtonElement | null>(null);
 const mobileNavClose = ref<HTMLButtonElement | null>(null);
@@ -67,7 +70,14 @@ const AdminNavIcon = (props: { name: NavigationIcon }) => h(
 watch(() => route.fullPath, () => closeMobileNavWithoutRestoringFocus());
 
 function expandDesktopSidebar() { desktopSidebarExpanded.value = true; }
-function collapseDesktopSidebar() { desktopSidebarExpanded.value = false; }
+function collapseDesktopSidebar() {
+  if (!desktopSidebarPinned.value) desktopSidebarExpanded.value = false;
+}
+
+function toggleDesktopSidebarPinned() {
+  desktopSidebarPinned.value = !desktopSidebarPinned.value;
+  desktopSidebarExpanded.value = desktopSidebarPinned.value;
+}
 
 function handleDesktopSidebarFocusOut(event: FocusEvent) {
   const sidebar = event.currentTarget;
@@ -196,21 +206,29 @@ onBeforeUnmount(() => {
           </nav>
           <div class="admin-mobile-nav__footer">
             <div class="admin-mobile-nav__identity"><span class="admin-mobile-nav__email">{{ auth.state.user?.email || '访客' }}</span><ThemeToggle /></div>
-            <button v-if="hasRetainedSession" class="admin-mobile-nav__signout" type="button" @click="signOut"><span aria-hidden="true">&larr;</span> 退出</button>
+            <LiquidMetalButton v-if="hasRetainedSession" class="admin-mobile-nav__signout admin-signout-metal" view-mode="text" aria-label="退出" @click="signOut"><template #icon><span class="admin-signout-glyph" aria-hidden="true">↵</span></template>退出</LiquidMetalButton>
             <RouterLink v-else class="admin-mobile-nav__signout" to="/login">登录</RouterLink>
           </div>
         </div>
       </Transition>
 
-      <div class="admin-workspace" :class="{ 'is-sidebar-expanded': desktopSidebarExpanded }">
-        <aside class="admin-sidebar" data-layout="admin-sidebar" :aria-label="desktopSidebarExpanded ? '管理端导航，已展开' : '管理端导航，已收拢'" @mouseenter="expandDesktopSidebar" @mouseleave="collapseDesktopSidebar" @focusin="expandDesktopSidebar" @focusout="handleDesktopSidebarFocusOut">
-          <RouterLink class="admin-sidebar__brand" to="/admin" aria-label="返回管理总览" title="管理后台"><span class="admin-brand-mark" aria-hidden="true"></span><span class="admin-sidebar__label">管理后台</span></RouterLink>
+      <div class="admin-workspace" :class="{ 'is-sidebar-expanded': desktopSidebarVisible, 'is-sidebar-pinned': desktopSidebarPinned }">
+        <aside class="admin-sidebar admin-sidebar--fixed" data-layout="admin-sidebar" :aria-label="desktopSidebarPinned ? '管理端导航，已固定展开' : desktopSidebarVisible ? '管理端导航，已展开' : '管理端导航，已收拢'" @mouseenter="expandDesktopSidebar" @mouseleave="collapseDesktopSidebar" @focusin="expandDesktopSidebar" @focusout="handleDesktopSidebarFocusOut">
+          <div class="admin-sidebar__brand-row">
+            <RouterLink class="admin-sidebar__brand" to="/admin" aria-label="返回管理总览" title="管理后台"><span class="admin-brand-mark" aria-hidden="true"></span><span class="admin-sidebar__label">管理后台</span></RouterLink>
+            <button class="admin-sidebar__pin" type="button" :aria-pressed="desktopSidebarPinned" :aria-label="desktopSidebarPinned ? '取消固定管理端导航' : '固定管理端导航'" :title="desktopSidebarPinned ? '取消固定侧边栏' : '固定侧边栏'" @click.stop="toggleDesktopSidebarPinned">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8 4 8 8-3 1 3 5-2 2-5-5-1 3-4-4z" /></svg>
+            </button>
+          </div>
           <nav class="admin-sidebar__nav" aria-label="管理端导航">
             <RouterLink v-for="item in adminNavItems" :key="item.to" :to="item.to" :aria-label="item.label" :title="desktopSidebarExpanded ? undefined : item.label"><span class="admin-nav__mark"><AdminNavIcon :name="item.icon" /></span><span class="admin-sidebar__label">{{ item.label }}</span></RouterLink>
           </nav>
           <div class="admin-sidebar__footer">
             <div class="admin-sidebar__identity"><span class="admin-sidebar__email">{{ auth.state.user?.email || '访客' }}</span><ThemeToggle /></div>
-            <button v-if="hasRetainedSession" class="admin-sidebar__signout" type="button" title="退出" @click="signOut"><span aria-hidden="true">&larr;</span><span class="admin-sidebar__label">退出</span></button>
+            <div v-if="hasRetainedSession" class="admin-sidebar__signout" title="退出">
+              <LiquidMetalButton v-if="desktopSidebarVisible" class="admin-signout-metal" view-mode="text" aria-label="退出" @click="signOut"><template #icon><span class="admin-signout-glyph" aria-hidden="true">↵</span></template>退出</LiquidMetalButton>
+              <LiquidMetalButton v-else class="admin-signout-metal" view-mode="icon" aria-label="退出" @click="signOut"><span class="admin-signout-glyph" aria-hidden="true">↵</span></LiquidMetalButton>
+            </div>
             <RouterLink v-else class="admin-sidebar__signout" to="/login" title="登录"><span aria-hidden="true">&rarr;</span><span class="admin-sidebar__label">登录</span></RouterLink>
           </div>
         </aside>
@@ -259,10 +277,14 @@ onBeforeUnmount(() => {
 .admin-workspace.is-sidebar-expanded { grid-template-columns: 300px minmax(0, 1fr); }
 
 .admin-sidebar {
-  position: sticky;
+  position: fixed;
+  z-index: 80;
   top: 0;
+  left: 0;
+  bottom: 0;
   display: flex;
-  width: 100%;
+  width: 72px;
+  height: 100dvh;
   min-height: 100dvh;
   flex-direction: column;
   overflow: hidden;
@@ -271,6 +293,16 @@ onBeforeUnmount(() => {
   box-shadow: inset -1px 0 color-mix(in srgb, var(--surface) 58%, transparent);
   -webkit-backdrop-filter: blur(18px) saturate(0.9);
   backdrop-filter: blur(18px) saturate(0.9);
+  transition: width 240ms cubic-bezier(0.22, 1, 0.36, 1), background-color 150ms ease;
+}
+.admin-workspace.is-sidebar-expanded .admin-sidebar { width: 300px; }
+
+.admin-sidebar__brand-row {
+  position: relative;
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  border-bottom: 1px solid var(--admin-line);
 }
 
 .admin-sidebar__brand,
@@ -287,7 +319,33 @@ onBeforeUnmount(() => {
   text-decoration: none;
   white-space: nowrap;
 }
-.admin-sidebar__brand { min-height: 72px; padding: 0 18px; border-bottom: 1px solid var(--admin-line); }
+.admin-sidebar__brand { min-height: 72px; padding: 0 48px 0 18px; }
+.admin-workspace:not(.is-sidebar-expanded) .admin-sidebar__brand { width: 100%; justify-content: center; padding-right: 0; padding-left: 0; }
+.admin-sidebar__pin {
+  position: absolute;
+  top: 24px;
+  right: 10px;
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--admin-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, opacity 150ms ease, transform 180ms ease;
+}
+.admin-sidebar:hover .admin-sidebar__pin,
+.admin-sidebar:focus-within .admin-sidebar__pin,
+.admin-workspace.is-sidebar-pinned .admin-sidebar__pin { opacity: 1; }
+.admin-sidebar__pin:hover,
+.admin-sidebar__pin:focus-visible { border-color: var(--admin-line-strong); background: color-mix(in srgb, var(--surface) 82%, transparent); color: var(--admin-ink); }
+.admin-sidebar__pin:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
+.admin-sidebar__pin svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transform: rotate(-45deg); transition: transform 180ms ease; }
+.admin-sidebar__pin[aria-pressed="true"] svg { transform: rotate(0deg); }
 
 .admin-brand-mark {
   position: relative;
@@ -392,7 +450,9 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 .is-sidebar-expanded .admin-sidebar__email { max-width: 180px; opacity: 1; transform: translateX(0); transition-delay: 45ms; }
-.admin-sidebar__signout { width: 100%; justify-content: flex-start; background: transparent; cursor: pointer; font: inherit; }
+.admin-sidebar__signout { width: 100%; min-height: 46px; justify-content: flex-start; background: transparent; cursor: pointer; font: inherit; }
+.admin-sidebar__signout .liquid-metal-button { max-width: 100%; }
+.admin-workspace:not(.is-sidebar-expanded) .admin-sidebar__signout { display: flex; justify-content: center; }
 
 .admin-workspace__main {
   width: 100%;

@@ -195,4 +195,35 @@ describe("AppShell retained session presentation", () => {
     expect(workspace.classes()).not.toContain("is-sidebar-expanded");
     wrapper.unmount();
   });
+
+  it("pins the desktop sidebar open and exposes an accessible fixed rail", async () => {
+    const { wrapper } = await mountAdminShell();
+    const sidebar = wrapper.get("aside[data-layout=\"admin-sidebar\"]");
+    const workspace = wrapper.get(".admin-workspace");
+    const pin = wrapper.get("button[aria-label=\"固定管理端导航\"]");
+
+    expect(sidebar.classes()).toContain("admin-sidebar--fixed");
+    expect(pin.attributes("aria-pressed")).toBe("false");
+    await pin.trigger("click");
+    expect(pin.attributes("aria-pressed")).toBe("true");
+    expect(workspace.classes()).toContain("is-sidebar-pinned");
+    expect(workspace.classes()).toContain("is-sidebar-expanded");
+
+    await sidebar.trigger("mouseleave");
+    expect(workspace.classes()).toContain("is-sidebar-expanded");
+
+    await pin.trigger("click");
+    expect(pin.attributes("aria-pressed")).toBe("false");
+    expect(workspace.classes()).not.toContain("is-sidebar-pinned");
+    wrapper.unmount();
+  });
+
+  it("uses the liquid metal logout action in the admin rail", async () => {
+    const { wrapper } = await mountAdminShell();
+    const logout = wrapper.get(".admin-sidebar__signout");
+    expect(logout.find(".liquid-metal-button").exists()).toBe(true);
+    expect(logout.get(".liquid-metal-button__native").attributes("aria-label")).toBe("退出");
+    expect(logout.find(".admin-signout-glyph").text()).toBe("↵");
+    wrapper.unmount();
+  });
 });

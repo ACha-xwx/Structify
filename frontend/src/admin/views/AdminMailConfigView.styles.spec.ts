@@ -27,4 +27,12 @@ describe("邮件配置页暗色 scoped 样式契约", () => {
     expect(compiled.code).toContain('[data-theme="dark"] .mail-operations .admin-field');
     expect(compiled.code).not.toMatch(/\[data-theme="dark"\]\s*\{[^}]*--mail-ink/s);
   });
+
+  it("gives the subject and template editors intentional working space", () => {
+    const source = fs.readFileSync(viewPath, "utf8");
+    expect(source).toContain(".mail-template-editor > .admin-field:first-child");
+    expect(source).toContain("align-self: start");
+    expect(source).toMatch(/\.mail-template-textarea\s*\{[\s\S]*?min-height:\s*520px/);
+    expect(source).toMatch(/\.mail-preview__frame\s*\{[\s\S]*?min-height:\s*520px/);
+  });
 });

@@ -318,9 +318,14 @@ async function sendTestMail() {
     mailTone.value = "warning";
     return;
   }
-  const recipient = (testRecipient.value || actorEmail.value).trim().toLowerCase();
+  const recipient = testRecipient.value.trim().toLowerCase();
   if (!recipient) {
-    mailMessage.value = "发送测试邮件前需要当前管理员邮箱。";
+    mailMessage.value = "发送测试邮件前需要填写测试收件人邮箱。";
+    mailTone.value = "warning";
+    return;
+  }
+  if (recipient.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
+    mailMessage.value = "测试收件人邮箱格式无效，请检查后重试。";
     mailTone.value = "warning";
     return;
   }
@@ -418,9 +423,9 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
         </section>
 
         <section class="mail-card mail-card--test">
-          <header class="mail-card__header"><div><h2>测试投递</h2><p>使用当前设置发送到当前管理员邮箱。</p></div></header>
+          <header class="mail-card__header"><div><h2>测试投递</h2><p>使用当前设置发送到你指定的收件人邮箱。</p></div></header>
           <div class="mail-test-row">
-            <label class="admin-field"><span>测试收件人</span><input v-model="testRecipient" type="email" :readonly="Boolean(actorEmail)" :placeholder="actorEmail || '当前管理员邮箱'" required /></label>
+            <label class="admin-field"><span>测试收件人</span><input v-model="testRecipient" type="email" autocomplete="email" maxlength="254" :placeholder="actorEmail || 'name@example.com'" required /></label>
             <LiquidMetalButton class="mail-test-send-button" :disabled="saving || testing || sending || !testRecipient" @click="sendTestMail">{{ sending ? "发送中…" : "发送测试邮件" }}</LiquidMetalButton>
           </div>
         </section>
@@ -767,10 +772,19 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
   min-width: 0;
 }
 
-.mail-operations .mail-template-editor { display: grid; min-width: 0; gap: 14px; }
+.mail-operations .mail-template-editor {
+  display: grid;
+  align-content: start;
+  grid-template-rows: max-content minmax(520px, auto);
+  min-width: 0;
+  gap: 14px;
+}
+
+.mail-operations .mail-template-editor > .admin-field:first-child { align-self: start; }
+.mail-operations .mail-template-editor > .admin-field:first-child :is(input, select) { min-height: 62px; }
 
 .mail-operations .mail-template-textarea {
-  min-height: 348px;
+  min-height: 520px;
   font-family: var(--admin-ui, system-ui, sans-serif);
   font-size: 13px;
   line-height: 1.6;
@@ -780,6 +794,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
   display: grid;
   align-content: start;
   min-width: 0;
+  min-height: 520px;
   gap: 10px;
   padding: 0;
   border: 0;
@@ -810,7 +825,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
 .mail-operations .mail-preview__frame {
   display: block;
   width: 100%;
-  min-height: 360px;
+  min-height: 520px;
   box-sizing: border-box;
   border: 1px solid rgba(35, 69, 76, 0.18);
   border-top-color: rgba(255, 255, 255, 0.94);
@@ -882,7 +897,10 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
 
 @media (max-width: 980px) {
   .mail-operations .mail-template-grid { grid-template-columns: 1fr; }
-  .mail-operations .mail-preview__frame { min-height: 320px; }
+  .mail-operations .mail-template-editor { grid-template-rows: max-content minmax(420px, auto); }
+  .mail-operations .mail-template-textarea,
+  .mail-operations .mail-preview { min-height: 420px; }
+  .mail-operations .mail-preview__frame { min-height: 420px; }
 }
 
 @media (max-width: 720px) {
@@ -891,6 +909,10 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
   .mail-operations .mail-grid--two,
   .mail-operations .mail-grid--policy,
   .mail-operations .mail-test-row { grid-template-columns: 1fr; }
+  .mail-operations .mail-template-editor { grid-template-rows: max-content minmax(360px, auto); }
+  .mail-operations .mail-template-textarea,
+  .mail-operations .mail-preview { min-height: 360px; }
+  .mail-operations .mail-preview__frame { min-height: 360px; }
   .mail-operations .mail-card__actions { align-items: stretch; flex-direction: column; }
   .mail-operations .mail-card__action-buttons { justify-content: stretch; }
   .mail-operations .mail-card__action-buttons .button,

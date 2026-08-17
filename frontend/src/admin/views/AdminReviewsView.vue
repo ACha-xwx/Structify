@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import AdminPageFrame from "../components/AdminPageFrame.vue";
+import AdminTableControls from "../components/AdminTableControls.vue";
 import { adminApi, adminErrorMessage, formatDate } from "../api";
 import type { ReviewDetail, ReviewHistoryEvent, ReviewItem, ReviewStatus } from "../../shared/types";
 import LoadingState from "../../shared/components/LoadingState.vue";
@@ -13,8 +14,52 @@ import InlineNotice from "../../shared/components/InlineNotice.vue";
 const page = ref(0); const size = 20; const total = ref(0); const items = ref<ReviewItem[]>([]); const loading = ref(true); const error = ref(""); const notice = ref("");
 const filters = reactive({ search: "", status: "", type: "" }); const selected = ref<ReviewDetail | null>(null); const history = ref<ReviewHistoryEvent[]>([]); const detailLoading = ref(false); const actionBusy = ref(false); const nextStatus = ref<ReviewStatus>("DRAFT"); const note = ref("");
 const statuses: ReviewStatus[] = ["LEGACY_UNVERIFIED", "DRAFT", "PUBLISHED", "VERIFIED", "EXCLUDED"];
+const tableFilter = ref("");
+const sortKey = ref("updatedAt");
+const sortDirection = ref<"asc" | "desc">("desc");
+const visibleColumns = ref(["item", "status", "source", "updatedAt", "actions"]);
+const selectedIds = ref<Set<string>>(new Set());
+const tableColumns = [
+  { key: "item", label: "项目" },
+  { key: "status", label: "状态" },
+  { key: "source", label: "来源链" },
+  { key: "updatedAt", label: "更新时间" },
+  { key: "actions", label: "操作" },
+];
 let listRequest = 0;
 let detailRequest = 0;
+
+const displayItems = computed(() => {
+  const query = tableFilter.value.trim().toLowerCase();
+  const filtered = query
+    ? items.value.filter((item) => `${item.title} ${item.type} ${item.id} ${item.status} ${item.chapterId || ""}`.toLowerCase().includes(query))
+    : [...items.value];
+  const direction = sortDirection.value === "asc" ? 1 : -1;
+  return filtered.sort((left, right) => {
+    const leftValue = sortKey.value === "status" ? left.status : sortKey.value === "source" ? (left.sourceComplete ? 1 : 0) : sortKey.value === "item" ? `${left.title} ${left.id}` : left.updatedAt;
+    const rightValue = sortKey.value === "status" ? right.status : sortKey.value === "source" ? (right.sourceComplete ? 1 : 0) : sortKey.value === "item" ? `${right.title} ${right.id}` : right.updatedAt;
+    return String(leftValue).localeCompare(String(rightValue), "zh-CN", { numeric: true }) * direction;
+  });
+});
+const allSelected = computed(() => displayItems.value.length > 0 && displayItems.value.every((item) => selectedIds.value.has(reviewKey(item))));
+function isColumnVisible(key: string) { return visibleColumns.value.includes(key); }
+function setSort(key: string) {
+  if (sortKey.value === key) sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc";
+  else { sortKey.value = key; sortDirection.value = "asc"; }
+}
+function toggleRow(item: ReviewItem) {
+  const key = reviewKey(item);
+  const next = new Set(selectedIds.value);
+  if (next.has(key)) next.delete(key); else next.add(key);
+  selectedIds.value = next;
+}
+function toggleAllRows() {
+  const next = new Set(selectedIds.value);
+  if (allSelected.value) displayItems.value.forEach((item) => next.delete(reviewKey(item)));
+  else displayItems.value.forEach((item) => next.add(reviewKey(item)));
+  selectedIds.value = next;
+}
+function clearRows() { selectedIds.value = new Set(); }
 
 function noticeTone(value: string): "success" | "danger" { return value.includes("未完成") || value.includes("失败") ? "danger" : "success"; }
 
@@ -38,6 +83,8 @@ async function load({ clearCurrentSelection = false } = {}): Promise<boolean> {
     if (request !== listRequest) return false;
     items.value = result.items;
     total.value = result.total;
+    const available = new Set(result.items.map((item) => reviewKey(item)));
+    selectedIds.value = new Set([...selectedIds.value].filter((key) => available.has(key)));
     return true;
   } catch (failure) {
     if (request === listRequest) error.value = adminErrorMessage(failure, "读取审核队列");
@@ -149,21 +196,35 @@ onMounted(load);
       <div :class="{ 'data-rail': selected }">
         <section class="admin-data-surface admin-table-wrap admin-motion-enter" aria-label="审核队列">
           <header class="admin-data-surface__head"><div><p class="admin-kicker">审核清单</p><h2>审核队列</h2></div><span class="admin-data-surface__hint">来源链完整性由服务端最终校验</span></header>
+          <AdminTableControls
+            v-model="tableFilter"
+            v-model:sort-key="sortKey"
+            v-model:sort-direction="sortDirection"
+            v-model:visible-columns="visibleColumns"
+            :columns="tableColumns"
+            :selected-count="selectedIds.size"
+            :total-count="displayItems.length"
+            :all-selected="allSelected"
+            @toggle-all="toggleAllRows"
+            @clear-selection="clearRows"
+          />
           <table class="admin-table admin-data-table">
-            <thead><tr><th>项目</th><th>状态</th><th>来源链</th><th>更新时间</th><th>操作</th></tr></thead>
+            <thead><tr><th v-if="isColumnVisible('item')"><button class="admin-table__sort" type="button" data-sort-key="item" @click="setSort('item')">项目 <span aria-hidden="true">↕</span></button></th><th v-if="isColumnVisible('status')"><button class="admin-table__sort" type="button" data-sort-key="status" @click="setSort('status')">状态 <span aria-hidden="true">↕</span></button></th><th v-if="isColumnVisible('source')"><button class="admin-table__sort" type="button" data-sort-key="source" @click="setSort('source')">来源链 <span aria-hidden="true">↕</span></button></th><th v-if="isColumnVisible('updatedAt')"><button class="admin-table__sort" type="button" data-sort-key="updatedAt" @click="setSort('updatedAt')">更新时间 <span aria-hidden="true">↕</span></button></th><th v-if="isColumnVisible('actions')">操作</th><th class="admin-table__selection-heading" aria-label="选择" /></tr></thead>
             <tbody>
-              <tr v-for="item in items" :key="`${item.type}-${item.id}`" class="admin-data-row" :data-selected="selected && selected.item.id === item.id && selected.item.type === item.type">
-                <td><div class="admin-record"><span class="admin-record__index admin-code">{{ item.id }}</span><div><strong>{{ item.title }}</strong><div class="admin-muted admin-code">{{ item.type }}</div></div></div></td>
-                <td><StatusBadge :label="item.status" :tone="tone(item.status)" /></td>
-                <td><StatusBadge :label="item.sourceComplete ? '完整' : '不完整'" :tone="item.sourceComplete ? 'success' : 'warning'" /></td>
-                <td class="admin-code admin-nowrap">{{ formatDate(item.updatedAt) }}</td>
-                <td><button class="button button--small admin-action-button" type="button" data-action="open-review" :disabled="detailLoading || actionBusy" @click="openDetail(item)">查看详情<span aria-hidden="true">↗</span></button></td>
+              <tr v-if="!displayItems.length" class="admin-table__empty-row"><td :colspan="visibleColumns.length + 1">当前页没有符合表格筛选的审核项目。</td></tr>
+              <tr v-for="item in displayItems" :key="`${item.type}-${item.id}`" class="admin-data-row" :data-selected="selected && selected.item.id === item.id && selected.item.type === item.type">
+                <td v-if="isColumnVisible('item')"><div class="admin-record"><span class="admin-record__index admin-code">{{ item.id }}</span><div><strong>{{ item.title }}</strong><div class="admin-muted admin-code">{{ item.type }}</div></div></div></td>
+                <td v-if="isColumnVisible('status')"><StatusBadge :label="item.status" :tone="tone(item.status)" /></td>
+                <td v-if="isColumnVisible('source')"><StatusBadge :label="item.sourceComplete ? '完整' : '不完整'" :tone="item.sourceComplete ? 'success' : 'warning'" /></td>
+                <td v-if="isColumnVisible('updatedAt')" class="admin-code admin-nowrap">{{ formatDate(item.updatedAt) }}</td>
+                <td v-if="isColumnVisible('actions')"><details class="admin-row-actions"><summary aria-label="行操作">⋯</summary><div class="admin-table__actions"><button class="button button--small admin-action-button" type="button" data-action="open-review" :disabled="detailLoading || actionBusy" @click="openDetail(item)">查看详情<span aria-hidden="true">↗</span></button></div></details></td>
+                <td class="admin-table__selection-cell"><input type="checkbox" :checked="selectedIds.has(reviewKey(item))" :aria-label="`选择审核项目 ${item.title}`" @change="toggleRow(item)" /></td>
               </tr>
             </tbody>
           </table>
         </section>
 
-        <aside v-if="selected" class="admin-inspector admin-detail admin-motion-enter" aria-label="审核详情">
+        <section v-if="selected" class="admin-inspector admin-detail admin-motion-enter" aria-label="审核详情">
           <div class="admin-detail__header admin-inspector__header"><div><p class="admin-kicker">当前项目</p><h2>{{ selected.item.title }}</h2><p class="admin-code">{{ selected.item.type }} · {{ selected.item.id }}</p></div><button class="button button--small" type="button" @click="closeDetail">关闭</button></div>
           <div v-if="detailLoading" data-state="review-detail-loading"><LoadingState label="正在读取来源链…" /></div>
           <template v-else>
@@ -172,7 +233,7 @@ onMounted(load);
             <section class="admin-inspector__section"><div class="admin-section-head admin-section-head--compact"><h3>状态变更</h3><span class="admin-code">受保护写入</span></div><div class="admin-form__grid"><label class="admin-field"><span>目标状态</span><select v-model="nextStatus" data-field="next-status" :disabled="actionBusy"><option v-for="status in statuses" :key="status" :value="status">{{ status }}</option></select></label><label class="admin-field"><span>审核备注</span><input v-model="note" maxlength="500" placeholder="可选，说明审核依据" :disabled="actionBusy" /></label></div><button class="button button--primary admin-inspector__submit" type="button" data-action="update-review" :disabled="actionBusy" @click="updateStatus">{{ actionBusy ? "提交中…" : "提交状态变更" }}<span aria-hidden="true">↗</span></button></section>
             <section class="admin-inspector__section"><div class="admin-section-head admin-section-head--compact"><h3>审核历史</h3><span class="admin-code">历史记录</span></div><ul class="admin-list admin-timeline"><li v-for="event in history" :key="event.id"><span class="admin-timeline__node" aria-hidden="true"></span><div><strong>{{ event.previousStatus }} → {{ event.nextStatus }}</strong><div class="admin-muted">{{ formatDate(event.createdAt) }} · {{ event.note || "无备注" }}</div><div class="admin-muted admin-code">requestId {{ event.requestId }}</div></div></li><li v-if="!history.length" class="admin-muted">暂无审核历史。</li></ul></section>
           </template>
-        </aside>
+        </section>
       </div>
 
       <div class="admin-pagination admin-pagination--rail"><span class="admin-code">第 {{ page + 1 }} 页 · 共 {{ total }} 项</span><div class="admin-pagination__actions"><button class="button button--small" type="button" :disabled="page === 0 || loading || actionBusy" @click="page--; notice = ''; load({ clearCurrentSelection: true })">上一页</button><button class="button button--small" type="button" :disabled="(page + 1) * size >= total || loading || actionBusy" @click="page++; notice = ''; load({ clearCurrentSelection: true })">下一页</button></div></div>

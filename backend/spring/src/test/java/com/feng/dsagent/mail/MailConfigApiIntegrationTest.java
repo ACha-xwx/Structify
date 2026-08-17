@@ -148,7 +148,7 @@ class MailConfigApiIntegrationTest {
     }
 
     @Test
-    void unsavedConnectionAndTestMailUseDraftAndOnlyReachTheCurrentAdministrator() throws Exception {
+    void unsavedConnectionAndTestMailUseDraftAndAllowACustomRecipient() throws Exception {
         long admin = seedUser("mail-draft@example.com", "ADMIN");
         String token = bearer(admin, "STUDENT", "ADMIN");
         String config = configJson(true, "test-only-value", false);
@@ -177,8 +177,10 @@ class MailConfigApiIntegrationTest {
                 .header("Authorization", token)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"config\":" + config + ",\"recipient\":\"other@example.com\"}"))
-            .andExpect(status().isForbidden())
-            .andExpect(jsonPath("$.code").value("MAIL_TEST_RECIPIENT_FORBIDDEN"));
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.sent").value(true))
+            .andExpect(jsonPath("$.code").value("TEST_EMAIL_SENT"));
+        org.assertj.core.api.Assertions.assertThat(transport.lastRecipient()).isEqualTo("other@example.com");
     }
 
     @Test
@@ -332,6 +334,7 @@ class MailConfigApiIntegrationTest {
     static class CapturingMailTransport implements MailTransport {
         private final List<String> subjects = new ArrayList<>();
         private final List<String> html = new ArrayList<>();
+        private final List<String> recipients = new ArrayList<>();
         private boolean connectionTestsFail;
 
         @Override
@@ -344,8 +347,13 @@ class MailConfigApiIntegrationTest {
 
         @Override
         public void send(MailConnection connection, String password, String recipient, String subject, String body) {
+            recipients.add(recipient);
             subjects.add(subject);
             html.add(body);
+        }
+
+        String lastRecipient() {
+            return recipients.isEmpty() ? "" : recipients.get(recipients.size() - 1);
         }
 
         String lastHtml() {
@@ -359,6 +367,7 @@ class MailConfigApiIntegrationTest {
         void reset() {
             subjects.clear();
             html.clear();
+            recipients.clear();
             connectionTestsFail = false;
         }
     }

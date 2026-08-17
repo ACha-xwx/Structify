@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref } from "vue";
 import AdminPageFrame from "../components/AdminPageFrame.vue";
+import AdminTableControls from "../components/AdminTableControls.vue";
 import { adminApi, adminErrorMessage, formatDate } from "../api";
 import type { AdminUser, Role } from "../../shared/types";
 import LoadingState from "../../shared/components/LoadingState.vue";
@@ -13,8 +14,51 @@ import InlineNotice from "../../shared/components/InlineNotice.vue";
 const page = ref(0); const size = 20; const total = ref(0); const items = ref<AdminUser[]>([]); const loading = ref(true); const error = ref(""); const notice = ref("");
 const filters = reactive({ search: "", status: "", role: "" });
 const selected = ref<AdminUser | null>(null); const rolesDraft = ref<Role[]>([]); const actionBusy = ref<number | null>(null); const detailBusy = ref(false); const detailError = ref("");
+const tableFilter = ref("");
+const sortKey = ref("user");
+const sortDirection = ref<"asc" | "desc">("asc");
+const visibleColumns = ref(["user", "status", "roles", "createdAt", "actions"]);
+const selectedIds = ref<Set<number>>(new Set());
+const tableColumns = [
+  { key: "user", label: "用户" },
+  { key: "status", label: "状态" },
+  { key: "roles", label: "角色" },
+  { key: "createdAt", label: "创建时间" },
+  { key: "actions", label: "操作" },
+];
 let listRequest = 0;
 let detailRequest = 0;
+
+const displayItems = computed(() => {
+  const query = tableFilter.value.trim().toLowerCase();
+  const filtered = query
+    ? items.value.filter((user) => `${user.username || ""} ${user.email} ${user.status} ${user.roles.join(" ")}`.toLowerCase().includes(query))
+    : [...items.value];
+  const direction = sortDirection.value === "asc" ? 1 : -1;
+  return filtered.sort((left, right) => {
+    const leftValue = sortKey.value === "createdAt" ? left.createdAt : sortKey.value === "status" ? left.status : sortKey.value === "roles" ? left.roles.join(",") : (left.username || left.email);
+    const rightValue = sortKey.value === "createdAt" ? right.createdAt : sortKey.value === "status" ? right.status : sortKey.value === "roles" ? right.roles.join(",") : (right.username || right.email);
+    return String(leftValue).localeCompare(String(rightValue), "zh-CN") * direction;
+  });
+});
+const allSelected = computed(() => displayItems.value.length > 0 && displayItems.value.every((user) => selectedIds.value.has(user.id)));
+function isColumnVisible(key: string) { return visibleColumns.value.includes(key); }
+function setSort(key: string) {
+  if (sortKey.value === key) sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc";
+  else { sortKey.value = key; sortDirection.value = "asc"; }
+}
+function toggleRow(id: number) {
+  const next = new Set(selectedIds.value);
+  if (next.has(id)) next.delete(id); else next.add(id);
+  selectedIds.value = next;
+}
+function toggleAllRows() {
+  const next = new Set(selectedIds.value);
+  if (allSelected.value) displayItems.value.forEach((user) => next.delete(user.id));
+  else displayItems.value.forEach((user) => next.add(user.id));
+  selectedIds.value = next;
+}
+function clearRows() { selectedIds.value = new Set(); }
 
 function noticeTone(value: string): "success" | "danger" { return value.includes("未完成") || value.includes("失败") ? "danger" : "success"; }
 
@@ -36,6 +80,8 @@ async function load({ clearCurrentSelection = false } = {}): Promise<boolean> {
     if (request !== listRequest) return false;
     items.value = result.items;
     total.value = result.total;
+    const available = new Set(result.items.map((user) => user.id));
+    selectedIds.value = new Set([...selectedIds.value].filter((id) => available.has(id)));
     return true;
   } catch (failure) {
     if (request === listRequest) error.value = adminErrorMessage(failure, "读取用户列表");
@@ -155,21 +201,35 @@ onMounted(load);
             <div><p class="admin-kicker">用户目录</p><h2>用户列表</h2></div>
             <span class="admin-data-surface__hint">最后管理员保护由服务端执行</span>
           </header>
+          <AdminTableControls
+            v-model="tableFilter"
+            v-model:sort-key="sortKey"
+            v-model:sort-direction="sortDirection"
+            v-model:visible-columns="visibleColumns"
+            :columns="tableColumns"
+            :selected-count="selectedIds.size"
+            :total-count="displayItems.length"
+            :all-selected="allSelected"
+            @toggle-all="toggleAllRows"
+            @clear-selection="clearRows"
+          />
           <table class="admin-table admin-data-table">
-            <thead><tr><th>用户</th><th>状态</th><th>角色</th><th>创建时间</th><th>操作</th></tr></thead>
+            <thead><tr><th v-if="isColumnVisible('user')"><button class="admin-table__sort" type="button" data-sort-key="user" @click="setSort('user')">用户 <span aria-hidden="true">↕</span></button></th><th v-if="isColumnVisible('status')"><button class="admin-table__sort" type="button" data-sort-key="status" @click="setSort('status')">状态 <span aria-hidden="true">↕</span></button></th><th v-if="isColumnVisible('roles')"><button class="admin-table__sort" type="button" data-sort-key="roles" @click="setSort('roles')">角色 <span aria-hidden="true">↕</span></button></th><th v-if="isColumnVisible('createdAt')"><button class="admin-table__sort" type="button" data-sort-key="createdAt" @click="setSort('createdAt')">创建时间 <span aria-hidden="true">↕</span></button></th><th v-if="isColumnVisible('actions')">操作</th><th class="admin-table__selection-heading" aria-label="选择" /></tr></thead>
             <tbody>
-              <tr v-for="user in items" :key="user.id" class="admin-data-row" :data-selected="selected?.id === user.id">
-                <td><div class="admin-identity admin-nowrap"><span class="admin-identity__signal" aria-hidden="true"></span><div><strong :title="user.username || user.email">{{ user.username || user.email }}</strong><div class="admin-muted admin-code" :title="user.username ? user.email : `#${user.id}`">{{ user.username ? user.email : `#${user.id}` }}</div></div></div></td>
-                <td><StatusBadge :label="user.status" :tone="user.status === 'ACTIVE' ? 'success' : 'warning'" /><div v-if="user.disabledReason" class="admin-muted admin-data-note">{{ user.disabledReason }}</div></td>
-                <td><div class="admin-checks admin-role-cluster"><label v-for="role in ['STUDENT','TEACHER','ADMIN'] as Role[]" :key="role" class="admin-check"><input type="checkbox" :disabled="actionBusy !== null" :checked="(selected?.id === user.id ? rolesDraft : user.roles).includes(role)" @change="selectUser(user); toggleRole(role)" /><span>{{ role }}</span></label></div></td>
-                <td class="admin-code admin-nowrap">{{ formatDate(user.createdAt) }}</td>
-                <td><div class="admin-table__actions admin-action-cluster"><button class="button button--small" type="button" :disabled="detailBusy || actionBusy !== null" @click="openUser(user)">查看</button><button class="button button--small" type="button" :disabled="actionBusy !== null" @click="changeStatus(user)">{{ user.status === 'ACTIVE' ? '禁用' : '启用' }}</button><button v-if="selected?.id === user.id" class="button button--small button--primary" type="button" :disabled="actionBusy !== null" @click="saveRoles(user)">保存角色</button></div></td>
+              <tr v-if="!displayItems.length" class="admin-table__empty-row"><td :colspan="visibleColumns.length + 1">当前页没有符合表格筛选的用户。</td></tr>
+              <tr v-for="user in displayItems" :key="user.id" class="admin-data-row" :data-selected="selected?.id === user.id">
+                <td v-if="isColumnVisible('user')"><div class="admin-identity admin-nowrap"><span class="admin-identity__signal" aria-hidden="true"></span><div><strong :title="user.username || user.email">{{ user.username || user.email }}</strong><div class="admin-muted admin-code" :title="user.username ? user.email : `#${user.id}`">{{ user.username ? user.email : `#${user.id}` }}</div></div></div></td>
+                <td v-if="isColumnVisible('status')"><StatusBadge :label="user.status" :tone="user.status === 'ACTIVE' ? 'success' : 'warning'" /><div v-if="user.disabledReason" class="admin-muted admin-data-note">{{ user.disabledReason }}</div></td>
+                <td v-if="isColumnVisible('roles')"><div class="admin-checks admin-role-cluster"><label v-for="role in ['STUDENT','TEACHER','ADMIN'] as Role[]" :key="role" class="admin-check"><input type="checkbox" :disabled="actionBusy !== null" :checked="(selected?.id === user.id ? rolesDraft : user.roles).includes(role)" @change="selectUser(user); toggleRole(role)" /><span>{{ role }}</span></label></div></td>
+                <td v-if="isColumnVisible('createdAt')" class="admin-code admin-nowrap">{{ formatDate(user.createdAt) }}</td>
+                <td v-if="isColumnVisible('actions')"><details class="admin-row-actions"><summary aria-label="行操作">⋯</summary><div class="admin-table__actions admin-action-cluster"><button class="button button--small" type="button" :disabled="detailBusy || actionBusy !== null" @click="openUser(user)">查看</button><button class="button button--small" type="button" :disabled="actionBusy !== null" @click="changeStatus(user)">{{ user.status === 'ACTIVE' ? '禁用' : '启用' }}</button><button v-if="selected?.id === user.id" class="button button--small button--primary" type="button" :disabled="actionBusy !== null" @click="saveRoles(user)">保存角色</button></div></details></td>
+                <td class="admin-table__selection-cell"><input type="checkbox" :checked="selectedIds.has(user.id)" :aria-label="`选择用户 ${user.username || user.email}`" @change="toggleRow(user.id)" /></td>
               </tr>
             </tbody>
           </table>
         </section>
 
-        <aside v-if="selected" class="admin-inspector admin-detail admin-motion-enter" aria-label="用户详情">
+        <section v-if="selected" class="admin-inspector admin-detail admin-motion-enter" aria-label="用户详情">
           <div class="admin-detail__header admin-inspector__header"><div><p class="admin-kicker">当前选择</p><h2>用户详情</h2></div><button class="button button--small" type="button" @click="clearSelection">关闭</button></div>
           <LoadingState v-if="detailBusy" label="正在读取用户详情…" />
           <ErrorState v-else-if="detailError" title="用户详情读取失败" :message="detailError"><RetryButton @retry="openUser(selected)" /></ErrorState>
@@ -177,7 +237,7 @@ onMounted(load);
             <div class="admin-inspector__identity"><span class="admin-identity__signal" aria-hidden="true"></span><strong>{{ selected.username || selected.email }}</strong><StatusBadge :label="selected.status" :tone="selected.status === 'ACTIVE' ? 'success' : 'warning'" /></div>
             <dl><dt>用户名</dt><dd>{{ selected.username || "未设置" }}</dd><dt>邮箱</dt><dd>{{ selected.email }}</dd><dt>状态</dt><dd>{{ selected.status }}</dd><dt>禁用时间</dt><dd>{{ formatDate(selected.disabledAt) }}</dd><dt>更新时间</dt><dd>{{ formatDate(selected.updatedAt) }}</dd></dl>
           </template>
-        </aside>
+        </section>
       </div>
 
       <div class="admin-pagination admin-pagination--rail"><span class="admin-code">第 {{ page + 1 }} 页 · {{ total }} 条记录</span><div class="admin-pagination__actions"><button class="button button--small" type="button" :disabled="page === 0 || loading || actionBusy !== null" @click="page--; notice = ''; load({ clearCurrentSelection: true })">上一页</button><button class="button button--small" type="button" :disabled="(page + 1) * size >= total || loading || actionBusy !== null" @click="page++; notice = ''; load({ clearCurrentSelection: true })">下一页</button></div></div>

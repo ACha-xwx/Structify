@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import AdminAuditView from "./AdminAuditView.vue";
 
-const auditEvents = vi.hoisted(() => vi.fn(async () => ({ items: [], page: 0, size: 50, total: 0 })));
+const auditEvents = vi.hoisted(() => vi.fn());
 
 vi.mock("../api", () => ({
   adminApi: { auditEvents },
@@ -11,7 +11,7 @@ vi.mock("../api", () => ({
 }));
 
 describe("AdminAuditView", () => {
-  beforeEach(() => auditEvents.mockClear());
+  beforeEach(() => auditEvents.mockReset().mockResolvedValue({ items: [], page: 0, size: 50, total: 0 }));
 
   it("sends actor and ISO date-time filters while preserving zero-based pagination", async () => {
     const wrapper = mount(AdminAuditView);
@@ -52,5 +52,21 @@ describe("AdminAuditView", () => {
 
     expect(auditEvents).toHaveBeenCalledTimes(initialCalls);
     expect(wrapper.text()).toContain("开始时间不能晚于结束时间");
+  });
+
+  it("provides table interaction controls for the audit list", async () => {
+    auditEvents.mockResolvedValueOnce({
+      items: [{ id: 1, actorUserId: 23, action: "USER_ROLES_CHANGED", targetType: "USER", targetId: "42", result: "SUCCESS", beforeSummary: "", afterSummary: "", requestId: "req-1", createdAt: "2026-08-12T10:00:00Z" }],
+      page: 0,
+      size: 50,
+      total: 1,
+    });
+    const wrapper = mount(AdminAuditView);
+    await flushPromises();
+    expect(wrapper.get("[role='toolbar'][aria-label='表格工具']")).toBeDefined();
+    await wrapper.get("input[aria-label='选择审计事件 1']").setValue(true);
+    expect(wrapper.text()).toContain("已选 1 / 1");
+    await wrapper.get("button.admin-action-button").trigger("click");
+    expect(wrapper.find("section[aria-label='审计事件摘要']").exists()).toBe(true);
   });
 });

@@ -146,6 +146,20 @@ describe("AdminMailConfigView", () => {
     wrapper.unmount();
   });
 
+  it("allows the administrator to edit a custom test recipient", async () => {
+    const wrapper = mount(AdminMailConfigView);
+    await flushPromises();
+
+    const recipient = wrapper.get(".mail-card--test input[type=email]");
+    expect(recipient.attributes("readonly")).toBeUndefined();
+    await recipient.setValue("qa-inbox@example.test");
+    await wrapper.get(".mail-card--test button").trigger("click");
+    await flushPromises();
+
+    expect(sendTestMail).toHaveBeenLastCalledWith(expect.any(Object), "qa-inbox@example.test");
+    wrapper.unmount();
+  });
+
   it("keeps an SMTP password pending after a failed save", async () => {
     updateMailConfig.mockRejectedValueOnce(new Error("test save failure"));
     const wrapper = mount(AdminMailConfigView);

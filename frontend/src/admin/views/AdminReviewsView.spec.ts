@@ -53,6 +53,17 @@ describe("AdminReviewsView", () => {
     expect(wrapper.text()).toContain("课程资料");
   });
 
+  it("provides data-table controls and expands review detail below the queue", async () => {
+    const wrapper = mount(AdminReviewsView);
+    await flushPromises();
+    expect(wrapper.get("[role='toolbar'][aria-label='表格工具']")).toBeDefined();
+    await wrapper.get("input[aria-label='选择审核项目 栈的基本操作']").setValue(true);
+    expect(wrapper.text()).toContain("已选 1 / 1");
+    await wrapper.get("button[data-action='open-review']").trigger("click");
+    await flushPromises();
+    expect(wrapper.find("section[aria-label='审核详情']").exists()).toBe(true);
+  });
+
   it("shows the detail loading state while the public detail request is pending", async () => {
     const pending = deferred<{ item: typeof reviewItem; sourceChain: never[] }>();
     review.mockReturnValueOnce(pending.promise);

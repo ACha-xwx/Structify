@@ -66,6 +66,17 @@ describe("AdminTasksView", () => {
     wrapper.unmount();
   });
 
+  it("provides table controls and renders task detail below the table", async () => {
+    const wrapper = mount(AdminTasksView);
+    await flushPromises();
+    expect(wrapper.get("[role='toolbar'][aria-label='表格工具']")).toBeDefined();
+    await wrapper.get("input[aria-label='选择任务 11']").setValue(true);
+    expect(wrapper.text()).toContain("已选 1 / 3");
+    await wrapper.findAll("button").find((button) => button.text() === "详情")!.trigger("click");
+    await flushPromises();
+    expect(wrapper.find("section[aria-label='任务详情']").exists()).toBe(true);
+  });
+
   it("loads the real task detail through the public detail action", async () => {
     const wrapper = mount(AdminTasksView);
     await flushPromises();

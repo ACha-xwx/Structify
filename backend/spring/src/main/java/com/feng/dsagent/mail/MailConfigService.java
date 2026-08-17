@@ -170,9 +170,6 @@ public class MailConfigService {
         String requestId
     ) {
         String recipient = normalizeEmail(request.recipient(), "MAIL_TEST_RECIPIENT_INVALID");
-        if (!recipient.equalsIgnoreCase(actor.email())) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "MAIL_TEST_RECIPIENT_FORBIDDEN", "测试邮件只能发送到当前管理员邮箱");
-        }
         MailConfigRepository.StoredMailConfig existing = repository.find().orElse(null);
         NormalizedDraft draft = normalize(request.config(), existing);
         String password = resolvePasswordForDraft(draft, existing, false);
@@ -193,7 +190,7 @@ public class MailConfigService {
         }
         repository.appendAuditEvent(
             actor.userId(), "MAIL_TEST_SENT", Long.toString(CONFIGURATION_ID), "SUCCESS", safeRequestId(requestId),
-            summary(existing), "sent=true;unsaved=true;recipient=actor;credentialRedacted=true"
+            summary(existing), "sent=true;unsaved=true;recipient=custom;credentialRedacted=true"
         );
         return new MailConfigController.TestMailView(true, "TEST_EMAIL_SENT");
     }

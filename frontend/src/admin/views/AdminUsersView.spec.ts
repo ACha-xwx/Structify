@@ -82,7 +82,20 @@ describe("AdminUsersView", () => {
     await flushPromises();
 
     expect(user).toHaveBeenCalledWith(7);
-    expect(wrapper.get("aside[aria-label='用户详情']").text()).toContain("2026-08-12T09:45:00Z");
+    expect(wrapper.get("section[aria-label='用户详情']").text()).toContain("2026-08-12T09:45:00Z");
+    expect(wrapper.find("section[aria-label='用户列表'] + section[aria-label='用户详情']").exists()).toBe(true);
+  });
+
+  it("exposes the table filter, sort, column visibility, and row selection controls", async () => {
+    const wrapper = mount(AdminUsersView);
+    await flushPromises();
+    expect(wrapper.get("[role='toolbar'][aria-label='表格工具']")).toBeDefined();
+    expect(wrapper.get("input[placeholder='筛选当前页']")).toBeDefined();
+    expect(wrapper.get("button[aria-label='排序']")).toBeDefined();
+    expect(wrapper.get("summary[aria-label='列显示']")).toBeDefined();
+    const rowSelection = wrapper.get("input[aria-label='选择用户 ACha_']");
+    await rowSelection.setValue(true);
+    expect(wrapper.text()).toContain("已选 1 / 1");
   });
 
   it("keeps every unsaved role toggle before submitting the public update", async () => {
@@ -90,7 +103,7 @@ describe("AdminUsersView", () => {
     const wrapper = mount(AdminUsersView);
     await flushPromises();
 
-    const roleCheckboxes = wrapper.findAll("input[type='checkbox']");
+    const roleCheckboxes = wrapper.findAll(".admin-role-cluster input[type='checkbox']");
     await roleCheckboxes[0].setValue(true);
     await roleCheckboxes[1].setValue(true);
     await flushPromises();
