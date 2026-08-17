@@ -1043,7 +1043,7 @@
 .admin-command,
 .admin-data-surface__head,
 .admin-table th,
-.signal-strip__item div,
+.signal-strip__item,
 .guardrail-grid > * { background: rgba(255, 255, 255, 0.56); }
 
 .admin-command__dot,
@@ -1123,7 +1123,7 @@
 .admin-toolbar,
 .admin-data-surface__head,
 .admin-table th,
-.signal-strip__item div,
+.signal-strip__item,
 .guardrail-grid > * {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(239, 239, 237, 0.64));
 }
@@ -1227,8 +1227,10 @@
 [data-theme="dark"] .admin-toolbar,
 [data-theme="dark"] .admin-data-surface__head,
 [data-theme="dark"] .admin-table th,
-[data-theme="dark"] .signal-strip__item div,
-[data-theme="dark"] .guardrail-grid > * {
+[data-theme="dark"] .signal-strip__item,
+[data-theme="dark"] .app-frame--admin .guardrail-grid > div,
+[data-theme="dark"] .app-frame--admin .admin-inspector__summary > div,
+[data-theme="dark"] .admin-signal-grid > div {
   background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 86%, transparent), color-mix(in srgb, var(--surface-subtle) 80%, transparent));
 }
 

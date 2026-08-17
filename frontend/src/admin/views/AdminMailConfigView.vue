@@ -1061,14 +1061,14 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
   .mail-operations .mail-preview__frame { border-color: #4a4a4a; }
 }
 
-:global([data-theme="dark"]) .mail-operations {
+:global([data-theme="dark"] .mail-operations) {
   --mail-ink: var(--text);
   --mail-muted: var(--text-muted);
   --mail-line: var(--line);
   --mail-line-strong: var(--line-strong);
 }
 
-:global([data-theme="dark"]) .mail-operations .mail-card {
+:global([data-theme="dark"] .mail-operations .mail-card) {
   border-top-color: color-mix(in srgb, var(--surface) 72%, transparent);
   border-right-color: color-mix(in srgb, var(--text) 18%, transparent);
   border-bottom-color: color-mix(in srgb, var(--text) 24%, transparent);
@@ -1079,18 +1079,18 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 56%, transparent), inset 0 -1px 0 rgba(0, 0, 0, 0.28), 0 10px 26px rgba(0, 0, 0, 0.23);
 }
 
-:global([data-theme="dark"]) .mail-operations .mail-card::before {
+:global([data-theme="dark"] .mail-operations .mail-card::before) {
   background: linear-gradient(112deg, color-mix(in srgb, var(--surface) 42%, transparent), transparent 36%, color-mix(in srgb, var(--surface) 12%, transparent) 64%, color-mix(in srgb, var(--surface) 24%, transparent));
 }
 
-:global([data-theme="dark"]) .mail-operations .mail-card::after {
+:global([data-theme="dark"] .mail-operations .mail-card::after) {
   background: linear-gradient(118deg, color-mix(in srgb, var(--surface) 48%, transparent), color-mix(in srgb, var(--text-muted) 22%, transparent) 30%, transparent 58%, color-mix(in srgb, var(--text) 22%, transparent));
 }
 
-:global([data-theme="dark"]) .mail-operations .mail-card__header,
-:global([data-theme="dark"]) :deep(.admin-page[data-admin-view="邮件设置"] .admin-page__header) { border-color: var(--line); }
+:global([data-theme="dark"] .mail-operations .mail-card__header),
+:global([data-theme="dark"] .admin-page[data-admin-view="邮件设置"] .admin-page__header) { border-color: var(--line); }
 
-:global([data-theme="dark"]) .mail-operations .admin-field :is(input, select, textarea) {
+:global([data-theme="dark"] .mail-operations .admin-field :is(input, select, textarea)) {
   border-top-color: color-mix(in srgb, var(--surface) 58%, transparent);
   border-right-color: color-mix(in srgb, var(--text) 18%, transparent);
   border-bottom-color: color-mix(in srgb, var(--text) 24%, transparent);
@@ -1100,18 +1100,18 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
   color: var(--mail-ink);
 }
 
-:global([data-theme="dark"]) .mail-operations .admin-field :is(input, select, textarea):hover { border-color: color-mix(in srgb, var(--text) 36%, transparent); }
-:global([data-theme="dark"]) .mail-operations .admin-field :is(input, select, textarea):focus { border-color: color-mix(in srgb, var(--text) 58%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 14%, transparent), inset 0 1px 0 color-mix(in srgb, var(--surface) 54%, transparent); }
-:global([data-theme="dark"]) .mail-operations .admin-field :is(input, select, textarea)[readonly] { background: var(--surface-subtle); color: var(--mail-muted); }
+:global([data-theme="dark"] .mail-operations .admin-field :is(input, select, textarea):hover) { border-color: color-mix(in srgb, var(--text) 36%, transparent); }
+:global([data-theme="dark"] .mail-operations .admin-field :is(input, select, textarea):focus) { border-color: color-mix(in srgb, var(--text) 58%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--text) 14%, transparent), inset 0 1px 0 color-mix(in srgb, var(--surface) 54%, transparent); }
+:global([data-theme="dark"] .mail-operations .admin-field :is(input, select, textarea)[readonly]) { background: var(--surface-subtle); color: var(--mail-muted); }
 
-:global([data-theme="dark"]) .mail-operations .mail-toggle__control { border-color: color-mix(in srgb, var(--text) 30%, transparent); background: color-mix(in srgb, var(--text) 16%, transparent); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 28%, transparent), inset 0 -1px 0 rgba(0, 0, 0, 0.28); }
-:global([data-theme="dark"]) .mail-operations .mail-toggle input:checked + .mail-toggle__control { border-color: var(--text); background: var(--text); }
-:global([data-theme="dark"]) .mail-operations .mail-toggle input:checked + .mail-toggle__control > span { box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.82); }
-:global([data-theme="dark"]) .mail-operations code { border-color: color-mix(in srgb, var(--text) 18%, transparent); background: color-mix(in srgb, var(--surface) 72%, transparent); }
-:global([data-theme="dark"]) .mail-operations .mail-preview__frame { border-color: color-mix(in srgb, var(--text) 24%, transparent); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28); }
+:global([data-theme="dark"] .mail-operations .mail-toggle__control) { border-color: color-mix(in srgb, var(--text) 30%, transparent); background: color-mix(in srgb, var(--text) 16%, transparent); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 28%, transparent), inset 0 -1px 0 rgba(0, 0, 0, 0.28); }
+:global([data-theme="dark"] .mail-operations .mail-toggle input:checked + .mail-toggle__control) { border-color: var(--text); background: var(--text); }
+:global([data-theme="dark"] .mail-operations .mail-toggle input:checked + .mail-toggle__control > span) { box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.82); }
+:global([data-theme="dark"] .mail-operations code) { border-color: color-mix(in srgb, var(--text) 18%, transparent); background: color-mix(in srgb, var(--surface) 72%, transparent); }
+:global([data-theme="dark"] .mail-operations .mail-preview__frame) { border-color: color-mix(in srgb, var(--text) 24%, transparent); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28); }
 
 @media (hover: hover) and (pointer: fine) {
-  :global([data-theme="dark"]) .mail-operations .mail-card:hover {
+  :global([data-theme="dark"] .mail-operations .mail-card:hover) {
     border-color: color-mix(in srgb, var(--text) 30%, transparent);
     box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 62%, transparent), inset 0 -1px 0 rgba(0, 0, 0, 0.32), 0 14px 28px rgba(0, 0, 0, 0.3);
   }
