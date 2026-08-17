@@ -187,34 +187,54 @@ describe("AppShell retained session presentation", () => {
     const { wrapper } = await mountAdminShell();
     const sidebar = wrapper.get("aside[data-layout=\"admin-sidebar\"]");
     const workspace = wrapper.get(".admin-workspace");
+    const pin = wrapper.get("button.admin-sidebar__pin");
 
     expect(workspace.classes()).not.toContain("is-sidebar-expanded");
+    expect(pin.attributes("aria-hidden")).toBe("true");
+    expect(pin.attributes("tabindex")).toBe("-1");
+    expect(pin.attributes("disabled")).toBeDefined();
+    expect(pin.attributes("aria-pressed")).toBe("false");
+    expect(pin.html()).toContain("M11.9999 17V21");
     await sidebar.trigger("mouseenter");
     expect(workspace.classes()).toContain("is-sidebar-expanded");
+    expect(pin.attributes("aria-hidden")).toBe("false");
+    expect(pin.attributes("tabindex")).toBe("0");
+    expect(pin.attributes("disabled")).toBeUndefined();
     await sidebar.trigger("mouseleave");
     expect(workspace.classes()).not.toContain("is-sidebar-expanded");
+    expect(pin.attributes("aria-hidden")).toBe("true");
+    expect(pin.attributes("tabindex")).toBe("-1");
+    expect(pin.attributes("disabled")).toBeDefined();
     wrapper.unmount();
   });
 
-  it("pins the desktop sidebar open and exposes an accessible fixed rail", async () => {
+  it("pins the desktop sidebar and keeps the pin control accessible only while expanded", async () => {
     const { wrapper } = await mountAdminShell();
     const sidebar = wrapper.get("aside[data-layout=\"admin-sidebar\"]");
     const workspace = wrapper.get(".admin-workspace");
-    const pin = wrapper.get("button[aria-label=\"固定管理端导航\"]");
 
+    await sidebar.trigger("mouseenter");
+    const pin = wrapper.get("button.admin-sidebar__pin");
     expect(sidebar.classes()).toContain("admin-sidebar--fixed");
-    expect(pin.attributes("aria-pressed")).toBe("false");
+    expect(pin.attributes("aria-label")).toBe("固定管理端导航");
+    expect(pin.attributes("title")).toBe("固定侧边栏");
     await pin.trigger("click");
     expect(pin.attributes("aria-pressed")).toBe("true");
+    expect(pin.attributes("aria-label")).toBe("取消固定管理端导航");
+    expect(pin.attributes("title")).toBe("取消固定侧边栏");
     expect(workspace.classes()).toContain("is-sidebar-pinned");
     expect(workspace.classes()).toContain("is-sidebar-expanded");
 
     await sidebar.trigger("mouseleave");
     expect(workspace.classes()).toContain("is-sidebar-expanded");
+    expect(pin.attributes("aria-hidden")).toBe("false");
 
     await pin.trigger("click");
     expect(pin.attributes("aria-pressed")).toBe("false");
     expect(workspace.classes()).not.toContain("is-sidebar-pinned");
+    expect(workspace.classes()).not.toContain("is-sidebar-expanded");
+    expect(pin.attributes("aria-hidden")).toBe("true");
+    expect(pin.attributes("tabindex")).toBe("-1");
     wrapper.unmount();
   });
 

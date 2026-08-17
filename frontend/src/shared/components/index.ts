@@ -17,3 +17,4 @@ export { default as BottomSheet } from "./BottomSheet.vue";
 export { default as ContextRail } from "./ContextRail.vue";
 export { default as DirectionalArrowIcon } from "./DirectionalArrowIcon.vue";
 export { default as ExitArrowIcon } from "./ExitArrowIcon.vue";
+export { default as Textarea } from "./Textarea.vue";

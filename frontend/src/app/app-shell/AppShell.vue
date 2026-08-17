@@ -77,8 +77,12 @@ function collapseDesktopSidebar() {
 }
 
 function toggleDesktopSidebarPinned() {
-  desktopSidebarPinned.value = !desktopSidebarPinned.value;
-  desktopSidebarExpanded.value = desktopSidebarPinned.value;
+  const nextPinned = !desktopSidebarPinned.value;
+  desktopSidebarPinned.value = nextPinned;
+  desktopSidebarExpanded.value = nextPinned;
+  if (!nextPinned && document.activeElement instanceof HTMLElement && document.activeElement.classList.contains("admin-sidebar__pin")) {
+    document.activeElement.blur();
+  }
 }
 
 function handleDesktopSidebarFocusOut(event: FocusEvent) {
@@ -218,12 +222,24 @@ onBeforeUnmount(() => {
         <aside class="admin-sidebar admin-sidebar--fixed" data-layout="admin-sidebar" :aria-label="desktopSidebarPinned ? '管理端导航，已固定展开' : desktopSidebarVisible ? '管理端导航，已展开' : '管理端导航，已收拢'" @mouseenter="expandDesktopSidebar" @mouseleave="collapseDesktopSidebar" @focusin="expandDesktopSidebar" @focusout="handleDesktopSidebarFocusOut">
           <div class="admin-sidebar__brand-row">
             <RouterLink class="admin-sidebar__brand" to="/admin" aria-label="返回管理总览" title="管理后台"><span class="admin-brand-mark" aria-hidden="true"></span><span class="admin-sidebar__label">管理后台</span></RouterLink>
-            <button class="admin-sidebar__pin" type="button" :aria-pressed="desktopSidebarPinned" :aria-label="desktopSidebarPinned ? '取消固定管理端导航' : '固定管理端导航'" :title="desktopSidebarPinned ? '取消固定侧边栏' : '固定侧边栏'" @click.stop="toggleDesktopSidebarPinned">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M11.9999 17V21M6.9999 12.6667V6C6.9999 4.89543 7.89533 4 8.9999 4H14.9999C16.1045 4 16.9999 4.89543 16.9999 6V12.6667L18.9135 15.4308C19.3727 16.094 18.898 17 18.0913 17H5.90847C5.1018 17 4.62711 16.094 5.08627 15.4308L6.9999 12.6667Z" /></svg>
+            <button
+              class="admin-sidebar__pin"
+              type="button"
+              :aria-pressed="desktopSidebarPinned"
+              :aria-hidden="!desktopSidebarVisible"
+              :tabindex="desktopSidebarVisible ? 0 : -1"
+              :disabled="!desktopSidebarVisible"
+              :aria-label="desktopSidebarPinned ? '取消固定管理端导航' : '固定管理端导航'"
+              :title="desktopSidebarPinned ? '取消固定侧边栏' : '固定侧边栏'"
+              @click.stop="toggleDesktopSidebarPinned"
+            >
+              <span class="admin-sidebar__pin-glyph" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M11.9999 17V21M6.9999 12.6667V6C6.9999 4.89543 7.89533 4 8.9999 4H14.9999C16.1045 4 16.9999 4.89543 16.9999 6V12.6667L18.9135 15.4308C19.3727 16.094 18.898 17 18.0913 17H5.90847C5.1018 17 4.62711 16.094 5.08627 15.4308L6.9999 12.6667Z" /></svg>
+              </span>
             </button>
           </div>
           <nav class="admin-sidebar__nav" aria-label="管理端导航">
-            <RouterLink v-for="item in adminNavItems" :key="item.to" :to="item.to" :aria-label="item.label" :title="desktopSidebarExpanded ? undefined : item.label"><span class="admin-nav__mark"><AdminNavIcon :name="item.icon" /></span><span class="admin-sidebar__label">{{ item.label }}</span></RouterLink>
+            <RouterLink v-for="item in adminNavItems" :key="item.to" :to="item.to" :aria-label="item.label" :title="desktopSidebarVisible ? undefined : item.label"><span class="admin-nav__mark"><AdminNavIcon :name="item.icon" /></span><span class="admin-sidebar__label">{{ item.label }}</span></RouterLink>
           </nav>
           <div class="admin-sidebar__footer">
             <div class="admin-sidebar__identity"><span class="admin-sidebar__email">{{ auth.state.user?.email || '访客' }}</span><ThemeToggle /></div>
@@ -323,9 +339,11 @@ onBeforeUnmount(() => {
 }
 .admin-sidebar__brand { min-height: 72px; padding: 0 48px 0 18px; }
 .admin-workspace:not(.is-sidebar-expanded) .admin-sidebar__brand { width: 100%; justify-content: center; padding-right: 0; padding-left: 0; }
+
 .admin-sidebar__pin {
+  --pin-offset-x: 12px;
   position: absolute;
-  top: 24px;
+  top: 50%;
   right: 10px;
   display: grid;
   width: 32px;
@@ -334,23 +352,33 @@ onBeforeUnmount(() => {
   padding: 0;
   border: 1px solid color-mix(in srgb, var(--admin-line-strong) 86%, transparent);
   border-radius: 50%;
-  background: color-mix(in srgb, var(--surface) 74%, transparent);
-  color: var(--admin-muted);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  color: #000;
   cursor: pointer;
-  opacity: 0.82;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate3d(var(--pin-offset-x), -50%, 0) rotate(-12deg) scale(0.92);
   box-shadow: inset 1px 1px 0 color-mix(in srgb, var(--surface) 72%, transparent), inset -1px -1px 0 color-mix(in srgb, var(--text) 10%, transparent), 0 5px 12px color-mix(in srgb, var(--text) 12%, transparent);
   -webkit-backdrop-filter: blur(12px) saturate(1.05);
   backdrop-filter: blur(12px) saturate(1.05);
-  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, opacity 150ms ease, box-shadow 180ms ease, transform 180ms ease;
+  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, opacity 120ms ease, visibility 0s linear, box-shadow 180ms ease, transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-.admin-sidebar:hover .admin-sidebar__pin,
-.admin-sidebar:focus-within .admin-sidebar__pin,
-.admin-workspace.is-sidebar-pinned .admin-sidebar__pin { opacity: 1; }
+.admin-workspace.is-sidebar-expanded .admin-sidebar__pin {
+  --pin-offset-x: 0px;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translate3d(var(--pin-offset-x), -50%, 0) rotate(0deg) scale(1);
+  /* Let the drawer finish widening before its control slides into view. */
+  transition-delay: 260ms;
+}
 .admin-sidebar__pin:hover,
-.admin-sidebar__pin:focus-visible { outline: 0; border-color: var(--admin-ink); background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--admin-ink); box-shadow: var(--focus-ring), inset 1px 1px 0 color-mix(in srgb, var(--surface) 76%, transparent), 0 7px 16px color-mix(in srgb, var(--text) 16%, transparent); }
-.admin-sidebar__pin:active { transform: scale(0.94); }
-.admin-sidebar__pin svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transform: rotate(90deg); transform-box: fill-box; transform-origin: center; transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1); }
-.admin-sidebar__pin[aria-pressed="true"] svg { transform: rotate(0deg); }
+.admin-sidebar__pin:focus-visible { outline: 0; border-color: #000; background: color-mix(in srgb, var(--surface) 92%, transparent); color: #000; box-shadow: var(--focus-ring), inset 1px 1px 0 color-mix(in srgb, var(--surface) 76%, transparent), 0 7px 16px color-mix(in srgb, var(--text) 16%, transparent); }
+.admin-sidebar__pin:active { transform: translate3d(0, -50%, 0) rotate(0deg) scale(0.94); }
+.admin-sidebar__pin-glyph { display: grid; width: 20px; height: 20px; place-items: center; line-height: 0; transform: translateY(-1px) rotate(90deg); transform-origin: center; transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1); }
+.admin-sidebar__pin[aria-pressed="true"] .admin-sidebar__pin-glyph { transform: translateY(-1px) rotate(0deg); }
+.admin-sidebar__pin svg { display: block; width: 19px; height: 19px; }
 
 .admin-brand-mark {
   position: relative;

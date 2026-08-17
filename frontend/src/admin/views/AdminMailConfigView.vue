@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { onBeforeRouteLeave } from "vue-router";
 import AdminPageFrame from "../components/AdminPageFrame.vue";
 import LiquidMetalButton from "../components/LiquidMetalButton.vue";
@@ -11,6 +11,7 @@ import ErrorState from "../../shared/components/ErrorState.vue";
 import RetryButton from "../../shared/components/RetryButton.vue";
 import InlineNotice from "../../shared/components/InlineNotice.vue";
 import StatusBadge from "../../shared/components/StatusBadge.vue";
+import Textarea from "../../shared/components/Textarea.vue";
 
 const DEFAULT_TEMPLATE = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -65,6 +66,7 @@ const mailTone = ref<"neutral" | "success" | "warning" | "danger">("neutral");
 const testRecipient = ref("");
 const formInitialized = ref(false);
 const loadedFormSignature = ref("");
+const templateTextarea = ref<InstanceType<typeof Textarea> | null>(null);
 let loadRequest = 0;
 
 const form = reactive<MailForm>({
@@ -135,6 +137,16 @@ function fill(config?: MailConfig | null) {
   loadedFormSignature.value = formSignature();
   formInitialized.value = true;
   if (!testRecipient.value && actorEmail.value) testRecipient.value = actorEmail.value;
+  void resetTemplateScroll();
+}
+
+/** Keep a freshly loaded long template anchored at its beginning. */
+async function resetTemplateScroll() {
+  await nextTick();
+  const textarea = templateTextarea.value?.textarea;
+  if (!textarea) return;
+  textarea.scrollTop = 0;
+  textarea.scrollLeft = 0;
 }
 
 function renderTemplate(value: string, html: boolean) {
@@ -259,7 +271,10 @@ async function load(): Promise<boolean> {
     if (request === loadRequest) error.value = adminErrorMessage(failure, "读取邮件配置");
     return false;
   } finally {
-    if (request === loadRequest) loading.value = false;
+    if (request === loadRequest) {
+      loading.value = false;
+      void resetTemplateScroll();
+    }
   }
 }
 
@@ -275,7 +290,7 @@ async function save() {
   try {
     const updated = await adminApi.updateMailConfig(payload);
     fill(updated);
-    savedMessage.value = "SMTP 设置已保存。";
+    savedMessage.value = "SMTP 设置已保存。密码输入仅用于本次请求，页面不会回填。";
   } catch (failure) {
     error.value = adminErrorMessage(failure, "保存邮件配置");
   } finally {
@@ -412,8 +427,8 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
           <header class="mail-card__header"><div><h2>验证码模板</h2><p>支持 <code v-pre>{{site_name}}</code>、<code v-pre>{{code}}</code>、<code v-pre>{{expires_minutes}}</code>。</p></div></header>
           <div class="mail-template-grid">
             <div class="mail-template-editor">
-              <label class="admin-field"><span>邮件主题</span><input v-model="form.verificationSubject" maxlength="300" required /></label>
-              <label class="admin-field"><span>HTML 模板</span><textarea v-model="form.verificationTemplateHtml" class="mail-template-textarea" spellcheck="false" maxlength="100000" required /></label>
+              <label class="admin-field mail-template-field"><span>邮件主题</span><input v-model="form.verificationSubject" maxlength="300" required /></label>
+              <label class="admin-field mail-template-field mail-template-field--body"><span>HTML 模板</span><Textarea ref="templateTextarea" v-model="form.verificationTemplateHtml" class="mail-template-textarea" data-testid="mail-template-textarea" aria-label="HTML 模板" rows="20" spellcheck="false" maxlength="100000" required /></label>
             </div>
             <div class="mail-preview" aria-label="验证码邮件预览">
               <div class="mail-preview__subject"><span>主题预览</span><strong>{{ previewSubject }}</strong></div>
@@ -423,7 +438,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
         </section>
 
         <section class="mail-card mail-card--test">
-          <header class="mail-card__header"><div><h2>测试投递</h2><p>使用当前设置发送到你指定的收件人邮箱。</p></div></header>
+          <header class="mail-card__header"><div><h2>测试投递</h2><p>使用当前设置发送到指定收件邮箱。</p></div></header>
           <div class="mail-test-row">
             <label class="admin-field"><span>测试收件人</span><input v-model="testRecipient" type="email" autocomplete="email" maxlength="254" :placeholder="actorEmail || 'name@example.com'" required /></label>
             <LiquidMetalButton class="mail-test-send-button" :disabled="saving || testing || sending || !testRecipient" @click="sendTestMail">{{ sending ? "发送中…" : "发送测试邮件" }}</LiquidMetalButton>
@@ -772,19 +787,10 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
   min-width: 0;
 }
 
-.mail-operations .mail-template-editor {
-  display: grid;
-  align-content: start;
-  grid-template-rows: max-content minmax(520px, auto);
-  min-width: 0;
-  gap: 14px;
-}
-
-.mail-operations .mail-template-editor > .admin-field:first-child { align-self: start; }
-.mail-operations .mail-template-editor > .admin-field:first-child :is(input, select) { min-height: 62px; }
+.mail-operations .mail-template-editor { display: grid; min-width: 0; gap: 14px; }
 
 .mail-operations .mail-template-textarea {
-  min-height: 520px;
+  min-height: 348px;
   font-family: var(--admin-ui, system-ui, sans-serif);
   font-size: 13px;
   line-height: 1.6;
@@ -794,7 +800,6 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
   display: grid;
   align-content: start;
   min-width: 0;
-  min-height: 520px;
   gap: 10px;
   padding: 0;
   border: 0;
@@ -825,7 +830,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
 .mail-operations .mail-preview__frame {
   display: block;
   width: 100%;
-  min-height: 520px;
+  min-height: 360px;
   box-sizing: border-box;
   border: 1px solid rgba(35, 69, 76, 0.18);
   border-top-color: rgba(255, 255, 255, 0.94);
@@ -897,10 +902,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
 
 @media (max-width: 980px) {
   .mail-operations .mail-template-grid { grid-template-columns: 1fr; }
-  .mail-operations .mail-template-editor { grid-template-rows: max-content minmax(420px, auto); }
-  .mail-operations .mail-template-textarea,
-  .mail-operations .mail-preview { min-height: 420px; }
-  .mail-operations .mail-preview__frame { min-height: 420px; }
+  .mail-operations .mail-preview__frame { min-height: 320px; }
 }
 
 @media (max-width: 720px) {
@@ -909,10 +911,6 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
   .mail-operations .mail-grid--two,
   .mail-operations .mail-grid--policy,
   .mail-operations .mail-test-row { grid-template-columns: 1fr; }
-  .mail-operations .mail-template-editor { grid-template-rows: max-content minmax(360px, auto); }
-  .mail-operations .mail-template-textarea,
-  .mail-operations .mail-preview { min-height: 360px; }
-  .mail-operations .mail-preview__frame { min-height: 360px; }
   .mail-operations .mail-card__actions { align-items: stretch; flex-direction: column; }
   .mail-operations .mail-card__action-buttons { justify-content: stretch; }
   .mail-operations .mail-card__action-buttons .button,
@@ -1137,5 +1135,285 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
     border-color: color-mix(in srgb, var(--text) 30%, transparent);
     box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 62%, transparent), inset 0 -1px 0 rgba(0, 0, 0, 0.32), 0 14px 28px rgba(0, 0, 0, 0.3);
   }
+}
+
+/* The editor and preview share the page surface contract. Keep the long HTML field
+   dense and top-aligned so loading a saved template never creates a blank viewport. */
+.mail-operations {
+  --mail-ink: var(--text, #202020);
+  --mail-muted: var(--text-muted, #707070);
+  --mail-line: var(--line, #d4d4d1);
+  --mail-line-strong: var(--line-strong, #a8a8a4);
+  --mail-surface: var(--surface, #ffffff);
+  --mail-surface-subtle: var(--surface-subtle, #e9e9e7);
+}
+
+.mail-operations .mail-template-grid {
+  align-items: stretch;
+  grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
+  gap: 24px;
+}
+
+.mail-operations .mail-template-editor {
+  align-content: start;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+}
+
+.mail-operations .mail-template-field {
+  align-content: start;
+  min-width: 0;
+  min-height: 0;
+  gap: 6px;
+}
+
+.mail-operations .mail-template-field--body {
+  display: grid;
+  min-height: 0;
+}
+
+.mail-operations .mail-template-field .mail-template-textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 420px;
+  height: clamp(420px, 58vh, 680px);
+  max-height: 760px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--mail-line);
+  border-radius: var(--radius-md, 8px);
+  outline: 0;
+  background: var(--mail-surface);
+  color: var(--mail-ink);
+  font-family: var(--font-mono, "Cascadia Code", "SFMono-Regular", Consolas, monospace);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  resize: vertical;
+  overflow: auto;
+  text-align: left;
+  vertical-align: top;
+  white-space: pre;
+  tab-size: 2;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--mail-surface) 78%, transparent);
+  transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.mail-operations .mail-template-field .mail-template-textarea:hover {
+  border-color: var(--mail-line-strong);
+}
+
+.mail-operations .mail-template-field .mail-template-textarea:focus-visible {
+  border-color: var(--mail-ink);
+  outline: 0;
+  box-shadow: var(--focus-ring, 0 0 0 3px rgba(32, 32, 32, 0.18));
+}
+
+.mail-operations .mail-template-field .mail-template-textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mail-operations .mail-preview {
+  align-content: stretch;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 100%;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--mail-line);
+  border-radius: var(--radius-md, 8px);
+  background: var(--mail-surface-subtle);
+  color: var(--mail-ink);
+  isolation: isolate;
+  box-shadow: var(--shadow-sm, 0 4px 14px rgba(20, 20, 20, 0.07));
+}
+
+.mail-operations .mail-preview__subject {
+  gap: 4px;
+  padding: 0 2px 10px;
+  border-bottom: 1px solid var(--mail-line);
+}
+
+.mail-operations .mail-preview__subject span {
+  color: var(--mail-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.mail-operations .mail-preview__subject strong {
+  color: var(--mail-ink);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.mail-operations .mail-preview__frame {
+  align-self: stretch;
+  display: block;
+  width: 100%;
+  min-height: 420px;
+  height: clamp(420px, 58vh, 680px);
+  max-height: 760px;
+  box-sizing: border-box;
+  border: 1px solid var(--mail-line-strong);
+  border-radius: var(--radius-sm, 6px);
+  background: var(--mail-surface);
+  color-scheme: light dark;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--mail-surface) 78%, transparent), var(--shadow-sm, 0 4px 14px rgba(20, 20, 20, 0.07));
+}
+
+:global([data-theme="dark"] .mail-operations .mail-template-field .mail-template-textarea),
+:global([data-theme="dark"] .mail-operations .mail-preview),
+:global([data-theme="dark"] .mail-operations .mail-preview__frame) {
+  --mail-ink: var(--text);
+  --mail-muted: var(--text-muted);
+  --mail-line: var(--line);
+  --mail-line-strong: var(--line-strong);
+  --mail-surface: var(--surface);
+  --mail-surface-subtle: var(--surface-subtle);
+}
+
+:global([data-theme="dark"] .mail-operations .mail-template-field .mail-template-textarea) {
+  border-color: var(--mail-line);
+  background: var(--mail-surface);
+  color: var(--mail-ink);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--mail-surface) 62%, transparent);
+}
+
+:global([data-theme="dark"] .mail-operations .mail-preview) {
+  border-color: var(--mail-line);
+  background: var(--mail-surface-subtle);
+  color: var(--mail-ink);
+  box-shadow: var(--shadow-sm, 0 4px 14px rgba(0, 0, 0, 0.24));
+}
+
+:global([data-theme="dark"] .mail-operations .mail-preview__frame) {
+  border-color: var(--mail-line-strong);
+  background: var(--mail-surface);
+  color-scheme: dark;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--mail-surface) 62%, transparent), var(--shadow-sm, 0 4px 14px rgba(0, 0, 0, 0.24));
+}
+
+/* admin.css also has a dark shell rule; keep this local preview surface authoritative. */
+:global([data-theme="dark"] .app-frame--admin .admin-page .mail-operations .mail-preview) {
+  border-color: var(--mail-line);
+  background: var(--mail-surface-subtle);
+  color: var(--mail-ink);
+}
+
+:global([data-theme="dark"] .app-frame--admin .admin-page .mail-operations .mail-preview__frame) {
+  border-color: var(--mail-line-strong);
+  background: var(--mail-surface);
+}
+
+/* Final dark theme authority for the admin mail workspace. */
+:global([data-theme="dark"] .mail-operations) {
+  --mail-ink: var(--text);
+  --mail-muted: var(--text-muted);
+  --mail-line: var(--line);
+  --mail-line-strong: var(--line-strong);
+  --mail-surface: var(--surface);
+  --mail-surface-subtle: var(--surface-subtle);
+  color: var(--mail-ink);
+}
+
+:global([data-theme="dark"] .mail-operations .mail-card) {
+  border-color: var(--mail-line);
+  background: linear-gradient(140deg, color-mix(in srgb, var(--mail-surface) 96%, transparent), color-mix(in srgb, var(--mail-surface-subtle) 84%, transparent));
+  color: var(--mail-ink);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--mail-surface) 54%, transparent), inset 0 -1px 0 rgba(0, 0, 0, 0.26), 0 12px 28px rgba(0, 0, 0, 0.24);
+}
+
+:global([data-theme="dark"] .mail-operations .mail-card::before) {
+  background: linear-gradient(112deg, color-mix(in srgb, var(--mail-surface) 36%, transparent), transparent 42%, color-mix(in srgb, var(--mail-surface) 14%, transparent));
+  opacity: 0.5;
+}
+
+:global([data-theme="dark"] .mail-operations .mail-card::after) {
+  background: linear-gradient(118deg, color-mix(in srgb, var(--mail-surface) 42%, transparent), color-mix(in srgb, var(--mail-muted) 18%, transparent) 34%, transparent 63%, color-mix(in srgb, var(--mail-ink) 20%, transparent));
+  opacity: 0.42;
+}
+
+:global([data-theme="dark"] .mail-operations .mail-card__header),
+:global([data-theme="dark"] .mail-operations .mail-card__actions),
+:global([data-theme="dark"] .mail-operations .mail-preview__subject) {
+  border-color: var(--mail-line);
+}
+
+:global([data-theme="dark"] .mail-operations .mail-card__header h2),
+:global([data-theme="dark"] .mail-operations .mail-preview__subject strong),
+:global([data-theme="dark"] .mail-operations code),
+:global([data-theme="dark"] .mail-operations .mail-toggle) { color: var(--mail-ink); }
+
+:global([data-theme="dark"] .mail-operations .mail-card__header p),
+:global([data-theme="dark"] .mail-operations .mail-last-test),
+:global([data-theme="dark"] .mail-operations .admin-field),
+:global([data-theme="dark"] .mail-operations .admin-field small),
+:global([data-theme="dark"] .mail-operations .mail-preview__subject span),
+:global([data-theme="dark"] .mail-operations .mail-clear-password) { color: var(--mail-muted); }
+
+:global([data-theme="dark"] .mail-operations .admin-field :is(input, select, textarea)) {
+  border-color: var(--mail-line-strong);
+  background: var(--mail-surface);
+  color: var(--mail-ink);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--mail-surface) 64%, transparent), inset 0 -1px 0 rgba(0, 0, 0, 0.22);
+}
+
+:global([data-theme="dark"] .mail-operations .admin-field :is(input, select, textarea)::placeholder) {
+  color: var(--mail-muted);
+  opacity: 1;
+}
+
+:global([data-theme="dark"] .mail-operations .admin-field :is(input, select, textarea):focus) {
+  border-color: var(--mail-ink);
+  box-shadow: var(--focus-ring), inset 0 1px 0 color-mix(in srgb, var(--mail-surface) 70%, transparent);
+}
+
+:global([data-theme="dark"] .mail-operations .admin-field :is(input, select, textarea)[readonly]) {
+  background: var(--mail-surface-subtle);
+  color: var(--mail-muted);
+}
+
+:global([data-theme="dark"] .mail-operations .mail-preview) {
+  border-color: var(--mail-line);
+  background: var(--mail-surface-subtle);
+  color: var(--mail-ink);
+  box-shadow: var(--shadow-sm);
+}
+
+:global([data-theme="dark"] .mail-operations .mail-preview__frame) {
+  border-color: var(--mail-line-strong);
+  background: var(--mail-surface);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--mail-surface) 62%, transparent), var(--shadow-sm);
+}
+
+:global([data-theme="dark"] .mail-operations code) {
+  border-color: var(--mail-line);
+  background: color-mix(in srgb, var(--mail-surface) 72%, transparent);
+}
+
+@media (max-width: 980px) {
+  .mail-operations .mail-template-grid { grid-template-columns: 1fr; }
+  .mail-operations .mail-preview__frame,
+  .mail-operations .mail-template-field .mail-template-textarea {
+    height: 520px;
+    min-height: 420px;
+  }
+}
+
+@media (max-width: 720px) {
+  .mail-operations .mail-template-grid { gap: 16px; }
+  .mail-operations .mail-preview { padding: 12px; }
+  .mail-operations .mail-preview__frame,
+  .mail-operations .mail-template-field .mail-template-textarea {
+    height: 380px;
+    min-height: 320px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mail-operations .mail-template-field .mail-template-textarea { transition: none; }
 }
 </style>

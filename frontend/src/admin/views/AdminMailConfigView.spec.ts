@@ -81,6 +81,29 @@ describe("AdminMailConfigView", () => {
     wrapper.unmount();
   });
 
+  it("uses the accessible dense template editor and resets a reloaded template to its beginning", async () => {
+    const wrapper = mount(AdminMailConfigView);
+    await flushPromises();
+
+    const templateField = wrapper.get("label.mail-template-field--body");
+    const textarea = templateField.get("textarea[data-testid='mail-template-textarea']");
+    expect(textarea.attributes("aria-label")).toBe("HTML 模板");
+    expect(textarea.attributes("rows")).toBe("20");
+    expect(textarea.classes()).toContain("mail-template-textarea");
+
+    (textarea.element as HTMLTextAreaElement).scrollTop = 240;
+    const reloadButton = wrapper.findAll("button").find((button) => button.text().includes("重新读取"));
+    if (!reloadButton) throw new Error("Missing reload button");
+    await reloadButton.trigger("click");
+    await flushPromises();
+    await wrapper.vm.$nextTick();
+
+    expect(getMailConfig).toHaveBeenCalledTimes(2);
+    expect((wrapper.get("textarea[data-testid='mail-template-textarea']").element as HTMLTextAreaElement).scrollTop).toBe(0);
+    expect(wrapper.get(".mail-preview").find(".mail-preview__subject").exists()).toBe(true);
+    wrapper.unmount();
+  });
+
   it("uses the focused mail operations layout without the redundant status strip", async () => {
     const wrapper = mount(AdminMailConfigView);
     await flushPromises();

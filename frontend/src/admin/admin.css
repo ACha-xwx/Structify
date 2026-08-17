@@ -1357,6 +1357,7 @@
 [data-theme="dark"] .signal-strip__item,
 [data-theme="dark"] .app-frame--admin .guardrail-grid > div,
 [data-theme="dark"] .app-frame--admin .admin-inspector__summary > div,
+[data-theme="dark"] .admin-inspector__summary > div,
 [data-theme="dark"] .admin-signal-grid > div {
   background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 86%, transparent), color-mix(in srgb, var(--surface-subtle) 80%, transparent));
 }
