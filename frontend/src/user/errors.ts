@@ -7,13 +7,19 @@ export interface UserErrorPresentation {
   title: string;
   message: string;
   retryable: boolean;
+  code?: string;
 }
 
 export function presentUserError(cause: unknown): UserErrorPresentation {
   const error = cause as Partial<ApiClientError> | undefined;
   const status = error?.status;
   const code = error?.code;
-  if (status === 401) return { kind: "permission", title: "需要登录后继续", message: "当前操作需要有效学习账号。", retryable: false };
+  if (status === 401) return {
+    kind: "permission",
+    title: "登录后解锁此功能",
+    message: "游客可以继续浏览公开学习内容；调用模型服务或保存个人学习记录时，请在此处登录后再试。",
+    retryable: false,
+  };
   if (status === 403) return { kind: "permission", title: "当前账号没有权限", message: "服务已拒绝此学习资源或操作。", retryable: false };
   if (status === 404) return { kind: "not-found", title: "资源不可访问", message: "该资源可能未发布、已移除，或当前账号没有访问范围。", retryable: false };
   if (status === 409) return { kind: "conflict", title: "当前状态已变化", message: "请刷新后继续操作，避免覆盖服务器中的最新学习状态。", retryable: true };

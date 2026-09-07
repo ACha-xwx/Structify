@@ -24,7 +24,7 @@ describe("路由守卫公共边界", () => {
     await expect(guard({
       path: "/user/chapters",
       fullPath: "/user/chapters?chapter=03#resources",
-      meta: { requiresAuth: true },
+      meta: { layout: "workbench", module: "主线学习" },
     } as never)).resolves.toBe(false);
 
     expect(redirectedTo).toBe("https://structify.cn/user/chapters?chapter=03#resources");
@@ -59,15 +59,51 @@ describe("路由守卫公共边界", () => {
     expect(redirected).toBe(false);
   });
 
-  it("未登录访问受保护路由时保留回跳地址", async () => {
+  it("未登录访问显式受保护路由时保留回跳地址", async () => {
     const guard = createRouteGuard({
       auth: {
         state: { status: "anonymous", user: null, capabilities: null, error: null },
         restoreSession: async () => undefined,
       } as never,
     });
-    const result = await guard({ path: "/user/chapters", fullPath: "/user/chapters?chapter=03", meta: { requiresAuth: true } } as never);
-    expect(result).toMatchObject({ name: "login", query: { redirect: "/user/chapters?chapter=03" } });
+    const result = await guard({ path: "/account/billing", fullPath: "/account/billing?from=coach", meta: { requiresAuth: true } } as never);
+    expect(result).toMatchObject({ name: "login", query: { redirect: "/account/billing?from=coach" } });
+  });
+
+  it("游客可直接进入普通学习页面，不触发会话恢复或登录跳转", async () => {
+    let restoreAttempts = 0;
+    const guard = createRouteGuard({
+      auth: {
+        state: { status: "idle", user: null, capabilities: null, error: null },
+        restoreSession: async () => { restoreAttempts += 1; },
+      } as never,
+    });
+
+    await expect(guard({
+      path: "/user/chapters",
+      fullPath: "/user/chapters?chapter=03",
+      meta: { layout: "workbench", module: "主线学习" },
+    } as never)).resolves.toBe(true);
+    expect(restoreAttempts).toBe(0);
+  });
+
+  it("localhost 本地预览页不触发会话恢复", async () => {
+    let restoreAttempts = 0;
+    const guard = createRouteGuard({
+      auth: {
+        state: { status: "idle", user: null, capabilities: null, error: null },
+        restoreSession: async () => { restoreAttempts += 1; },
+      } as never,
+      location: { hostname: "127.0.0.1" },
+    });
+
+    await expect(guard({
+      path: "/user/presentation",
+      fullPath: "/user/presentation?lessonId=01-01A",
+      meta: { requiresAuth: true, allowsLocalPreview: true },
+    } as never)).resolves.toBe(true);
+
+    expect(restoreAttempts).toBe(0);
   });
 
   it("角色不足时进入 403，而不是只隐藏导航", async () => {
@@ -94,7 +130,7 @@ describe("路由守卫公共边界", () => {
       } as never,
     });
 
-    await expect(guard({ path: "/user/chapters", fullPath: "/user/chapters", meta: { requiresAuth: true } } as never)).resolves.toBe(true);
+    await expect(guard({ path: "/account/billing", fullPath: "/account/billing", meta: { requiresAuth: true } } as never)).resolves.toBe(true);
   });
 
   it("暂时离线时仍拒绝已知角色不足的管理路由", async () => {
@@ -114,7 +150,7 @@ describe("路由守卫公共边界", () => {
       .resolves.toEqual({ name: "forbidden" });
   });
 
-  it("冷启动离线且没有已保留用户时仍要求登录", async () => {
+  it("冷启动离线且没有已保留用户时仍拒绝显式受保护路由", async () => {
     const guard = createRouteGuard({
       auth: {
         state: {
@@ -127,8 +163,24 @@ describe("路由守卫公共边界", () => {
       } as never,
     });
 
-    await expect(guard({ path: "/user/chapters", fullPath: "/user/chapters", meta: { requiresAuth: true } } as never))
-      .resolves.toEqual({ name: "login", query: { redirect: "/user/chapters" } });
+    await expect(guard({ path: "/account/billing", fullPath: "/account/billing", meta: { requiresAuth: true } } as never))
+      .resolves.toEqual({ name: "login", query: { redirect: "/account/billing" } });
+  });
+
+  it("游客不能绕过显式能力保护", async () => {
+    const guard = createRouteGuard({
+      auth: {
+        state: { status: "anonymous", user: null, capabilities: null, error: null },
+        restoreSession: async () => undefined,
+        loadCapabilities: async () => null,
+      } as never,
+    });
+
+    await expect(guard({
+      path: "/admin/settings",
+      fullPath: "/admin/settings",
+      meta: { requiresAuth: true, roles: ["ADMIN"], requiresCapability: "modelSettings" },
+    } as never)).resolves.toMatchObject({ name: "login", query: { redirect: "/admin/settings" } });
   });
 
   it("能力接口暂时不可用时不误跳转到 403", async () => {

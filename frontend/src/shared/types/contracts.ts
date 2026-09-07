@@ -60,6 +60,8 @@ export type KnowledgeKind = "answer" | "textbook";
 export interface KnowledgeSearchResult {
   id: string;
   chapterId: string | null;
+  /** Optional learning-unit context; the v1 API may omit this field. */
+  lessonId?: string | null;
   title: string;
   lessonNumber: string | null;
   kind: KnowledgeKind;
@@ -249,6 +251,22 @@ export interface ChapterProgress {
   lastActivityAt: string | null;
 }
 export interface LearningProgress { totalActivities: number; chapters: ChapterProgress[] }
+/**
+ * A previously persisted, renderable algorithm scene owned by the current
+ * learner. The definition is intentionally separate from a simulation
+ * response: resuming a scene must not fabricate a new trace or request.
+ */
+export interface LearningWorkbenchScene {
+  recordId: string;
+  chapterId: string;
+  definition: AnimationDefinition;
+  updatedAt: string | null;
+}
+export interface LearningWorkbenchProjection {
+  currentChapterId: string | null;
+  progress: LearningProgress;
+  scene: LearningWorkbenchScene | null;
+}
 export type LearningEventType = "RESOURCE_VIEW" | "RESOURCE_DOWNLOAD" | "REVIEW_COMPLETED" | "WEAKNESS_RECORDED";
 export interface LearningEventRequest { eventType: LearningEventType; chapterId?: string | null; referenceId?: string | null; payload?: Record<string, unknown> | null }
 export interface LearningEvent { id: number; eventType: string; chapterId: string | null; referenceId: string | null; createdAt: string }

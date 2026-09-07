@@ -10,10 +10,13 @@ import EmptyState from "../../shared/components/EmptyState.vue";
 import RetryButton from "../../shared/components/RetryButton.vue";
 import StatusBadge from "../../shared/components/StatusBadge.vue";
 import InlineNotice from "../../shared/components/InlineNotice.vue";
+import RuntimeSelect, { type RuntimeSelectOption } from "../../shared/components/RuntimeSelect.vue";
 import DirectionalArrowIcon from "../../shared/components/DirectionalArrowIcon.vue";
 
 const page = ref(0); const size = 20; const total = ref(0); const items = ref<AdminUser[]>([]); const loading = ref(true); const error = ref(""); const notice = ref("");
 const filters = reactive({ search: "", status: "", role: "" });
+const userStatusOptions: RuntimeSelectOption[] = [{ value: "", label: "全部状态" }, { value: "ACTIVE", label: "启用" }, { value: "DISABLED", label: "已禁用" }];
+const userRoleOptions: RuntimeSelectOption[] = [{ value: "", label: "全部角色" }, { value: "STUDENT", label: "学生" }, { value: "TEACHER", label: "教师" }, { value: "ADMIN", label: "管理员" }];
 const selected = ref<AdminUser | null>(null); const rolesDraft = ref<Role[]>([]); const actionBusy = ref<number | null>(null); const detailBusy = ref(false); const detailError = ref("");
 const tableFilter = ref("");
 const sortKey = ref("user");
@@ -178,8 +181,8 @@ onMounted(load);
     <form class="admin-command-row admin-toolbar" @submit.prevent="applyFilters">
       <div class="admin-command-row__label"><span class="admin-kicker">用户筛选</span><strong>用户目录</strong></div>
       <label class="admin-field admin-field--wide"><span>搜索账号</span><input v-model="filters.search" maxlength="160" placeholder="按邮箱或用户名搜索" /></label>
-      <label class="admin-field"><span>状态</span><select v-model="filters.status"><option value="">全部状态</option><option value="ACTIVE">ACTIVE</option><option value="DISABLED">DISABLED</option></select></label>
-      <label class="admin-field"><span>角色</span><select v-model="filters.role"><option value="">全部角色</option><option value="STUDENT">STUDENT</option><option value="TEACHER">TEACHER</option><option value="ADMIN">ADMIN</option></select></label>
+      <label class="admin-field"><span>状态</span><RuntimeSelect v-model="filters.status" :options="userStatusOptions" ariaLabel="状态" /></label>
+      <label class="admin-field"><span>角色</span><RuntimeSelect v-model="filters.role" :options="userRoleOptions" ariaLabel="角色" /></label>
       <button class="button button--primary admin-command-row__submit" type="submit" :disabled="loading || actionBusy !== null">筛选<span aria-hidden="true">↗</span></button>
     </form>
 

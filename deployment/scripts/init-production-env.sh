@@ -57,7 +57,10 @@ db_password="$(openssl rand -hex 32)"
 root_password="$(openssl rand -hex 32)"
 jwt_secret="$(openssl rand -hex 32)"
 node_compat_jwt_secret="$(openssl rand -hex 32)"
+model_config_master_key="$(openssl rand -base64 32 | tr -d '\n')"
+mail_config_master_key="$(openssl rand -base64 32 | tr -d '\n')"
 [[ "$jwt_secret" != "$node_compat_jwt_secret" ]] || die "random secret collision; retry"
+[[ "$model_config_master_key" != "$mail_config_master_key" ]] || die "random encryption-key collision; retry"
 
 temporary_file="$(mktemp "$OUTPUT.tmp.XXXXXX")"
 cleanup() { rm -f -- "$temporary_file"; }
@@ -72,6 +75,8 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     MYSQL_ROOT_PASSWORD=*) line="MYSQL_ROOT_PASSWORD=$root_password" ;;
     JWT_SECRET=*) line="JWT_SECRET=$jwt_secret" ;;
     NODE_COMPAT_JWT_SECRET=*) line="NODE_COMPAT_JWT_SECRET=$node_compat_jwt_secret" ;;
+    MODEL_CONFIG_MASTER_KEY=*) line="MODEL_CONFIG_MASTER_KEY=$model_config_master_key" ;;
+    MAIL_CONFIG_MASTER_KEY=*) line="MAIL_CONFIG_MASTER_KEY=$mail_config_master_key" ;;
     HOST_CADDY_CONFIG=*) line="HOST_CADDY_CONFIG=/etc/caddy/Caddyfile" ;;
     CADDY_CONFIG_DIR_HOST=*) line="CADDY_CONFIG_DIR_HOST=/srv/structify/caddy" ;;
     MEMORY_PROFILE=*) line="MEMORY_PROFILE=low-memory" ;;

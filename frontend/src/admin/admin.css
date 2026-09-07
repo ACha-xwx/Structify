@@ -18,7 +18,7 @@
   --admin-danger: #34383a;
   --admin-shadow: 0 8px 20px rgba(28, 31, 32, 0.07);
   --admin-shadow-raised: 0 14px 28px rgba(28, 31, 32, 0.1);
-  --admin-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+  --admin-ui: var(--font-sans, "SimSun", "Songti SC", "STSong", serif);
   --admin-display: Georgia, "Times New Roman", "Songti SC", serif;
   --admin-ease-out: cubic-bezier(0.16, 0.82, 0.27, 1);
   --admin-ease: cubic-bezier(0.2, 0.72, 0.2, 1);
@@ -533,6 +533,35 @@
 .admin-form__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .admin-form__grid .admin-field--full { grid-column: 1 / -1; }
 .admin-form__actions { padding-top: 2px; }
+
+/* Model settings are one form, but four deliberate reading zones. The
+   sections use rules and quiet surfaces instead of nested cards so operators
+   can scan the connection, runtime limits, and capability switch in order. */
+.model-settings-section {
+  display: grid;
+  gap: 16px;
+  margin-top: 2px;
+  padding-top: 20px;
+  border-top: 1px solid var(--admin-line);
+}
+.model-settings-section:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.model-settings-section__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 18px;
+}
+.model-settings-section__header > div { min-width: 0; }
+.model-settings-section__header h3 { margin: 0; color: var(--admin-ink); font-size: 17px; font-weight: 730; line-height: 1.35; }
+.model-settings-section__header p:not(.admin-kicker) { max-width: 680px; margin: 6px 0 0; color: var(--admin-muted); font-size: 13px; line-height: 1.55; }
+.model-settings-section__index { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border: 1px solid var(--admin-line-strong); color: var(--admin-muted); font-family: var(--font-mono, Consolas, monospace); font-size: 11px; line-height: 1; }
+.model-settings-grid { width: 100%; max-width: none; margin-top: 0; }
+.model-settings-grid--connection { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.model-settings-grid--runtime { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.model-settings-section--capability { padding-bottom: 2px; }
+.model-settings-section--capability .admin-check { width: 100%; min-height: 48px; padding: 12px 14px; border: 1px solid var(--admin-line); background: color-mix(in srgb, var(--admin-panel-solid) 68%, transparent); }
+.model-settings-section--capability .admin-check span { color: var(--admin-ink); font-weight: 650; }
 
 .admin-checks { display: flex; flex-wrap: wrap; gap: 7px 12px; }
 .admin-check { display: inline-flex; align-items: center; min-height: 30px; gap: 7px; color: var(--admin-muted); font-size: 13px; line-height: 1.4; }
@@ -1430,4 +1459,183 @@
     border-color: color-mix(in srgb, var(--text) 46%, transparent);
     background: color-mix(in srgb, var(--surface) 98%, transparent);
   }
+}
+
+/* Remove the legacy chromatic accents from dark admin surfaces as well. */
+[data-theme="dark"] .admin-command__dot,
+[data-theme="dark"] .admin-signal-dot,
+[data-theme="dark"] .admin-identity__signal { box-shadow: 0 0 0 1px rgba(220,220,220,.24); }
+[data-theme="dark"] .admin-field input,
+[data-theme="dark"] .admin-field select,
+[data-theme="dark"] .admin-field textarea { box-shadow: inset 1px 0 0 rgba(220,220,220,.08), inset -1px 0 0 rgba(220,220,220,.06), inset 0 1px 0 rgba(255,255,255,.12); }
+[data-theme="dark"] .admin-field input:hover,
+[data-theme="dark"] .admin-field select:hover,
+[data-theme="dark"] .admin-field textarea:hover { border-color: #8a8a8a; }
+[data-theme="dark"] .admin-field input:focus,
+[data-theme="dark"] .admin-field select:focus,
+[data-theme="dark"] .admin-field textarea:focus { box-shadow: 0 0 0 3px rgba(220,220,220,.18), inset 0 1px 0 rgba(255,255,255,.14); }
+
+/* RuntimeSelect owns its trigger and menu material globally. Admin forms only
+   provide the field width, so filters and settings stay visually identical to
+   the learner-facing controls in both themes. */
+.app-frame--admin .admin-field .runtime-select { width: 100%; }
+[data-theme="dark"] .signal-strip,
+[data-theme="dark"] .guardrail-grid,
+[data-theme="dark"] .admin-inspector__summary,
+[data-theme="dark"] .admin-signal-grid { box-shadow: inset 1px 0 0 rgba(220,220,220,.08), inset -1px 0 0 rgba(220,220,220,.06); }
+[data-theme="dark"] .admin-table tbody tr:hover,
+[data-theme="dark"] .admin-table tr[data-selected="true"] { background: rgba(220,220,220,.08); }
+[data-theme="dark"] .admin-detail { border-left-color: rgba(220,220,220,.42); }
+[data-theme="dark"] .admin-timeline__node { border-color: rgba(220,220,220,.42); background: #eeeeee; }
+[data-theme="dark"] .admin-rail:hover {
+  border-color: rgba(220,220,220,.34);
+  box-shadow: var(--admin-shadow-raised), inset 1px 0 0 rgba(220,220,220,.12), inset -1px 0 0 rgba(220,220,220,.08), inset 0 1px 0 rgba(255,255,255,.12);
+}
+[data-theme="dark"] .app-frame--admin .inline-notice[data-tone="success"],
+[data-theme="dark"] .app-frame--admin .inline-notice[data-tone="warning"],
+[data-theme="dark"] .app-frame--admin .inline-notice[data-tone="danger"] { border-left-color: var(--admin-muted); color: var(--admin-muted); }
+[data-theme="dark"] .app-frame--admin .admin-signout-metal .liquid-metal-button__surface {
+  background:
+    linear-gradient(106deg, transparent 0 27%, rgba(255,255,255,.24) 43%, transparent 59%),
+    linear-gradient(180deg, #8a8a8a 0%, #626262 42%, #3d3d3d 70%, #292929 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 0 rgba(0,0,0,.5), inset 1px 0 0 rgba(255,255,255,.16);
+}
+[data-theme="dark"] .app-frame--admin .admin-signout-metal .liquid-metal-button__content-layer,
+[data-theme="dark"] .app-frame--admin .admin-signout-metal .liquid-metal-button__native,
+[data-theme="dark"] .app-frame--admin .admin-signout-metal .admin-signout-glyph { color: #171717; text-shadow: 0 1px 0 rgba(255,255,255,.24); }
+[data-theme="dark"] .app-frame--admin .admin-signout-metal .liquid-metal-button__shader-layer::before { box-shadow: 0 0 0 1px rgba(0,0,0,.48), 0 6px 8px rgba(0,0,0,.24); }
+[data-theme="dark"] .app-frame--admin .admin-signout-metal .liquid-metal-button__native:focus-visible { outline-color: #d8d8d8; }
+
+/* Model catalog: one calm editor with four reading zones. These selectors sit
+   at the end of the cascade so the settings page keeps the neutral material
+   contract even when older admin primitives are reused elsewhere. */
+.model-settings-page {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+}
+
+.model-settings-editor {
+  overflow: hidden;
+}
+
+.model-settings-editor__header {
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--admin-line);
+}
+
+.model-settings-editor .admin-form {
+  width: 100%;
+  max-width: none;
+  gap: 0;
+  margin-top: 0;
+}
+
+.model-settings-editor .model-settings-section {
+  gap: 14px;
+  margin: 0;
+  padding: 24px 0;
+  border-top: 1px solid var(--admin-line);
+}
+
+.model-settings-editor .model-settings-section:first-child {
+  padding-top: 22px;
+  border-top: 0;
+}
+
+.model-settings-section__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 20px;
+}
+
+.model-settings-section__header > div { min-width: 0; }
+.model-settings-section__header h3 { font-size: 18px; }
+.model-settings-section__header p:not(.admin-kicker) { max-width: 720px; }
+
+.model-settings-section__index {
+  width: 36px;
+  height: 36px;
+  border-color: var(--admin-line-strong);
+  background: color-mix(in srgb, var(--admin-panel-solid) 52%, transparent);
+  color: var(--admin-muted);
+}
+
+.model-settings-grid {
+  width: 100%;
+  max-width: none;
+  gap: 16px;
+  margin-top: 0;
+}
+
+.model-settings-grid--identity { grid-template-columns: minmax(0, 1fr); }
+.model-settings-grid--connection { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.model-settings-grid--runtime { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.model-settings-grid--boundary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.model-settings-editor .admin-field input {
+  min-height: 48px;
+  padding: 12px 14px;
+  font-size: 15px;
+}
+
+.model-settings-section--identity .admin-field input {
+  min-height: 54px;
+  font-size: 16px;
+}
+
+.model-settings-editor .admin-field small {
+  max-width: 68ch;
+  font-size: 12px;
+  font-weight: 450;
+}
+
+.model-settings-enabled {
+  display: flex;
+  width: 100%;
+  min-height: 48px;
+  box-sizing: border-box;
+  align-items: center;
+  padding: 12px 14px;
+  border: 1px solid var(--admin-line);
+  background: color-mix(in srgb, var(--admin-panel-solid) 66%, transparent);
+  color: var(--admin-ink);
+  font-weight: 650;
+}
+
+.model-settings-enabled input { flex: 0 0 auto; }
+
+.model-settings-editor .admin-form__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  padding-top: 20px;
+  border-top: 1px solid var(--admin-line);
+}
+
+.model-settings-editor .admin-form__actions .admin-muted {
+  min-width: 0;
+  margin-left: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
+}
+
+[data-theme="dark"] .model-settings-section__index,
+[data-theme="dark"] .model-settings-enabled {
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+}
+
+@media (max-width: 760px) {
+  .model-settings-editor .model-settings-section { padding: 20px 0; }
+  .model-settings-section__header { gap: 12px; }
+  .model-settings-section__index { width: 32px; height: 32px; }
+  .model-settings-grid--connection,
+  .model-settings-grid--runtime,
+  .model-settings-grid--boundary { grid-template-columns: 1fr; }
+  .model-settings-editor .admin-form__actions { align-items: stretch; flex-direction: column; }
+  .model-settings-editor .admin-form__actions .admin-muted { margin-left: 0; text-align: left; }
 }

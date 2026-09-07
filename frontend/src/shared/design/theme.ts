@@ -12,6 +12,13 @@ function isThemeMode(value: unknown): value is ThemeMode {
   return value === "light" || value === "dark";
 }
 
+function readDocumentTheme(): ThemeMode | null {
+  if (typeof document === "undefined") return null;
+
+  const documentTheme = document.documentElement.dataset.theme;
+  return isThemeMode(documentTheme) ? documentTheme : null;
+}
+
 function readStoredTheme(): ThemeMode {
   if (typeof window === "undefined") return DEFAULT_THEME;
 
@@ -57,11 +64,21 @@ export function initializeTheme() {
 }
 
 export function toggleTheme() {
-  setTheme(theme.value === "light" ? "dark" : "light");
+  // The document is what the learner can actually see. It can briefly differ
+  // from the module ref after HMR or when a shared shell remounts, so reconcile
+  // first instead of writing the visible theme back to itself.
+  const currentTheme = readDocumentTheme() ?? theme.value;
+  theme.value = currentTheme;
+  setTheme(currentTheme === "light" ? "dark" : "light");
 }
 
 export function useTheme() {
   initializeTheme();
+
+  // A newly mounted control must describe the already-rendered page, even if
+  // the module was kept alive while another shell updated the document theme.
+  const documentTheme = readDocumentTheme();
+  if (documentTheme) theme.value = documentTheme;
 
   return {
     theme: readonly(theme),

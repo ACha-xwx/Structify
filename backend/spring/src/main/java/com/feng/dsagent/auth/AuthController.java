@@ -2,6 +2,8 @@ package com.feng.dsagent.auth;
 
 import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.security.SecurityProperties;
+import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.NodeCompatibilityTokenIssuer;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 @RestController
 @RequestMapping("/api/v1/auth")
@@ -23,11 +26,18 @@ public class AuthController {
     private final AuthService auth;
     private final SecurityProperties security;
     private final AuthRequestRateLimiter rateLimiter;
+    private final NodeCompatibilityTokenIssuer nodeCompatibilityTokens;
 
-    public AuthController(AuthService auth, SecurityProperties security, AuthRequestRateLimiter rateLimiter) {
+    public AuthController(
+        AuthService auth,
+        SecurityProperties security,
+        AuthRequestRateLimiter rateLimiter,
+        NodeCompatibilityTokenIssuer nodeCompatibilityTokens
+    ) {
         this.auth = auth;
         this.security = security;
         this.rateLimiter = rateLimiter;
+        this.nodeCompatibilityTokens = nodeCompatibilityTokens;
     }
 
     @PostMapping("/request-code")
@@ -83,6 +93,15 @@ public class AuthController {
         return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, cookie.toString()).build();
     }
 
+    @org.springframework.web.bind.annotation.GetMapping("/node-compat-token")
+    NodeCompatibilityTokenResponse nodeCompatibilityToken(@AuthenticationPrincipal AuthenticatedUser user) {
+        if (!nodeCompatibilityTokens.enabled()) {
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "NODE_COMPAT_DISABLED", "课件兼容服务尚未启用");
+        }
+        var issued = nodeCompatibilityTokens.issue(user);
+        return new NodeCompatibilityTokenResponse(issued.token(), issued.ttl().toSeconds());
+    }
+
     private ResponseEntity<AuthResponse> authenticated(AuthSession session) {
         ResponseCookie cookie = ResponseCookie.from(security.cookieName(), session.token())
             .httpOnly(true)
@@ -135,6 +154,9 @@ public class AuthController {
     }
 
     public record AuthResponse(String token, UserView user) {
+    }
+
+    public record NodeCompatibilityTokenResponse(String token, long expiresInSeconds) {
     }
 
     public record VerificationCodeResponse(String message) {

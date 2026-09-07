@@ -85,6 +85,7 @@ public final class JwtAuthenticationFilter extends OncePerRequestFilter {
         String path = request.getRequestURI().substring(request.getContextPath().length());
         String method = request.getMethod();
         if ("GET".equals(method) && "/api/v1/learning/progress".equals(path)) return true;
+        if ("GET".equals(method) && "/api/v1/learning/workbench".equals(path)) return true;
         if ("POST".equals(method) && "/api/v1/learning/events".equals(path)) return true;
         if ("POST".equals(method) && "/api/v1/animations/simulate".equals(path)) return true;
         if (!"POST".equals(method)

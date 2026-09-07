@@ -1,0 +1,806 @@
+/*
+ * Study-desk reference refinement
+ *
+ * The reference is one enclosed application, not a marketing header above a
+ * separate dashboard. Runtime still supplies the accessible mobile drawer and
+ * ambient surface; desktop controls live in the workbench's own 56px toolbar.
+ */
+
+.workbench-context-bar__utility { display: none; }
+.workbench-runtime-actions-tablet { display: none; }
+
+/* Context is available from the same learning canvas instead of occupying a
+   third permanent column. Native disclosure keeps this information reachable
+   without competing with the stage or course outline. */
+.workbench-context-drawer {
+  margin: 12px 10px 0;
+  border: 1px solid var(--wb-line);
+  border-radius: 6px;
+  background: var(--wb-panel-solid);
+}
+
+.workbench-context-drawer > summary {
+  display: flex;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 16px;
+  color: var(--wb-ink);
+  cursor: pointer;
+  list-style: none;
+}
+
+.workbench-context-drawer > summary::-webkit-details-marker { display: none; }
+.workbench-context-drawer > summary > span { display: grid; gap: 4px; }
+.workbench-context-drawer > summary strong { font-family: var(--wb-type-ui); font-size: .94rem; font-weight: 650; }
+.workbench-context-drawer > summary:hover { background: color-mix(in srgb, var(--wb-ink) 4%, transparent); }
+.workbench-context-drawer > summary:focus-visible { outline: 2px solid var(--wb-ink); outline-offset: -3px; }
+.workbench-context-drawer[open] > summary { border-bottom: 1px solid var(--wb-line); }
+.workbench-context-drawer[open] > summary .workbench-disclosure__chevron { transform: rotate(225deg) translate(-2px, -1px); }
+
+/* The Chinese desk intentionally uses Songti for its reading rhythm. Those
+   component-level title rules must not leak that face into the English UI. */
+.learning-workbench-v2[data-locale="en-US"] :is(
+  .workbench-course-outline__title,
+  .workbench-main__heading h1,
+  .workbench-current-task h2,
+  .workbench-context-handoff h2,
+  .algorithm-stage__header h2,
+  .workbench-rail__head strong,
+  .workbench-rail__body h2,
+  .workbench-rail__body h3,
+  .workbench-context-drawer > summary strong
+) { font-family: var(--wb-type-sans); }
+
+:global(html[data-theme="light"] .learning-workbench-v2 .workbench-course-item:not(.is-active)) { color: #686760; }
+:global(html[data-theme="light"] .learning-workbench-v2 .workbench-course-item:not(.is-active) .workbench-course-item__index) { color: #88867d; }
+
+@media (min-width: 941px) {
+  :global(.ai-runtime-frame--workbench) {
+    background: #121210;
+    color: #1d1d1b;
+  }
+
+  :global(.ai-runtime-frame--workbench .ai-runtime-frame__background) { background: #121210; }
+  :global(.ai-runtime-frame--workbench .ai-runtime-frame__scrim) { background: rgba(18, 18, 16, .94); }
+  :global(.ai-runtime-frame--workbench .ai-runtime-frame__video) { opacity: 0; }
+
+  :global(.ai-runtime-frame--workbench .ai-runtime-frame__page) {
+    display: flex;
+    align-items: stretch;
+    padding: clamp(22px, 3.5vh, 38px) clamp(26px, 4.15vw, 76px);
+  }
+
+  /* The desktop header is intentionally part of the workbench below. The
+     mobile header remains in place and continues to own menu focus/Escape. */
+  :global(.ai-runtime-frame--workbench .ai-runtime-frame__header) { display: none; }
+
+  :global(.ai-runtime-frame--workbench .ai-runtime-frame__content) {
+    width: min(1560px, 100%);
+    max-width: 1560px;
+    min-height: 0;
+    margin: 0 auto;
+    padding: 0;
+  }
+
+  .learning-workbench-v2,
+  .workbench-layout { min-height: 0; }
+
+  .workbench-layout {
+    grid-template-columns: 260px minmax(0, 1fr);
+    overflow: hidden;
+    border-color: rgba(255, 255, 250, .2);
+    border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .36), 0 18px 40px rgba(0, 0, 0, .24);
+  }
+
+  .workbench-layout.is-sidebar-collapsed { grid-template-columns: minmax(0, 1fr); }
+
+  .workbench-sidebar { background: color-mix(in srgb, var(--wb-panel-solid) 92%, var(--wb-shell)); }
+
+  .workbench-main { padding-bottom: 0; }
+
+  .workbench-context-bar {
+    position: relative;
+    min-height: 56px;
+    gap: 12px;
+    padding: 0 14px 0 18px;
+    background: color-mix(in srgb, var(--wb-panel-solid) 95%, var(--wb-shell));
+  }
+
+  .workbench-context-bar__leading { gap: 9px; }
+  .workbench-context-bar__crumb { font-size: .7rem; }
+  .workbench-context-bar__leading strong { font-size: .79rem; }
+  .workbench-context-bar__meta { gap: 9px; margin-left: auto; }
+  .workbench-context-bar__mode { font-size: .58rem; }
+  .workbench-context-bar__step { font-size: .63rem; }
+
+  .workbench-context-bar__utility {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 7px;
+  }
+
+  :global(.learning-workbench-v2 .workbench-context-bar__utility .theme-toggle) {
+    width: 136px;
+    height: 40px;
+    flex-basis: 136px;
+  }
+
+  .workbench-context-bar__utility .workbench-tool-button {
+    width: 36px;
+    min-height: 36px;
+    height: 36px;
+    border-radius: 5px;
+  }
+
+  .workbench-context-bar__utility .workbench-sign-in {
+    min-height: 36px;
+    padding: 0 12px;
+    border-radius: 5px;
+  }
+
+  .workbench-context-bar__utility .workbench-account {
+    display: grid;
+    width: 36px;
+    min-height: 36px;
+    height: 36px;
+    place-items: center;
+    border: 1px solid var(--wb-line-strong);
+    border-radius: 50%;
+    background: var(--wb-panel-solid);
+  }
+
+  .workbench-context-bar__utility .workbench-account__avatar {
+    width: 26px;
+    height: 26px;
+    border: 0;
+    background: var(--wb-ink);
+    color: var(--wb-panel-solid);
+    font-size: .62rem;
+  }
+
+  .workbench-context-bar__utility .workbench-account__name { display: none; }
+
+  /* Search takes over the application toolbar while it is active, matching
+     the reference's command field without compressing the learning context. */
+  .workbench-context-bar__utility .workbench-search {
+    position: absolute;
+    z-index: 3;
+    inset: 8px 13px;
+    width: auto;
+    height: 40px;
+    border-radius: 5px;
+    box-shadow: 0 3px 12px rgba(28, 28, 26, .08);
+  }
+
+  .workbench-main__heading {
+    min-height: 142px;
+    padding: 27px clamp(25px, 2.55vw, 42px) 24px;
+  }
+
+  .workbench-main__heading h1 {
+    font-size: clamp(2.18rem, 3vw, 3.25rem);
+    letter-spacing: 0;
+  }
+
+  .workbench-main__heading p {
+    margin-top: 10px;
+    font-size: .94rem;
+    line-height: 1.55;
+  }
+
+  .workbench-main-tools { width: min(296px, 31vw); }
+  .workbench-main-tools a { min-height: 58px; }
+  .workbench-main-tools__copy strong { font-size: .78rem; }
+  .workbench-main-tools__copy small { font-size: .65rem; }
+
+  .workbench-current-task,
+  .workbench-context-handoff {
+    margin-right: clamp(25px, 2.55vw, 42px);
+    margin-left: clamp(25px, 2.55vw, 42px);
+  }
+
+  .workbench-current-task h2,
+  .workbench-context-handoff h2 { font-size: 1.35rem; }
+  .workbench-current-task__copy > p:not(.workbench-kicker),
+  .workbench-context-handoff__copy > p:not(.workbench-kicker) { font-size: .84rem; }
+
+  .workbench-workspace-copy strong { font-size: .86rem; }
+  .workbench-workspace-copy small { font-size: .68rem; }
+  .workbench-nav-row__lead span { font-size: .78rem; }
+  .workbench-course-group__copy strong { font-size: .84rem; }
+  .workbench-course-group__copy small { font-size: .69rem; }
+  .workbench-course-item__copy strong { font-size: .81rem; }
+  .workbench-course-item--lesson .workbench-course-item__copy strong { font-size: .74rem; }
+
+  .workbench-rail__head { padding: 18px 18px 16px; }
+  .workbench-rail__head > strong { font-size: 1rem; }
+  .workbench-rail__section > summary { min-height: 52px; }
+  .workbench-rail__body p { font-size: .74rem; }
+
+  .workbench-sidebar__modules {
+    display: block;
+    flex: 0 0 auto;
+    padding: 0;
+  }
+
+  .workbench-sidebar__modules > summary {
+    display: flex;
+    min-height: 42px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 17px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .workbench-sidebar__modules > summary::-webkit-details-marker { display: none; }
+  .workbench-sidebar__modules > summary .workbench-disclosure__chevron { margin-right: 3px; }
+  .workbench-sidebar__modules[open] > summary .workbench-disclosure__chevron { transform: rotate(225deg) translate(-2px, -1px); }
+
+  .workbench-sidebar__modules-content {
+    display: grid;
+    gap: 3px;
+    padding: 0 12px 9px;
+  }
+
+  .workbench-main { background: var(--wb-shell); padding-bottom: 0; }
+
+  .workbench-main__heading,
+  .workbench-current-task,
+  .workbench-context-handoff,
+  .algorithm-stage,
+  .workbench-timeline,
+  .workbench-context-error { margin-right: 0; margin-left: 0; }
+
+  .workbench-main__heading {
+    min-height: 132px;
+    margin-top: 0;
+    padding: 24px clamp(22px, 2.4vw, 34px) 20px;
+    border: 0;
+    border-bottom: 1px solid var(--wb-line);
+    border-radius: 0;
+    background: var(--wb-shell);
+    box-shadow: none;
+  }
+
+  .workbench-main__heading h1 {
+    font-size: clamp(2rem, 2.55vw, 3rem);
+    line-height: 1.04;
+  }
+
+  .workbench-main__heading p {
+    margin-top: 8px;
+    font-size: .88rem;
+    line-height: 1.5;
+  }
+
+  .workbench-main-tools {
+    width: min(310px, 30vw);
+    border-color: var(--wb-line);
+    background: color-mix(in srgb, var(--wb-panel-solid) 94%, transparent);
+  }
+
+  .workbench-main-tools a { min-height: 52px; }
+
+  .workbench-current-task {
+    margin-top: 0;
+    padding: 18px clamp(22px, 2.4vw, 34px) 18px;
+    border: 0;
+    border-bottom: 1px solid var(--wb-line);
+    border-radius: 0;
+    background: var(--wb-panel-solid);
+  }
+
+  .workbench-current-task h2,
+  .workbench-context-handoff h2 {
+    margin-top: 5px;
+    font-size: 1.24rem;
+    line-height: 1.2;
+  }
+
+  .workbench-current-task__copy > p:not(.workbench-kicker),
+  .workbench-context-handoff__copy > p:not(.workbench-kicker) {
+    margin-top: 6px;
+    font-size: .78rem;
+    line-height: 1.48;
+  }
+
+  .workbench-context-handoff {
+    margin-top: 0;
+    padding: 0;
+    border: 0;
+    border-bottom: 1px solid var(--wb-line);
+    border-radius: 0;
+    background-color: color-mix(in srgb, var(--wb-shell) 92%, var(--wb-panel-solid));
+    background-size: 30px 30px;
+    overflow: hidden;
+  }
+
+  .workbench-context-handoff__copy,
+  .workbench-context-handoff__actions {
+    padding-right: clamp(22px, 2.4vw, 34px);
+    padding-left: clamp(22px, 2.4vw, 34px);
+  }
+
+  .workbench-context-handoff__copy { padding-top: 24px; }
+  .workbench-context-handoff__actions { padding-bottom: 20px; }
+
+  .workbench-context-handoff__desk { border-top-color: var(--wb-line); }
+
+  .algorithm-stage {
+    margin-top: 0;
+    border: 0;
+    border-bottom: 1px solid var(--wb-stage-line-strong);
+    border-radius: 0;
+    background: var(--wb-stage);
+    overflow: hidden;
+  }
+
+  .algorithm-stage__header,
+  .algorithm-stage__toolbar {
+    background: var(--wb-stage-toolbar);
+  }
+
+  .algorithm-stage__canvas {
+    position: relative;
+    min-height: 212px;
+    padding: 42px 22px 54px;
+  }
+
+  .algorithm-stage__canvas::before {
+    content: "";
+    position: absolute;
+    inset: 26px clamp(42px, 9%, 108px) 34px;
+    border: 1px solid color-mix(in srgb, var(--wb-stage-line-strong) 74%, transparent);
+    opacity: .42;
+    pointer-events: none;
+  }
+
+  .algorithm-array { width: min(100%, 820px); }
+
+  .algorithm-stage__annotation--bottom {
+    right: 24px;
+    bottom: 14px;
+    max-width: min(28%, 250px);
+  }
+
+  .workbench-timeline {
+    margin-top: 0;
+    border: 0;
+    border-bottom: 1px solid var(--wb-line);
+    border-radius: 0;
+    background: color-mix(in srgb, var(--wb-panel-solid) 97%, var(--wb-shell));
+    overflow: hidden;
+  }
+
+  .workbench-timeline__heading {
+    min-height: 46px;
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .workbench-timeline__item {
+    min-height: 92px;
+    padding: 11px 12px;
+  }
+
+  .workbench-context-drawer {
+    margin: 0;
+    border: 0;
+    border-bottom: 1px solid var(--wb-line);
+    border-radius: 0;
+    background: var(--wb-panel-solid);
+  }
+
+  .workbench-context-drawer > summary { min-height: 56px; padding: 0 clamp(22px, 2.4vw, 34px); }
+  .workbench-context-drawer > summary strong { font-size: 1rem; }
+
+  .workbench-context-drawer .workbench-rail {
+    display: grid;
+    min-height: 0;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    overflow: visible;
+    border-left: 0;
+    background: transparent;
+  }
+
+  .workbench-context-drawer .workbench-rail__head { display: none; }
+  .workbench-context-drawer .workbench-rail__section {
+    min-width: 0;
+    border-right: 1px solid var(--wb-line);
+    border-bottom: 0;
+  }
+
+  .workbench-context-drawer .workbench-rail__section:last-child { border-right: 0; }
+  .workbench-context-drawer .workbench-rail__section > summary { min-height: 52px; padding: 0 20px; }
+  .workbench-context-drawer .workbench-rail__body { padding: 0 20px 20px; }
+
+  .workbench-context-error {
+    margin-top: 0;
+    padding: 14px 18px;
+    border: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--wb-line-strong) 88%, transparent);
+    border-radius: 0;
+    background: color-mix(in srgb, var(--wb-panel-solid) 97%, var(--wb-shell));
+  }
+}
+
+@media (min-width: 941px) and (max-width: 1260px) {
+  .workbench-layout { grid-template-columns: 240px minmax(0, 1fr); }
+  .workbench-layout.is-sidebar-collapsed { grid-template-columns: minmax(0, 1fr); }
+  .workbench-context-bar__mode { display: none; }
+  .workbench-main__heading { padding-right: 24px; padding-left: 24px; }
+  .workbench-current-task,
+  .workbench-context-handoff { margin-right: 0; margin-left: 0; }
+}
+
+/* On a compact desktop the stage canvas is deliberately short. Reserve its
+   lower edge for the step explanation so localized detail never appears to
+   run into the independent playback toolbar below. */
+@media (min-width: 941px) and (max-width: 1260px) and (max-height: 920px) {
+  .algorithm-stage {
+    /* The canvas has border-box padding and a minimum content track. Keep
+       the three grid rows in the stage's intrinsic height instead of letting
+       a short flex parent overlap the toolbar over the annotations. */
+    flex: 0 0 auto;
+    min-height: 312px;
+  }
+
+  .algorithm-stage__canvas {
+    min-height: 188px;
+    padding-bottom: 78px;
+  }
+
+  .algorithm-stage__annotation--bottom {
+    right: 18px;
+    bottom: 20px;
+    max-width: min(34%, 260px);
+  }
+
+  .algorithm-stage__annotation--bottom p {
+    max-width: 30ch;
+    line-height: 1.45;
+  }
+
+  .algorithm-stage__toolbar {
+    min-height: 60px;
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+}
+
+@media (min-width: 1261px) and (max-width: 1360px) and (max-height: 920px) {
+  .algorithm-stage {
+    flex: 0 0 auto;
+    min-height: 332px;
+  }
+}
+
+@media (min-width: 1361px) and (max-height: 920px) {
+  .algorithm-stage {
+    /* Keep the same intrinsic three-row contract on wider short screens. */
+    flex: 0 0 auto;
+    min-height: 332px;
+  }
+}
+
+@media (min-width: 1800px) {
+  :global(.ai-runtime-frame--workbench .ai-runtime-frame__content) {
+    width: min(2280px, 100%);
+    max-width: 2280px;
+  }
+
+  .workbench-layout { grid-template-columns: 328px minmax(0, 1fr); }
+  .workbench-layout.is-sidebar-collapsed { grid-template-columns: minmax(0, 1fr); }
+  .workbench-main__heading { min-height: 146px; padding-right: 38px; padding-left: 38px; }
+  .workbench-main__heading h1 { font-size: 3.28rem; }
+  .workbench-main__heading p { font-size: .98rem; }
+  .workbench-current-task,
+  .workbench-context-handoff,
+  .algorithm-stage,
+  .workbench-timeline,
+  .workbench-context-error { margin-right: 0; margin-left: 0; }
+  .workbench-current-task,
+  .workbench-context-handoff { padding-right: 38px; padding-left: 38px; }
+  .workbench-current-task h2,
+  .workbench-context-handoff h2 { font-size: 1.42rem; }
+  .workbench-current-task__copy > p:not(.workbench-kicker),
+  .workbench-context-handoff__copy > p:not(.workbench-kicker) { font-size: .88rem; }
+  .workbench-course-group__copy strong { font-size: .94rem; }
+  .workbench-course-item__copy strong { font-size: .85rem; }
+  .algorithm-stage { min-height: 420px; }
+  .algorithm-stage__header { min-height: 84px; padding-right: 24px; padding-left: 24px; }
+  .algorithm-stage__header h2 { font-size: 1.34rem; }
+  .algorithm-stage__canvas { min-height: 262px; padding: 50px 24px 62px; }
+  .algorithm-stage__canvas::before { inset-right: clamp(130px, 16%, 220px); inset-left: clamp(130px, 16%, 220px); inset-bottom: 42px; }
+  .algorithm-array { width: min(100%, 1040px); }
+  .algorithm-node { width: clamp(72px, 4.2vw, 96px); flex-basis: 96px; }
+  .algorithm-node strong { font-size: clamp(1.4rem, 1.9vw, 1.86rem); }
+  .algorithm-pointer { left: calc(50% - min(404px, 24vw) + (var(--pointer-index) * min(96px, 4.2vw)) + (var(--pointer-index) * -1px)); }
+  .workbench-timeline__item { min-height: 102px; }
+}
+
+@media (max-width: 940px) {
+  /* The mobile Runtime header owns navigation. Keep only an opened command
+     field from this utility layer so sidebar search remains operable. */
+  .workbench-context-bar__utility { display: contents; }
+  .workbench-context-bar__utility > :not(.workbench-search) { display: none; }
+  .workbench-context-bar__utility .workbench-search {
+    position: fixed;
+    z-index: 60;
+    top: 66px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+  }
+}
+
+@media (min-width: 721px) and (max-width: 940px) {
+  /* Tablet still uses the Runtime top row. Surface the paired theme/locale
+     switch there while the 260px course sidebar and central toolbar coexist. */
+  .workbench-runtime-actions-tablet { display: flex; align-items: center; }
+}
+
+:global(html[data-theme="dark"] .ai-runtime-frame--workbench) { background: #10100f; }
+:global(html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__background) { background: #10100f; }
+:global(html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__scrim) { background: rgba(16, 16, 15, .96); }
+
+:global(html[data-theme="dark"] .learning-workbench-v2 .workbench-layout) {
+  border-color: rgba(255, 255, 250, .24);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .32), 0 18px 38px rgba(0, 0, 0, .22);
+}
+
+:global(html[data-theme="dark"] .learning-workbench-v2 .workbench-context-bar) { background: #1b1b19; }
+:global(html[data-theme="dark"] .learning-workbench-v2 .workbench-sidebar),
+:global(html[data-theme="dark"] .learning-workbench-v2 .workbench-rail) { background: #191917; }
+
+@media (min-width: 941px) {
+  :global(html[data-theme="dark"] .learning-workbench-v2 .workbench-context-drawer .workbench-rail) { background: transparent; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :global(.ai-runtime-frame--workbench .ai-runtime-frame__video) { opacity: 0; }
+  :global(.ai-runtime-frame--workbench .ai-runtime-frame__scrim) { background: #121210; }
+  :global(.ai-runtime-frame.ai-runtime-frame--workbench.is-reduced-transparency .ai-runtime-frame__scrim) { background: #121210; }
+  :global(html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__scrim) { background: #10100f; }
+}
+
+/* Final application-container pass.
+   Keep the learning surface as one product window, but give the content lane
+   the same inset boundary as the reference app shell. This is deliberately a
+   single desktop layer so older responsive patches cannot make the main pane
+   look like a collection of unrelated full-width strips. */
+@media (min-width: 941px) {
+  :global(html[data-theme="light"] .ai-runtime-frame--workbench) {
+    background: #e4e3df;
+  }
+
+  :global(html[data-theme="light"] .ai-runtime-frame--workbench .ai-runtime-frame__background) {
+    background: #e4e3df;
+  }
+
+  :global(html[data-theme="light"] .ai-runtime-frame--workbench .ai-runtime-frame__scrim) {
+    background: rgba(228, 227, 223, .96);
+  }
+
+  :global(html[data-theme="dark"] .ai-runtime-frame--workbench) {
+    background: #10100f;
+  }
+
+  :global(html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__background) {
+    background: #10100f;
+  }
+
+  :global(html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__scrim) {
+    background: rgba(16, 16, 15, .96);
+  }
+
+  :global(.ai-runtime-frame--workbench .ai-runtime-frame__page) {
+    padding: clamp(24px, 3.8vh, 42px) clamp(24px, 4vw, 72px);
+  }
+
+  :global(.ai-runtime-frame--workbench .ai-runtime-frame__content) {
+    width: min(1960px, 100%);
+    max-width: 1960px;
+  }
+
+  .workbench-layout {
+    grid-template-columns: 260px minmax(0, 1fr);
+    border: 1px solid var(--wb-line-strong);
+    border-radius: 10px;
+    background: var(--wb-shell);
+    box-shadow: 0 1px 2px rgba(24, 24, 21, .18), 0 22px 54px rgba(24, 24, 21, .12);
+  }
+
+  .workbench-layout.is-sidebar-collapsed { grid-template-columns: minmax(0, 1fr); }
+
+  .workbench-sidebar { border-right: 1px solid var(--wb-line); }
+
+  .workbench-main {
+    padding: 0 18px 18px;
+    background: var(--wb-shell);
+  }
+
+  .workbench-context-bar {
+    margin-right: -18px;
+    margin-left: -18px;
+    padding-right: 18px;
+    padding-left: 18px;
+    border-bottom: 1px solid var(--wb-line);
+  }
+
+  .workbench-main__heading {
+    min-height: 136px;
+    margin-top: 18px;
+    padding: 26px 28px 24px;
+    border: 1px solid var(--wb-line);
+    border-radius: 8px;
+    background: var(--wb-panel-solid);
+  }
+
+  .workbench-main__heading h1 {
+    font-size: clamp(2.45rem, 3.05vw, 3.25rem);
+    line-height: 1.04;
+  }
+
+  .workbench-main__heading p {
+    margin-top: 10px;
+    font-size: .98rem;
+  }
+
+  .workbench-course-group__copy strong { font-size: .9rem; }
+  .workbench-course-item__copy strong { font-size: .78rem; }
+  .workbench-nav-row__lead span { font-size: .8rem; }
+
+  .workbench-current-task,
+  .workbench-context-handoff {
+    margin: 12px 0 0;
+    padding: 18px 28px;
+    border: 1px solid var(--wb-line);
+    border-radius: 8px;
+  }
+
+  .workbench-current-task h2,
+  .workbench-context-handoff h2 { font-size: 1.38rem; }
+
+  .workbench-context-error {
+    margin: 12px 0 0;
+    border: 1px solid var(--wb-line-strong);
+    border-radius: 8px;
+  }
+
+  .algorithm-stage {
+    min-height: 336px;
+    margin: 12px 0 0;
+    border: 1px solid var(--wb-stage-line-strong);
+    border-radius: 8px;
+  }
+
+  .workbench-timeline {
+    margin: 12px 0 0;
+    border: 1px solid var(--wb-line);
+    border-radius: 8px;
+  }
+
+  .workbench-context-drawer {
+    margin: 12px 0 0;
+    border: 1px solid var(--wb-line);
+    border-radius: 8px;
+  }
+}
+
+/* Short desktop viewports keep the same inset language without pushing the
+   stage controls below the fold. */
+@media (min-width: 941px) and (max-height: 920px) {
+  .workbench-main { padding-bottom: 14px; }
+  .workbench-main__heading { min-height: 124px; margin-top: 14px; padding-top: 20px; padding-bottom: 18px; }
+  .workbench-main__heading h1 { font-size: clamp(2.38rem, 3.05vw, 3.08rem); }
+  .workbench-main__heading p { margin-top: 7px; font-size: .9rem; }
+  .workbench-current-task,
+  .workbench-context-handoff { margin-top: 10px; padding-top: 14px; padding-bottom: 14px; }
+  .workbench-current-task h2,
+  .workbench-context-handoff h2 { font-size: 1.24rem; }
+  .algorithm-stage { min-height: 300px; margin-top: 10px; }
+  .workbench-timeline,
+  .workbench-context-drawer { margin-top: 10px; }
+  .workbench-timeline__heading { min-height: 44px; }
+  .workbench-timeline__item { min-height: 84px; padding-top: 9px; padding-bottom: 9px; }
+}
+
+/* On very wide displays the window remains bounded like the reference shell;
+   type and the course rail gain a measured amount of breathing room instead
+   of scaling with the full monitor width. */
+@media (min-width: 2000px) {
+  .workbench-layout { grid-template-columns: 304px minmax(0, 1fr); }
+  .workbench-main { padding-right: 24px; padding-left: 24px; padding-bottom: 24px; }
+  .workbench-context-bar { margin-right: -24px; margin-left: -24px; padding-right: 24px; padding-left: 24px; }
+  .workbench-main__heading { min-height: 154px; margin-top: 22px; padding: 32px 38px 28px; }
+  .workbench-main__heading h1 { font-size: 3.35rem; }
+  .workbench-main__heading p { font-size: 1.04rem; }
+  .workbench-current-task,
+  .workbench-context-handoff { margin-top: 14px; padding: 22px 38px; }
+  .workbench-current-task h2,
+  .workbench-context-handoff h2 { font-size: 1.48rem; }
+  .algorithm-stage { min-height: 400px; margin-top: 14px; }
+  .algorithm-stage__header { min-height: 82px; padding-right: 24px; padding-left: 24px; }
+  .algorithm-stage__header h2 { font-size: 1.38rem; }
+  .algorithm-stage__canvas { min-height: 250px; padding: 48px 24px 60px; }
+  .workbench-timeline,
+  .workbench-context-drawer { margin-top: 14px; }
+  .workbench-timeline__item { min-height: 108px; padding: 14px 16px; }
+}
+
+@media (prefers-reduced-transparency: reduce) and (min-width: 941px) {
+  :global(html[data-theme="light"] .ai-runtime-frame--workbench .ai-runtime-frame__scrim) { background: #e4e3df; }
+  :global(html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__scrim) { background: #10100f; }
+}
+
+/* The historical Runtime layer has an equally-specific desktop scrim rule.
+   Keep this final theme mapping explicit so the light shell cannot inherit a
+   black veil after HMR or when the frame remounts. */
+:global(.ai-runtime-frame--workbench .ai-runtime-frame__scrim) {
+  background: rgba(228, 227, 223, .96) !important;
+}
+
+:global(html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__scrim) {
+  background: rgba(16, 16, 15, .96) !important;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :global(.ai-runtime-frame--workbench .ai-runtime-frame__scrim) { background: #e4e3df !important; }
+  :global(html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__scrim) { background: #10100f !important; }
+}
+
+/* Stage tokens are scoped at the application boundary so the embedded
+   algorithm canvas follows the active theme even when an older Runtime rule
+   is loaded before this refinement layer. */
+:global(html[data-theme="light"] .learning-workbench-v2) {
+  --wb-stage: #f1f0eb;
+  --wb-stage-ink: #1a1a18;
+  --wb-stage-muted: #66645e;
+  --wb-stage-line: rgba(27, 27, 25, .18);
+  --wb-stage-line-strong: rgba(27, 27, 25, .46);
+  --wb-stage-node: #e7e5df;
+  --wb-stage-node-muted: #6e6c65;
+  --wb-stage-active: #d4d1c9;
+  --wb-stage-inserted: #242422;
+  --wb-stage-inserted-ink: #f7f7f2;
+  --wb-stage-inserted-muted: rgba(247, 247, 242, .66);
+  --wb-stage-toolbar: #e9e7e1;
+  --wb-stage-play-hover: #343431;
+  --wb-stage-path: rgba(27, 27, 25, .48);
+  --wb-stage-fill: rgba(27, 27, 25, .06);
+}
+
+:global(html[data-theme="dark"] .learning-workbench-v2) {
+  --wb-stage: #10100f;
+  --wb-stage-ink: #f2f1eb;
+  --wb-stage-muted: #aaa89f;
+  --wb-stage-line: rgba(255, 255, 250, .12);
+  --wb-stage-line-strong: rgba(255, 255, 250, .3);
+  --wb-stage-node: #242422;
+  --wb-stage-node-muted: #aaa89f;
+  --wb-stage-active: #4c4c47;
+  --wb-stage-inserted: #f2f1eb;
+  --wb-stage-inserted-ink: #191918;
+  --wb-stage-inserted-muted: rgba(25, 25, 24, .62);
+  --wb-stage-toolbar: #181817;
+  --wb-stage-play-hover: #5a5a55;
+  --wb-stage-path: rgba(255, 255, 250, .44);
+  --wb-stage-fill: rgba(255, 255, 250, .055);
+}
+
+.algorithm-stage,
+.algorithm-stage__header,
+.algorithm-stage__toolbar {
+  background-color: var(--wb-stage);
+}
+
+.algorithm-stage__header,
+.algorithm-stage__toolbar {
+  background-color: var(--wb-stage-toolbar);
+}

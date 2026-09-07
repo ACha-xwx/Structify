@@ -18,15 +18,26 @@ public class LearningController {
 
     private final LearningProgressService learning;
     private final LearningEventService events;
+    private final LearningWorkbenchService workbench;
 
-    public LearningController(LearningProgressService learning, LearningEventService events) {
+    public LearningController(
+        LearningProgressService learning,
+        LearningEventService events,
+        LearningWorkbenchService workbench
+    ) {
         this.learning = learning;
         this.events = events;
+        this.workbench = workbench;
     }
 
     @GetMapping("/progress")
     LearningProgressView progress(@AuthenticationPrincipal AuthenticatedUser user) {
         return learning.progress(user.userId());
+    }
+
+    @GetMapping("/workbench")
+    LearningWorkbenchView workbench(@AuthenticationPrincipal AuthenticatedUser user) {
+        return workbench.workbench(user.userId());
     }
 
     @PostMapping("/events")

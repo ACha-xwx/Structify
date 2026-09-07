@@ -1,13 +1,20 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watchEffect } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AppShell from "./app-shell/AppShell.vue";
 import MorphingSquareLoader from "../shared/components/MorphingSquareLoader.vue";
+import { useLocale } from "../shared/i18n/locale";
+import { documentTitleForRoute } from "./document-title";
 
 const route = useRoute();
 const router = useRouter();
+const { locale } = useLocale();
 const routerReady = ref(false);
 const shellLayout = computed(() => route.meta.layout !== "auth" && route.meta.layout !== "minimal");
+
+watchEffect(() => {
+  if (typeof document !== "undefined") document.title = documentTitleForRoute(route, locale.value);
+});
 
 onMounted(() => {
   void router.isReady().then(() => {

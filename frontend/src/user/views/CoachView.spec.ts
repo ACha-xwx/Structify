@@ -2,7 +2,8 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockApi } = vi.hoisted(() => ({
+const { authMock, mockApi } = vi.hoisted(() => ({
+  authMock: { state: { user: null as null | { id: number; email: string; roles: string[] } } },
   mockApi: {
     getReadiness: vi.fn(),
     listChatSessions: vi.fn(),
@@ -10,6 +11,7 @@ const { mockApi } = vi.hoisted(() => ({
 }));
 
 vi.mock("../runtime", () => ({ userApi: mockApi }));
+vi.mock("../../app/providers/runtime", () => ({ auth: authMock }));
 
 import CoachView from "./CoachView.vue";
 
@@ -28,12 +30,13 @@ const blockedReadiness = {
   remainingDailyTokenQuota: 800,
   quotaStatus: "AVAILABLE" as const,
   allowFormalGeneration: false,
-  blockingReasons: ["当前模型配置已停用"],
+  blockingReasons: ["PERSISTED_CONFIGURATION_DISABLED"],
 };
 
 describe("CoachView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authMock.state.user = { id: 7, email: "learner@example.com", roles: ["STUDENT"] };
     mockApi.getReadiness.mockResolvedValue(blockedReadiness);
     mockApi.listChatSessions.mockResolvedValue([]);
   });
@@ -57,7 +60,7 @@ describe("CoachView", () => {
     await flushPromises();
 
     expect(mockApi.getReadiness).toHaveBeenCalledWith({ operation: "CHAT", chapterId: "stack" });
-    expect(wrapper.text()).toContain("当前模型配置已停用");
+    expect(wrapper.text()).toContain("模型服务当前不可用。");
     expect(wrapper.text()).toContain("模型不可用");
   });
 });

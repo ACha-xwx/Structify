@@ -44,12 +44,27 @@ async function mountAdminShell() {
       { path: "/admin/audit", component: { template: "<div />" }, meta: { layout: "admin" } },
       { path: "/admin/settings", component: { template: "<div />" }, meta: { layout: "admin" } },
       { path: "/admin/mail", component: { template: "<div />" }, meta: { layout: "admin" } },
+      { path: "/admin/sandbox", component: { template: "<div />" }, meta: { layout: "admin" } },
       { path: "/login", component: { template: "<div />" } },
     ],
   });
   await router.push("/admin");
   await router.isReady();
   authMock.state.user = { id: 1, email: "admin@example.com", roles: ["ADMIN"] };
+  return { router, wrapper: mount(AppShell, { attachTo: document.body, global: { plugins: [router] }, slots: { default: "<p>content</p>" } }) };
+}
+
+async function mountWorkbenchShell() {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: "/", name: "home", component: { template: "<div />" } },
+      { path: "/user/home", component: { template: "<div />" }, meta: { layout: "workbench" } },
+      { path: "/login", component: { template: "<div />" } },
+    ],
+  });
+  await router.push("/");
+  await router.isReady();
   return { router, wrapper: mount(AppShell, { attachTo: document.body, global: { plugins: [router] }, slots: { default: "<p>content</p>" } }) };
 }
 
@@ -67,6 +82,15 @@ describe("AppShell retained session presentation", () => {
     expect(wrapper.text()).toContain("student@example.com");
     expect(wrapper.get(".app-user button").text()).toContain("退出");
     expect(wrapper.find("a[href=\"/login\"]").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("does not mount the retired header and duplicate theme switch on workbench surfaces", async () => {
+    const { wrapper } = await mountWorkbenchShell();
+
+    expect(wrapper.find(".app-header").exists()).toBe(false);
+    expect(wrapper.find(".app-footer").exists()).toBe(false);
+    expect(wrapper.get("main.app-main--workbench").text()).toContain("content");
     wrapper.unmount();
   });
 
@@ -91,8 +115,8 @@ describe("AppShell retained session presentation", () => {
     const marks = wrapper.get("aside[data-layout=\"admin-sidebar\"] nav").findAll(".admin-nav__mark");
     const icons = wrapper.get("aside[data-layout=\"admin-sidebar\"] nav").findAll("svg.admin-nav__icon");
 
-    expect(marks).toHaveLength(7);
-    expect(icons).toHaveLength(7);
+    expect(marks).toHaveLength(8);
+    expect(icons).toHaveLength(8);
     expect(marks.every((mark) => mark.text().trim() === "")).toBe(true);
     expect(icons.every((icon) => icon.attributes("aria-hidden") === "true")).toBe(true);
     wrapper.unmount();

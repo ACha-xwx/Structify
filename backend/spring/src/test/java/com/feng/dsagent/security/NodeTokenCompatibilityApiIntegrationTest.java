@@ -97,6 +97,12 @@ class NodeTokenCompatibilityApiIntegrationTest {
             .andExpect(jsonPath("$.chapters[?(@.chapterId == '03-stack-queue')].animationCount", hasItem(1)))
             .andExpect(jsonPath("$.chapters[?(@.chapterId == '03-stack-queue')].eventCount", hasItem(2)));
 
+        mockMvc.perform(get("/api/v1/learning/workbench")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.currentChapterId").value("03-stack-queue"))
+            .andExpect(jsonPath("$.scene.recordId").value(recordId));
+
         mockMvc.perform(post("/api/v1/learning/events")
                 .header("Authorization", "Bearer " + token)
                 .contentType(MediaType.APPLICATION_JSON)

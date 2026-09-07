@@ -7,13 +7,14 @@ const capabilities = vi.hoisted(() => vi.fn(async () => ({
   userId: 9,
   roles: ["ADMIN"],
   service: { name: "spring", version: "1.0.18", status: "AVAILABLE" },
-  modules: {
+    modules: {
     users: { available: true, status: "AVAILABLE" },
     reviewQueue: { available: true, status: "AVAILABLE" },
     backgroundTasks: { available: true, status: "AVAILABLE" },
     audit: { available: true, status: "AVAILABLE" },
     modelSettings: { available: false, status: "NOT_CONFIGURED", reason: "NOT_CONFIGURED" },
-    mailSettings: { available: false, status: "UNAVAILABLE", reason: "MAIL_CONFIG_UNAVAILABLE" },
+      mailSettings: { available: false, status: "UNAVAILABLE", reason: "MAIL_CONFIG_UNAVAILABLE" },
+      sandboxSettings: { available: false, status: "UNAVAILABLE", reason: "SANDBOX_CONFIG_UNAVAILABLE" },
   },
 })));
 
@@ -33,6 +34,7 @@ describe("AdminHomeView", () => {
       { path: "/admin/audit", component },
       { path: "/admin/settings", component },
       { path: "/admin/mail", component },
+      { path: "/admin/sandbox", component },
     ] });
     await router.push("/admin");
     await router.isReady();
@@ -43,6 +45,8 @@ describe("AdminHomeView", () => {
     expect(wrapper.text()).toContain("尚未完成服务端配置");
     expect(wrapper.get("a[href='/admin/settings']").text()).toContain("进入模型配置");
     expect(wrapper.get("a[href='/admin/mail']").text()).toContain("进入邮件发送设置");
+    expect(wrapper.get("a[href='/admin/sandbox']").text()).toContain("进入沙箱配置");
+    expect(wrapper.text()).toContain("服务端尚未提供沙箱配置管理接口");
     expect(wrapper.text()).toContain("邮件配置服务暂时不可用");
     expect(wrapper.text()).not.toMatch(/总用户|待审核|任务总数/);
   });

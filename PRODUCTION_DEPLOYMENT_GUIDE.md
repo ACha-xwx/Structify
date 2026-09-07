@@ -390,6 +390,10 @@ backup.sh 会生成 MySQL 事务 dump、Node SQLite 在线备份、Node PDF 卷�
 元数据和 SHA-256。只有显式传 --private-root 才会打包私有媒体；私有媒体仍建议
 使用独立对象存储或文件系统快照。
 
+backup.sh 完成一套备份后会按时间戳目录倒序清理，仅保留最近两套完整备份；
+last-release.env、previous-release.env 等控制文件不参与清理。可用
+--retain COUNT 显式调整，但生产环境不得低于 2。
+
 ### 恢复
 
 恢复是破坏性操作，必须有维护窗口和一份更新的当前备份：

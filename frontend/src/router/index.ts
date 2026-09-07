@@ -9,7 +9,7 @@ import { userRoutes } from "../user/routes";
 import { adminRoutes } from "../admin/routes";
 
 export const routes: RouteRecordRaw[] = [
-  { path: "/", name: "home", component: HomeView, meta: { layout: "shell", module: "首页" } },
+  { path: "/", name: "home", component: HomeView, meta: { layout: "workbench", module: "产品首页" } },
   { path: "/login", name: "login", component: AuthView, props: { mode: "login" }, meta: { layout: "auth" } },
   { path: "/register", name: "register", component: AuthView, props: { mode: "register" }, meta: { layout: "auth" } },
   { path: "/reset-password", name: "reset-password", component: AuthView, props: { mode: "reset" }, meta: { layout: "auth" } },

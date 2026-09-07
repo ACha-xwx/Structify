@@ -3,13 +3,16 @@ package com.feng.dsagent.compiler;
 import com.feng.dsagent.common.ApiException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -23,25 +26,50 @@ final class PistonCompilerGateway implements CompilerGateway {
     private final CompilerProperties properties;
     private final ObjectMapper objectMapper;
     private final HttpClient httpClient;
+    private final SandboxConfigRuntimeSettingsSource runtimeSettings;
 
-    PistonCompilerGateway(CompilerProperties properties, ObjectMapper objectMapper) {
+    @Autowired
+    PistonCompilerGateway(
+        CompilerProperties properties,
+        ObjectMapper objectMapper,
+        SandboxConfigRuntimeSettingsSource runtimeSettings
+    ) {
         this.properties = properties;
         this.objectMapper = objectMapper;
+        this.runtimeSettings = runtimeSettings;
         this.httpClient = HttpClient.newBuilder()
             .connectTimeout(properties.timeout())
             .followRedirects(HttpClient.Redirect.NEVER)
             .build();
     }
 
+    PistonCompilerGateway(CompilerProperties properties, ObjectMapper objectMapper) {
+        this(properties, objectMapper, new SandboxConfigRuntimeSettingsSource(properties));
+    }
+
     @Override
     public CompilerExecution execute(SupportedLanguage language, String code, String stdin) {
-        if (!properties.configured()) {
+        Optional<SandboxRuntimeSettings> configured = runtimeSettings.current();
+        if (configured.isEmpty() || !configured.get().enabled()) {
             throw new ApiException(
                 HttpStatus.SERVICE_UNAVAILABLE,
                 "COMPILER_NOT_CONFIGURED",
                 "代码执行服务尚未配置"
             );
         }
+        SandboxRuntimeSettings settings = configured.get();
+        if (settings.provider() == SandboxProvider.JUDGE0) {
+            return executeWithJudge0(settings, language, code, stdin);
+        }
+        return executeWithPiston(settings, language, code, stdin);
+    }
+
+    private CompilerExecution executeWithPiston(
+        SandboxRuntimeSettings settings,
+        SupportedLanguage language,
+        String code,
+        String stdin
+    ) {
         String requestBody = serialize(new PistonRequest(
             language.pistonRuntime(),
             "*",
@@ -50,7 +78,7 @@ final class PistonCompilerGateway implements CompilerGateway {
             properties.compileTimeoutMillis(),
             properties.runTimeoutMillis()
         ));
-        HttpRequest request = HttpRequest.newBuilder(properties.executeUri())
+        HttpRequest request = HttpRequest.newBuilder(executeUri(settings.baseUrl(), "/execute"))
             .timeout(properties.timeout())
             .header("Accept", "application/json")
             .header("Content-Type", "application/json")
@@ -85,7 +113,61 @@ final class PistonCompilerGateway implements CompilerGateway {
         }
     }
 
+    private CompilerExecution executeWithJudge0(
+        SandboxRuntimeSettings settings,
+        SupportedLanguage language,
+        String code,
+        String stdin
+    ) {
+        String requestBody = serialize(new Judge0Request(
+            code,
+            language == SupportedLanguage.C ? 50 : 71,
+            stdin
+        ));
+        URI endpoint = executeUri(settings.baseUrl(), "/submissions?base64_encoded=false&wait=true");
+        HttpRequest request = HttpRequest.newBuilder(endpoint)
+            .timeout(properties.timeout())
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
+            .build();
+        try {
+            HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            try (InputStream body = response.body()) {
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    throw upstreamUnavailable();
+                }
+                return parseJudge0(readLimited(body));
+            }
+        } catch (ApiException error) {
+            throw error;
+        } catch (HttpTimeoutException error) {
+            throw new ApiException(
+                HttpStatus.GATEWAY_TIMEOUT,
+                "COMPILER_UPSTREAM_TIMEOUT",
+                "代码执行服务响应超时，请稍后重试"
+            );
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            throw new ApiException(
+                HttpStatus.SERVICE_UNAVAILABLE,
+                "COMPILER_EXECUTION_INTERRUPTED",
+                "代码执行请求已中断，请重试"
+            );
+        } catch (IOException error) {
+            throw upstreamUnavailable();
+        }
+    }
+
     private String serialize(PistonRequest request) {
+        return serializeObject(request);
+    }
+
+    private String serialize(Judge0Request request) {
+        return serializeObject(request);
+    }
+
+    private String serializeObject(Object request) {
         try {
             return objectMapper.writeValueAsString(request);
         } catch (Exception error) {
@@ -136,6 +218,46 @@ final class PistonCompilerGateway implements CompilerGateway {
         } catch (Exception error) {
             throw invalidResponse();
         }
+    }
+
+    private CompilerExecution parseJudge0(String body) {
+        try {
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode status = root.path("status");
+            int statusId = status.path("id").isNumber() ? status.path("id").asInt() : -1;
+            if (statusId < 0) {
+                throw invalidResponse();
+            }
+            String stdout = output(root, "stdout");
+            String stderr = joinOutput(
+                output(root, "compile_output"),
+                joinOutput(output(root, "stderr"), output(root, "message"))
+            );
+            if (statusId == 1 || statusId == 2) {
+                // wait=true should return a terminal result. Treat a still-pending
+                // response as an upstream timeout instead of blaming the user's code.
+                throw new ApiException(
+                    HttpStatus.GATEWAY_TIMEOUT,
+                    "COMPILER_UPSTREAM_TIMEOUT",
+                    "代码执行服务响应超时，请稍后重试"
+                );
+            }
+            if (statusId == 3) {
+                return new CompilerExecution("success", stdout, stderr);
+            }
+            if (statusId == 6) {
+                return new CompilerExecution("compile_error", stdout, stderr);
+            }
+            return new CompilerExecution("runtime_error", stdout, stderr);
+        } catch (ApiException error) {
+            throw error;
+        } catch (Exception error) {
+            throw invalidResponse();
+        }
+    }
+
+    private URI executeUri(String baseUrl, String suffix) {
+        return URI.create(baseUrl.strip().replaceAll("/+$", "") + suffix);
     }
 
     private static int exitCode(JsonNode phase) {
@@ -193,5 +315,8 @@ final class PistonCompilerGateway implements CompilerGateway {
     }
 
     private record PistonFile(String name, String content) {
+    }
+
+    private record Judge0Request(String source_code, int language_id, String stdin) {
     }
 }

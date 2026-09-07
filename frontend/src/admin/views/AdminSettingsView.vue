@@ -204,6 +204,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
     <LoadingState v-if="loading" label="正在读取模型配置…" />
     <ErrorState v-else-if="error && !capability" title="模型配置不可读取" :message="error"><RetryButton @retry="load" /></ErrorState>
     <template v-else>
+      <div class="model-settings-page">
       <section class="admin-hero-rail admin-panel admin-motion-enter" aria-labelledby="model-configuration-status">
         <span class="admin-hero-rail__index" aria-hidden="true"></span>
         <div class="admin-hero-rail__body">
@@ -230,21 +231,70 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
       <InlineNotice v-if="error" :message="error" tone="danger" />
       <InlineNotice v-if="savedMessage" :message="savedMessage" tone="success" />
       <InlineNotice v-if="testMessage" :message="testMessage" :tone="testTone" />
-      <section class="admin-panel admin-panel--focus panel-enter">
-        <div class="admin-panel__header"><div><p class="admin-kicker">编辑连接</p><h2>模型连接配置</h2><p>未配置时字段保持为空，不展示虚构的 provider 或模型名称。</p></div></div>
+      <section class="admin-panel admin-panel--focus panel-enter model-settings-editor">
+        <div class="admin-panel__header model-settings-editor__header"><div><p class="admin-kicker">MODEL CATALOG</p><h2>模型配置</h2><p>填写服务端托管模型的身份、连接凭据和运行边界。页面不会预填不存在的模型，也不会回填 API Key。</p></div></div>
         <form class="admin-form" aria-label="模型连接配置" @submit.prevent="save">
-          <div class="admin-form__grid">
-            <label class="admin-field"><span>服务提供方（Provider）</span><input v-model="form.provider" autocomplete="off" maxlength="128" required /></label>
-            <label class="admin-field"><span>模型标识（Model ID）</span><input v-model="form.model" autocomplete="off" maxlength="512" required /></label>
-            <label class="admin-field admin-field--full"><span>服务地址（Base URL）</span><input v-model="form.baseUrl" type="url" autocomplete="off" maxlength="2048" required /></label>
-            <label class="admin-field admin-field--full"><span>API Key（仅本次保存使用）</span><input v-model="apiKey" type="password" autocomplete="new-password" maxlength="4096" :placeholder="loadedConfig?.apiKeyConfigured ? '已配置，留空表示不更换' : '首次保存必须填写'" /></label>
-            <label class="admin-field"><span>温度（Temperature）</span><input v-model="form.temperature" type="number" min="0" max="2" step="0.01" /></label>
-            <label class="admin-field"><span>最大输出令牌数</span><input v-model="form.maxOutputTokens" type="number" min="1" max="32768" step="1" /></label>
-            <label class="admin-field"><span>请求超时（毫秒）</span><input v-model="form.requestTimeoutMs" type="number" min="1000" max="120000" step="1" /></label>
-            <label class="admin-field"><span>重试次数</span><input v-model="form.retryCount" type="number" min="0" max="5" step="1" /></label>
-            <label class="admin-field"><span>每日令牌额度</span><input v-model="form.dailyTokenQuota" type="number" min="0" max="10000000" step="1" /></label>
-            <label class="admin-check"><input v-model="form.enabled" type="checkbox" /> <span>启用持久化配置（额度为零时服务端会拒绝）</span></label>
-          </div>
+          <section class="model-settings-section model-settings-section--identity" aria-labelledby="model-settings-identity-title">
+            <header class="model-settings-section__header">
+              <div>
+                <p class="admin-kicker">01 / 模型身份</p>
+                <h3 id="model-settings-identity-title">模型身份</h3>
+                <p>使用供应商实际接受的模型标识。当前后端没有独立的显示名称字段，因此不添加无法持久化的别名。</p>
+              </div>
+              <span class="model-settings-section__index" aria-hidden="true">01</span>
+            </header>
+            <div class="admin-form__grid model-settings-grid model-settings-grid--identity">
+              <label class="admin-field admin-field--full"><span>模型标识（Model ID）</span><input v-model="form.model" autocomplete="off" maxlength="512" required /><small>例如供应商文档中的模型 ID；不会自动替换为示例值。</small></label>
+            </div>
+          </section>
+
+          <section class="model-settings-section model-settings-section--connection" aria-labelledby="model-settings-connection-title">
+            <header class="model-settings-section__header">
+              <div>
+                <p class="admin-kicker">02 / 连接凭据</p>
+                <h3 id="model-settings-connection-title">服务连接</h3>
+                <p>填写供应商和兼容接口地址；API Key 只在保存时发送，服务端仅保存加密结果。</p>
+              </div>
+              <span class="model-settings-section__index" aria-hidden="true">02</span>
+            </header>
+            <div class="admin-form__grid model-settings-grid model-settings-grid--connection">
+              <label class="admin-field"><span>服务提供方（Provider）</span><input v-model="form.provider" autocomplete="off" maxlength="128" required /><small>可填写后端已接入的供应商名称。</small></label>
+              <label class="admin-field"><span>服务地址（Base URL）</span><input v-model="form.baseUrl" type="url" autocomplete="off" maxlength="2048" required /><small>使用供应商提供的 API 根地址。</small></label>
+              <label class="admin-field admin-field--full"><span>API Key（仅本次保存使用）</span><input v-model="apiKey" type="password" autocomplete="new-password" maxlength="4096" :placeholder="loadedConfig?.apiKeyConfigured ? '已配置，留空表示不更换' : '首次保存必须填写'" /><small>{{ loadedConfig?.apiKeyConfigured ? '密钥已配置；留空会沿用服务端密钥。' : '首次保存时需要提供密钥。' }}</small></label>
+            </div>
+          </section>
+
+          <section class="model-settings-section model-settings-section--runtime" aria-labelledby="model-settings-runtime-title">
+            <header class="model-settings-section__header">
+              <div>
+                <p class="admin-kicker">03 / 生成参数</p>
+                <h3 id="model-settings-runtime-title">生成与请求参数</h3>
+                <p>这些参数会随服务端请求生效，范围由后端校验。</p>
+              </div>
+              <span class="model-settings-section__index" aria-hidden="true">03</span>
+            </header>
+            <div class="admin-form__grid model-settings-grid model-settings-grid--runtime">
+              <label class="admin-field"><span>温度（Temperature）</span><input v-model="form.temperature" type="number" min="0" max="2" step="0.01" /></label>
+              <label class="admin-field"><span>最大输出令牌数</span><input v-model="form.maxOutputTokens" type="number" min="1" max="32768" step="1" /></label>
+            </div>
+          </section>
+
+          <section class="model-settings-section model-settings-section--capability" aria-labelledby="model-settings-capability-title">
+            <header class="model-settings-section__header">
+              <div>
+                <p class="admin-kicker">04 / 运行边界</p>
+                <h3 id="model-settings-capability-title">运行能力与额度</h3>
+                <p>额度和启用状态由服务端执行。关闭后保留配置与审计记录，但不会接受新的模型请求。</p>
+              </div>
+              <span class="model-settings-section__index" aria-hidden="true">04</span>
+            </header>
+            <div class="admin-form__grid model-settings-grid model-settings-grid--boundary">
+              <label class="admin-field"><span>请求超时（毫秒）</span><input v-model="form.requestTimeoutMs" type="number" min="1000" max="120000" step="1" /><small>单次请求的服务端时间上限。</small></label>
+              <label class="admin-field"><span>重试次数</span><input v-model="form.retryCount" type="number" min="0" max="5" step="1" /><small>仅对可安全重试的请求生效。</small></label>
+              <label class="admin-field"><span>每日令牌额度</span><input v-model="form.dailyTokenQuota" type="number" min="0" max="10000000" step="1" /><small>启用模型配置时必须大于 0；额度由服务端按日结算。</small></label>
+              <label class="admin-check model-settings-enabled"><input v-model="form.enabled" type="checkbox" /> <span>启用持久化配置（额度为零时服务端会拒绝）</span></label>
+            </div>
+          </section>
           <div class="admin-form__actions"><button class="button button--primary" type="submit" :disabled="saving || testing || capability?.reason === 'MASTER_KEY_UNAVAILABLE'">{{ saving ? "保存中…" : "保存配置" }}</button><button class="button" type="button" :disabled="testing || saving || isDirty || !loadedConfig" @click="testConnection">{{ testing ? "测试中…" : "测试连接（已保存配置）" }}</button><span v-if="loadedConfig?.lastConnectionTestStatus" class="admin-muted">最近测试：{{ loadedConfig.lastConnectionTestStatus }} · {{ formatDate(loadedConfig.lastConnectionTestedAt) }}</span></div>
         </form>
       </section>
@@ -252,6 +302,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
         <div class="admin-panel__header"><div><p class="admin-kicker">安全与额度</p><h2>运行边界</h2></div></div>
         <div class="guardrail-grid"><div><span>凭据</span><strong>只在服务端加密存储</strong><small>API Key 不会被回填到表单。</small></div><div><span>额度</span><strong>{{ loadedConfig?.dailyTokenQuota ?? "未配置" }}</strong><small>每日 token 配额由后端结算。</small></div><div><span>变更时间</span><strong>{{ formatDate(loadedConfig?.updatedAt) }}</strong><small>所有保存动作进入管理员审计。</small></div></div>
       </section>
+      </div>
     </template>
   </AdminPageFrame>
 </template>

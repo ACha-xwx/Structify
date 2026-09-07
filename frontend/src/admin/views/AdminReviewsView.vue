@@ -11,10 +11,21 @@ import RetryButton from "../../shared/components/RetryButton.vue";
 import StatusBadge from "../../shared/components/StatusBadge.vue";
 import InlineNotice from "../../shared/components/InlineNotice.vue";
 import DirectionalArrowIcon from "../../shared/components/DirectionalArrowIcon.vue";
+import RuntimeSelect, { type RuntimeSelectOption } from "../../shared/components/RuntimeSelect.vue";
 
 const page = ref(0); const size = 20; const total = ref(0); const items = ref<ReviewItem[]>([]); const loading = ref(true); const error = ref(""); const notice = ref("");
 const filters = reactive({ search: "", status: "", type: "" }); const selected = ref<ReviewDetail | null>(null); const history = ref<ReviewHistoryEvent[]>([]); const detailLoading = ref(false); const actionBusy = ref(false); const nextStatus = ref<ReviewStatus>("DRAFT"); const note = ref("");
 const statuses: ReviewStatus[] = ["LEGACY_UNVERIFIED", "DRAFT", "PUBLISHED", "VERIFIED", "EXCLUDED"];
+const reviewTypeOptions: RuntimeSelectOption[] = [
+  { value: "", label: "全部类型" },
+  { value: "RESOURCE", label: "课程资料" },
+  { value: "KNOWLEDGE_CHUNK", label: "知识片段" },
+  { value: "PRESENTATION_MANIFEST", label: "课件目录" },
+  { value: "PRESENTATION_PAGE", label: "课件页面" },
+  { value: "DSVP_REQUEST_SNAPSHOT", label: "算法请求快照" },
+];
+const reviewStatusOptions = computed<RuntimeSelectOption[]>(() => [{ value: "", label: "全部状态" }, ...statuses.map((status) => ({ value: status, label: status }))]);
+const reviewNextStatusOptions = computed<RuntimeSelectOption[]>(() => statuses.map((status) => ({ value: status, label: status })));
 const tableFilter = ref("");
 const sortKey = ref("updatedAt");
 const sortDirection = ref<"asc" | "desc">("desc");
@@ -176,8 +187,8 @@ onMounted(load);
     <form class="admin-command-row admin-toolbar" @submit.prevent="applyFilters">
       <div class="admin-command-row__label"><span class="admin-kicker">审核筛选</span><strong>审核队列</strong></div>
       <label class="admin-field admin-field--wide"><span>搜索</span><input v-model="filters.search" maxlength="160" placeholder="标题或标识" /></label>
-      <label class="admin-field"><span>类型</span><select v-model="filters.type"><option value="">全部类型</option><option value="RESOURCE">RESOURCE</option><option value="KNOWLEDGE_CHUNK">KNOWLEDGE_CHUNK</option><option value="PRESENTATION_MANIFEST">PRESENTATION_MANIFEST</option><option value="PRESENTATION_PAGE">PRESENTATION_PAGE</option><option value="DSVP_REQUEST_SNAPSHOT">DSVP_REQUEST_SNAPSHOT</option></select></label>
-      <label class="admin-field"><span>状态</span><select v-model="filters.status"><option value="">全部状态</option><option v-for="status in statuses" :key="status" :value="status">{{ status }}</option></select></label>
+      <label class="admin-field"><span>类型</span><RuntimeSelect v-model="filters.type" :options="reviewTypeOptions" ariaLabel="类型" /></label>
+      <label class="admin-field"><span>状态</span><RuntimeSelect v-model="filters.status" :options="reviewStatusOptions" ariaLabel="状态" /></label>
       <button class="button button--primary admin-command-row__submit" type="submit" :disabled="loading || actionBusy">筛选<span aria-hidden="true">↗</span></button>
     </form>
 
@@ -231,7 +242,7 @@ onMounted(load);
           <template v-else>
             <section class="admin-inspector__summary"><div><span class="admin-kicker">当前状态</span><StatusBadge :label="selected.item.status" :tone="tone(selected.item.status)" /></div><div><span class="admin-kicker">章节</span><strong>{{ selected.item.chapterId || "未关联" }}</strong></div><div><span class="admin-kicker">来源链</span><strong>{{ selected.item.sourceComplete ? "完整" : "不完整" }}</strong></div></section>
             <section class="admin-inspector__section"><div class="admin-section-head admin-section-head--compact"><h3>来源链</h3><span class="admin-code">{{ selected.sourceChain.length }} 个节点</span></div><ul class="admin-list admin-timeline"><li v-for="source in selected.sourceChain" :key="`${source.type}-${source.id}`"><span class="admin-timeline__node" aria-hidden="true"></span><div><strong>{{ source.title }}</strong><div class="admin-muted admin-code">{{ source.type }} · {{ source.id }} · {{ source.status }}</div></div></li><li v-if="!selected.sourceChain.length" class="admin-muted">服务未返回来源链。</li></ul></section>
-            <section class="admin-inspector__section"><div class="admin-section-head admin-section-head--compact"><h3>状态变更</h3><span class="admin-code">受保护写入</span></div><div class="admin-form__grid"><label class="admin-field"><span>目标状态</span><select v-model="nextStatus" data-field="next-status" :disabled="actionBusy"><option v-for="status in statuses" :key="status" :value="status">{{ status }}</option></select></label><label class="admin-field"><span>审核备注</span><input v-model="note" maxlength="500" placeholder="可选，说明审核依据" :disabled="actionBusy" /></label></div><button class="button button--primary admin-inspector__submit" type="button" data-action="update-review" :disabled="actionBusy" @click="updateStatus">{{ actionBusy ? "提交中…" : "提交状态变更" }}<DirectionalArrowIcon direction="right" /></button></section>
+            <section class="admin-inspector__section"><div class="admin-section-head admin-section-head--compact"><h3>状态变更</h3><span class="admin-code">受保护写入</span></div><div class="admin-form__grid"><label class="admin-field"><span>目标状态</span><RuntimeSelect v-model="nextStatus" :options="reviewNextStatusOptions" ariaLabel="目标状态" field="next-status" :disabled="actionBusy" /></label><label class="admin-field"><span>审核备注</span><input v-model="note" maxlength="500" placeholder="可选，说明审核依据" :disabled="actionBusy" /></label></div><button class="button button--primary admin-inspector__submit" type="button" data-action="update-review" :disabled="actionBusy" @click="updateStatus">{{ actionBusy ? "提交中…" : "提交状态变更" }}<DirectionalArrowIcon direction="right" /></button></section>
             <section class="admin-inspector__section"><div class="admin-section-head admin-section-head--compact"><h3>审核历史</h3><span class="admin-code">历史记录</span></div><ul class="admin-list admin-timeline"><li v-for="event in history" :key="event.id"><span class="admin-timeline__node" aria-hidden="true"></span><div><strong><span>{{ event.previousStatus }}</span><DirectionalArrowIcon direction="right" /><span>{{ event.nextStatus }}</span></strong><div class="admin-muted">{{ formatDate(event.createdAt) }} · {{ event.note || "无备注" }}</div><div class="admin-muted admin-code">requestId {{ event.requestId }}</div></div></li><li v-if="!history.length" class="admin-muted">暂无审核历史。</li></ul></section>
           </template>
         </section>

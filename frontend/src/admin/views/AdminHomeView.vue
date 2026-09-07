@@ -23,8 +23,15 @@ const modules = computed(() => {
     audit: { title: "审计日志", description: "只读查看管理员操作摘要、结果和 requestId。", path: "/admin/audit" },
     modelSettings: { title: "模型配置", description: "配置后端管理的模型连接，浏览器不会直接接触 provider。", path: "/admin/settings" },
     mailSettings: { title: "邮件发送设置", description: "配置服务端托管的验证码邮件投递、模板和连接测试。", path: "/admin/mail" },
+    sandboxSettings: { title: "沙箱配置", description: "登记代码执行器地址并检查服务端运行状态，不在浏览器直连执行器。", path: "/admin/sandbox" },
   };
-  return Object.entries(labels).map(([key, info]) => ({ key, ...info, status: capability.value?.modules?.[key] }));
+  return Object.entries(labels).map(([key, info]) => ({
+    key,
+    ...info,
+    status: capability.value?.modules?.[key] || (key === "sandboxSettings"
+      ? { available: false, status: "UNAVAILABLE" as const, reason: "SANDBOX_CONFIG_UNAVAILABLE" }
+      : undefined),
+  }));
 });
 
 async function load(): Promise<boolean> {
@@ -46,6 +53,7 @@ async function load(): Promise<boolean> {
 
 function statusLabel(status?: AdminModuleCapability) {
   if (!status) return "未返回状态";
+  if (status.reason === "SANDBOX_CONFIG_UNAVAILABLE") return "接口待接入";
   if (status.available) return "可用";
   if (status.status === "NOT_CONFIGURED") return "未配置";
   return "暂不可用";
@@ -53,6 +61,7 @@ function statusLabel(status?: AdminModuleCapability) {
 
 function statusTone(status?: AdminModuleCapability): "success" | "warning" | "danger" | "neutral" {
   if (!status) return "neutral";
+  if (status.reason === "SANDBOX_CONFIG_UNAVAILABLE") return "warning";
   return status.available ? "success" : status.status === "NOT_CONFIGURED" ? "warning" : "danger";
 }
 
@@ -62,6 +71,7 @@ function capabilityReason(reason?: string | null) {
     MASTER_KEY_UNAVAILABLE: "部署环境缺少用于加密配置的主密钥。",
     MODEL_CONFIG_UNAVAILABLE: "模型配置服务暂时不可用。",
     MAIL_CONFIG_UNAVAILABLE: "邮件配置服务暂时不可用。",
+    SANDBOX_CONFIG_UNAVAILABLE: "服务端尚未提供沙箱配置管理接口。",
     PERSISTED_CONFIGURATION_DISABLED: "已保存配置当前处于停用状态。",
     PERSISTED_QUOTA_NOT_CONFIGURED: "已保存配置尚未设置可用额度。",
   };

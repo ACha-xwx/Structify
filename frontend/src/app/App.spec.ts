@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
 import App from "./App.vue";
+import { setLocale } from "../shared/i18n/locale";
+
+afterEach(() => {
+  setLocale("zh-CN");
+});
 
 describe("App bootstrap", () => {
   it("does not flash the learning shell while the initial route is resolving", async () => {
@@ -26,6 +31,32 @@ describe("App bootstrap", () => {
 
     expect(wrapper.get("[data-testid='admin-content']").text()).toBe("admin content");
     expect(wrapper.find('[aria-label="学习端导航"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("keeps the browser title aligned with route and locale", async () => {
+    const history = createMemoryHistory();
+    history.push("/login");
+    const router = createRouter({
+      history,
+      routes: [
+        { path: "/login", name: "login", component: { template: "<div />" }, meta: { layout: "auth" } },
+        { path: "/user/code", name: "user-code", component: { template: "<div />" }, meta: { layout: "workbench" } },
+      ],
+    });
+    const wrapper = mount(App, { global: { plugins: [router] } });
+
+    await router.isReady();
+    await flushPromises();
+    expect(document.title).toBe("登录 | Structify");
+
+    setLocale("en-US");
+    await flushPromises();
+    expect(document.title).toBe("Sign in | Structify");
+
+    await router.push("/user/code");
+    await flushPromises();
+    expect(document.title).toBe("C Compiler | Structify");
     wrapper.unmount();
   });
 });

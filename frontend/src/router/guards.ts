@@ -16,6 +16,11 @@ function currentBrowserLocation(): BrowserLocation | undefined {
   return window.location;
 }
 
+function isLocalPreviewHost(location: BrowserLocation | undefined): boolean {
+  const hostname = location?.hostname?.toLowerCase() || "";
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+}
+
 function isAdminHostPath(path: string): boolean {
   return path === "/admin"
     || path.startsWith("/admin/")
@@ -51,14 +56,24 @@ export function createRouteGuard(options: {
     }
 
     const auth = options.auth;
-    if (auth.state.status === "idle" || auth.state.status === "restoring") await auth.restoreSession();
     const meta = to.meta || {};
+    const localPreviewAllowed = Boolean(meta.allowsLocalPreview && isLocalPreviewHost(location));
+    const hasSessionHint = typeof auth.hasSessionHint === "function" ? auth.hasSessionHint() : false;
+    const requiresSessionBootstrap = Boolean(
+      (meta.requiresAuth && !localPreviewAllowed)
+      || meta.roles?.length
+      || meta.requiresCapability
+      || hasSessionHint,
+    );
+    if (requiresSessionBootstrap && (auth.state.status === "idle" || auth.state.status === "restoring")) {
+      await auth.restoreSession();
+    }
     // A transport failure only preserves access when a previously restored user
     // is still present. Cold-start failures must not turn an unknown session
     // into an implicit grant for protected routes.
     const sessionIndeterminate = Boolean(auth.state.user)
       && (auth.state.status === "offline" || auth.state.status === "error");
-    if (meta.requiresAuth && (!auth.state.user || auth.state.status !== "authenticated") && !sessionIndeterminate) {
+    if (meta.requiresAuth && !localPreviewAllowed && (!auth.state.user || auth.state.status !== "authenticated") && !sessionIndeterminate) {
       if (auth.state.status === "disabled") return { name: "forbidden", query: { reason: "disabled" } };
       if (auth.state.status === "forbidden") return { name: "forbidden" };
       return { name: "login", query: { redirect: to.fullPath || to.path } };

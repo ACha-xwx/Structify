@@ -100,7 +100,7 @@ node_port="$(node_host_port)"
 spring_port="$(spring_host_port)"
 [[ "$node_port" != "$spring_port" ]] || die "NODE_HOST_PORT and SPRING_HOST_PORT must differ"
 
-required=(MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD JWT_SECRET NODE_COMPAT_JWT_SECRET KNOWLEDGE_DIR_HOST RESOURCE_DIR_HOST PRESENTATION_DIR_HOST PDF_SOURCE_DIR_HOST NODE_IMAGE SPRING_IMAGE)
+required=(MYSQL_DATABASE MYSQL_USER MYSQL_PASSWORD MYSQL_ROOT_PASSWORD JWT_SECRET NODE_COMPAT_JWT_SECRET MODEL_CONFIG_MASTER_KEY KNOWLEDGE_DIR_HOST RESOURCE_DIR_HOST PRESENTATION_DIR_HOST PDF_SOURCE_DIR_HOST NODE_IMAGE SPRING_IMAGE)
 for key in "${required[@]}"; do
   value="$(env_value "$key")"
   [[ -n "$value" ]] || die "$key is empty"
@@ -355,6 +355,8 @@ esac
 [[ "$(env_value JWT_SECRET)" =~ ^.{64,}$ ]] || die "JWT_SECRET must be at least 64 characters"
 [[ "$(env_value NODE_COMPAT_JWT_SECRET)" =~ ^.{64,}$ ]] || die "NODE_COMPAT_JWT_SECRET must be at least 64 characters"
 [[ "$(env_value JWT_SECRET)" != "$(env_value NODE_COMPAT_JWT_SECRET)" ]] || die "JWT_SECRET and NODE_COMPAT_JWT_SECRET must differ"
+model_config_master_key="$(env_value MODEL_CONFIG_MASTER_KEY)"
+[[ "$model_config_master_key" =~ ^[A-Za-z0-9+/]{43}=$ ]] || die "MODEL_CONFIG_MASTER_KEY must be a base64-encoded 32-byte key"
 node_compat_enabled="$(env_value NODE_COMPAT_ENABLED)"
 node_compat_enabled="${node_compat_enabled:-true}"
 [[ "$node_compat_enabled" =~ ^(true|false|1|0|yes|no|on|off)$ ]] || die "NODE_COMPAT_ENABLED must be boolean"

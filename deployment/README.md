@@ -41,7 +41,7 @@ ZIP 或生产环境文件读取。完全没有密码时，先通过云厂商控�
 | `scripts/upload-release.ps1` | Windows 校验、SCP 上传、远端 SHA-256 和 DPAPI 凭据读取 |
 | `scripts/preflight.sh` | Linux 环境、路径、内存、端口和 Caddy 门禁 |
 | `scripts/release.sh` | 唯一正常生产发布入口，委托构建、备份、迁移和健康检查 |
-| `scripts/backup.sh` / `restore.sh` | 备份和恢复 |
+| `scripts/backup.sh` / `restore.sh` | 备份和恢复；正式备份默认只保留最近两套时间戳目录 |
 | `scripts/health-check.sh` / `smoke.sh` | 回环和公网只读检查 |
 | `scripts/dns-check.sh` | DNS 可见性检查，不修改 DNS |
 | `scripts/rollback.sh` | 带镜像身份校验的应用回滚 |

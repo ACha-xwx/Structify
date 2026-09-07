@@ -11,7 +11,7 @@ The existing Node.js prototype remains a reference implementation during migrati
 - Reviewed textbook knowledge loading, retrieval, source-aware chat, SSE streaming, and persisted chat history for signed-in users.
 - Reviewed classroom scripts, a deterministic classroom state machine, answer evaluation, misconception feedback, and classroom session persistence.
 - Whitelist-validated animation definitions for stack, queue, list, tree, heap, hash table, and array demonstrations.
-- C/Python execution through a remote Piston sandbox only, with bounded input/output, timeout, rate limiting, and concurrency limiting. User code is never run with `ProcessBuilder`, a shell, or a temporary executable on the Spring host.
+- C/Python execution through a configured remote Piston-compatible or Judge0 sandbox, with bounded input/output, timeout, rate limiting, and concurrency limiting. User code is never run with `ProcessBuilder`, a shell, or a temporary executable on the Spring host. The administrator API persists the selected provider and service URL; a persisted configuration takes precedence over startup environment fallbacks and can be disabled fail-closed.
 - Shared learning records and per-chapter activity progress across chat, classroom, animation, resource, and code workflows.
 
 ## Run locally
@@ -55,7 +55,8 @@ Use [`deployment/.env.spring.example`](../../deployment/.env.spring.example) as 
 | `SMTP_SSL`, `SMTP_STARTTLS`, `SMTP_STARTTLS_REQUIRED` | SMTP transport security. Use implicit TLS or required STARTTLS, not both. |
 | `SMTP_*_TIMEOUT_MS`, `SMTP_SSL_CHECK_SERVER_IDENTITY` | SMTP connection/read/write limits and TLS hostname verification; keep hostname verification enabled. |
 | `MODEL_CONFIG_MASTER_KEY`, `MAIL_CONFIG_MASTER_KEY` | Optional base64-encoded 32-byte AES keys for the encrypted administrator model and SMTP configuration pages. Keep them only in the external secret store. |
-| `PISTON_BASE_URL` | Piston service root. Production requires an explicit value. |
+| `PISTON_BASE_URL` | Optional Piston service root used when no administrator-persisted sandbox configuration exists. Production requires an explicit value if Piston is selected. |
+| `JUDGE0_BASE_URL` | Optional Judge0 service root used when no administrator-persisted sandbox configuration exists. Production requires an explicit value if Judge0 is selected. |
 | `EXECUTE_*` | Compiler timeout, input/output length, and concurrency limits. |
 
 There is no public default administrator password and no production bootstrap administrator. Keep `BOOTSTRAP_ADMIN_EMAIL` and `TEACHER_EMAILS` empty, and keep `ALLOW_FIRST_USER_TEACHER=false`. The current release has no self-service role elevation workflow; any privileged account must be created through a reviewed, auditable database operation outside the public API.
@@ -77,7 +78,7 @@ During migration, Caddy sends `/api/v1/*` to this service and the legacy
 and [`docs/data-model-node-spring-differences.md`](../../docs/data-model-node-spring-differences.md).
 
 Production defaults fail closed: real `JWT_SECRET` and `NODE_COMPAT_JWT_SECRET`
-values plus MySQL URL/credentials are required. SMTP, model, and Piston remain
+values plus MySQL URL/credentials are required. SMTP, model, and remote sandbox
 explicitly disabled until configured; development-code exposure,
 knowledge auto-publish, debug retrieval, static role elevation, and code
 capture are disabled. Actuator remains a loopback health endpoint with hidden

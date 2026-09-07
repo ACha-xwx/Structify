@@ -12,6 +12,7 @@ import RetryButton from "../../shared/components/RetryButton.vue";
 import InlineNotice from "../../shared/components/InlineNotice.vue";
 import StatusBadge from "../../shared/components/StatusBadge.vue";
 import Textarea from "../../shared/components/Textarea.vue";
+import RuntimeSelect, { type RuntimeSelectOption } from "../../shared/components/RuntimeSelect.vue";
 
 const DEFAULT_TEMPLATE = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -50,6 +51,11 @@ type MailForm = {
   verificationSubject: string;
   verificationTemplateHtml: string;
 };
+const mailSecurityOptions: RuntimeSelectOption[] = [
+  { value: "SSL", label: "SSL" },
+  { value: "STARTTLS", label: "STARTTLS" },
+  { value: "NONE", label: "NONE" },
+];
 
 const capability = ref<MailConfigCapability | null>(null);
 const loadedConfig = ref<MailConfig | null>(null);
@@ -397,7 +403,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
             <label class="admin-field"><span>站点名称</span><input v-model="form.siteName" autocomplete="organization" maxlength="128" required /></label>
             <label class="admin-field"><span>SMTP 主机</span><input v-model="form.smtpHost" autocomplete="url" maxlength="253" placeholder="smtp.example.com" /></label>
             <label class="admin-field"><span>SMTP 端口</span><input v-model="form.smtpPort" type="number" min="1" max="65535" step="1" required /></label>
-            <label class="admin-field"><span>安全模式</span><select v-model="form.securityMode"><option value="SSL">SSL</option><option value="STARTTLS">STARTTLS</option><option value="NONE">NONE</option></select></label>
+            <label class="admin-field"><span>安全模式</span><RuntimeSelect v-model="form.securityMode" :options="mailSecurityOptions" ariaLabel="安全模式" /></label>
             <label class="admin-field"><span>SMTP 用户名</span><input v-model="form.smtpUsername" autocomplete="username" maxlength="320" /></label>
             <label class="admin-field"><span>SMTP 密码</span><input v-model="form.smtpPassword" name="smtp-password" type="password" autocomplete="new-password" maxlength="4096" placeholder="留空表示保留当前值" /><small v-if="loadedConfig?.smtpPasswordConfigured">已配置，留空不会覆盖。</small></label>
             <label class="admin-field"><span>发件人邮箱</span><input v-model="form.fromEmail" type="email" autocomplete="email" maxlength="254" placeholder="no-reply@example.com" /></label>

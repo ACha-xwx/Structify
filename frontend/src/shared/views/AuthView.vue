@@ -344,7 +344,7 @@ onBeforeUnmount(clearCooldown);
   background-size: 58px 58px;
   color: var(--auth-ink);
   color-scheme: inherit;
-  font-family: var(--font-sans, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif);
+  font-family: var(--font-ui, var(--font-sans));
 }
 
 .auth-brand { position: absolute; top: 20px; left: 22px; z-index: 1; }
@@ -371,7 +371,7 @@ onBeforeUnmount(clearCooldown);
   background: var(--text);
   box-shadow: inset 1px 1px color-mix(in srgb, var(--surface) 18%, transparent), 0 5px 12px color-mix(in srgb, var(--text) 13%, transparent);
   color: var(--surface);
-  font-family: var(--font-serif);
+  font-family: var(--font-ui);
   font-size: 18px;
   font-weight: 700;
 }
@@ -383,7 +383,7 @@ onBeforeUnmount(clearCooldown);
 .auth-flow h1 {
   margin: 0;
   color: var(--auth-ink);
-  font-family: var(--font-serif);
+  font-family: var(--font-ui);
   font-size: clamp(40px, 5vw, 58px);
   font-weight: 400;
   letter-spacing: 0;

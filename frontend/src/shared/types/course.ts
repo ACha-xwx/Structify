@@ -27,6 +27,8 @@ export type KnowledgeResultKind = "answer" | "textbook";
 export interface KnowledgeSearchResult {
   id: string;
   chapterId: string | null;
+  /** Optional learning-unit context; the v1 API may omit this field. */
+  lessonId?: string | null;
   title: string;
   lessonNumber: string | null;
   kind: KnowledgeResultKind;

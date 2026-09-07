@@ -1,8 +1,11 @@
 import { flushPromises, mount } from "@vue/test-utils";
+import { reactive } from "vue";
 import { createMemoryHistory, createRouter } from "vue-router";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setLocale } from "../../shared/i18n/locale";
 
-const { mockApi } = vi.hoisted(() => ({
+const { authMock, mockApi } = vi.hoisted(() => ({
+  authMock: { state: { user: null as null | { id: number; email: string; roles: string[] } } },
   mockApi: {
     getLearningProgress: vi.fn(),
     recordLearningEvent: vi.fn(),
@@ -10,6 +13,7 @@ const { mockApi } = vi.hoisted(() => ({
 }));
 
 vi.mock("../runtime", () => ({ userApi: mockApi }));
+vi.mock("../../app/providers/runtime", () => ({ auth: authMock }));
 
 import ProgressView from "./ProgressView.vue";
 
@@ -51,8 +55,12 @@ async function mountView() {
 }
 
 describe("ProgressView", () => {
+  afterEach(() => setLocale("zh-CN"));
+
   beforeEach(() => {
     vi.clearAllMocks();
+    setLocale("zh-CN");
+    authMock.state = reactive({ user: { id: 7, email: "learner@example.com", roles: ["STUDENT"] } });
     mockApi.getLearningProgress.mockResolvedValue(progress);
     mockApi.recordLearningEvent.mockResolvedValue({
       id: 1,
@@ -93,7 +101,7 @@ describe("ProgressView", () => {
     await flushPromises();
     const state = wrapper.get('[data-testid="progress-save-state"]');
     expect(state.classes()).toContain("user-state--permission");
-    expect(state.get("a").attributes("href")).toBe("/login");
+    expect(state.get("a").attributes("href")).toBe("/login?redirect=/user/progress");
     expect(mockApi.recordLearningEvent).toHaveBeenCalledTimes(1);
   });
 
@@ -154,5 +162,67 @@ describe("ProgressView", () => {
 
     expect(wrapper.get('[data-testid="progress-load-state"]').classes()).toContain("user-state--permission");
     expect(wrapper.find('[data-testid="progress-list"]').exists()).toBe(false);
+  });
+
+  it("游客首开不读取个人进度，而是在页面内提供登录入口", async () => {
+    authMock.state.user = null;
+    const wrapper = await mountView();
+    await flushPromises();
+    expect(mockApi.getLearningProgress).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-testid="progress-load-state"]').text()).toContain("登录后查看个人复盘");
+    expect(wrapper.get('[data-testid="progress-load-state"] a').attributes("href")).toBe("/login?redirect=/user/progress");
+  });
+
+  it("同页退出登录会清除个人记录并停止后续读取", async () => {
+    const wrapper = await mountView();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="progress-list"]').exists()).toBe(true);
+
+    authMock.state.user = null;
+    await flushPromises();
+
+    expect(wrapper.get('[data-testid="progress-load-state"]').text()).toContain("登录后查看个人复盘");
+    expect(wrapper.find('[data-testid="progress-list"]').exists()).toBe(false);
+    expect(mockApi.getLearningProgress).toHaveBeenCalledTimes(1);
+  });
+
+  it("切换到另一账号时不会暂时显示前一账号的复盘", async () => {
+    const wrapper = await mountView();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="progress-list"]').exists()).toBe(true);
+
+    let resolveProgress!: (value: typeof progress) => void;
+    mockApi.getLearningProgress.mockImplementationOnce(() => new Promise((resolve) => { resolveProgress = resolve; }));
+    authMock.state.user = { id: 8, email: "next@example.com", roles: ["STUDENT"] };
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-testid="progress-list"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="progress-load-state"]').classes()).toContain("user-state--loading");
+
+    resolveProgress(progress);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="progress-list"]').exists()).toBe(true);
+  });
+
+  it("英文 locale 覆盖复盘 chrome、权限状态并按应用 locale 格式化活动时间", async () => {
+    setLocale("en-US");
+    const wrapper = await mountView();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Learning record");
+    expect(wrapper.text()).toContain("Review");
+    expect(wrapper.text()).toContain("8 saved learning activities");
+    expect(wrapper.text()).toContain("Chapter 1 栈");
+    expect(wrapper.text()).toContain("Latest activity:");
+    expect(wrapper.text()).toMatch(/Aug\s+12,\s+2026/);
+    expect(wrapper.text()).not.toContain("学习记录");
+
+    mockApi.recordLearningEvent.mockRejectedValueOnce({ status: 403, message: "forbidden" });
+    await wrapper.get('[data-testid="progress-complete-stack"]').trigger("click");
+    await flushPromises();
+
+    const state = wrapper.get('[data-testid="progress-save-state"]');
+    expect(state.text()).toContain("Sign in to use personal review");
+    expect(state.text()).not.toContain("当前账号没有权限");
   });
 });

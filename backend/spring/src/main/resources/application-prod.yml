@@ -50,7 +50,9 @@ app:
   knowledge:
     auto-publish-local: false
   compiler:
-    piston-base-url: ${PISTON_BASE_URL}
+    # The administrator-persisted sandbox configuration is authoritative.
+    # Environment fallbacks are optional so a Judge0-only deployment can start.
+    piston-base-url: ${PISTON_BASE_URL:}
 
 logging:
   level:

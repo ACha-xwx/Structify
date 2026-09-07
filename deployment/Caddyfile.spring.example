@@ -13,6 +13,13 @@ www.structify.cn {
 (structify_routes) {
     encode zstd gzip
 
+    # Keep Vite's content-hashed assets cacheable across releases while the
+    # HTML shell is revalidated for every navigation.
+    @frontend_assets path /assets/*
+    header @frontend_assets Cache-Control "public, max-age=31536000, immutable"
+    @frontend_html path / /index.html /*.html
+    header @frontend_html Cache-Control "no-cache, max-age=0, must-revalidate"
+
     route {
         @spring_sse path /api/v1/chat/stream
         handle @spring_sse {
@@ -55,7 +62,9 @@ admin.structify.cn {
     @admin_root path /
     redir @admin_root /admin 308
     @admin_non_management_spa {
-        not path / /admin /admin/* /api /api/* /presentation /presentation/* /healthz /login /reset-password /403
+        # Keep hashed frontend assets on the management origin. Redirecting
+        # them to the public host prevents the module bundle from executing.
+        not path / /admin /admin/* /assets /assets/* /api /api/* /presentation /presentation/* /healthz /login /reset-password /403
     }
     redir @admin_non_management_spa https://structify.cn{uri} 308
     import structify_routes

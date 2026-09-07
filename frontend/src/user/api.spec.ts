@@ -33,4 +33,19 @@ describe("用户端 API 边界", () => {
     expect(request).toHaveBeenNthCalledWith(2, "/code/runs", expect.objectContaining({ method: "POST" }));
     expect(request).toHaveBeenNthCalledWith(3, "/learning/events", expect.objectContaining({ method: "POST" }));
   });
+
+  it("读取认证学习台投影而不是拼接多次进度请求", async () => {
+    const request = vi.fn().mockResolvedValue({
+      kind: "json",
+      data: {
+        currentChapterId: "sequential-list",
+        progress: { totalActivities: 1, chapters: [] },
+        scene: null,
+      },
+    });
+    const api = createUserApi({ request } as never);
+
+    await expect(api.getLearningWorkbench()).resolves.toMatchObject({ currentChapterId: "sequential-list" });
+    expect(request).toHaveBeenCalledWith("/learning/workbench");
+  });
 });

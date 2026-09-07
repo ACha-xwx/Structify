@@ -43,6 +43,8 @@ pdfs/
 frontend/dist/
 output/
 .playwright-cli/
+codex-temp/
+release-artifacts/
 __pycache__/
 *.py[cod]
 

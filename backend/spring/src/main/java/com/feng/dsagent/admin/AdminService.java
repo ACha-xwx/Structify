@@ -3,6 +3,8 @@ package com.feng.dsagent.admin;
 import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.mail.MailConfigController;
 import com.feng.dsagent.mail.MailConfigService;
+import com.feng.dsagent.compiler.SandboxConfigController;
+import com.feng.dsagent.compiler.SandboxConfigService;
 import com.feng.dsagent.modelconfig.ModelConfigService;
 import com.feng.dsagent.security.AuthenticatedUser;
 import java.time.Instant;
@@ -24,11 +26,18 @@ class AdminService {
     private final AdminRepository repository;
     private final ModelConfigService modelConfig;
     private final MailConfigService mailConfig;
+    private final SandboxConfigService sandboxConfig;
 
-    AdminService(AdminRepository repository, ModelConfigService modelConfig, MailConfigService mailConfig) {
+    AdminService(
+        AdminRepository repository,
+        ModelConfigService modelConfig,
+        MailConfigService mailConfig,
+        SandboxConfigService sandboxConfig
+    ) {
         this.repository = repository;
         this.modelConfig = modelConfig;
         this.mailConfig = mailConfig;
+        this.sandboxConfig = sandboxConfig;
     }
 
     AdminCapabilityView capabilities(AuthenticatedUser user) {
@@ -53,6 +62,15 @@ class AdminService {
                 mailSettings.available(),
                 mailSettings.available() ? "AVAILABLE" : "UNAVAILABLE",
                 mailSettings.reason()
+            )
+        );
+        SandboxConfigController.SandboxConfigCapabilityView sandboxSettings = sandboxConfig.capability();
+        modules.put(
+            "sandboxSettings",
+            new AdminModuleCapability(
+                sandboxSettings.available(),
+                sandboxSettings.available() ? "AVAILABLE" : "UNAVAILABLE",
+                sandboxSettings.reason()
             )
         );
         return new AdminCapabilityView(

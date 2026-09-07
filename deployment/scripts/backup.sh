@@ -8,11 +8,12 @@ BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/structify}"
 PRIVATE_ROOT=""
 EXECUTE=0
 CONFIRM=""
+RETAIN=2
 
 usage() {
   cat <<'EOF'
 Usage: backup.sh [--env-file FILE] [--backup-root DIR] [--private-root DIR]
-                  [--execute --confirm BACKUP-structify.cn]
+                  [--retain COUNT] [--execute --confirm BACKUP-structify.cn]
 
 Default mode prints the exact backup plan and does not contact Docker. The
 execute mode creates a 0700 directory containing a MySQL dump, a consistent
@@ -26,6 +27,7 @@ while [[ $# -gt 0 ]]; do
     --env-file) ENV_FILE="$2"; shift 2 ;;
     --backup-root) BACKUP_ROOT="$2"; shift 2 ;;
     --private-root) PRIVATE_ROOT="$2"; shift 2 ;;
+    --retain) RETAIN="$2"; shift 2 ;;
     --execute) EXECUTE=1; shift ;;
     --confirm) CONFIRM="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -33,6 +35,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+[[ "$RETAIN" =~ ^[0-9]+$ ]] || die "--retain must be a whole number"
+(( 10#$RETAIN >= 2 )) || die "--retain must be at least 2 to preserve rollback"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 DEST="$BACKUP_ROOT/$STAMP"
 
@@ -42,6 +46,7 @@ if [[ "$EXECUTE" != "1" ]]; then
   print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T mysql mysqldump --single-transaction --routines --events
   print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T node node -e "SQLite online backup to stdout"
   [[ -n "$PRIVATE_ROOT" ]] && print_command tar -C "$PRIVATE_ROOT" -czf "$DEST/private.tar.gz" .
+  log "retention: keep the newest $((10#$RETAIN)) completed backup directories"
   log "re-run with --execute --confirm BACKUP-structify.cn after checking paths"
   exit 0
 fi
@@ -85,3 +90,18 @@ done
 (cd "$DEST" && sha256sum -- * > SHA256SUMS)
 chmod 600 "$DEST"/*
 log "backup complete: $DEST"
+
+# Keep only the newest completed backup directories. The current backup is
+# complete before pruning starts, and non-timestamp control files remain.
+mapfile -t backup_dirs < <(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d \
+  -regextype posix-extended -regex '.*/20[0-9]{6}T[0-9]{6}Z' -printf '%f\n' | sort -r)
+if (( ${#backup_dirs[@]} > 10#$RETAIN )); then
+  for (( index=10#$RETAIN; index<${#backup_dirs[@]}; index++ )); do
+    candidate="${BACKUP_ROOT}/${backup_dirs[$index]}"
+    candidate_real="$(realpath -e "$candidate")"
+    backup_root_real="$(realpath -e "$BACKUP_ROOT")"
+    [[ "$candidate_real" == "$backup_root_real"/* ]] || die "refusing to prune outside backup root"
+    log "pruning obsolete backup ${backup_dirs[$index]}"
+    rm -rf -- "$candidate_real"
+  done
+fi

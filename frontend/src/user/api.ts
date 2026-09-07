@@ -20,6 +20,7 @@ import type {
   LearningEvent,
   LearningEventRequest,
   LearningProgress,
+  LearningWorkbenchProjection,
   Resource,
 } from "../shared/types/contracts";
 import type { Chapter, KnowledgeSearchResponse } from "../shared/types/course";
@@ -65,6 +66,7 @@ export interface UserApi {
   runCode(input: CodeRunRequest): Promise<CodeRunResponse>;
   analyzeCode(input: CodeAnalysisRequest): Promise<CodeAnalysisResponse>;
   getLearningProgress(): Promise<LearningProgress>;
+  getLearningWorkbench(): Promise<LearningWorkbenchProjection>;
   recordLearningEvent(input: LearningEventRequest): Promise<LearningEvent>;
 }
 
@@ -103,6 +105,7 @@ export function createUserApi(client: { request: UserRequest }): UserApi {
     async runCode(input) { return jsonData(await request<CodeRunResponse>("/code/runs", { method: "POST", body: input })); },
     async analyzeCode(input) { return jsonData(await request<CodeAnalysisResponse>("/code/analyze", { method: "POST", body: input })); },
     async getLearningProgress() { return jsonData(await request<LearningProgress>("/learning/progress")); },
+    async getLearningWorkbench() { return jsonData(await request<LearningWorkbenchProjection>("/learning/workbench")); },
     async recordLearningEvent(input) { return jsonData(await request<LearningEvent>("/learning/events", { method: "POST", body: input })); },
   };
 }

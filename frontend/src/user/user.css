@@ -36,7 +36,8 @@
 .user-workspace__nav a { display: flex; align-items: center; min-height: 2.75rem; padding: 0 .65rem; border-radius: var(--radius-sm); color: var(--text-muted); text-decoration: none; transition: color 140ms ease, background-color 140ms ease; }
 .user-workspace__nav a.router-link-active { background: var(--surface); color: var(--text); font-weight: 700; }
 @media (hover: hover) and (pointer: fine) { .user-workspace__nav a:hover { background: var(--surface); color: var(--text); } }
-.user-workspace__mobile-nav { display: none; }
+.user-workspace__mobile-nav { display: none; scrollbar-width: none; -ms-overflow-style: none; }
+.user-workspace__mobile-nav::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
 .user-page { display: grid; gap: 1.5rem; min-width: 0; }
 .user-page__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
@@ -77,10 +78,11 @@
 .user-form__split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
 .user-field-error { color: var(--danger); }
 .user-prewrap { white-space: pre-wrap; overflow-wrap: anywhere; }
-.user-code-editor { min-height: 22rem !important; background: #20292a !important; color: #dfece9 !important; font-family: var(--font-mono); font-size: .85rem; line-height: 1.55; }
+.user-code-editor { min-height: 22rem !important; background: #202020 !important; color: #e4e4e4 !important; font-family: var(--font-mono); font-size: .85rem; line-height: 1.55; }
 .user-code-stdin { min-height: 5.5rem !important; font-family: var(--font-mono); }
 .user-resource-image { display: block; max-width: 100%; max-height: 44rem; margin: 0 auto; border: 1px solid var(--line); border-radius: var(--radius-sm); }
 .user-status { display: inline-flex; align-items: center; min-height: 1.8rem; padding: 0 .6rem; border: 1px solid var(--accent); border-radius: var(--radius-sm); color: var(--accent); font-family: var(--font-mono); font-size: .75rem; font-weight: 700; }
+.user-preview-chip { display: inline-flex; min-height: 1.8rem; align-items: center; padding: 0 .6rem; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface-subtle); color: var(--text-muted); font-family: var(--font-mono); font-size: .68rem; font-weight: 700; letter-spacing: .05em; }
 .classroom-stage dd { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .user-tabs { display: flex; gap: .4rem; overflow-x: auto; padding-bottom: .15rem; }
@@ -89,9 +91,10 @@
 .user-tabs button:active, .user-action:active { transform: scale(.97); }
 
 .user-action { min-height: 2.6rem; display: inline-flex; align-items: center; justify-content: center; padding: 0 .8rem; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); cursor: pointer; text-decoration: none; transition: transform 120ms ease-out, background-color 140ms ease, border-color 140ms ease, color 140ms ease; }
-.user-action--primary { border-color: var(--accent); background: var(--accent); color: #f7ffff; }
+.user-action--primary { border-color: var(--accent); background: var(--accent); color: #f7f7f7; }
 .user-action--danger { border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); color: var(--danger); }
 .user-action:disabled { cursor: not-allowed; opacity: .56; }
+.user-action--disabled { cursor: not-allowed; opacity: .56; }
 @media (hover: hover) and (pointer: fine) { .user-action:hover { border-color: var(--accent); background: var(--surface-subtle); } .user-action--primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); } }
 
 .user-state { display: grid; gap: .65rem; padding: 1.05rem; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
@@ -104,18 +107,59 @@
 .user-state__skeleton { width: 100%; height: .7rem; border-radius: .35rem; background: var(--surface-subtle); }
 .user-state__skeleton:nth-child(2) { width: 70%; }
 
-.user-stage { background: #1f292b; color: #edf3f1; border-radius: var(--radius-sm); overflow: clip; }
-.user-stage__top { display: flex; justify-content: space-between; gap: 1rem; padding: 1rem 1.1rem; border-bottom: 1px solid rgba(223, 239, 235, .18); }
+.knowledge-preview-suggestions {
+  display: grid;
+  gap: .75rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-subtle) 58%, transparent);
+}
+.knowledge-preview-suggestions__head h2,
+.knowledge-preview-suggestions__head p { margin: 0; }
+.knowledge-preview-suggestions__head h2 { font-size: .92rem; }
+.knowledge-preview-suggestions__head p { margin-top: .3rem; color: var(--text-muted); font-size: .8rem; }
+.knowledge-preview-suggestions__list { display: flex; flex-wrap: wrap; gap: .45rem; }
+.knowledge-preview-suggestions__button {
+  min-height: 2.35rem;
+  padding: 0 .7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: .8rem;
+  transition: border-color 140ms ease, background-color 140ms ease, transform 120ms ease-out;
+}
+.knowledge-preview-suggestions__button:hover { border-color: var(--accent); background: var(--surface-subtle); }
+.knowledge-preview-suggestions__button:active { transform: scale(.97); }
+.knowledge-index-note { margin: -.55rem 0 0; color: var(--text-muted); font-size: .8rem; line-height: 1.6; }
+.knowledge-preview-fallback {
+  display: grid;
+  gap: .55rem;
+  margin-bottom: .9rem;
+  padding: .85rem 1rem;
+  border: 1px dashed var(--line-strong);
+  background: color-mix(in srgb, var(--surface-subtle) 72%, transparent);
+}
+.knowledge-preview-fallback strong,
+.knowledge-preview-fallback p { margin: 0; }
+.knowledge-preview-fallback strong { font-size: .9rem; }
+.knowledge-preview-fallback p { max-width: 72ch; color: var(--text-muted); font-size: .8rem; line-height: 1.55; }
+.knowledge-preview-fallback .user-action { justify-self: start; }
+
+.user-stage { background: #1c1c1c; color: #ededed; border-radius: var(--radius-sm); overflow: clip; }
+.user-stage__top { display: flex; justify-content: space-between; gap: 1rem; padding: 1rem 1.1rem; border-bottom: 1px solid rgba(220, 220, 220, .18); }
 .user-stage__top p, .user-stage__top h2 { margin: 0; }
-.user-stage__top p { color: #b8c8c4; font-size: .78rem; }
+.user-stage__top p { color: #b8b8b8; font-size: .78rem; }
 .user-stage__top h2 { margin-top: .2rem; font-size: 1rem; }
-.user-stage__viewport { min-height: 17rem; display: grid; place-items: center; padding: clamp(1rem, 5vw, 3rem); background-image: linear-gradient(rgba(150, 187, 180, .07) 1px, transparent 1px), linear-gradient(90deg, rgba(150, 187, 180, .07) 1px, transparent 1px); background-size: 1.75rem 1.75rem; }
+.user-stage__viewport { min-height: 17rem; display: grid; place-items: center; padding: clamp(1rem, 5vw, 3rem); background-image: linear-gradient(rgba(190, 190, 190, .07) 1px, transparent 1px), linear-gradient(90deg, rgba(190, 190, 190, .07) 1px, transparent 1px); background-size: 1.75rem 1.75rem; }
 .user-stage__data { display: flex; flex-wrap: wrap; justify-content: center; gap: .5rem; }
-.user-stage__node { min-width: 3.35rem; padding: .7rem .8rem; border: 1px solid rgba(141, 218, 203, .72); border-radius: .4rem; background: rgba(54, 95, 91, .82); color: #fbfffe; font-family: var(--font-mono); text-align: center; transition: transform 200ms cubic-bezier(.77, 0, .175, 1), opacity 180ms ease-out; }
-.user-stage__node[data-current="true"] { transform: translateY(-.35rem); background: #377e78; }
-.user-stage__note { margin: 0; color: #c4d7d2; text-align: center; }
-.user-stage__toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding: .8rem; border-top: 1px solid rgba(223, 239, 235, .18); background: rgba(39, 55, 55, .76); backdrop-filter: blur(12px) saturate(145%); }
-.user-stage__toolbar button, .user-stage__toolbar select { min-height: 2.45rem; padding: 0 .7rem; border: 1px solid rgba(202, 231, 222, .35); border-radius: .35rem; background: rgba(35, 47, 48, .82); color: #edf3f1; }
+.user-stage__node { min-width: 3.35rem; padding: .7rem .8rem; border: 1px solid rgba(205, 205, 205, .72); border-radius: .4rem; background: rgba(64, 64, 64, .82); color: #fbfbfb; font-family: var(--font-mono); text-align: center; transition: transform 200ms cubic-bezier(.77, 0, .175, 1), opacity 180ms ease-out; }
+.user-stage__node[data-current="true"] { transform: translateY(-.35rem); background: #8b8b8b; }
+.user-stage__note { margin: 0; color: #c4c4c4; text-align: center; }
+.user-stage__toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding: .8rem; border-top: 1px solid rgba(220, 220, 220, .18); background: rgba(39, 39, 39, .76); backdrop-filter: blur(12px); }
+.user-stage__toolbar button, .user-stage__toolbar select { min-height: 2.45rem; padding: 0 .7rem; border: 1px solid rgba(220, 220, 220, .35); border-radius: .35rem; background: rgba(35, 35, 35, .82); color: #ededed; }
 .user-stage__toolbar button { cursor: pointer; transition: transform 120ms ease-out, background-color 140ms ease; }
 .user-stage__toolbar button:active { transform: scale(.97); }
 .user-stage__toolbar select { margin-left: auto; }
@@ -135,7 +179,7 @@
 .user-rail-session span { grid-column: 1 / -1; color: var(--text-muted); font-family: var(--font-mono); font-size: .72rem; }
 
 .user-code { display: grid; grid-template-columns: minmax(0, 1fr) minmax(14rem, .8fr); gap: 1rem; }
-.user-code pre { min-height: 9rem; max-height: 22rem; margin: 0; padding: 1rem; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #20292a; color: #dfece9; font-family: var(--font-mono); font-size: .8rem; white-space: pre-wrap; }
+.user-code pre { min-height: 9rem; max-height: 22rem; margin: 0; padding: 1rem; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #202020; color: #e4e4e4; font-family: var(--font-mono); font-size: .8rem; white-space: pre-wrap; }
 .user-resource-frame { min-height: 35rem; width: 100%; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-subtle); }
 
 @media (max-width: 1040px) {
@@ -161,9 +205,2769 @@
   .user-skip-link { transition: none; }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .user-stage__toolbar, .user-workspace__mobile-nav { background: #293536; backdrop-filter: none; }
+  .user-stage__toolbar, .user-workspace__mobile-nav { background: #202020; backdrop-filter: none; }
   .user-workspace__mobile-nav { background: var(--surface); }
+}
+
+/* Course routes use one shared navigation column and one contextual rail.
+   Keep the rail beside the page on desktop so every course surface has the
+   same stable information architecture; it moves below the page at the
+   existing narrow-layout breakpoint. */
+@media (min-width: 761px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] {
+    grid-template-columns: 260px minmax(0, 1fr) 224px;
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-content {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail {
+    grid-column: 3;
+    grid-row: 1;
+    max-height: none;
+    overflow: visible;
+    border-top: 0;
+    border-left: 1px solid var(--course-line);
+  }
+}
+
+@media (max-width: 1180px) and (min-width: 761px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] {
+    grid-template-columns: 236px minmax(0, 1fr) 220px;
+  }
 }
 @media (prefers-contrast: more) {
   .user-workspace, .user-panel, .user-state { border-color: var(--text); }
+}
+
+/* Presentation owns its evidence rail. Keeping the outer shell rail here
+   would squeeze the actual slide into a thumbnail-sized center column. */
+.user-workspace.user-workspace--presentation { grid-template-columns: minmax(0, 1fr); }
+.user-workspace--presentation .user-workspace__sidebar { display: none; }
+.user-workspace--presentation .user-workspace__rail { display: none; }
+
+/* Forecast-style learning shell: translucent navigation, a quiet content
+   surface, and a narrow evidence rail. The actual reading surfaces stay solid
+   so long sessions remain calm and legible. */
+.user-workspace {
+  grid-template-columns: 15rem minmax(0, 1fr) 18rem;
+  min-block-size: calc(100dvh - 7rem);
+  border: 1px solid color-mix(in srgb, var(--line) 86%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  box-shadow: 0 18px 46px color-mix(in srgb, var(--text) 7%, transparent);
+}
+.user-workspace__sidebar {
+  padding: 1.25rem .8rem;
+  background: linear-gradient(155deg, color-mix(in srgb, var(--surface) 86%, transparent), color-mix(in srgb, var(--surface-subtle) 68%, transparent));
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+.user-workspace__brand { display: flex; min-height: 48px; grid-template-columns: none; align-items: center; gap: .65rem; padding: 0 .45rem 1rem; }
+.user-workspace__brand > div { display: grid; min-width: 0; gap: .2rem; }
+.user-workspace__brand strong { font-family: var(--font-mono); font-size: .73rem; letter-spacing: .12em; }
+.user-workspace__brand span { color: var(--text-muted); font-size: .67rem; }
+.user-workspace__brand-mark { display: inline-grid; width: 27px; height: 27px; flex: 0 0 27px; grid-template-columns: repeat(3, 1fr); align-items: end; gap: 2px; padding: 5px; border: 1px solid var(--accent); background: var(--accent); }
+.user-workspace__brand-mark i { display: block; background: var(--surface); }
+.user-workspace__brand-mark i:nth-child(1) { height: 48%; opacity: .65; }
+.user-workspace__brand-mark i:nth-child(2) { height: 82%; }
+.user-workspace__brand-mark i:nth-child(3) { height: 60%; opacity: .82; }
+.user-workspace__nav { gap: .24rem; padding-top: 1rem; }
+.user-workspace__nav a { position: relative; gap: .65rem; min-height: 2.85rem; padding: 0 .65rem; border: 1px solid transparent; border-radius: 7px; font-size: .78rem; }
+.user-workspace__nav a::after { position: absolute; top: 50%; right: -1px; width: 3px; height: 0; background: var(--accent); content: ""; transform: translateY(-50%); transition: height 180ms cubic-bezier(.16,1,.3,1); }
+.user-workspace__nav a.router-link-active { border-color: color-mix(in srgb, var(--accent) 17%, transparent); background: color-mix(in srgb, var(--surface) 82%, transparent); box-shadow: 0 5px 15px color-mix(in srgb, var(--text) 5%, transparent); }
+.user-workspace__nav a.router-link-active::after { height: 22px; }
+.user-nav__icon { display: grid; width: 27px; height: 27px; flex: 0 0 27px; place-items: center; border: 1px solid color-mix(in srgb, var(--line) 62%, transparent); color: var(--text-muted); }
+.user-nav__icon svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.45; }
+.user-workspace__nav a.router-link-active .user-nav__icon { border-color: color-mix(in srgb, var(--accent) 38%, var(--line)); background: var(--accent-soft); color: var(--accent); }
+.user-workspace__content { padding: clamp(1.45rem, 3.2vw, 3rem); background: color-mix(in srgb, var(--surface) 76%, transparent); }
+.user-workspace__rail { padding: 1.45rem 1.1rem; background: color-mix(in srgb, var(--surface-subtle) 52%, transparent); }
+.user-page { gap: 1.75rem; }
+.user-page__eyebrow { color: var(--accent); letter-spacing: .11em; }
+.user-page h1 { font-family: var(--font-sans); font-weight: 680; letter-spacing: 0; }
+.user-page__heading { padding-bottom: .3rem; border-bottom: 1px solid color-mix(in srgb, var(--line) 72%, transparent); }
+.user-panel, .user-state { border-color: color-mix(in srgb, var(--line) 90%, transparent); border-radius: 8px; box-shadow: 0 7px 22px color-mix(in srgb, var(--text) 4%, transparent); }
+.user-action { min-height: 2.65rem; border-color: var(--line-strong); border-radius: 6px; font-size: .78rem; }
+.user-action--primary { border-color: var(--accent-strong); background: var(--accent); color: #f6f6f6; }
+.user-action--primary:hover { background: var(--accent-strong); }
+.user-status { border-color: color-mix(in srgb, var(--accent) 65%, var(--line)); color: var(--accent-strong); }
+.user-rail-list { gap: .75rem; }
+.user-rail-list strong { color: var(--text); font-family: var(--font-mono); font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; }
+.user-rail-list p { font-size: .76rem; line-height: 1.6; }
+.inline-notice { border: 1px solid color-mix(in srgb, var(--line) 84%, transparent); border-left-width: 1px; border-radius: 6px; background: color-mix(in srgb, var(--surface-subtle) 52%, transparent); }
+.user-stage { border: 1px solid #4a4a4a; border-radius: 8px; background: var(--stage-bg); box-shadow: 0 18px 38px rgba(0, 0, 0, .2); }
+.user-stage__viewport { min-height: 19rem; background-image: linear-gradient(rgba(210, 210, 210, .09) 1px, transparent 1px), linear-gradient(90deg, rgba(210, 210, 210, .09) 1px, transparent 1px); }
+.user-stage__node { border-color: rgba(210, 210, 210, .58); background: rgba(68, 68, 68, .86); }
+.user-stage__node[data-current="true"] { background: #9b9b9b; box-shadow: 0 9px 24px rgba(0, 0, 0, .28); }
+
+@media (max-width: 1040px) {
+  .user-workspace { grid-template-columns: 13rem minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .user-workspace { border-radius: 0; border-top: 0; border-bottom: 0; box-shadow: none; }
+  .user-workspace__content { padding: 1.2rem .85rem 5.1rem; }
+  .user-workspace__mobile-nav { border-top-color: color-mix(in srgb, var(--line) 90%, transparent); background: color-mix(in srgb, var(--surface) 92%, transparent); }
+}
+
+@media (max-width: 1040px) {
+  .user-workspace.user-workspace--presentation { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .user-workspace.user-workspace--presentation { display: block; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .user-workspace__sidebar, .user-workspace__content, .user-workspace__rail, .user-workspace__mobile-nav { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
+/* Neutral gray theme for the reusable learning surfaces in both color modes. */
+[data-theme="dark"] .user-workspace {
+  border-color: #414141;
+  background: #181818;
+  box-shadow: 0 18px 46px rgba(0, 0, 0, .42);
+}
+[data-theme="dark"] .user-workspace__sidebar { background: linear-gradient(155deg, #262626, #1b1b1b); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+[data-theme="dark"] .user-workspace__content { background: #1b1b1b; }
+[data-theme="dark"] .user-workspace__rail { background: #222222; }
+[data-theme="dark"] .user-workspace__brand-mark { border-color: #d2d2d2; background: #d2d2d2; }
+[data-theme="dark"] .user-workspace__brand-mark i { background: #1b1b1b; }
+[data-theme="dark"] .user-nav__icon { border-color: #505050; }
+[data-theme="dark"] .user-workspace__nav a:hover { background: #292929; color: #eeeeee; }
+[data-theme="dark"] .user-workspace__nav a.router-link-active .user-nav__icon { border-color: #858585; background: #3a3a3a; color: #eeeeee; }
+[data-theme="dark"] .user-workspace__nav a.router-link-active { border-color: #565656; background: #303030; box-shadow: 0 5px 15px rgba(0,0,0,.25); }
+[data-theme="dark"] .user-workspace__nav a::after { background: #d2d2d2; }
+[data-theme="dark"] .user-page__eyebrow,
+[data-theme="dark"] .user-status { color: #d2d2d2; }
+[data-theme="dark"] .user-status { border-color: #777777; }
+[data-theme="dark"] .user-action--primary { border-color: #d8d8d8; background: #d8d8d8; color: #151515; }
+[data-theme="dark"] .user-action--primary:hover { border-color: #f0f0f0; background: #f0f0f0; }
+[data-theme="dark"] .user-stage { border-color: #4a4a4a; background: #0c0c0c; box-shadow: 0 18px 38px rgba(0,0,0,.46); }
+[data-theme="dark"] .user-stage__top { border-bottom-color: rgba(220,220,220,.18); }
+[data-theme="dark"] .user-stage__top p { color: #a9a9a9; }
+[data-theme="dark"] .user-stage__viewport { color: #eeeeee; }
+[data-theme="dark"] .user-stage__viewport { background-image: linear-gradient(rgba(210,210,210,.08) 1px, transparent 1px), linear-gradient(90deg, rgba(210,210,210,.08) 1px, transparent 1px); }
+[data-theme="dark"] .user-stage__node { border-color: rgba(220,220,220,.58); background: rgba(75,75,75,.88); }
+[data-theme="dark"] .user-stage__node[data-current="true"] { background: #9b9b9b; color: #111111; box-shadow: 0 9px 24px rgba(0,0,0,.4); }
+[data-theme="dark"] .user-stage__note { color: #c6c6c6; }
+[data-theme="dark"] .user-stage__toolbar { border-color: rgba(220,220,220,.2); background: rgba(30,30,30,.9); }
+[data-theme="dark"] .user-stage__toolbar button,
+[data-theme="dark"] .user-stage__toolbar select { border-color: rgba(220,220,220,.34); background: rgba(55,55,55,.9); color: #eeeeee; }
+[data-theme="dark"] .user-stage__toolbar button:hover,
+[data-theme="dark"] .user-stage__toolbar select:hover { border-color: #9a9a9a; background: #454545; }
+[data-theme="dark"] .user-code-editor,
+[data-theme="dark"] .user-code pre { background: #171717 !important; color: #e2e2e2 !important; }
+[data-theme="dark"] .user-code pre { border-color: #4a4a4a; }
+[data-theme="dark"] .user-skip-link { border-color: #a5a5a5; background: #202020; color: #eeeeee; }
+[data-theme="dark"] .user-workspace__mobile-nav { border-top-color: #4a4a4a; background: rgba(31,31,31,.95); }
+[data-theme="dark"] .user-workspace__mobile-nav a.router-link-active { background: #3b3b3b; color: #eeeeee; }
+
+@media (prefers-reduced-transparency: reduce) {
+  [data-theme="dark"] .user-workspace__sidebar,
+  [data-theme="dark"] .user-workspace__content,
+  [data-theme="dark"] .user-workspace__rail,
+  [data-theme="dark"] .user-workspace__mobile-nav { background: #1d1d1d; }
+}
+
+/* Shared learning chrome uses the same neutral paper/graphite language as
+   the root workbench. Content-specific resources remain untouched. */
+html:not([data-theme="dark"]) .user-workspace__brand-mark { border-color: var(--accent); background: var(--accent); }
+html:not([data-theme="dark"]) .user-workspace__nav a::after { background: var(--accent); }
+html:not([data-theme="dark"]) .user-workspace__nav a.router-link-active .user-nav__icon { border-color: color-mix(in srgb, var(--accent) 38%, var(--line)); background: var(--accent-soft); color: var(--accent); }
+html:not([data-theme="dark"]) .user-action--primary { border-color: var(--accent-strong); background: var(--accent); color: var(--surface); }
+html:not([data-theme="dark"]) .user-action--primary:hover { border-color: var(--accent-strong); background: var(--accent-strong); }
+html:not([data-theme="dark"]) .user-stage { border-color: #45433f; background: var(--stage-bg); box-shadow: 0 18px 38px rgba(24, 23, 21, .2); }
+html:not([data-theme="dark"]) .user-stage__top { border-bottom-color: rgba(220, 218, 212, .18); }
+html:not([data-theme="dark"]) .user-stage__top p { color: #aaa69e; }
+html:not([data-theme="dark"]) .user-stage__viewport { background-image: linear-gradient(rgba(210, 207, 199, .08) 1px, transparent 1px), linear-gradient(90deg, rgba(210, 207, 199, .08) 1px, transparent 1px); }
+html:not([data-theme="dark"]) .user-stage__node { border-color: rgba(210, 207, 199, .58); background: rgba(68, 67, 63, .88); color: #f0eee8; }
+html:not([data-theme="dark"]) .user-stage__node[data-current="true"] { background: #9b9891; color: #171715; box-shadow: 0 9px 24px rgba(0, 0, 0, .28); }
+html:not([data-theme="dark"]) .user-stage__note { color: #c7c3bb; }
+html:not([data-theme="dark"]) .user-stage__toolbar { border-top-color: rgba(220, 218, 212, .18); background: rgba(28, 28, 26, .9); }
+html:not([data-theme="dark"]) .user-stage__toolbar button,
+html:not([data-theme="dark"]) .user-stage__toolbar select { border-color: rgba(220, 218, 212, .34); background: rgba(46, 45, 42, .9); color: #eeece7; }
+html:not([data-theme="dark"]) .user-code-editor,
+html:not([data-theme="dark"]) .user-code pre { background: #20201e !important; color: #e4e1da !important; }
+
+/* The AI Runtime frame owns the global header and menu behavior. The shared
+   course context below stays on the same continuous Runtime content plane
+   for every remaining `/user/*` route. */
+.user-frame-sprite,
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.ai-runtime-frame--workbench {
+  --uf-paper: #f2f1ee;
+  --uf-paper-strong: #fbfaf7;
+  --uf-ink: #1d1d1c;
+  --uf-muted: #6f6d69;
+  --uf-line: rgba(29, 29, 28, 0.14);
+  --uf-line-strong: rgba(29, 29, 28, 0.22);
+}
+
+.ai-runtime-frame--workbench .user-frame-layout {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: min(1520px, 100%);
+  min-height: calc(100dvh - 124px);
+  margin: 0 auto;
+  grid-template-columns: minmax(188px, 0.72fr) minmax(0, 1.92fr) minmax(220px, 0.8fr);
+  overflow: visible;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.ai-runtime-frame--workbench .user-frame-layout.is-two-column {
+  grid-template-columns: minmax(188px, 0.72fr) minmax(0, 1fr);
+}
+
+.ai-runtime-frame--workbench .user-frame-layout::before {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(251, 250, 247, 0.2), transparent 18%, rgba(251, 250, 247, 0.08) 100%);
+  content: "";
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar,
+.ai-runtime-frame--workbench .user-frame-rail {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  -webkit-backdrop-filter: blur(18px) saturate(0.92);
+  backdrop-filter: blur(18px) saturate(0.92);
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: 1.15rem 0.8rem 0.9rem;
+  border-right: 1px solid var(--uf-line);
+  background: rgba(251, 250, 247, 0.5);
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0 0.35rem 0.85rem;
+  border-bottom: 1px solid var(--uf-line);
+  color: var(--uf-muted);
+  font-family: "Geist Pixel Circle", monospace;
+  font-size: 0.56rem;
+  letter-spacing: 0.07em;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__head small {
+  color: #45433f;
+  font: inherit;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar nav {
+  display: grid;
+  gap: 0.25rem;
+  padding-top: 0.25rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar nav a {
+  position: relative;
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  gap: 0.66rem;
+  padding: 0.45rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--uf-muted);
+  text-decoration: none;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease,
+    transform 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar nav a:hover {
+  border-color: rgba(29, 29, 28, 0.1);
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--uf-ink);
+  transform: translateX(2px);
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar nav a.router-link-exact-active {
+  border-color: rgba(29, 29, 28, 0.14);
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--uf-ink);
+  box-shadow: 0 8px 18px rgba(24, 24, 22, 0.08);
+}
+
+.ai-runtime-frame--workbench .user-frame-nav__icon {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(29, 29, 28, 0.13);
+  border-radius: 50%;
+}
+
+.ai-runtime-frame--workbench .user-frame-nav__icon svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar nav a.router-link-exact-active .user-frame-nav__icon {
+  border-color: #333331;
+  background: #333331;
+  color: #f4f3ef;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__direct-tools {
+  display: grid;
+  gap: 0.3rem;
+  margin: 1rem 0.05rem 0;
+  padding: 0.8rem 0.3rem 0.1rem;
+  border-top: 1px solid var(--uf-line);
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__direct-tools > p {
+  margin: 0 0 0.2rem;
+  color: var(--uf-muted);
+  font-family: "Fusion Pixel 12px Proportional SC", var(--font-mono);
+  font-size: 0.56rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__direct-tools > a {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 14px;
+  min-height: 43px;
+  align-items: center;
+  gap: 0.48rem;
+  padding: 0.35rem 0.3rem;
+  border: 1px solid transparent;
+  color: var(--uf-ink);
+  text-decoration: none;
+  transition: background-color 150ms ease, border-color 150ms ease, transform 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__direct-tools > a:hover {
+  border-color: rgba(29, 29, 28, 0.14);
+  background: rgba(255, 255, 255, 0.68);
+  transform: translateX(2px);
+}
+
+.user-frame-direct-tool__icon {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border: 1px solid rgba(29, 29, 28, 0.18);
+  border-radius: 50%;
+  color: var(--uf-muted);
+}
+
+.user-frame-direct-tool__icon svg,
+.user-frame-direct-tool__arrow {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.55;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__direct-tools > a > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 0.08rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__direct-tools strong {
+  overflow: hidden;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__direct-tools small {
+  overflow: hidden;
+  color: var(--uf-muted);
+  font-family: "Fusion Pixel 12px Proportional SC", var(--font-mono);
+  font-size: 0.48rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-frame-direct-tool__arrow { color: var(--uf-muted); }
+
+.ai-runtime-frame--workbench .user-frame-nav__copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.08rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-nav__copy strong {
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.ai-runtime-frame--workbench .user-frame-nav__copy small {
+  overflow: hidden;
+  color: var(--uf-muted);
+  font-size: 0.62rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-runtime-frame--workbench .user-frame-nav__pip {
+  width: 0.32rem;
+  height: 0.32rem;
+  margin-left: auto;
+  border-radius: 50%;
+  background: #292927;
+  box-shadow: 0 0 0 4px rgba(41, 41, 39, 0.1);
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__footer {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: auto;
+  padding: 1rem 0.35rem 0.15rem;
+  border-top: 1px solid var(--uf-line);
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__footer span,
+.ai-runtime-frame--workbench .user-frame-sidebar__footer p {
+  color: var(--uf-muted);
+  font-size: 0.62rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__footer strong {
+  color: var(--uf-ink);
+  font-size: 0.67rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__footer p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.ai-runtime-frame--workbench .user-frame-content {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  padding: clamp(1rem, 2.25vw, 1.85rem) clamp(0.8rem, 1.25vw, 1.1rem) 1.3rem;
+  background: transparent;
+}
+
+.ai-runtime-frame--workbench .user-frame-content > * {
+  min-width: 0;
+}
+
+.ai-runtime-frame--workbench .user-frame-rail {
+  border-left: 1px solid var(--uf-line);
+  background: rgba(251, 250, 247, 0.48);
+}
+
+.ai-runtime-frame--workbench .user-frame-rail > * {
+  padding: 1rem 0.95rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-skip-link {
+  color: var(--uf-ink);
+}
+
+@media (max-width: 1120px) {
+  .ai-runtime-frame--workbench .user-frame-layout {
+    grid-template-columns: minmax(176px, 0.68fr) minmax(0, 1.68fr) minmax(205px, 0.72fr);
+  }
+
+  .ai-runtime-frame--workbench .user-frame-layout.is-two-column {
+    grid-template-columns: minmax(176px, 0.68fr) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .ai-runtime-frame--workbench .user-frame-layout,
+  .ai-runtime-frame--workbench .user-frame-layout.is-two-column {
+    min-height: 0;
+    grid-template-columns: minmax(165px, 0.75fr) minmax(0, 1.7fr);
+  }
+
+  .ai-runtime-frame--workbench .user-frame-rail {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid var(--uf-line);
+    border-left: 0;
+    background: rgba(251, 250, 247, 0.56);
+  }
+
+  .ai-runtime-frame--workbench .user-frame-rail > * {
+    min-width: 0;
+    padding: 1rem 0.95rem;
+    border-right: 1px solid var(--uf-line);
+  }
+
+  .ai-runtime-frame--workbench .user-frame-rail > *:last-child {
+    border-right: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .ai-runtime-frame--workbench .user-frame-layout,
+  .ai-runtime-frame--workbench .user-frame-layout.is-two-column {
+    display: block;
+    width: 100%;
+    min-height: auto;
+  }
+
+  .ai-runtime-frame--workbench .user-frame-layout::before {
+    display: none;
+  }
+
+  .ai-runtime-frame--workbench .user-frame-sidebar {
+    display: none;
+  }
+
+  .ai-runtime-frame--workbench .user-frame-content {
+    min-height: calc(100dvh - 78px);
+    padding: 0.65rem 0 0;
+  }
+
+  .ai-runtime-frame--workbench .user-frame-rail {
+    display: block;
+    margin-top: 1rem;
+    border: 1px solid var(--uf-line);
+    background: rgba(251, 250, 247, 0.78);
+  }
+
+  .ai-runtime-frame--workbench .user-frame-rail > * {
+    border-right: 0;
+    border-bottom: 1px solid var(--uf-line);
+  }
+
+  .ai-runtime-frame--workbench .user-frame-rail > *:last-child {
+    border-bottom: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-runtime-frame--workbench .user-frame-sidebar nav a {
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .ai-runtime-frame--workbench .user-frame-sidebar,
+  .ai-runtime-frame--workbench .user-frame-rail {
+    background: var(--uf-paper-strong);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* The Runtime header already observes html[data-theme]. These variables make
+   the shared learning shell follow the same state instead of retaining a
+   separate boxed dashboard when the switch changes. */
+html[data-theme="dark"] .ai-runtime-frame--workbench {
+  --uf-paper: #111111;
+  --uf-paper-strong: #1b1b1b;
+  --uf-ink: #ededed;
+  --uf-muted: #aaaaaa;
+  --uf-line: rgba(238, 238, 238, 0.16);
+  --uf-line-strong: rgba(238, 238, 238, 0.24);
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-layout::before {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 16%, rgba(255, 255, 255, 0.02) 100%);
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-sidebar {
+  background: rgba(24, 24, 24, 0.9);
+  border-right-color: var(--uf-line);
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-rail {
+  background: rgba(24, 24, 24, 0.86);
+  border-left-color: var(--uf-line);
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-sidebar__head,
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-sidebar__footer {
+  border-color: var(--uf-line);
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-sidebar__head small {
+  color: #d0d0d0;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-sidebar nav a:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(58, 58, 58, 0.72);
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-sidebar nav a.router-link-exact-active {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(54, 54, 54, 0.9);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-sidebar nav a.router-link-exact-active .user-frame-nav__icon {
+  border-color: #dddddd;
+  background: #dddddd;
+  color: #1c1c1c;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-nav__icon {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-nav__pip {
+  background: #dddddd;
+  box-shadow: 0 0 0 4px rgba(221, 221, 221, 0.12);
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-skip-link {
+  color: var(--uf-ink);
+}
+
+@media (max-width: 760px) {
+  html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-rail {
+    border-color: var(--uf-line);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-sidebar,
+  html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-rail {
+    background: var(--uf-paper-strong);
+  }
+}
+
+/* Canonical UserFrame contract.
+   The older .user-workspace rules above are kept for legacy content blocks,
+   but they no longer own the shared user shell. Every UserFrame page uses
+   this Runtime course-context surface and these semantic surface tokens. */
+.ai-runtime-frame--workbench {
+  --uf-sidebar-surface: rgba(251, 250, 247, 0.58);
+  --uf-content-surface: rgba(251, 250, 247, 0.22);
+  --uf-rail-surface: rgba(251, 250, 247, 0.52);
+  --uf-active-surface: rgba(255, 255, 255, 0.82);
+  --uf-hover-surface: rgba(255, 255, 255, 0.64);
+  --uf-action-surface: rgba(255, 255, 255, 0.58);
+  --uf-focus: rgba(29, 29, 28, 0.34);
+}
+
+/* AiRuntimeFrame content is a flex track. Runtime-only pages must claim the
+   complete track instead of shrinking to their intrinsic grid width. */
+.ai-runtime-frame--workbench .user-frame-runtime-content {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* Secondary learning tools use the same Runtime material plane as the
+   workbench. The course navigator remains an explicit product surface on
+   the workbench and course-map routes rather than reappearing on every page. */
+.ai-runtime-frame--workbench .user-frame-runtime-content[data-has-rail="true"] {
+  display: grid;
+  min-height: calc(100dvh - 104px);
+  grid-template-columns: minmax(0, 1.72fr) minmax(238px, .72fr);
+  border-top: 1px solid var(--uf-line);
+  border-bottom: 1px solid var(--uf-line);
+  --accent: #1d1d1c;
+  --accent-strong: #060606;
+  --accent-soft: rgba(29, 29, 28, .08);
+}
+
+/* An account boundary should be a concise decision point, not an empty full-height dashboard. */
+.ai-runtime-frame--workbench .user-frame-runtime-content--compact[data-has-rail="true"] { width: 100%; min-height: 0; flex: 0 0 auto; align-self: start; }
+.ai-runtime-frame--workbench .user-frame-runtime-content--compact .user-frame-runtime-main { min-height: 0; align-content: start; }
+
+.ai-runtime-frame--workbench .user-frame-runtime-main,
+.ai-runtime-frame--workbench .user-frame-runtime-rail {
+  min-width: 0;
+  -webkit-backdrop-filter: blur(18px) saturate(.9);
+  backdrop-filter: blur(18px) saturate(.9);
+}
+
+.ai-runtime-frame--workbench .user-frame-runtime-main {
+  padding: clamp(1.25rem, 2.8vw, 2.7rem);
+  background: var(--uf-content-surface);
+}
+
+/* The learning workbench is its own product surface. Do not put a second
+   translucent card between the Runtime environment and that work surface. */
+.ai-runtime-frame--workbench .user-frame-runtime-content:has(.learning-workbench-v2) {
+  min-height: 0;
+  border-top: 0;
+  border-bottom: 0;
+}
+
+.ai-runtime-frame--workbench .user-frame-runtime-content:has(.learning-workbench-v2) .user-frame-runtime-main {
+  padding: 0;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.ai-runtime-frame--workbench .user-frame-runtime-rail {
+  border-left: 1px solid var(--uf-line);
+  background: var(--uf-rail-surface);
+}
+
+.ai-runtime-frame--workbench .user-frame-runtime-rail > * {
+  min-width: 0;
+  padding: 1.05rem 1rem;
+  border-bottom: 1px solid var(--uf-line);
+}
+
+.ai-runtime-frame--workbench .user-frame-runtime-rail > *:last-child { border-bottom: 0; }
+
+.ai-runtime-frame--workbench .user-frame-runtime-review {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .2rem .6rem;
+  color: var(--uf-ink);
+  text-decoration: none;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.ai-runtime-frame--workbench .user-frame-runtime-review:hover {
+  background: var(--uf-hover-surface);
+}
+
+.ai-runtime-frame--workbench .user-frame-runtime-review span {
+  min-width: 0;
+  font-size: .8rem;
+  font-weight: 700;
+}
+
+.ai-runtime-frame--workbench .user-frame-runtime-review small {
+  min-width: 0;
+  grid-column: 1;
+  color: var(--uf-muted);
+  font-family: var(--ai-runtime-font-display);
+  font-size: .48rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.ai-runtime-frame--workbench .user-frame-runtime-main .user-page h1 {
+  font-family: "Fusion Pixel CJK", "Fusion Pixel 12px Proportional SC", "Geist Pixel Circle", monospace;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.ai-runtime-frame--workbench .user-frame-runtime-main .user-panel,
+.ai-runtime-frame--workbench .user-frame-runtime-main .user-state,
+.ai-runtime-frame--workbench .user-frame-runtime-main .inline-notice {
+  border-radius: 0;
+  background: rgba(255, 255, 252, .64);
+  box-shadow: none;
+}
+
+.ai-runtime-frame--workbench .user-frame-runtime-main .user-action { border-radius: 0; }
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-runtime-content[data-has-rail="true"] {
+  --accent: #f2f2ee;
+  --accent-strong: #ffffff;
+  --accent-soft: rgba(242, 242, 238, .1);
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-runtime-main .user-panel,
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-runtime-main .user-state,
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-runtime-main .inline-notice { background: rgba(26, 26, 25, .76); }
+
+@media (max-width: 900px) {
+  .ai-runtime-frame--workbench .user-frame-runtime-content[data-has-rail="true"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ai-runtime-frame--workbench .user-frame-runtime-rail {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-top: 1px solid var(--uf-line);
+    border-left: 0;
+  }
+
+  .ai-runtime-frame--workbench .user-frame-runtime-rail > * { border-right: 1px solid var(--uf-line); }
+  .ai-runtime-frame--workbench .user-frame-runtime-rail > *:last-child { border-right: 0; }
+}
+
+@media (max-width: 760px) {
+  .ai-runtime-frame--workbench .user-frame-runtime-content[data-has-rail="true"] { min-height: 0; }
+  .ai-runtime-frame--workbench .user-frame-runtime-main { min-height: calc(100dvh - 78px); padding: .9rem .7rem 0; background: transparent; }
+  .ai-runtime-frame--workbench .user-frame-runtime-content--compact .user-frame-runtime-main { min-height: 0; }
+  .ai-runtime-frame--workbench .user-frame-runtime-rail { display: block; margin: 1rem 0 0; border: 1px solid var(--uf-line); }
+  .ai-runtime-frame--workbench .user-frame-runtime-rail > * { border-right: 0; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .ai-runtime-frame--workbench .user-frame-runtime-main,
+  .ai-runtime-frame--workbench .user-frame-runtime-rail,
+  .ai-runtime-frame--workbench .user-frame-runtime-main .user-panel,
+  .ai-runtime-frame--workbench .user-frame-runtime-main .user-state,
+  .ai-runtime-frame--workbench .user-frame-runtime-main .inline-notice {
+    background: var(--uf-paper-strong);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+.ai-runtime-frame--workbench .user-frame-layout[data-shell="course"] {
+  display: grid;
+  width: min(1520px, 100%);
+  min-height: calc(100dvh - 124px);
+  margin: 0 auto;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.8fr) minmax(240px, 0.9fr);
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.ai-runtime-frame--workbench .user-frame-layout[data-shell="course"]::before {
+  background: linear-gradient(180deg, rgba(251, 250, 247, 0.2), transparent 18%, rgba(251, 250, 247, 0.08) 100%);
+}
+
+.ai-runtime-frame--workbench .user-frame-layout[data-shell="course"] .user-frame-sidebar,
+.ai-runtime-frame--workbench .user-frame-layout[data-shell="course"] .user-frame-rail {
+  min-width: 0;
+  -webkit-backdrop-filter: blur(18px) saturate(0.92);
+  backdrop-filter: blur(18px) saturate(0.92);
+}
+
+.ai-runtime-frame--workbench .user-frame-layout[data-shell="course"] .user-frame-sidebar {
+  padding: 1.2rem 0.85rem 0.95rem;
+  border-right: 1px solid var(--uf-line);
+  background: var(--uf-sidebar-surface);
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__head {
+  min-height: 2rem;
+  padding-right: 0.45rem;
+  padding-left: 0.45rem;
+  border-bottom-color: var(--uf-line);
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar nav {
+  gap: 0.3rem;
+  padding-top: 0.9rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar nav a {
+  min-height: 3rem;
+  border-radius: 6px;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar nav a:focus-visible,
+.ai-runtime-frame--workbench .user-frame-sidebar__direct-tools > a:focus-visible,
+.ai-runtime-frame--workbench .user-frame-rail a:focus-visible,
+.ai-runtime-frame--workbench .user-frame-rail summary:focus-visible {
+  outline: 2px solid var(--uf-focus);
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar nav a.router-link-exact-active,
+.ai-runtime-frame--workbench .user-frame-sidebar nav a[aria-current="page"] {
+  border-color: var(--uf-line-strong);
+  background: var(--uf-active-surface);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--uf-ink) 7%, transparent);
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar nav a:hover {
+  border-color: var(--uf-line);
+  background: var(--uf-hover-surface);
+}
+
+.ai-runtime-frame--workbench .user-frame-nav__pip {
+  width: 0.35rem;
+  height: 1.35rem;
+  margin-left: auto;
+  border-radius: 0;
+  background: var(--uf-ink);
+  box-shadow: none;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__direct-tools {
+  gap: 0.4rem;
+  margin-top: 1.15rem;
+  padding: 0.9rem 0.35rem 0.15rem;
+  border-top-color: var(--uf-line);
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__direct-tools > a {
+  min-height: 2.75rem;
+  border-radius: 4px;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__direct-tools > a:hover {
+  border-color: var(--uf-line);
+  background: var(--uf-hover-surface);
+}
+
+.ai-runtime-frame--workbench .user-frame-content {
+  min-width: 0;
+  padding: clamp(1.15rem, 2.3vw, 1.9rem) clamp(1rem, 1.5vw, 1.3rem) 1.5rem;
+  background: var(--uf-content-surface);
+}
+
+.ai-runtime-frame--workbench .user-frame-rail {
+  border-left: 1px solid var(--uf-line);
+  background: var(--uf-rail-surface);
+}
+
+.ai-runtime-frame--workbench .user-frame-rail > * {
+  min-width: 0;
+  padding: 1.05rem 1rem;
+  border-bottom: 1px solid var(--uf-line);
+}
+
+.ai-runtime-frame--workbench .user-frame-rail > *:last-child {
+  border-bottom: 0;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__footer {
+  padding-right: 0.45rem;
+  padding-left: 0.45rem;
+  border-top-color: var(--uf-line);
+}
+
+.ai-runtime-frame--workbench .user-frame-runtime-tools > summary {
+  min-width: 42px;
+  min-height: 42px;
+}
+
+.ai-runtime-frame--workbench .user-frame-runtime-tools > summary:focus-visible,
+.ai-runtime-frame--workbench .user-frame-runtime-account:focus-visible {
+  outline: 2px solid var(--uf-focus);
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+.user-frame-mobile-section-label {
+  margin: 0.8rem 0 0.1rem;
+  padding: 0 0.75rem;
+  color: #777570;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench {
+  --uf-sidebar-surface: rgba(24, 24, 24, 0.92);
+  --uf-content-surface: rgba(25, 25, 25, 0.76);
+  --uf-rail-surface: rgba(24, 24, 24, 0.88);
+  --uf-active-surface: rgba(54, 54, 54, 0.9);
+  --uf-hover-surface: rgba(58, 58, 58, 0.72);
+  --uf-action-surface: rgba(58, 58, 58, 0.64);
+  --uf-focus: rgba(238, 238, 238, 0.5);
+}
+
+html[data-theme="dark"] .user-frame-mobile-section-label {
+  color: #b1b1b1;
+}
+
+@media (max-width: 1120px) {
+  .ai-runtime-frame--workbench .user-frame-layout[data-shell="course"] {
+    grid-template-columns: minmax(196px, 0.76fr) minmax(0, 1.7fr) minmax(220px, 0.8fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .ai-runtime-frame--workbench .user-frame-layout[data-shell="course"] {
+    min-height: 0;
+    grid-template-columns: minmax(180px, 0.78fr) minmax(0, 1.7fr);
+  }
+
+  .ai-runtime-frame--workbench .user-frame-rail {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid var(--uf-line);
+    border-left: 0;
+  }
+
+  .ai-runtime-frame--workbench .user-frame-rail > * {
+    border-right: 1px solid var(--uf-line);
+  }
+
+  .ai-runtime-frame--workbench .user-frame-rail > *:last-child {
+    border-right: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .ai-runtime-frame--workbench .user-frame-layout[data-shell="course"] {
+    display: block;
+    width: 100%;
+    min-height: auto;
+  }
+
+  .ai-runtime-frame--workbench .user-frame-sidebar {
+    display: none;
+  }
+
+  .ai-runtime-frame--workbench .user-frame-content {
+    min-height: calc(100dvh - 78px);
+    padding: 0.7rem 0 0;
+  }
+
+  .ai-runtime-frame--workbench .user-frame-rail {
+    display: block;
+    margin-top: 1rem;
+    border: 1px solid var(--uf-line);
+    background: var(--uf-rail-surface);
+  }
+
+  .ai-runtime-frame--workbench .user-frame-rail > * {
+    border-right: 0;
+  }
+
+  .user-frame-mobile-section-label {
+    min-height: 1.8rem;
+    align-items: center;
+    display: flex;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .ai-runtime-frame--workbench .user-frame-sidebar,
+  .ai-runtime-frame--workbench .user-frame-content,
+  .ai-runtime-frame--workbench .user-frame-rail {
+    background: var(--uf-paper-strong);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/*
+ * Course pages use the same dashboard-sidebar application window as the
+ * learning workbench. The Runtime component remains as a compatibility
+ * wrapper for its focus/menu behavior, but its video and marketing chrome
+ * are deliberately removed from this surface.
+ */
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell {
+  --course-canvas: var(--bg);
+  --course-window: var(--surface);
+  --course-sidebar: var(--surface-subtle);
+  --course-ink: var(--text);
+  --course-muted: var(--text-muted);
+  --course-line: var(--line);
+  --course-line-strong: var(--line-strong);
+  min-height: 100dvh;
+  background: var(--course-canvas);
+  color: var(--course-ink);
+  font-family: var(--font-ui);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__background,
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__scrim,
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__header,
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__footer {
+  display: none;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__page {
+  min-height: 100dvh;
+  padding: clamp(14px, 2vw, 28px);
+  background: var(--course-canvas);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__content {
+  width: min(1560px, 100%);
+  max-width: 1560px;
+  min-height: 0;
+  margin: 0 auto;
+  padding: 0;
+  flex: 1 1 auto;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: 260px minmax(0, 1fr) minmax(220px, 300px);
+  overflow: hidden;
+  border: 1px solid var(--course-line-strong);
+  border-radius: 10px;
+  background: var(--course-window);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--course-ink) 10%, transparent), 0 18px 44px color-mix(in srgb, var(--course-ink) 12%, transparent);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar,
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail,
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-content {
+  min-height: 0;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar {
+  background: var(--course-sidebar);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-content {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding: 0;
+  background: var(--course-window);
+}
+
+.user-frame-course-toolbar {
+  display: flex;
+  min-width: 0;
+  min-height: 56px;
+  flex: 0 0 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--course-line);
+  background: var(--course-window);
+  color: var(--course-ink);
+}
+
+.user-frame-course-toolbar__leading,
+.user-frame-course-toolbar__actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+
+.user-frame-course-toolbar__mark,
+.user-frame-course-toolbar__avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--course-line-strong);
+  background: var(--course-ink);
+  color: var(--course-window);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  line-height: 1;
+}
+
+.user-frame-course-toolbar__mark { width: 30px; height: 30px; border-radius: 6px; }
+.user-frame-course-toolbar__avatar { width: 28px; height: 28px; border-radius: 50%; }
+.user-frame-course-toolbar__crumb,
+.user-frame-course-toolbar__separator { color: var(--course-muted); font-size: 0.73rem; white-space: nowrap; }
+.user-frame-course-toolbar__leading strong { overflow: hidden; max-width: 24ch; font-size: 0.8rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.user-frame-course-toolbar__account { display: inline-flex; min-width: 0; align-items: center; gap: 7px; color: var(--course-ink); font-size: 0.7rem; font-weight: 650; text-decoration: none; }
+.user-frame-course-toolbar__account > span:last-child { max-width: 13ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-frame-course-toolbar__account:hover { color: var(--course-muted); }
+.user-frame-course-toolbar .theme-toggle { flex: 0 0 auto; }
+
+.user-frame-course-content-body {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: clamp(18px, 2.4vw, 32px) clamp(20px, 3vw, 46px) 30px;
+  scrollbar-color: var(--course-line-strong) transparent;
+  scrollbar-width: thin;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail {
+  overflow: auto;
+  border-left-color: var(--course-line);
+  background: var(--course-sidebar);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail > * { border-bottom-color: var(--course-line); }
+
+html[data-theme="dark"] .ai-runtime-frame--workbench.ai-runtime-frame--course-shell {
+  --course-canvas: #111111;
+  --course-window: #1b1b1b;
+  --course-sidebar: #242424;
+  --course-ink: #f0f0f0;
+  --course-muted: #a6a6a6;
+  --course-line: #3d3d3d;
+  --course-line-strong: #6a6a6a;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 20px 48px rgba(0, 0, 0, .35);
+}
+
+@media (max-width: 1180px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] { grid-template-columns: 236px minmax(0, 1fr) minmax(208px, 260px); }
+  .user-frame-course-content-body { padding-right: 28px; padding-left: 28px; }
+}
+
+@media (max-width: 900px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] { grid-template-columns: 218px minmax(0, 1fr); }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail { grid-column: 1 / -1; max-height: 240px; }
+}
+
+@media (max-width: 760px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__page { padding: 0; }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__content { width: 100%; }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] { display: block; width: 100%; height: auto; min-height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar { display: none; }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-content { min-height: 100dvh; }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail { display: block; max-height: none; margin: 0; border-top: 1px solid var(--course-line); border-left: 0; }
+  .user-frame-course-toolbar { position: sticky; z-index: 5; top: 0; min-height: 54px; flex-basis: 54px; padding: 0 60px 0 12px; }
+  .user-frame-course-toolbar__crumb,
+  .user-frame-course-toolbar__separator { display: none; }
+  .user-frame-course-toolbar__leading strong { max-width: 17ch; font-size: 0.74rem; }
+  .user-frame-course-toolbar__account { display: none; }
+  .user-frame-course-content-body { padding: 16px 12px 24px; overflow: visible; }
+  /* The Runtime menu remains the single mobile navigation interaction, but
+     is presented as a compact neutral control instead of a marketing bar. */
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__header { position: absolute; z-index: 8; top: 5px; right: 8px; display: grid; width: auto; min-height: 44px; margin: 0; }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__mark,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__nav,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__actions { display: none; }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__menu-toggle { display: grid; width: 42px; height: 42px; grid-column: 1; border: 1px solid var(--course-line-strong); border-radius: 6px; background: var(--course-window); box-shadow: none; }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__menu-toggle span { background: var(--course-ink); }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__mobile-layer { padding: 10px; background: color-mix(in srgb, var(--course-canvas) 82%, transparent); }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__mobile-menu { margin-top: 44px; border: 1px solid var(--course-line-strong); border-radius: 8px; background: var(--course-window); color: var(--course-ink); box-shadow: 0 18px 42px color-mix(in srgb, var(--course-ink) 20%, transparent); }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__page,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"],
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-content,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail,
+  .user-frame-course-toolbar,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__mobile-menu { background: var(--course-window); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
+/* Runtime course catalog: the shared frame keeps the learning map visible,
+   while the five cross-module destinations remain available on demand. */
+.ai-runtime-frame--workbench .user-frame-course-nav {
+  display: grid;
+  gap: 0.26rem;
+  padding-top: 0.88rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-course-nav__title {
+  margin: 0 0 0.24rem;
+  padding: 0 0.48rem;
+  color: var(--uf-ink);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.ai-runtime-frame--workbench .user-frame-course-item {
+  display: grid;
+  grid-template-columns: 1.8rem minmax(0, 1fr) auto;
+  min-height: 3.05rem;
+  align-items: center;
+  gap: 0.48rem;
+  padding: 0.42rem 0.48rem;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--uf-muted);
+  text-decoration: none;
+  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+
+.ai-runtime-frame--workbench .user-frame-course-item:hover {
+  border-color: var(--uf-line);
+  background: var(--uf-hover-surface);
+  color: var(--uf-ink);
+  transform: translateX(2px);
+}
+
+.ai-runtime-frame--workbench .user-frame-course-item.is-active,
+.ai-runtime-frame--workbench .user-frame-course-item[aria-current="page"] {
+  border-color: var(--uf-line-strong);
+  background: var(--uf-active-surface);
+  color: var(--uf-ink);
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--uf-ink) 6%, transparent);
+}
+
+.user-frame-course-item__index {
+  align-self: start;
+  padding-top: 0.1rem;
+  color: var(--uf-muted);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+}
+
+.user-frame-course-item__copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.12rem;
+}
+
+.user-frame-course-item__copy strong {
+  overflow: hidden;
+  font-size: 0.72rem;
+  font-weight: 620;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-frame-course-item__copy small {
+  overflow: hidden;
+  color: var(--uf-muted);
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-frame-course-item__pip {
+  width: 0.34rem;
+  height: 1.2rem;
+  background: var(--uf-ink);
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__other {
+  margin: 0.78rem 0.05rem 0;
+  border-top: 1px solid var(--uf-line);
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__other > summary {
+  display: flex;
+  min-height: 2.55rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0 0.42rem;
+  color: var(--uf-muted);
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.66rem;
+  font-weight: 620;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__other > summary::-webkit-details-marker,
+.ai-runtime-frame--workbench .user-frame-mobile-other > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__other > summary:focus-visible,
+.ai-runtime-frame--workbench .user-frame-mobile-other > summary:focus-visible {
+  outline: 2px solid var(--uf-focus);
+  outline-offset: 3px;
+}
+
+.user-frame-disclosure {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 150ms ease;
+}
+
+.user-frame-sidebar__other[open] .user-frame-disclosure {
+  transform: rotate(225deg) translate(-2px, -1px);
+}
+
+.ai-runtime-frame--workbench .user-frame-secondary-nav {
+  display: grid;
+  gap: 0.18rem;
+  padding: 0 0 0.55rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-secondary-nav a {
+  min-height: 2.55rem;
+  border-radius: 4px;
+}
+
+.ai-runtime-frame--workbench .user-frame-secondary-nav .workbench-nav-row__lead--module {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 26px minmax(0, 1fr);
+  align-items: center;
+  gap: 0.58rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-secondary-nav .workbench-nav-row__module-icon {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid rgba(29, 29, 28, 0.13);
+  border-radius: 50%;
+}
+
+.ai-runtime-frame--workbench .user-frame-secondary-nav .workbench-nav-row__module-icon svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.ai-runtime-frame--workbench .user-frame-secondary-nav .user-frame-nav__copy strong {
+  font-size: 0.69rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-secondary-nav .user-frame-nav__copy small {
+  font-size: 0.56rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-secondary-nav .user-frame-nav__copy {
+  min-width: 0;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-secondary-nav .workbench-nav-row__module-icon {
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.ai-runtime-frame--workbench .user-frame-sidebar__direct-tools {
+  margin-top: auto;
+}
+
+.ai-runtime-frame--workbench .user-frame-mobile-course-link {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 50px;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0 0.75rem;
+  border-radius: 12px;
+  color: var(--ai-runtime-nav-text);
+  opacity: 0.68;
+  text-decoration: none;
+  transition: background-color 150ms ease, opacity 150ms ease;
+}
+
+.ai-runtime-frame--workbench .user-frame-mobile-course-link:hover,
+.ai-runtime-frame--workbench .user-frame-mobile-course-link.is-active,
+.ai-runtime-frame--workbench .user-frame-mobile-course-link[aria-current="page"] {
+  background: #eeeeee;
+  opacity: 1;
+}
+
+.ai-runtime-frame--workbench .user-frame-mobile-course-link small {
+  color: #777570;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-mobile-other {
+  margin-top: 0.6rem;
+  border-top: 1px solid #d7d7d7;
+  padding-top: 0.5rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-mobile-other > summary {
+  display: flex;
+  min-height: 2.55rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.75rem;
+  color: #5d5d5d;
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.82rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-mobile-other > a {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  margin-left: 0.5rem;
+  margin-right: 0.5rem;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  border-radius: 10px;
+  color: var(--ai-runtime-nav-text);
+  opacity: 0.68;
+  text-decoration: none;
+  transition: background-color 150ms ease, opacity 150ms ease;
+}
+
+.ai-runtime-frame--workbench .user-frame-mobile-other > a:hover,
+.ai-runtime-frame--workbench .user-frame-mobile-other > a.is-active,
+.ai-runtime-frame--workbench .user-frame-mobile-other > a[aria-current="page"] {
+  background: #eeeeee;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .user-frame-course-item,
+  .user-frame-disclosure {
+    transition: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .ai-runtime-frame--workbench .user-frame-course-item,
+  .ai-runtime-frame--workbench .user-frame-sidebar__other,
+  .ai-runtime-frame--workbench .user-frame-mobile-other {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-mobile-course-link:hover,
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-mobile-course-link.is-active,
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-mobile-course-link[aria-current="page"],
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-mobile-other > a:hover,
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-mobile-other > a.is-active,
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-mobile-other > a[aria-current="page"] {
+  background: #333333;
+  color: #f2f2f2;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-mobile-course-link small,
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-mobile-other > summary {
+  color: #bcbcbc;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-mobile-other {
+  border-top-color: rgba(255, 255, 255, 0.16);
+}
+
+/* Grouped course map: chapter hierarchy is visible without turning the
+   sidebar into a flat list of unrelated cards. Details keeps every group
+   keyboard reachable and gives mobile the same information architecture. */
+.ai-runtime-frame--workbench .user-frame-course-group {
+  display: grid;
+  gap: 0.16rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-course-group > summary,
+.ai-runtime-frame--workbench .user-frame-mobile-course-group > summary {
+  display: flex;
+  min-height: 2.45rem;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0 0.48rem;
+  border: 1px solid transparent;
+  color: var(--uf-ink);
+  cursor: pointer;
+  list-style: none;
+}
+
+.ai-runtime-frame--workbench .user-frame-course-group > summary::-webkit-details-marker,
+.ai-runtime-frame--workbench .user-frame-mobile-course-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ai-runtime-frame--workbench .user-frame-course-group > summary:focus-visible,
+.ai-runtime-frame--workbench .user-frame-mobile-course-group > summary:focus-visible {
+  outline: 2px solid var(--uf-focus);
+  outline-offset: 3px;
+}
+
+.ai-runtime-frame--workbench .user-frame-course-group > summary:hover,
+.ai-runtime-frame--workbench .user-frame-mobile-course-group > summary:hover {
+  border-color: var(--uf-line);
+  background: var(--uf-hover-surface);
+}
+
+.user-frame-course-group__name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-size: 0.7rem;
+  font-weight: 680;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-frame-course-group__meta,
+.user-frame-mobile-course-group > summary small {
+  color: var(--uf-muted);
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  letter-spacing: 0.04em;
+}
+
+.user-frame-course-group > summary .user-frame-disclosure {
+  flex: 0 0 auto;
+}
+
+.user-frame-course-group[open] > summary .user-frame-disclosure,
+.user-frame-mobile-course-group[open] > summary .user-frame-disclosure {
+  transform: rotate(225deg) translate(-2px, -1px);
+}
+
+.ai-runtime-frame--workbench .user-frame-course-group > .user-frame-course-item {
+  margin-left: 0.42rem;
+  min-height: 2.7rem;
+  padding-top: 0.28rem;
+  padding-bottom: 0.28rem;
+}
+
+.user-frame-mobile-course-groups {
+  display: grid;
+  gap: 0.22rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-mobile-course-group > summary {
+  min-height: 2.7rem;
+  padding: 0 0.75rem;
+  border-radius: 10px;
+  color: var(--ai-runtime-nav-text);
+  font-size: 0.83rem;
+  font-weight: 620;
+}
+
+.ai-runtime-frame--workbench .user-frame-mobile-course-group > summary > span {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-runtime-frame--workbench .user-frame-mobile-course-group > summary:hover {
+  background: #eeeeee;
+}
+
+.ai-runtime-frame--workbench .user-frame-mobile-course-group > .user-frame-mobile-course-link {
+  margin-left: 0.48rem;
+  margin-right: 0.48rem;
+  min-height: 44px;
+  padding-left: 0.75rem;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-course-group > summary,
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-mobile-course-group > summary {
+  color: #ededed;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .user-frame-mobile-course-group > summary:hover {
+  background: #333333;
+}
+
+.ai-runtime-frame--workbench .user-frame-course-item--lesson {
+  margin-left: 1.1rem;
+  min-height: 2.45rem;
+  border-radius: 3px;
+}
+
+.ai-runtime-frame--workbench .user-frame-course-item--lesson .user-frame-course-item__index {
+  color: color-mix(in srgb, var(--uf-muted) 72%, transparent);
+  font-size: 0.54rem;
+}
+
+.ai-runtime-frame--workbench .user-frame-mobile-course-link--lesson {
+  margin-left: 1rem;
+  min-height: 42px;
+  border-radius: 8px;
+  font-size: 0.77rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-runtime-frame--workbench .user-frame-course-item--lesson,
+  .ai-runtime-frame--workbench .user-frame-mobile-course-link--lesson {
+    transition: none;
+  }
+}
+
+/* Final course-shell geometry. This is intentionally last so legacy Runtime
+   compatibility rules above cannot reintroduce a second outer frame. */
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__page {
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__content {
+  height: calc(100dvh - (2 * clamp(14px, 2vw, 28px)));
+  max-height: calc(100dvh - (2 * clamp(14px, 2vw, 28px)));
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] {
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+  grid-template-columns: 260px minmax(0, 1fr) minmax(220px, 300px);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"].is-two-column {
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-content,
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body {
+  min-height: 0;
+}
+
+@media (max-width: 1180px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] { grid-template-columns: 236px minmax(0, 1fr) minmax(208px, 260px); }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"].is-two-column { grid-template-columns: 236px minmax(0, 1fr); }
+}
+
+@media (max-width: 900px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] { grid-template-columns: 218px minmax(0, 1fr); }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"].is-two-column { grid-template-columns: 218px minmax(0, 1fr); }
+}
+
+@media (max-width: 760px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__page,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__content { height: auto; max-height: none; overflow: visible; }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"],
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"].is-two-column { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Final cross-route course rhythm. The shared shell owns the window,
+   while each tool keeps one clear primary surface and quieter disclosures. */
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body > .user-page {
+  gap: 1.15rem;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body > .user-page > .user-page__heading {
+  min-height: 72px;
+  align-items: center;
+  padding-bottom: .85rem;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body > .user-page > .user-page__heading h1 {
+  font-size: clamp(1.45rem, 2.3vw, 2.15rem);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body > .user-page > .user-panel,
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body > .user-page > .user-form.user-panel,
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body > .user-page > .user-state {
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body > .user-page > .user-page__section > header {
+  min-height: 42px;
+  padding-bottom: .55rem;
+  border-bottom: 1px solid var(--course-line);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body > .user-page > .user-page__section > header h2 {
+  font-size: .95rem;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body > .user-page > .user-page__section > header p {
+  font-size: .7rem;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body .user-action {
+  min-height: 2.45rem;
+  border-radius: 4px;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body .user-list__row {
+  min-height: 56px;
+  padding: .72rem 0;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body .user-list__row h3 {
+  font-size: .88rem;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body .user-list__row p {
+  font-size: .76rem;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .code-workbench__surface,
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .code-workbench__editor,
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .code-panel-content,
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .presentation-stage {
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+@media (min-width: 1440px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body {
+    padding-right: clamp(34px, 3.2vw, 56px);
+    padding-left: clamp(34px, 3.2vw, 56px);
+  }
+}
+
+@media (max-width: 760px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body > .user-page > .user-page__heading {
+    min-height: 0;
+    align-items: flex-start;
+  }
+}
+
+/* Canonical dashboard-sidebar shell for every course route.
+   The Runtime wrapper still provides the mobile menu and focus handoff, but
+   desktop course pages render as one neutral application window, matching the
+   root workbench instead of exposing Runtime's landing-page chrome. */
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell {
+  --course-canvas: #f2f1ee;
+  --course-window: #fbfaf7;
+  --course-sidebar: #e7e5e1;
+  --course-ink: #1c1c1b;
+  --course-muted: #6f6d69;
+  --course-line: #d6d3cd;
+  --course-line-strong: #aaa59d;
+  min-height: 100dvh;
+  overflow: visible;
+  background: var(--course-canvas);
+  color: var(--course-ink);
+  font-family: var(--font-ui);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__background,
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__scrim,
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__header,
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__footer {
+  display: none;
+}
+
+@media (min-width: 761px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__page {
+    min-height: 100dvh;
+    height: 100dvh;
+    padding: clamp(20px, 3vh, 32px) clamp(24px, 4vw, 60px);
+    overflow: hidden;
+    background: var(--course-canvas);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__content {
+    display: flex;
+    width: min(1320px, 100%);
+    max-width: 1320px;
+    height: 100%;
+    min-height: 0;
+    margin: 0 auto;
+    padding: 0;
+    flex: 1 1 auto;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    grid-template-columns: 260px minmax(0, 1fr) minmax(224px, 280px);
+    overflow: hidden;
+    border: 1px solid var(--course-line);
+    border-radius: 8px;
+    background: var(--course-window);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--course-ink) 10%, transparent), 0 16px 38px color-mix(in srgb, var(--course-ink) 10%, transparent);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"].is-two-column {
+    grid-template-columns: 260px minmax(0, 1fr);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-content,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail {
+    min-height: 0;
+    min-width: 0;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar {
+    width: 260px;
+    overflow-y: auto;
+    border-right: 1px solid var(--course-line);
+    background: var(--course-sidebar);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-content {
+    display: flex;
+    overflow: hidden;
+    flex-direction: column;
+    background: var(--course-window);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail {
+    overflow-y: auto;
+    border-left: 1px solid var(--course-line);
+    background: var(--course-sidebar);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-toolbar {
+    height: 56px;
+    min-height: 56px;
+    flex: 0 0 56px;
+    border-bottom: 1px solid var(--course-line);
+    background: var(--course-window);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body {
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    background: var(--course-window);
+  }
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench.ai-runtime-frame--course-shell {
+  --course-canvas: #101010;
+  --course-window: #1b1b1b;
+  --course-sidebar: #242424;
+  --course-ink: #f0f0f0;
+  --course-muted: #a6a6a6;
+  --course-line: #3d3d3d;
+  --course-line-strong: #686868;
+  background: var(--course-canvas);
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] {
+  background: var(--course-window);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .54), 0 18px 42px rgba(0, 0, 0, .34);
+}
+
+@media (max-width: 1180px) and (min-width: 761px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] {
+    grid-template-columns: 260px minmax(0, 1fr) minmax(208px, 248px);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"].is-two-column {
+    grid-template-columns: 260px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell {
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__page {
+    height: auto;
+    min-height: 100dvh;
+    padding: 0;
+    overflow: visible;
+    background: var(--course-canvas);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__content {
+    width: 100%;
+    max-width: none;
+    min-height: 0;
+    overflow: visible;
+    padding: 0;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"],
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"].is-two-column {
+    display: block;
+    width: 100%;
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar { display: none; }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-content {
+    display: flex;
+    min-height: 100dvh;
+    overflow: visible;
+    flex-direction: column;
+    background: var(--course-window);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail {
+    display: block;
+    max-height: none;
+    overflow: visible;
+    border-top: 1px solid var(--course-line);
+    border-left: 0;
+    background: var(--course-sidebar);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__header {
+    position: absolute;
+    z-index: 20;
+    top: 5px;
+    right: 8px;
+    display: grid;
+    width: auto;
+    min-height: 44px;
+    margin: 0;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__mark,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__nav,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__actions {
+    display: none;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__menu-toggle {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    grid-column: 1;
+    place-items: center;
+    border: 1px solid var(--course-line-strong);
+    border-radius: 6px;
+    background: var(--course-window);
+    color: var(--course-ink);
+    box-shadow: none;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__menu-toggle span { background: var(--course-ink); }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__mobile-layer { background: color-mix(in srgb, var(--course-canvas) 84%, transparent); }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__mobile-menu {
+    margin-top: 44px;
+    border: 1px solid var(--course-line-strong);
+    border-radius: 8px;
+    background: var(--course-window);
+    color: var(--course-ink);
+    box-shadow: 0 18px 42px color-mix(in srgb, var(--course-ink) 20%, transparent);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-toolbar {
+    position: sticky;
+    z-index: 5;
+    top: 0;
+    height: 54px;
+    min-height: 54px;
+    flex-basis: 54px;
+    padding: 0 60px 0 12px;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__page,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"],
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-content,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-toolbar,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__mobile-menu {
+    background: var(--course-window);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__mobile-layer { background: var(--course-canvas); }
+}
+
+/* Final course-shell lock.
+   Keep the shared course frame as one contained application window. The
+   context rail stays beside the page on a wide desktop, moves below it when
+   the center column becomes too narrow, and returns to natural flow on mobile. */
+@media (min-width: 761px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__page {
+    display: flex;
+    min-height: 100dvh;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(18px, 2.4vh, 28px);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__content {
+    width: min(2280px, calc(100vw - 36px));
+    max-width: min(2280px, calc(100vw - 36px));
+    height: min(1160px, calc(100dvh - 36px));
+    max-height: min(1160px, calc(100dvh - 36px));
+    min-height: 760px;
+    margin: 0 auto;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] {
+    grid-template-columns: 260px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    border-radius: 18px;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"].is-two-column {
+    grid-template-columns: 260px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar {
+    width: 260px;
+    min-width: 260px;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-content {
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 0;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-toolbar {
+    padding-inline: 18px;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body {
+    padding-right: 24px;
+    padding-bottom: 24px;
+    padding-left: 24px;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail {
+    grid-column: 2;
+    grid-row: 2;
+    min-height: 0;
+    max-height: 174px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-top: 1px solid var(--course-line);
+    border-left: 0;
+    background: color-mix(in srgb, var(--course-sidebar) 82%, var(--course-window));
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail > * {
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1180px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__content {
+    min-height: 720px;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body {
+    padding-right: 20px;
+    padding-bottom: 20px;
+    padding-left: 20px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body {
+    padding-right: 28px;
+    padding-bottom: 28px;
+    padding-left: 28px;
+  }
+}
+
+@media (min-width: 1800px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__content {
+    width: min(2280px, calc(100vw - 52px));
+    max-width: min(2280px, calc(100vw - 52px));
+    height: min(1220px, calc(100dvh - 52px));
+    max-height: min(1220px, calc(100dvh - 52px));
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body {
+    padding-right: 32px;
+    padding-bottom: 30px;
+    padding-left: 32px;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail {
+    max-height: 186px;
+  }
+}
+
+/* Wide course pages use the information architecture shown in the learning
+   workbench: course outline | page | learning context. Keep the two-column
+   fallback through 1180px so the center column remains usable for editors,
+   stages, and course actions instead of merely avoiding document overflow. */
+@media (min-width: 1181px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] {
+    grid-template-columns: 260px minmax(0, 1fr) minmax(220px, 300px);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"].is-two-column {
+    grid-template-columns: 260px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail {
+    grid-column: 3;
+    grid-row: 1;
+    max-height: none;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-top: 0;
+    border-left: 1px solid var(--course-line);
+  }
+}
+
+/* Course routes now render the same dashboard-sidebar composition as the
+   canonical workbench. Keep this closing layer intentionally specific: older
+   course-shell rules remain for compatibility selectors, but must not change
+   the shared sidebar's rhythm, clipping, or window geometry. */
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface {
+  --wb-canvas: var(--course-canvas);
+  --wb-app: var(--course-window);
+  --wb-sidebar: var(--course-sidebar);
+  --wb-panel: var(--course-window);
+  --wb-panel-quiet: color-mix(in srgb, var(--course-sidebar) 72%, var(--course-window));
+  --wb-ink: var(--course-ink);
+  --wb-muted: var(--course-muted);
+  --wb-line: var(--course-line);
+  --wb-line-strong: var(--course-line-strong);
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-width: none;
+  padding: 0;
+  background: var(--course-canvas);
+  color: var(--course-ink);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-layout {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  border: 1px solid var(--course-line-strong);
+  border-radius: 12px;
+  background: var(--course-window);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--course-ink) 10%, transparent), 0 18px 44px color-mix(in srgb, var(--course-ink) 12%, transparent);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-sidebar {
+  width: 260px;
+  min-width: 260px;
+  padding: 0;
+  border-right: 1px solid var(--course-line);
+  background: var(--course-sidebar);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-course-outline {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 0;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-course-groups {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-main {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--course-window);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-context-bar {
+  min-height: 56px;
+  flex: 0 0 56px;
+  border-bottom: 1px solid var(--course-line);
+  background: var(--course-window);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-learning-content {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 24px 28px 28px;
+  background: var(--course-window);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .user-frame-rail {
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-left: 1px solid var(--course-line);
+  background: var(--course-sidebar);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .user-frame-rail > * {
+  margin: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface {
+  --wb-panel-quiet: color-mix(in srgb, var(--course-sidebar) 72%, var(--course-window));
+}
+
+@media (min-width: 761px) and (max-width: 1180px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-layout:not(.is-two-column) {
+    grid-template-columns: 260px minmax(0, 1fr) minmax(208px, 260px);
+  }
+}
+
+@media (max-width: 760px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface {
+    height: auto;
+    min-height: 100dvh;
+    padding: 0;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-layout,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-layout.is-two-column {
+    display: block;
+    width: 100%;
+    height: auto;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-sidebar { display: none; }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-main { min-height: 100dvh; overflow: visible; }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-learning-content { overflow: visible; padding: 16px 12px 24px; }
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .user-frame-rail { display: block; max-height: none; border-top: 1px solid var(--course-line); border-left: 0; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-layout,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-sidebar,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-main,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-context-bar,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .workbench-learning-content,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .user-frame-rail {
+    background: var(--course-window);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* -------------------------------------------------------------------------
+ * Canonical course-window contract
+ *
+ * Every secondary learning route is the same application as the root
+ * workbench.  Keep the Runtime wrapper for focus and mobile navigation, but
+ * give its course shell the exact dashboard-sidebar geometry: one 260px
+ * outline, one content column, and an optional context rail below that
+ * content.  This block intentionally comes last so the older compatibility
+ * rules above cannot reintroduce a third desktop column or a full-width page.
+ * ------------------------------------------------------------------------- */
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell {
+  --course-canvas: #e6e5e1;
+  --course-window: #fbfaf7;
+  --course-sidebar: #f6f5f1;
+  --course-ink: #1a1a19;
+  --course-muted: #6d6b65;
+  --course-line: rgba(26, 26, 25, .13);
+  --course-line-strong: rgba(26, 26, 25, .25);
+  background: var(--course-canvas);
+  color: var(--course-ink);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--course-window);
+  color: var(--course-ink);
+  font-family: "SimSun", "Songti SC", "STSong", serif;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface[data-locale="en-US"] {
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+
+@media (min-width: 761px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__page {
+    display: flex;
+    width: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    overflow: hidden;
+    background: var(--course-canvas);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__content {
+    width: min(2280px, 89vw, calc(100vw - 48px));
+    max-width: min(2280px, 89vw, calc(100vw - 48px));
+    height: min(1360px, calc(100dvh - 52px));
+    max-height: min(1360px, calc(100dvh - 52px));
+    min-height: 0;
+    margin: 0 auto;
+    padding: 0;
+    flex: 0 0 auto;
+    overflow: hidden;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+    grid-template-columns: 260px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas: "sidebar content" "sidebar rail";
+    overflow: hidden;
+    border: 1px solid var(--course-line-strong);
+    border-radius: 14px;
+    background: var(--course-window);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--course-ink) 10%, transparent), 0 22px 52px color-mix(in srgb, var(--course-ink) 14%, transparent);
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"].is-two-column {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "sidebar content";
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar {
+    grid-area: sidebar;
+    width: 260px;
+    min-width: 260px;
+    min-height: 0;
+    overflow: hidden;
+    border-right: 1px solid var(--course-line);
+    background: var(--course-sidebar) !important;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-content {
+    grid-area: content;
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    flex-direction: column;
+    background: var(--course-window) !important;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-toolbar {
+    height: 56px;
+    min-height: 56px;
+    flex: 0 0 56px;
+    padding-inline: 18px;
+    border-bottom: 1px solid var(--course-line);
+    background: var(--course-window) !important;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body {
+    min-width: 0;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 24px 24px 26px;
+    background: var(--course-window) !important;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail {
+    grid-area: rail;
+    display: block;
+    min-width: 0;
+    min-height: 0;
+    max-height: 174px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-top: 1px solid var(--course-line);
+    border-left: 0;
+    background: var(--course-sidebar) !important;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail > * {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  /* Chapters used to keep a three-column runtime surface after its catalog
+     moved into the shared sidebar. Make the remaining chapter body occupy
+     the whole content canvas instead of reserving an empty phantom column. */
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .chapters-runtime__surface {
+    display: block;
+    min-height: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .chapters-runtime__main {
+    min-width: 0;
+    padding: 0;
+    background: transparent;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1199px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body {
+    padding: 20px 20px 22px;
+  }
+}
+
+/* Tablet widths cannot support the desktop outline plus a readable editor or
+   stage. Keep the outline in the mobile drawer and give the learning surface
+   the full canvas; the rail remains a second row below the content. */
+@media (min-width: 761px) and (max-width: 940px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas: "content" "rail";
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar {
+    display: none;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-content,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail {
+    grid-column: 1;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-content {
+    grid-row: 1;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail {
+    grid-row: 2;
+    border-top: 1px solid var(--course-line);
+    border-left: 0;
+    max-height: 174px;
+  }
+}
+
+@media (min-width: 1440px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body {
+    padding: 24px 28px 26px;
+  }
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench.ai-runtime-frame--course-shell {
+  --course-canvas: #101010;
+  --course-window: #1b1b1b;
+  --course-sidebar: #242424;
+  --course-ink: #f0f0f0;
+  --course-muted: #a6a6a6;
+  --course-line: rgba(255, 255, 255, .14);
+  --course-line-strong: rgba(255, 255, 255, .34);
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] {
+  background: var(--course-window);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .56), 0 22px 52px rgba(0, 0, 0, .38);
+}
+
+@media (max-width: 760px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__page {
+    width: 100%;
+    height: auto;
+    min-height: 100dvh;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__content {
+    width: 100%;
+    max-width: none;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"],
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"].is-two-column {
+    display: block;
+    width: 100%;
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar { display: none; }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-content {
+    display: flex;
+    min-height: 100dvh;
+    overflow: visible;
+    flex-direction: column;
+    background: var(--course-window) !important;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-toolbar {
+    position: sticky;
+    z-index: 5;
+    top: 0;
+    height: 54px;
+    min-height: 54px;
+    flex-basis: 54px;
+    padding: 0 60px 0 12px;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body {
+    overflow: visible;
+    padding: 16px 12px 24px;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail {
+    display: block;
+    max-height: none;
+    overflow: visible;
+    border-top: 1px solid var(--course-line);
+    border-left: 0;
+    background: var(--course-sidebar) !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__page,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__content,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"],
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-content,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-toolbar,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-content-body,
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail {
+    background: var(--course-window) !important;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .ai-runtime-frame__page {
+    background: var(--course-canvas) !important;
+  }
+}
+
+/* Direct tools are a progressive-disclosure group.  Keeping the links as
+   direct children preserves existing selectors and keyboard targets while
+   giving the course outline the space it needs on every secondary route. */
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar__direct-tools {
+  flex: 0 0 auto;
+  margin-top: auto;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar__direct-tools > summary {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 6px;
+  color: var(--course-muted);
+  cursor: pointer;
+  list-style: none;
+  font-family: "Fusion Pixel 12px Proportional SC", "SimSun", serif;
+  font-size: .72rem;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar__direct-tools > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar__direct-tools > summary:focus-visible {
+  outline: 2px solid var(--course-line-strong);
+  outline-offset: 3px;
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar__direct-tools[open] > summary {
+  color: var(--course-ink);
+}
+
+.ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar__direct-tools[open] > summary .workbench-disclosure__chevron {
+  transform: rotate(225deg) translate(-2px, -1px);
+}
+
+@media (min-width: 761px) {
+  /* The outline is the primary navigation. Give it a stable reading budget;
+     the whole sidebar can scroll when the outline and utility groups exceed
+     the window height, instead of collapsing the course list to a sliver. */
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar {
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-color: var(--course-line-strong) transparent;
+    scrollbar-width: thin;
+  }
+
+  /* The shared course surface gives .workbench-course-outline a deliberate
+     flex: 1 1 0 basis. The route shell needs the complete outline to keep its
+     intrinsic height instead; otherwise the group list is clipped between the
+     top navigation and the utility links. Keep the specificity at the surface
+     level so this wins without relying on a global !important. */
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .user-frame-course-nav {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-course-surface .user-frame-course-nav .workbench-course-groups {
+    flex: 0 0 auto;
+    min-height: 260px;
+    max-height: 360px;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar {
+    background: var(--course-sidebar) !important;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail {
+    background: var(--course-sidebar) !important;
+  }
+}
+
+/* Final tablet grid reset. Older compatibility layers leave implicit tracks
+   behind when the course shell changes from the desktop named-area grid. Set
+   every track and placement explicitly so the editor/stage owns the full
+   width at 761-940px instead of collapsing into the first implicit column. */
+@media (min-width: 761px) and (max-width: 940px) {
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-layout[data-shell="course"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: minmax(0, 1fr) auto !important;
+    grid-template-areas: "content" "rail" !important;
+    grid-auto-columns: auto !important;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-content {
+    grid-area: content;
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    width: auto;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-sidebar {
+    grid-area: auto;
+    grid-column: auto;
+    grid-row: auto;
+    min-width: 0;
+  }
+
+  .ai-runtime-frame--workbench.ai-runtime-frame--course-shell .user-frame-rail {
+    grid-area: rail;
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+    width: auto;
+  }
 }

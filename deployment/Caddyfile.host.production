@@ -22,6 +22,16 @@ www.structify.cn {
         -Server
     }
 
+    # Vite emits content-hashed JavaScript, CSS, fonts, and images under
+    # /assets. Keep these immutable for a year; each release gets new URLs.
+    @frontend_assets path /assets/*
+    header @frontend_assets Cache-Control "public, max-age=31536000, immutable"
+
+    # The HTML shell points at the hashed asset manifest, so revalidate it on
+    # every navigation to pick up a release without serving stale code.
+    @frontend_html path / /index.html /*.html
+    header @frontend_html Cache-Control "no-cache, max-age=0, must-revalidate"
+
     @cors_actual_public {
         header Origin https://structify.cn
         path /api/* /presentation/*
@@ -122,7 +132,9 @@ admin.structify.cn {
     @admin_root path /
     redir @admin_root /admin 308
     @admin_non_management_spa {
-        not path / /admin /admin/* /api /api/* /presentation /presentation/* /healthz /login /reset-password /403
+        # Keep hashed frontend assets on the management origin. Redirecting
+        # them to the public host prevents the module bundle from executing.
+        not path / /admin /admin/* /assets /assets/* /api /api/* /presentation /presentation/* /healthz /login /reset-password /403
     }
     redir @admin_non_management_spa https://structify.cn{uri} 308
     import structify_routes

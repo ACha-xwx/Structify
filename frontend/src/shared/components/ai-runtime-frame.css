@@ -1,0 +1,646 @@
+@font-face {
+  font-family: "Geist Pixel Circle";
+  src: url("../../assets/GeistPixel-Circle.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
+.ai-runtime-frame {
+  --ai-runtime-bg: #000000;
+  --ai-runtime-text: #ffffff;
+  --ai-runtime-muted: #8e8e8e;
+  --ai-runtime-nav-text: #2e2e2e;
+  --ai-runtime-pill-dark: #28282a;
+  --ai-runtime-sign-in-text: #c8c8c8;
+  --ai-runtime-nav-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  --ai-runtime-trust-bg: #28282a;
+  --ai-runtime-trust-border: rgba(255, 255, 255, 0.4);
+  --ai-runtime-trust-text: #c4c2c3;
+  --ai-runtime-font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  --ai-runtime-font-display: "Geist Pixel Circle", monospace;
+  --ai-runtime-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+  isolation: isolate;
+  min-height: 100svh;
+  min-height: 100dvh;
+  overflow: clip;
+  background: var(--ai-runtime-bg);
+  color: var(--ai-runtime-text);
+  font-family: var(--ai-runtime-font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.ai-runtime-frame--landing {
+  height: 100svh;
+  height: 100dvh;
+}
+
+/* The landing contract is a single viewport. Keep the document itself from
+   creating a second scroll surface while the learning routes remain scrollable. */
+body:has(.ai-runtime-frame--landing) {
+  height: 100vh;
+  height: 100dvh;
+  background: #000000;
+  color: #ffffff;
+  overflow: hidden;
+}
+
+.ai-runtime-frame__background,
+.ai-runtime-frame__scrim {
+  position: absolute;
+  z-index: -2;
+  inset: 0;
+  overflow: hidden;
+}
+
+.ai-runtime-frame__background { background: var(--ai-runtime-bg); }
+
+.ai-runtime-frame__video {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.ai-runtime-frame__scrim {
+  z-index: -1;
+  background: rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+}
+
+/* Runtime remains a real media plane on learning routes. The workbench owns
+   the light reading surface above it; replacing this layer with a page-wide
+   paper color made the product look like an unrelated dashboard. Keep this
+   block as the single media source of truth for every workbench route. */
+.ai-runtime-frame--workbench .ai-runtime-frame__scrim { background: rgba(0, 0, 0, 0.48); }
+.ai-runtime-frame--workbench .ai-runtime-frame__background { background: #000000; }
+.ai-runtime-frame--workbench .ai-runtime-frame__video { opacity: .34; mix-blend-mode: normal; }
+
+.ai-runtime-frame__page {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  min-height: 100svh;
+  min-height: 100dvh;
+  flex-direction: column;
+  padding: clamp(16px, 2.4vh, 28px) clamp(14px, 3vw, 32px);
+}
+
+.ai-runtime-frame--landing .ai-runtime-frame__page {
+  height: 100svh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.ai-runtime-frame__header {
+  position: relative;
+  z-index: 20;
+  display: grid;
+  /* The Runtime header now carries two independent switches plus the
+     account action. Give the action cluster its own stable track so the
+     language thumb can never sit on top of the sign-in pill. */
+  width: min(920px, 100%);
+  min-height: clamp(44px, 5.2vw, 48px);
+  margin: 0 auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: clamp(18px, 2.8vw, 28px);
+  flex: 0 0 auto;
+  animation: ai-runtime-slide-down 0.7s var(--ai-runtime-ease-out) both;
+}
+
+/* Header menus must remain a real hit target when they extend over the
+   content plane. The content layer intentionally owns its own z-index for
+   the Runtime scene, so the header establishes the higher interaction layer. */
+.ai-runtime-frame__actions { position: relative; z-index: 21; }
+
+.ai-runtime-frame__mark {
+  display: grid;
+  width: clamp(40px, 4.4vw, 46px);
+  height: clamp(40px, 4.4vw, 46px);
+  place-items: center;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 0;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: var(--ai-runtime-nav-shadow);
+  color: var(--ai-runtime-nav-text);
+  text-decoration: none;
+  transition: transform 150ms ease;
+}
+
+.ai-runtime-frame__mark:focus-visible,
+.ai-runtime-frame__menu-toggle:focus-visible,
+.ai-runtime-frame__nav a:focus-visible,
+.ai-runtime-frame__actions a:focus-visible,
+.ai-runtime-frame__mobile-nav a:focus-visible,
+.ai-runtime-frame__mobile-actions a:focus-visible {
+  outline: 3px solid rgba(255, 255, 255, 0.88);
+  outline-offset: 3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ai-runtime-frame__mark:hover { transform: scale(1.04); }
+}
+
+.ai-runtime-frame__mark-image {
+  display: block;
+  width: 72%;
+  height: 72%;
+  object-fit: contain;
+}
+
+.ai-runtime-frame__mark-shape {
+  position: relative;
+  display: block;
+  width: 72%;
+  height: 72%;
+  overflow: hidden;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+
+.ai-runtime-frame__mark-shape::before,
+.ai-runtime-frame__mark-shape::after,
+.ai-runtime-frame__mark-shape i {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.ai-runtime-frame__mark-shape::before { top: 23%; left: 22%; width: 17%; height: 17%; }
+.ai-runtime-frame__mark-shape::after { right: 19%; bottom: 20%; width: 22%; height: 22%; }
+.ai-runtime-frame__mark-shape i:nth-child(1) { top: 31%; right: 20%; width: 10%; height: 10%; }
+.ai-runtime-frame__mark-shape i:nth-child(2) { bottom: 18%; left: 23%; width: 11%; height: 11%; }
+.ai-runtime-frame__mark-shape i:nth-child(3) { top: 49%; left: 44%; width: 9%; height: 9%; }
+
+.ai-runtime-frame__nav {
+  display: flex;
+  min-width: 0;
+  max-width: 430px;
+  height: clamp(44px, 5.2vw, 48px);
+  align-items: stretch;
+  justify-content: space-between;
+  justify-self: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: var(--ai-runtime-nav-shadow);
+}
+
+.ai-runtime-frame__nav > a {
+  position: relative;
+  display: inline-grid;
+  min-width: 0;
+  place-items: center;
+  padding: 0 clamp(7px, 1.25vw, 13px);
+  color: var(--ai-runtime-nav-text);
+  font-size: clamp(13px, 1.4vw, 15px);
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+  opacity: 0.5;
+  text-decoration: none;
+  transition: opacity 150ms ease;
+  white-space: nowrap;
+}
+
+.ai-runtime-frame__nav > a:hover { opacity: 0.75; }
+.ai-runtime-frame__nav > a.is-active,
+.ai-runtime-frame__nav > a[aria-current="page"] { opacity: 1; }
+
+.ai-runtime-frame__nav > a.is-active::after,
+.ai-runtime-frame__nav > a[aria-current="page"]::after,
+.ai-runtime-frame__mobile-nav > a.is-active::after,
+.ai-runtime-frame__mobile-nav > a[aria-current="page"]::after {
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  display: block;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: -5px 0 currentColor, 5px 0 currentColor;
+  content: "";
+  transform: translateX(-50%);
+}
+
+.ai-runtime-frame__actions {
+  display: flex;
+  min-width: max-content;
+  align-items: center;
+  /* Keep the language switch and account action visually separate. */
+  gap: clamp(8px, 1vw, 12px);
+}
+
+.ai-runtime-frame__sign-in,
+.ai-runtime-frame__actions > a {
+  display: inline-grid;
+  min-height: clamp(44px, 5.2vw, 48px);
+  place-items: center;
+  padding: 0 clamp(16px, 2.1vw, 22px);
+  border-radius: 999px;
+  background: var(--ai-runtime-pill-dark);
+  box-shadow: var(--ai-runtime-nav-shadow);
+  color: var(--ai-runtime-sign-in-text);
+  font-size: clamp(13px, 1.4vw, 15px);
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+  text-decoration: none;
+  transition: transform 150ms ease, color 150ms ease, background-color 150ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ai-runtime-frame__sign-in:hover,
+  .ai-runtime-frame__actions > a:hover { background: #323234; color: #ffffff; transform: translateY(-1px); }
+}
+
+.ai-runtime-frame__menu-toggle { display: none; }
+
+.ai-runtime-frame__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.ai-runtime-frame--landing .ai-runtime-frame__content {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.ai-runtime-frame--workbench .ai-runtime-frame__content {
+  width: min(1520px, 100%);
+  margin: 0 auto;
+  padding-top: clamp(10px, 1.8vh, 18px);
+}
+
+/* The learning workbench is the Runtime scene itself. Keep the Runtime
+   header floating above one continuous content plane instead of wrapping a
+   second white dashboard inside the frame. */
+.ai-runtime-frame--workbench .ai-runtime-frame__page {
+  padding: clamp(16px, 2.4vh, 28px) clamp(14px, 3vw, 32px) 0;
+}
+.ai-runtime-frame--workbench .ai-runtime-frame__header {
+  width: min(1520px, calc(100% - clamp(28px, 6vw, 64px)));
+}
+.ai-runtime-frame--workbench .ai-runtime-frame__content {
+  width: min(1520px, 100%);
+  max-width: 1520px;
+  padding-top: clamp(10px, 1.8vh, 18px);
+}
+
+.ai-runtime-frame--workbench .ai-runtime-frame__header {
+  width: min(1520px, 100%);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.ai-runtime-frame--workbench .ai-runtime-frame__nav { max-width: 620px; }
+.ai-runtime-frame--workbench .ai-runtime-frame__header,
+.ai-runtime-frame--workbench .ai-runtime-frame__page { color: #1d1d1c; }
+.ai-runtime-frame--workbench .ai-runtime-frame__nav { background: rgba(255,255,255,.92); }
+.ai-runtime-frame--workbench .ai-runtime-frame__mark { background: #ffffff; color: #28282a; }
+.ai-runtime-frame--workbench .ai-runtime-frame__mark-shape { border-color: currentColor; }
+.ai-runtime-frame--workbench .ai-runtime-frame__actions { color: #1d1d1c; }
+.workbench-runtime-actions,
+.user-frame-runtime-actions { display: flex; min-width: 0; align-items: center; gap: .42rem; }
+.workbench-runtime-actions .theme-toggle,
+.user-frame-runtime-actions .theme-toggle { margin: 0; }
+.workbench-runtime-actions .workbench-sign-in,
+.user-frame-runtime-actions .user-frame-runtime-account { flex: 0 0 auto; }
+.user-frame-runtime-tools { position: relative; }
+.user-frame-runtime-tools > summary { display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid rgba(29,29,28,.14); border-radius: 50%; background: rgba(255,255,255,.72); color: #1d1d1c; cursor: pointer; font-size: .78rem; letter-spacing: .12em; list-style: none; }
+.user-frame-runtime-tools > summary::-webkit-details-marker { display: none; }
+.user-frame-runtime-tools[open] > summary { background: #fff; border-color: rgba(29,29,28,.38); }
+.user-frame-runtime-tools__panel { position: absolute; z-index: 30; top: calc(100% + .6rem); right: 0; display: grid; width: 220px; padding: .4rem; border: 1px solid rgba(29,29,28,.15); border-radius: 10px; background: rgba(251,250,247,.98); box-shadow: 0 18px 42px rgba(24,24,21,.18); }
+.user-frame-runtime-tools__panel a { display: grid; gap: .12rem; min-height: 52px; padding: .55rem .65rem; color: #1d1d1c; text-decoration: none; }
+.user-frame-runtime-tools__panel a:hover { background: #e9e7e2; }
+.user-frame-runtime-tools__panel strong { font-size: .72rem; font-weight: 600; }
+.user-frame-runtime-tools__panel small { color: #6f6d69; font-family: var(--ai-runtime-font-display); font-size: .46rem; letter-spacing: .06em; }
+
+.ai-runtime-frame__footer { position: relative; z-index: 1; flex: 0 0 auto; }
+
+.ai-runtime-frame__mobile-layer {
+  position: fixed;
+  /* The layer lives inside the page stacking context so the header's X
+     remains clickable while the menu covers the learning surface. */
+  z-index: 19;
+  inset: 0;
+  display: none;
+  padding: clamp(16px, 2.4vh, 28px) clamp(14px, 3vw, 32px);
+  background: rgba(0, 0, 0, 0.62);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: ai-runtime-overlay-in 0.28s var(--ai-runtime-ease-out) both;
+}
+
+.ai-runtime-frame__mobile-layer[hidden] { display: none; }
+
+.ai-runtime-frame__mobile-menu {
+  display: grid;
+  width: min(460px, 100%);
+  max-height: min(690px, calc(100dvh - clamp(32px, 4.8vh, 56px)));
+  margin: clamp(60px, 11vh, 96px) auto auto;
+  padding: 22px 18px 20px;
+  border-radius: 28px;
+  background: #ffffff;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  color: var(--ai-runtime-nav-text);
+  overflow-y: auto;
+  animation: ai-runtime-menu-in 0.38s var(--ai-runtime-ease-out) both;
+}
+
+.ai-runtime-frame__mobile-menu:focus { outline: none; }
+
+.ai-runtime-frame__mobile-nav { display: grid; gap: 4px; margin-top: 18px; }
+
+.ai-runtime-frame__mobile-nav > a {
+  position: relative;
+  display: flex;
+  min-height: 50px;
+  align-items: center;
+  padding: 0 12px;
+  border-radius: 12px;
+  color: var(--ai-runtime-nav-text);
+  font-size: 16px;
+  font-weight: 500;
+  opacity: 0.6;
+  text-decoration: none;
+  animation: ai-runtime-link-in 0.32s var(--ai-runtime-ease-out) both;
+}
+
+.ai-runtime-frame__mobile-nav > a:nth-child(1) { animation-delay: 0.05s; }
+.ai-runtime-frame__mobile-nav > a:nth-child(2) { animation-delay: 0.1s; }
+.ai-runtime-frame__mobile-nav > a:nth-child(3) { animation-delay: 0.15s; }
+.ai-runtime-frame__mobile-nav > a:nth-child(4) { animation-delay: 0.2s; }
+.ai-runtime-frame__mobile-nav > a:nth-child(5) { animation-delay: 0.25s; }
+.ai-runtime-frame__mobile-nav > a.is-active,
+.ai-runtime-frame__mobile-nav > a[aria-current="page"] { background: #eeeeee; opacity: 1; }
+.ai-runtime-frame__mobile-nav > a.is-active::after,
+.ai-runtime-frame__mobile-nav > a[aria-current="page"]::after { bottom: 8px; }
+
+.ai-runtime-frame__mobile-actions { display: grid; margin-top: 18px; padding-top: 18px; border-top: 1px solid #d7d7d7; }
+
+.ai-runtime-frame__mobile-sign-in,
+.ai-runtime-frame__mobile-actions > a {
+  display: grid;
+  min-height: 48px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--ai-runtime-pill-dark);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.ai-runtime-frame__mobile-nav > a[aria-disabled="true"] { cursor: not-allowed; opacity: 0.35; }
+
+@keyframes ai-runtime-slide-down {
+  from { opacity: 0; transform: translateY(-18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ai-runtime-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ai-runtime-menu-in {
+  from { opacity: 0; transform: translateY(-12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ai-runtime-link-in {
+  from { opacity: 0; transform: translateY(9px); }
+  to { opacity: 0.6; transform: translateY(0); }
+}
+
+@media (max-width: 720px) {
+  .ai-runtime-frame__page { padding-right: 16px; padding-left: 16px; }
+  .ai-runtime-frame__header { width: 100%; min-height: 48px; grid-template-columns: auto 1fr auto; gap: 12px; }
+  .ai-runtime-frame__mark { width: 48px; height: 48px; }
+  .ai-runtime-frame__nav,
+  .ai-runtime-frame__actions { display: none; }
+  /* Keep the workbench theme control in the top row. The full action cluster
+     is too dense for a phone, but the theme switch remains a primary shell
+     control and must retain a real hit area without opening the menu first. */
+  .ai-runtime-frame--workbench .ai-runtime-frame__actions {
+    display: flex;
+    grid-column: 2;
+    min-width: 136px;
+    min-height: 40px;
+    justify-self: end;
+    align-items: center;
+    visibility: visible;
+    pointer-events: auto;
+  }
+  .ai-runtime-frame--workbench .workbench-runtime-actions,
+  .ai-runtime-frame--workbench .user-frame-runtime-actions {
+    display: flex;
+    min-width: 136px;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .ai-runtime-frame--workbench .workbench-runtime-actions > :not(.theme-toggle),
+  .ai-runtime-frame--workbench .user-frame-runtime-actions > :not(.theme-toggle) {
+    display: none;
+  }
+  /* Keep the visible header control as a real hit target on narrow screens.
+     The menu contains a second contextual copy, but the header switch must
+     remain available without opening the menu first. */
+  .ai-runtime-frame--workbench .ai-runtime-frame__actions .theme-toggle {
+    display: inline-flex;
+    width: 136px;
+    height: 40px;
+    flex: 0 0 136px;
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .ai-runtime-frame__menu-toggle {
+    position: relative;
+    display: grid;
+    grid-column: 3;
+    width: 48px;
+    height: 48px;
+    justify-self: end;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: var(--ai-runtime-pill-dark);
+    box-shadow: var(--ai-runtime-nav-shadow);
+    cursor: pointer;
+    transition: background-color 180ms ease, transform 180ms ease;
+  }
+  .ai-runtime-frame__menu-toggle span {
+    position: absolute;
+    display: block;
+    width: 18px;
+    height: 1.5px;
+    border-radius: 2px;
+    background: #ffffff;
+    transition: transform 200ms var(--ai-runtime-ease-out), opacity 140ms ease, background-color 160ms ease;
+  }
+  .ai-runtime-frame__menu-toggle span:nth-child(1) { transform: translateY(-6.5px); }
+  .ai-runtime-frame__menu-toggle span:nth-child(3) { transform: translateY(6.5px); }
+  .ai-runtime-frame.is-menu-open .ai-runtime-frame__menu-toggle { background: #ffffff; }
+  .ai-runtime-frame.is-menu-open .ai-runtime-frame__menu-toggle span { background: var(--ai-runtime-nav-text); }
+  .ai-runtime-frame.is-menu-open .ai-runtime-frame__menu-toggle span:nth-child(1) { transform: translateY(0) rotate(45deg); }
+  .ai-runtime-frame.is-menu-open .ai-runtime-frame__menu-toggle span:nth-child(2) { opacity: 0; }
+  .ai-runtime-frame.is-menu-open .ai-runtime-frame__menu-toggle span:nth-child(3) { transform: translateY(0) rotate(-45deg); }
+  .ai-runtime-frame__mobile-layer:not([hidden]) { display: block; }
+  .ai-runtime-frame--workbench .ai-runtime-frame__content { padding-top: 18px; }
+  .ai-runtime-frame--workbench .ai-runtime-frame__video { opacity: .14; }
+  .ai-runtime-frame--workbench .ai-runtime-frame__page { padding: 20px 16px 0; }
+  .ai-runtime-frame--workbench .ai-runtime-frame__header { width: 100%; }
+  .user-frame-runtime-tools > summary { width: 36px; height: 36px; }
+  .user-frame-runtime-tools__panel { position: fixed; top: 4.3rem; right: .75rem; width: min(260px, calc(100vw - 1.5rem)); }
+}
+
+@media (max-height: 700px) and (max-width: 720px) {
+  .ai-runtime-frame--landing .ai-runtime-frame__page { padding-top: 14px; padding-bottom: 14px; }
+  .ai-runtime-frame__mobile-menu { margin-top: 52px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-runtime-frame *,
+  .ai-runtime-frame *::before,
+  .ai-runtime-frame *::after { animation: none !important; transition: none !important; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .ai-runtime-frame__scrim { background: rgba(0, 0, 0, 0.36); }
+  .ai-runtime-frame__mobile-layer { background: rgba(0, 0, 0, 0.9); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
+.ai-runtime-frame.is-reduced-motion *,
+.ai-runtime-frame.is-reduced-motion *::before,
+.ai-runtime-frame.is-reduced-motion *::after { animation: none !important; transition: none !important; }
+
+/* Keep the poster visible as the static reduced-motion scene. Playback is
+   paused by the component logic, so this does not reintroduce motion. */
+.ai-runtime-frame.is-reduced-motion .ai-runtime-frame__video { visibility: visible; }
+
+.ai-runtime-frame.is-reduced-transparency .ai-runtime-frame__scrim { background: rgba(0, 0, 0, 0.36); }
+.ai-runtime-frame.is-reduced-transparency .ai-runtime-frame__mobile-layer { background: rgba(0, 0, 0, 0.9); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.ai-runtime-frame.is-reduced-transparency .user-frame-runtime-tools__panel { background: #fbfaf7; }
+
+/* Reduced transparency keeps the workbench a readable paper plane. The
+   landing page intentionally falls back to a dark scrim, but applying that
+   same fallback here would reintroduce a separate charcoal backdrop behind
+   the learning scene. */
+.ai-runtime-frame.ai-runtime-frame--workbench.is-reduced-transparency .ai-runtime-frame__scrim {
+  background: rgba(242, 241, 238, .92);
+}
+.ai-runtime-frame.ai-runtime-frame--workbench.is-reduced-transparency .ai-runtime-frame__video {
+  opacity: .06;
+}
+
+/* Workbench theme contract: the light paper plane has a deliberate dark
+   counterpart. Keep the algorithm stage itself unchanged; these rules cover
+   the surrounding Runtime chrome and learning surfaces that previously used
+   fixed light values. */
+html[data-theme="dark"] .ai-runtime-frame--workbench {
+  --ai-runtime-bg: #0e0e0e;
+  --ai-runtime-nav-text: #ededed;
+  --ai-runtime-sign-in-text: #e4e4e4;
+  background: #0e0e0e;
+  color: #ededed;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__background {
+  background: #0e0e0e;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__scrim,
+html[data-theme="dark"] .ai-runtime-frame.ai-runtime-frame--workbench.is-reduced-transparency .ai-runtime-frame__scrim {
+  background: rgba(14, 14, 14, .9);
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__video {
+  opacity: .035;
+  mix-blend-mode: normal;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__header,
+html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__page,
+html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__actions {
+  color: #ededed;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__nav {
+  border: 1px solid rgba(255, 255, 255, .14);
+  background: rgba(31, 31, 31, .94);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .28);
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__nav > a {
+  color: #f0f0f0;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__mark {
+  background: #e9e9e9;
+  color: #191919;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .34);
+}
+
+html[data-theme="dark"] .workbench-runtime-actions .workbench-search,
+html[data-theme="dark"] .user-frame-runtime-tools__panel {
+  border-color: rgba(255, 255, 255, .16);
+  background: rgba(28, 28, 28, .98);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, .44);
+  color: #ededed;
+}
+
+html[data-theme="dark"] .user-frame-runtime-tools > summary {
+  border-color: rgba(255, 255, 255, .18);
+  background: rgba(35, 35, 35, .9);
+  color: #ededed;
+}
+
+html[data-theme="dark"] .user-frame-runtime-tools__panel a,
+html[data-theme="dark"] .workbench-runtime-actions .workbench-search input,
+html[data-theme="dark"] .workbench-runtime-actions .workbench-search button {
+  color: #ededed;
+}
+
+html[data-theme="dark"] .user-frame-runtime-tools__panel a:hover {
+  background: #3a3a3a;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__mobile-menu {
+  background: #1b1b1b;
+  color: #ededed;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__mobile-nav > a[aria-current="page"] {
+  background: #333333;
+  color: #f2f2f2;
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__mobile-actions {
+  border-top-color: rgba(255, 255, 255, .16);
+}
+
+html[data-theme="dark"] .ai-runtime-frame--workbench .ai-runtime-frame__mobile-actions .theme-toggle {
+  justify-self: center;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 720px) {
+  .ai-runtime-frame__mobile-actions .theme-toggle { display: inline-flex; justify-self: center; }
+}

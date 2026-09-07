@@ -31,7 +31,10 @@ export interface AuthStore {
   handleUnauthorized(error?: unknown): void;
   hasRole(role: Role): boolean;
   hasAnyRole(roles: Role[]): boolean;
+  hasSessionHint(): boolean;
 }
+
+const SESSION_HINT_KEY = "structify.session.hint";
 
 function responseData<T>(response: { kind: string; data?: T }): T {
   if (response.kind !== "json") throw new Error("接口未返回 JSON 数据");
@@ -76,9 +79,28 @@ export function createAuthStore(options: { api: ApiClient; onTokenChange?: (toke
   });
   let token: string | null = null;
 
+  const sessionHintStorage = () => {
+    if (typeof window === "undefined") return null;
+    try {
+      return window.localStorage;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeSessionHint = (value: boolean) => {
+    const storage = sessionHintStorage();
+    if (!storage) return;
+    if (value) storage.setItem(SESSION_HINT_KEY, "1");
+    else storage.removeItem(SESSION_HINT_KEY);
+  };
+
+  const hasSessionHint = () => sessionHintStorage()?.getItem(SESSION_HINT_KEY) === "1";
+
   const clear = (status: AuthStatus = "anonymous", error: AuthState["error"] = null) => {
     token = null;
     options.onTokenChange?.(null);
+    writeSessionHint(false);
     state.user = null;
     state.capabilities = null;
     state.capabilityStatus = "unknown";
@@ -90,6 +112,7 @@ export function createAuthStore(options: { api: ApiClient; onTokenChange?: (toke
   const applyAuthResponse = (response: AuthResponse): User => {
     token = response.token || null;
     options.onTokenChange?.(token);
+    writeSessionHint(true);
     state.user = response.user;
     state.capabilities = null;
     state.capabilityStatus = "unknown";
@@ -217,5 +240,6 @@ export function createAuthStore(options: { api: ApiClient; onTokenChange?: (toke
     handleUnauthorized,
     hasRole: (role: Role) => Boolean(state.user?.roles.includes(role)),
     hasAnyRole: (roles: Role[]) => Boolean(state.user && roles.some((role) => state.user?.roles.includes(role))),
+    hasSessionHint,
   };
 }

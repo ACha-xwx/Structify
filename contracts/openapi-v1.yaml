@@ -604,6 +604,22 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/LearningProgress'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+  /learning/workbench:
+    get:
+      tags: [Learning]
+      summary: Restore the caller's latest valid persisted algorithm scene
+      description: >-
+        Returns aggregate owned activity and, when present, the caller's latest
+        renderer-compatible DSVP scene for a published chapter. A missing or malformed
+        historical payload is omitted instead of being represented as a saved scene.
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      responses:
+        '200':
+          description: Owned learning-workbench context
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LearningWorkbench'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
   /learning/events:
     post:
       tags: [Learning]
@@ -1044,6 +1060,58 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /admin/sandbox-config:
+    get:
+      tags: [Admin]
+      summary: Read the configured code execution sandbox capability
+      description: >-
+        Returns a credential-free view of the persisted sandbox target. A disabled
+        or missing configuration is reported as unavailable and execution remains
+        fail-closed. Supported providers are PISTON and JUDGE0.
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      responses:
+        '200':
+          description: Sandbox capability and safe configuration view
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxConfigCapability'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    put:
+      tags: [Admin]
+      summary: Save and enable or disable the code execution sandbox
+      description: >-
+        Saves a validated HTTPS service URL (local HTTP is allowed only in dev/test),
+        resets prior connection evidence, and records an administrative audit event.
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UpdateSandboxConfigRequest'}
+      responses:
+        '200':
+          description: Safe persisted sandbox configuration view
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxConfig'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/sandbox-config/test:
+    post:
+      tags: [Admin]
+      summary: Probe the saved sandbox connection
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      responses:
+        '200':
+          description: Non-sensitive connection result
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SandboxConnectionTest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '409': {$ref: '#/components/responses/Conflict'}
   /admin/model-config/test:
     post:
       tags: [Admin]
@@ -1699,6 +1767,24 @@ components:
         chapters:
           type: array
           items: {$ref: '#/components/schemas/ChapterProgress'}
+    PersistedWorkbenchScene:
+      type: object
+      required: [recordId, chapterId, definition]
+      properties:
+        recordId: {type: string}
+        chapterId: {type: string}
+        definition: {$ref: '#/components/schemas/AnimationDefinition'}
+        updatedAt: {type: string, format: date-time, nullable: true}
+    LearningWorkbench:
+      type: object
+      required: [progress]
+      properties:
+        currentChapterId: {type: string, nullable: true}
+        progress: {$ref: '#/components/schemas/LearningProgress'}
+        scene:
+          allOf:
+            - {$ref: '#/components/schemas/PersistedWorkbenchScene'}
+          nullable: true
     LearningEventRequest:
       type: object
       required: [eventType]
@@ -1795,7 +1881,7 @@ components:
         modules:
           type: object
           additionalProperties: {$ref: '#/components/schemas/AdminModuleCapability'}
-          description: Includes users, audit, reviewQueue, backgroundTasks, modelSettings, and mailSettings.
+          description: Includes users, audit, reviewQueue, backgroundTasks, modelSettings, mailSettings, and sandboxSettings.
         service: {$ref: '#/components/schemas/AdminServiceStatus'}
     AdminModuleCapability:
       type: object
@@ -1975,6 +2061,58 @@ components:
         reviewerUserId: {type: integer, format: int64, nullable: true}
         requestId: {type: string, maxLength: 128}
         createdAt: {type: string, format: date-time}
+    SandboxConfigCapability:
+      type: object
+      required: [available]
+      properties:
+        available: {type: boolean}
+        reason:
+          type: string
+          nullable: true
+          enum: [NOT_CONFIGURED, PERSISTED_CONFIGURATION_DISABLED, SANDBOX_CONFIG_INVALID]
+        configuration:
+          allOf: [{$ref: '#/components/schemas/SandboxConfig'}]
+          nullable: true
+        runtime:
+          allOf: [{$ref: '#/components/schemas/SandboxRuntimeStatus'}]
+          nullable: true
+    SandboxRuntimeStatus:
+      type: object
+      required: [codeExecutionConfigured, source, provider]
+      properties:
+        codeExecutionConfigured: {type: boolean}
+        source: {type: string, enum: [persisted, environment, unknown]}
+        provider: {type: string, enum: [PISTON, JUDGE0, UNKNOWN]}
+        checkedAt: {type: string, format: date-time, nullable: true}
+    SandboxConfig:
+      type: object
+      required: [provider, baseUrl, enabled, updatedAt]
+      properties:
+        provider: {type: string, enum: [PISTON, JUDGE0]}
+        baseUrl: {type: string, format: uri, maxLength: 2048}
+        enabled: {type: boolean}
+        lastConnectionTestStatus:
+          type: string
+          nullable: true
+          description: Diagnostic result of the latest explicit probe.
+        lastConnectionTestedAt: {type: string, format: date-time, nullable: true}
+        updatedAt: {type: string, format: date-time}
+    UpdateSandboxConfigRequest:
+      type: object
+      required: [provider, baseUrl, enabled]
+      properties:
+        provider: {type: string, enum: [PISTON, JUDGE0]}
+        baseUrl: {type: string, format: uri, minLength: 1, maxLength: 2048}
+        enabled: {type: boolean}
+    SandboxConnectionTest:
+      type: object
+      required: [connected, code]
+      properties:
+        connected: {type: boolean}
+        code:
+          type: string
+          pattern: '^[A-Z0-9_]{1,64}$'
+          description: Controlled result code; no upstream response details are exposed.
     ModelConfigCapability:
       type: object
       required: [available]

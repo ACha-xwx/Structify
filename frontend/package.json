@@ -11,6 +11,8 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
+    "@fontsource/fusion-pixel-12px-proportional-sc": "^5.3.0",
+    "@fontsource/inter": "5.3.0",
     "@paper-design/shaders": "^0.0.80",
     "vue": "^3.5.18",
     "vue-router": "^4.5.1"
@@ -22,7 +24,6 @@
     "jsdom": "^26.0.0",
     "typescript": "^5.8.3",
     "vite": "^6.3.5",
-    "vite-plugin-singlefile": "^2.2.0",
     "vitest": "^3.2.4",
     "vue-tsc": "^2.2.10"
   }

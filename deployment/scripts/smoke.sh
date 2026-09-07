@@ -47,6 +47,7 @@ if [[ "$EXECUTE" != "1" ]]; then
   printf '%s\n' "+ curl --fail --max-time 15 --head $DOMAIN/"
   printf '%s\n' "+ curl --fail --max-time 15 $DOMAIN/healthz"
   printf '%s\n' "+ curl --max-time 15 --head $ADMIN_DOMAIN/ (expect 308 Location: /admin)"
+  printf '%s\n' "+ curl --fail --max-time 15 $ADMIN_DOMAIN/admin and verify its hashed assets stay on the admin origin"
   printf '%s\n' "+ curl --max-time 15 --head $ADMIN_DOMAIN/user/chapters?admin-host-contract=1 (expect 308 Location: $PUBLIC_ORIGIN/user/chapters?admin-host-contract=1)"
   printf '%s\n' "+ curl --fail --max-time 15 $ADMIN_DOMAIN/healthz"
   printf '%s\n' "+ curl --fail --max-time 15 -H 'Origin: $PUBLIC_ORIGIN' -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Headers: authorization,content-type,x-request-id' -X OPTIONS $DOMAIN/api/v1/chapters"
@@ -76,6 +77,21 @@ curl --fail --silent --show-error --max-time 15 --head "$DOMAIN/" >/dev/null
 health="$(curl --fail --silent --show-error --max-time 15 "$DOMAIN/healthz")"
 printf '%s\n' "$health" | grep -q '"ok":true'
 expect_redirect "$ADMIN_DOMAIN/" "/admin"
+
+admin_html="$(curl --fail --silent --show-error --max-time 15 "$ADMIN_DOMAIN/admin")"
+admin_asset_paths="$(printf '%s' "$admin_html" | grep -Eo '/assets/[^"'"'"' ]+\.(js|css)' | sort -u)"
+[[ -n "$admin_asset_paths" ]] || { printf '%s\n' 'admin shell does not reference hashed assets' >&2; exit 1; }
+while IFS= read -r asset_path; do
+  [[ -n "$asset_path" ]] || continue
+  asset_headers="$(curl --fail --silent --show-error --max-time 15 --head "$ADMIN_DOMAIN$asset_path")"
+  normalized_asset_headers="${asset_headers//$'\r'/}"
+  printf '%s\n' "$normalized_asset_headers" | grep -Eq '^HTTP/[0-9.]+ 200([[:space:]]|$)' \
+    || { printf 'admin asset did not return 200: %s\n' "$asset_path" >&2; exit 1; }
+  if printf '%s\n' "$normalized_asset_headers" | grep -Eqi '^location:'; then
+    printf 'admin asset unexpectedly redirected: %s\n' "$asset_path" >&2
+    exit 1
+  fi
+done <<< "$admin_asset_paths"
 expect_redirect "$ADMIN_DOMAIN/user/chapters?admin-host-contract=1" "$PUBLIC_ORIGIN/user/chapters?admin-host-contract=1"
 admin_health="$(curl --fail --silent --show-error --max-time 15 "$ADMIN_DOMAIN/healthz")"
 printf '%s\n' "$admin_health" | grep -q '"ok":true'

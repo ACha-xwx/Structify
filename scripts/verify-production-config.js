@@ -10,6 +10,8 @@ const nodeRoot = path.join(root, "backend", "node");
 const publicOrigin = "https://structify.cn";
 const adminOrigin = "https://admin.structify.cn";
 const productionCorsOrigins = `${publicOrigin},${adminOrigin}`;
+const fixtureModelConfigMasterKey = Buffer.alloc(32, 1).toString("base64");
+const fixtureMailConfigMasterKey = Buffer.alloc(32, 2).toString("base64");
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -195,6 +197,7 @@ function verifyOptionalDeploymentContract() {
   assert.match(preflight, /for path_key in KNOWLEDGE_DIR_HOST RESOURCE_DIR_HOST PRESENTATION_DIR_HOST PDF_SOURCE_DIR_HOST; do/);
   assert.doesNotMatch(preflight, /AUTH_MAIL_ENABLED\)"\s*=~\s*\^\(true\|1\|yes\|on\)/);
   assert.match(preflight, /AUTH_MAIL_ENABLED/);
+  assert.match(preflight, /\^\[A-Za-z0-9\+\/\]\{43\}=\$/);
   assert.match(preflight, /BOOTSTRAP_ADMIN_PROVISION_ENABLED/);
   assert.match(preflight, /BOOTSTRAP_ADMIN_PROVISION_RECONCILE_EXISTING/);
   assert.match(preflight, /clear BOOTSTRAP_ADMIN_PROVISION_\* after successful startup/);
@@ -208,6 +211,9 @@ function verifyOptionalDeploymentContract() {
   );
   assert.match(backup, /chmod 600 "\$DEST"\/\*/);
   assert.match(backup, /mysqldump[^\n]*--no-tablespaces/);
+  assert.match(backup, /--retain COUNT/);
+  assert.match(backup, /RETAIN=2/);
+  assert.match(backup, /pruning obsolete backup/);
   assert.match(restore, /compose up -d mysql/);
   assert.ok(
     restore.indexOf("compose up -d mysql") < restore.indexOf('compose exec -T mysql'),
@@ -233,7 +239,7 @@ function verifyOptionalDeploymentContract() {
   assert.match(productionCaddy, /header Origin https:\/\/admin\.structify\.cn/);
   assert.match(hostCaddy, /Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"/);
   assert.match(productionCaddy, /Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"/);
-  const adminHostBoundary = /@admin_root path \/\s*redir @admin_root \/admin 308\s*@admin_non_management_spa\s*\{\s*not path \/ \/admin \/admin\/\* \/api \/api\/\* \/presentation \/presentation\/\* \/healthz \/login \/reset-password \/403\s*\}\s*redir @admin_non_management_spa https:\/\/structify\.cn\{uri\} 308/s;
+  const adminHostBoundary = /@admin_root path \/\s*redir @admin_root \/admin 308\s*@admin_non_management_spa\s*\{\s*(?:#[^\n]*\n\s*)*not path \/ \/admin \/admin\/\* \/assets \/assets\/\* \/api \/api\/\* \/presentation \/presentation\/\* \/healthz \/login \/reset-password \/403\s*\}\s*redir @admin_non_management_spa https:\/\/structify\.cn\{uri\} 308/s;
   for (const [name, caddy] of [["host", hostCaddy], ["container", productionCaddy], ["direct-host example", directHostCaddy]]) {
     assert.match(caddy, /admin\.structify\.cn\s*\{/, `${name} Caddy configuration must declare the admin host`);
     assert.match(caddy, adminHostBoundary, `${name} Caddy configuration must isolate non-management SPA paths`);
@@ -364,6 +370,9 @@ function verifyHostCaddyPreflight() {
     "MYSQL_ROOT_PASSWORD=test-root-password",
     `JWT_SECRET=${"j".repeat(64)}`,
     `NODE_COMPAT_JWT_SECRET=${"n".repeat(64)}`,
+    `MODEL_CONFIG_MASTER_KEY=${fixtureModelConfigMasterKey}`,
+    `MAIL_CONFIG_MASTER_KEY=${fixtureMailConfigMasterKey}`,
+    `MAIL_CONFIG_MASTER_KEY=${fixtureMailConfigMasterKey}`,
     "NODE_COMPAT_ENABLED=true",
     `CORS_ALLOWED_ORIGINS=${productionCorsOrigins}`,
     "AUTH_COOKIE_SECURE=true",
@@ -446,6 +455,8 @@ function verifyHostCaddyExecuteGate() {
     "MYSQL_ROOT_PASSWORD=test-root-password",
     `JWT_SECRET=${"j".repeat(64)}`,
     `NODE_COMPAT_JWT_SECRET=${"n".repeat(64)}`,
+    `MODEL_CONFIG_MASTER_KEY=${fixtureModelConfigMasterKey}`,
+    `MAIL_CONFIG_MASTER_KEY=${fixtureMailConfigMasterKey}`,
     "NODE_COMPAT_ENABLED=true",
     `CORS_ALLOWED_ORIGINS=${productionCorsOrigins}`,
     "AUTH_COOKIE_SECURE=true",
@@ -546,6 +557,8 @@ function verifyLowMemoryBudgetGate() {
     "MYSQL_ROOT_PASSWORD=test-root-password",
     `JWT_SECRET=${"j".repeat(64)}`,
     `NODE_COMPAT_JWT_SECRET=${"n".repeat(64)}`,
+    `MODEL_CONFIG_MASTER_KEY=${fixtureModelConfigMasterKey}`,
+    `MAIL_CONFIG_MASTER_KEY=${fixtureMailConfigMasterKey}`,
     "NODE_COMPAT_ENABLED=true",
     `CORS_ALLOWED_ORIGINS=${productionCorsOrigins}`,
     "AUTH_COOKIE_SECURE=true",
@@ -728,6 +741,8 @@ function verifyContainerCaddyExecuteGate() {
     "MYSQL_ROOT_PASSWORD=test-root-password",
     `JWT_SECRET=${"j".repeat(64)}`,
     `NODE_COMPAT_JWT_SECRET=${"n".repeat(64)}`,
+    `MODEL_CONFIG_MASTER_KEY=${fixtureModelConfigMasterKey}`,
+    `MAIL_CONFIG_MASTER_KEY=${fixtureMailConfigMasterKey}`,
     "NODE_COMPAT_ENABLED=true",
     `CORS_ALLOWED_ORIGINS=${productionCorsOrigins}`,
     "AUTH_COOKIE_SECURE=true",
@@ -1018,6 +1033,8 @@ function verifyOriginCaPreflightAndWiring() {
     "MYSQL_ROOT_PASSWORD=test-root-password",
     `JWT_SECRET=${"j".repeat(64)}`,
     `NODE_COMPAT_JWT_SECRET=${"n".repeat(64)}`,
+    `MODEL_CONFIG_MASTER_KEY=${fixtureModelConfigMasterKey}`,
+    `MAIL_CONFIG_MASTER_KEY=${fixtureMailConfigMasterKey}`,
     "NODE_COMPAT_ENABLED=true",
     `CORS_ALLOWED_ORIGINS=${productionCorsOrigins}`,
     "AUTH_COOKIE_SECURE=true",
@@ -1172,6 +1189,9 @@ function verifyProductionEnvGenerator() {
     assert.match(values.JWT_SECRET, /^[a-f0-9]{64}$/);
     assert.match(values.NODE_COMPAT_JWT_SECRET, /^[a-f0-9]{64}$/);
     assert.notEqual(values.JWT_SECRET, values.NODE_COMPAT_JWT_SECRET);
+    assert.match(values.MODEL_CONFIG_MASTER_KEY, /^[A-Za-z0-9+/]{43}=$/);
+    assert.match(values.MAIL_CONFIG_MASTER_KEY, /^[A-Za-z0-9+/]{43}=$/);
+    assert.notEqual(values.MODEL_CONFIG_MASTER_KEY, values.MAIL_CONFIG_MASTER_KEY);
     assert.equal(values.AUTH_MAIL_ENABLED, "false");
     assert.equal(values.MODEL_API_KEY, "");
     assert.equal(values.PISTON_BASE_URL, "");
@@ -1198,6 +1218,8 @@ function verifyProductionEnvGenerator() {
     }
     assert.doesNotMatch(outputText, new RegExp(values.MYSQL_PASSWORD));
     assert.doesNotMatch(outputText, new RegExp(values.JWT_SECRET));
+    assert.equal(outputText.includes(values.MODEL_CONFIG_MASTER_KEY), false);
+    assert.equal(outputText.includes(values.MAIL_CONFIG_MASTER_KEY), false);
 
     const second = spawnSync(shell, args, { cwd: root, encoding: "utf8" });
     const secondOutput = `${second.stdout || ""}\n${second.stderr || ""}`;

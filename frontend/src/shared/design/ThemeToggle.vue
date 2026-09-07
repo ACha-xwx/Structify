@@ -1,17 +1,34 @@
 <script setup lang="ts">
 import { computed, ref, useId } from "vue";
+import { useLocale } from "../i18n/locale";
 import { useTheme } from "./theme";
 
-const { isDark, setTheme } = useTheme();
+const props = withDefaults(defineProps<{
+  /** Keep hidden/contextual copies out of generic theme-toggle queries. */
+  registerControl?: boolean;
+}>(), {
+  registerControl: true,
+});
 
-const label = computed(() => isDark.value ? "切换到浅色主题" : "切换到深色主题");
+const { isDark, toggleTheme } = useTheme();
+const { locale, toggleLocale } = useLocale();
+
+const label = computed(() => {
+  if (locale.value === "en-US") return isDark.value ? "Switch to light theme" : "Switch to dark theme";
+  return isDark.value ? "切换到浅色主题" : "切换到深色主题";
+});
 const labelId = `theme-toggle-label-${useId()}`;
 const grainFilterId = `theme-toggle-grain-${useId()}`;
+const localeControlLabel = computed(() => locale.value === "zh-CN" ? "切换语言，当前中文" : "Switch language, currently English");
 const pulseId = ref(0);
 
 function updateTheme() {
   pulseId.value += 1;
-  setTheme(isDark.value ? "light" : "dark");
+  toggleTheme();
+}
+
+function updateLocale() {
+  toggleLocale();
 }
 </script>
 
@@ -28,12 +45,13 @@ function updateTheme() {
     </svg>
     <button
       class="theme-toggle__control"
+      :data-theme-toggle="props.registerControl ? '' : undefined"
       :class="{ 'is-dark': isDark }"
       type="button"
       role="switch"
       :aria-checked="isDark"
       :aria-labelledby="labelId"
-      @click="updateTheme"
+      @click.stop="updateTheme"
     >
       <span class="theme-toggle__groove" aria-hidden="true"></span>
       <span class="theme-toggle__gloss" aria-hidden="true"></span>
@@ -59,6 +77,18 @@ function updateTheme() {
         </svg>
       </span>
     </button>
+    <button
+      class="theme-toggle__locale-toggle"
+      type="button"
+      role="switch"
+      :aria-checked="locale === 'en-US'"
+      :aria-label="localeControlLabel"
+      :title="localeControlLabel"
+      @click.stop="updateLocale"
+    >
+      <span class="theme-toggle__locale-track" aria-hidden="true"></span>
+      <span class="theme-toggle__locale-thumb" aria-hidden="true">{{ locale === 'en-US' ? 'EN' : '中' }}</span>
+    </button>
   </div>
 </template>
 
@@ -66,11 +96,12 @@ function updateTheme() {
 .theme-toggle {
   position: relative;
   display: inline-flex;
-  width: 64px;
+  width: 136px;
   height: 40px;
-  flex: 0 0 64px;
+  flex: 0 0 136px;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 8px;
 }
 
 .theme-toggle__sr-only {
@@ -90,6 +121,7 @@ function updateTheme() {
   display: flex;
   width: 64px;
   height: 40px;
+  flex: 0 0 64px;
   align-items: center;
   padding: 4px;
   overflow: hidden;
@@ -100,6 +132,8 @@ function updateTheme() {
   color: #5d6063;
   cursor: pointer;
   isolation: isolate;
+  touch-action: manipulation;
+  user-select: none;
   transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 120ms ease;
 }
 
@@ -141,10 +175,10 @@ function updateTheme() {
   transform: translateY(-50%);
   transition: color 180ms ease, opacity 180ms ease;
 }
-.theme-toggle__ambient-icon--sun { left: 7px; color: #a97518; }
+.theme-toggle__ambient-icon--sun { left: 7px; color: #666666; }
 .theme-toggle__ambient-icon--moon { right: 7px; color: #62666a; }
-.theme-toggle__control.is-dark .theme-toggle__ambient-icon--sun { color: #e3d6a2; opacity: 0.7; }
-.theme-toggle__control.is-dark .theme-toggle__ambient-icon--moon { color: #dbe4ea; opacity: 0.88; }
+.theme-toggle__control.is-dark .theme-toggle__ambient-icon--sun { color: #cfcfcf; opacity: 0.7; }
+.theme-toggle__control.is-dark .theme-toggle__ambient-icon--moon { color: #e1e1e1; opacity: 0.88; }
 
 .theme-toggle__thumb {
   position: relative;
@@ -159,7 +193,7 @@ function updateTheme() {
   border-radius: 50%;
   background: linear-gradient(145deg, #ffffff 0%, #fefefe 52%, #f3f3f1 100%);
   box-shadow: inset 1px 1px 2px rgba(196, 196, 190, 0.3), inset -1px -1px 2px rgba(255, 255, 255, 1), inset 0 1px 1px rgba(255, 255, 255, 1), 0 1px 2px rgba(255, 255, 255, 0.9), 0 3px 7px rgba(0, 0, 0, 0.16);
-  color: #b17a17;
+  color: #606060;
   transform: translateX(0);
   transition: transform 360ms cubic-bezier(0.22, 1.28, 0.36, 1), background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, color 180ms ease;
 }
@@ -168,7 +202,7 @@ function updateTheme() {
   border-color: rgba(163, 163, 163, 0.34);
   background: linear-gradient(145deg, #707070 0%, #4b4b4b 52%, #303030 100%);
   box-shadow: inset 1px 1px 2px rgba(168, 168, 168, 0.28), inset -1px -1px 2px rgba(0, 0, 0, 0.78), inset 0 1px 1px rgba(255, 255, 255, 0.13), 0 3px 8px rgba(0, 0, 0, 0.48);
-  color: #e7deaf;
+  color: #e1e1e1;
   transform: translateX(26px);
 }
 
@@ -190,6 +224,47 @@ function updateTheme() {
   animation: theme-toggle-particle 440ms var(--particle-delay) ease-out both;
 }
 
+.theme-toggle__locale-toggle {
+  position: relative;
+  display: inline-flex;
+  width: 64px;
+  height: 40px;
+  flex: 0 0 64px;
+  align-items: center;
+  padding: 4px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface, #f7f7f5) 76%, #898989 24%);
+  color: var(--text, #242424);
+  cursor: pointer;
+  transition: background 180ms ease, border-color 180ms ease, transform 120ms ease;
+}
+.theme-toggle__locale-toggle:active { transform: scale(.985); }
+.theme-toggle__locale-toggle:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+.theme-toggle__locale-track { position: absolute; inset: 3px; border-radius: inherit; background: linear-gradient(to bottom, rgba(255,255,255,.42), rgba(0,0,0,.08)); pointer-events: none; }
+.theme-toggle__locale-thumb {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: 50%;
+  background: var(--surface, #ffffff);
+  box-shadow: 0 2px 6px rgba(0,0,0,.16);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+  transform: translateX(0);
+  transition: transform 260ms cubic-bezier(.22,1.28,.36,1), background 180ms ease;
+}
+.theme-toggle__locale-toggle[aria-checked="true"] { background: color-mix(in srgb, var(--text, #242424) 22%, var(--surface, #f7f7f5)); }
+.theme-toggle__locale-toggle[aria-checked="true"] .theme-toggle__locale-thumb { transform: translateX(26px); }
+
 @keyframes theme-toggle-particle {
   0% { opacity: 0; transform: scale(0.1); }
   28% { opacity: 0.72; }
@@ -201,5 +276,15 @@ function updateTheme() {
   .theme-toggle__thumb,
   .theme-toggle__ambient-icon { transition: none; }
   .theme-toggle__particle { animation: none; }
+}
+
+@media (max-width: 720px) {
+  /* Keep both independent switches reachable on narrow screens. */
+  .theme-toggle {
+    width: 136px;
+    flex-basis: 136px;
+  }
+
+  .theme-toggle__locale-toggle { position: relative; top: auto; right: auto; }
 }
 </style>

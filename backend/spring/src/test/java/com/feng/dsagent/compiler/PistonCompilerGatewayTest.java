@@ -71,6 +71,40 @@ class PistonCompilerGatewayTest {
     }
 
     @Test
+    void mapsJudge0AcceptedAndCompilationErrorsToTheStableContract() throws Exception {
+        AtomicReference<JsonNode> capturedRequest = new AtomicReference<>();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/submissions", exchange -> {
+          try {
+            capturedRequest.set(objectMapper.readTree(exchange.getRequestBody()));
+            respond(exchange, 200, """
+                {"status":{"id":3,"description":"Accepted"},"stdout":"ok\\n","stderr":null,"compile_output":null}
+                """);
+          } catch (Exception error) {
+            exchange.close();
+          }
+        });
+        server.start();
+        CompilerProperties properties = properties(Duration.ofSeconds(2));
+        PistonCompilerGateway gateway = new PistonCompilerGateway(
+            properties,
+            objectMapper,
+            new SandboxConfigRuntimeSettingsSource(new SandboxRuntimeSettings(
+                SandboxProvider.JUDGE0,
+                "http://127.0.0.1:" + server.getAddress().getPort(),
+                true
+            ))
+        );
+
+        CompilerExecution execution = gateway.execute(SupportedLanguage.C, "int main(void){}", "");
+
+        assertThat(capturedRequest.get().get("language_id").asInt()).isEqualTo(50);
+        assertThat(capturedRequest.get().get("source_code").asText()).contains("main");
+        assertThat(execution.status()).isEqualTo("success");
+        assertThat(execution.stdout()).isEqualTo("ok\n");
+    }
+
+    @Test
     void convertsUpstreamTimeoutToAStableApiError() throws Exception {
         startServer(exchange -> {
             try {
@@ -160,9 +194,62 @@ class PistonCompilerGatewayTest {
         assertThat(execution.stderr()).contains("expected ';'");
     }
 
+    @Test
+    void mapsJudge0SuccessAndUsesTheCSubmissionContract() throws Exception {
+        AtomicReference<JsonNode> capturedRequest = new AtomicReference<>();
+        startServer(exchange -> {
+            capturedRequest.set(objectMapper.readTree(exchange.getRequestBody()));
+            respond(exchange, 200, """
+                {"status":{"id":3,"description":"Accepted"},"stdout":"sandbox-ok\\n","stderr":null,"compile_output":null}
+                """);
+        });
+        SandboxRuntimeSettings settings = new SandboxRuntimeSettings(
+            SandboxProvider.JUDGE0,
+            "http://127.0.0.1:" + server.getAddress().getPort(),
+            true
+        );
+        CompilerProperties properties = properties(Duration.ofSeconds(2));
+        PistonCompilerGateway gateway = new PistonCompilerGateway(
+            properties,
+            objectMapper,
+            new SandboxConfigRuntimeSettingsSource(settings)
+        );
+
+        CompilerExecution execution = gateway.execute(SupportedLanguage.C, "int main(void) { return 0; }", "");
+
+        assertThat(capturedRequest.get().get("language_id").asInt()).isEqualTo(50);
+        assertThat(capturedRequest.get().get("source_code").asText()).contains("main");
+        assertThat(execution.status()).isEqualTo("success");
+        assertThat(execution.stdout()).isEqualTo("sandbox-ok\n");
+    }
+
+    @Test
+    void doesNotTreatPendingJudge0SubmissionsAsUserRuntimeErrors() throws Exception {
+        startServer(exchange -> respond(exchange, 200, """
+            {"status":{"id":2,"description":"Processing"},"stdout":null,"stderr":null}
+            """));
+        SandboxRuntimeSettings settings = new SandboxRuntimeSettings(
+            SandboxProvider.JUDGE0,
+            "http://127.0.0.1:" + server.getAddress().getPort(),
+            true
+        );
+        CompilerProperties properties = properties(Duration.ofSeconds(2));
+        PistonCompilerGateway gateway = new PistonCompilerGateway(
+            properties,
+            objectMapper,
+            new SandboxConfigRuntimeSettingsSource(settings)
+        );
+
+        assertThatThrownBy(() -> gateway.execute(SupportedLanguage.C, "int main(void) { return 0; }", ""))
+            .isInstanceOfSatisfying(ApiException.class, error -> {
+                assertThat(error.status()).isEqualTo(HttpStatus.GATEWAY_TIMEOUT);
+                assertThat(error.code()).isEqualTo("COMPILER_UPSTREAM_TIMEOUT");
+            });
+    }
+
     private void startServer(ThrowingHandler handler) throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/execute", exchange -> {
+        server.createContext("/", exchange -> {
             try {
                 handler.handle(exchange);
             } catch (Exception error) {

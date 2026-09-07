@@ -243,3 +243,54 @@ export interface TestMailResult {
   sent: boolean;
   code: string;
 }
+
+/**
+ * The Spring compiler reads the selected provider from the persisted admin
+ * configuration. The URL is always server-side; no provider credentials cross
+ * the browser boundary.
+ */
+export type SandboxProvider = "PISTON" | "JUDGE0";
+/** @deprecated Use SandboxProvider; retained for callers during the migration. */
+export type SandboxProtocol = SandboxProvider;
+
+export type SandboxConfigCapabilityReason =
+  | "SANDBOX_CONFIG_UNAVAILABLE"
+  | "NOT_CONFIGURED"
+  | "PERSISTED_CONFIGURATION_DISABLED"
+  | "MASTER_KEY_UNAVAILABLE"
+  | "SANDBOX_CONFIG_INVALID"
+  | string;
+
+export interface SandboxConfig {
+  provider: SandboxProvider;
+  baseUrl: string;
+  enabled: boolean;
+  updatedAt?: IsoDateTime | null;
+  lastConnectionTestStatus?: string | null;
+  lastConnectionTestedAt?: IsoDateTime | null;
+}
+
+export interface SandboxRuntimeStatus {
+  codeExecutionConfigured: boolean;
+  source?: "environment" | "persisted" | "unknown";
+  provider?: SandboxProvider | "UNKNOWN";
+  checkedAt?: IsoDateTime | null;
+}
+
+export interface SandboxConfigCapability {
+  available: boolean;
+  reason?: SandboxConfigCapabilityReason | null;
+  configuration?: SandboxConfig | null;
+  runtime?: SandboxRuntimeStatus | null;
+}
+
+export interface UpdateSandboxConfigRequest {
+  provider: SandboxProvider;
+  baseUrl: string;
+  enabled: boolean;
+}
+
+export interface SandboxConnectionTest {
+  connected: boolean;
+  code: string;
+}

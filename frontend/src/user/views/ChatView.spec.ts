@@ -1,8 +1,10 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { setLocale } from "../../shared/i18n/locale";
 
-const { mockApi } = vi.hoisted(() => ({
+const { authMock, mockApi } = vi.hoisted(() => ({
+  authMock: { state: { user: null as null | { id: number; email: string; roles: string[] } } },
   mockApi: {
     getReadiness: vi.fn(),
     streamChat: vi.fn(),
@@ -13,6 +15,7 @@ const { mockApi } = vi.hoisted(() => ({
 }));
 
 vi.mock("../runtime", () => ({ userApi: mockApi }));
+vi.mock("../../app/providers/runtime", () => ({ auth: authMock }));
 
 import ChatView from "./ChatView.vue";
 
@@ -40,17 +43,22 @@ function stream(events: Array<{ event: string; parsed?: unknown; data?: string }
   })();
 }
 
+let mountedWrapper: ReturnType<typeof mount> | null = null;
+
 async function mountView() {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
       { path: "/user/coach", component: { template: "<div />" } },
       { path: "/user/animation", component: { template: "<div />" } },
+      { path: "/user/chapters", component: { template: "<div />" } },
+      { path: "/user/knowledge", component: { template: "<div />" } },
+      { path: "/login", component: { template: "<div />" } },
     ],
   });
   await router.push("/user/coach?chapterId=stack");
   await router.isReady();
-  return mount(ChatView, {
+  mountedWrapper = mount(ChatView, {
     attachTo: document.body,
     global: {
       plugins: [router],
@@ -59,16 +67,43 @@ async function mountView() {
       },
     },
   });
+  return mountedWrapper!;
 }
 
 describe("ChatView", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
     vi.clearAllMocks();
+    setLocale("zh-CN");
+    authMock.state.user = { id: 7, email: "learner@example.com", roles: ["STUDENT"] };
     mockApi.getReadiness.mockResolvedValue(allowedReadiness);
     mockApi.listChatSessions.mockResolvedValue([]);
   });
-  afterEach(() => { document.body.innerHTML = ""; });
+
+  it("游客首开不读取会话或 readiness，并只显示一个可行动的登录入口", async () => {
+    authMock.state.user = null;
+    const wrapper = await mountView();
+    await flushPromises();
+
+    expect(mockApi.getReadiness).not.toHaveBeenCalled();
+    expect(mockApi.listChatSessions).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("登录后即可开始课程问答");
+    expect(wrapper.find('[data-testid="chat-new-conversation"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="chat-refresh-readiness"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="chat-prompt"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="chat-course"]').attributes("href")).toBe("/user/chapters?chapterId=stack&from=coach");
+    expect(wrapper.get('[data-testid="chat-knowledge"]').attributes("href")).toBe("/user/knowledge?chapterId=stack&from=coach");
+    expect(wrapper.text()).toContain("栈");
+    expect(wrapper.text()).not.toContain("stack");
+    expect(mockApi.getReadiness).not.toHaveBeenCalled();
+    expect(mockApi.streamChat).not.toHaveBeenCalled();
+  });
+  afterEach(() => {
+    mountedWrapper?.unmount();
+    mountedWrapper = null;
+    setLocale("zh-CN");
+    document.body.innerHTML = "";
+  });
 
   it("在 readiness 通过后消费 sources、delta 与 done 事件", async () => {
     mockApi.streamChat.mockResolvedValue({
@@ -108,6 +143,7 @@ describe("ChatView", () => {
     await flushPromises();
 
     expect(wrapper.text()).toContain("模型暂不可用");
+    expect(wrapper.text()).not.toContain("MODEL_NOT_CONFIGURED");
     await wrapper.get('[data-testid="chat-retry"]').trigger("click");
     await flushPromises();
 
@@ -161,5 +197,18 @@ describe("ChatView", () => {
     expect(mockApi.deleteChatSession).toHaveBeenCalledWith("session-1");
     expect(wrapper.text()).toContain("暂未保存课程问答会话。");
     expect(document.activeElement).toBe(wrapper.get('[data-testid="chat-new-conversation"]').element);
+  });
+
+  it("英文 locale 同步问答页正文，并隐藏内部阻断标识", async () => {
+    setLocale("en-US");
+    authMock.state.user = null;
+    const wrapper = await mountView();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("Course Q&A");
+    expect(wrapper.text()).toContain("Sign in to start course Q&A");
+    expect(wrapper.text()).toContain("Account conversations");
+    expect(wrapper.text()).not.toContain("课程问答");
+    expect(wrapper.text()).not.toContain("stack");
   });
 });

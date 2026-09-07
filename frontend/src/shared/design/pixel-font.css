@@ -1,0 +1,11 @@
+/* The Fontsource package only ships the Latin subset. Keep the CJK face
+   local so the Runtime headline never falls back to a low-resolution system
+   bitmap when it is painted onto canvas. */
+@font-face {
+  font-family: "Fusion Pixel CJK";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url("../../assets/fusion-pixel-12px-proportional-zh-hans.woff2") format("woff2");
+  unicode-range: U+3000-303F, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF;
+}

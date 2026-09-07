@@ -7,13 +7,14 @@ import LiquidMetalButton from "../../admin/components/LiquidMetalButton.vue";
 import DirectionalArrowIcon from "../../shared/components/DirectionalArrowIcon.vue";
 import ExitArrowIcon from "../../shared/components/ExitArrowIcon.vue";
 
-type NavigationIcon = "overview" | "users" | "reviews" | "tasks" | "audit" | "settings" | "mail";
+type NavigationIcon = "overview" | "users" | "reviews" | "tasks" | "audit" | "settings" | "mail" | "sandbox";
 type NavigationItem = { to: string; label: string };
 type AdminNavigationItem = NavigationItem & { icon: NavigationIcon };
 
 const route = useRoute();
 const router = useRouter();
 const isAdmin = computed(() => route.meta.layout === "admin");
+const isWorkbenchSurface = computed(() => route.name === "home" || route.meta.layout === "workbench");
 const desktopSidebarExpanded = ref(false);
 const desktopSidebarPinned = ref(false);
 const desktopSidebarVisible = computed(() => desktopSidebarExpanded.value || desktopSidebarPinned.value);
@@ -33,6 +34,7 @@ const adminNavItems: AdminNavigationItem[] = [
   { to: "/admin/audit", label: "审计", icon: "audit" },
   { to: "/admin/settings", label: "模型设置", icon: "settings" },
   { to: "/admin/mail", label: "邮件设置", icon: "mail" },
+  { to: "/admin/sandbox", label: "沙箱配置", icon: "sandbox" },
 ];
 const learningNavItems: NavigationItem[] = [
   { to: "/user/chapters", label: "章节" },
@@ -49,6 +51,7 @@ const navigationIconPaths: Record<NavigationIcon, string[]> = {
   audit: ["M8 6h11", "M8 12h11", "M8 18h11", "M4.5 6h.01", "M4.5 12h.01", "M4.5 18h.01"],
   settings: ["M4 6h16", "M4 12h16", "M4 18h16", "M8 4v4", "M16 10v4", "M10 16v4"],
   mail: ["M4 6h16v12H4z", "m4 7 8 6 8-6"],
+  sandbox: ["M5 5h14v14H5z", "M8 9h.01", "M12 9h.01", "M16 9h.01", "M8 13h.01", "M12 13h.01", "M16 13h.01"],
 };
 
 const AdminNavIcon = (props: { name: NavigationIcon }) => h(
@@ -189,7 +192,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="app-frame" :class="{ 'app-frame--admin': isAdmin }">
+  <div class="app-frame" :class="{ 'app-frame--admin': isAdmin, 'app-frame--workbench': isWorkbenchSurface }">
     <template v-if="isAdmin">
       <header class="admin-mobile-bar">
         <RouterLink class="admin-mobile-bar__brand" to="/admin" aria-label="返回管理总览">
@@ -252,6 +255,10 @@ onBeforeUnmount(() => {
         </aside>
         <main class="app-main admin-workspace__main" id="main-content"><slot /></main>
       </div>
+    </template>
+
+    <template v-else-if="isWorkbenchSurface">
+      <main class="app-main app-main--workbench" id="main-content"><slot /></main>
     </template>
 
     <template v-else>
@@ -342,27 +349,35 @@ onBeforeUnmount(() => {
 
 .admin-sidebar__pin {
   --pin-offset-x: 12px;
+  --pin-icon: var(--admin-ink);
   position: absolute;
   top: 50%;
-  right: 10px;
+  right: 8px;
   display: grid;
-  width: 32px;
-  height: 32px;
+  width: 46px;
+  height: 46px;
   place-items: center;
   padding: 0;
   border: 1px solid color-mix(in srgb, var(--admin-line-strong) 86%, transparent);
   border-radius: 50%;
-  background: color-mix(in srgb, var(--surface) 78%, transparent);
-  color: #000;
+  background:
+    linear-gradient(106deg, transparent 0 27%, rgba(255, 255, 255, .78) 43%, transparent 59%),
+    linear-gradient(180deg, #ffffff 0%, #f6f8f9 31%, #e8ecee 68%, #d5dce0 100%);
+  color: var(--pin-icon);
   cursor: pointer;
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
   transform: translate3d(var(--pin-offset-x), -50%, 0) rotate(-12deg) scale(0.92);
-  box-shadow: inset 1px 1px 0 color-mix(in srgb, var(--surface) 72%, transparent), inset -1px -1px 0 color-mix(in srgb, var(--text) 10%, transparent), 0 5px 12px color-mix(in srgb, var(--text) 12%, transparent);
-  -webkit-backdrop-filter: blur(12px) saturate(1.05);
-  backdrop-filter: blur(12px) saturate(1.05);
-  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, opacity 120ms ease, visibility 0s linear, box-shadow 180ms ease, transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, .22),
+    0 18px 10px rgba(0, 0, 0, .04),
+    0 9px 9px rgba(0, 0, 0, .11),
+    0 2px 5px rgba(0, 0, 0, .16),
+    inset 0 1px 0 rgba(255, 255, 255, .98),
+    inset 0 -1px 0 rgba(67, 83, 92, .17),
+    inset 1px 0 0 rgba(255, 255, 255, .72);
+  transition: opacity 120ms ease, visibility 0s linear, transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .admin-workspace.is-sidebar-expanded .admin-sidebar__pin {
   --pin-offset-x: 0px;
@@ -374,11 +389,49 @@ onBeforeUnmount(() => {
   transition-delay: 260ms;
 }
 .admin-sidebar__pin:hover,
-.admin-sidebar__pin:focus-visible { outline: 0; border-color: #000; background: color-mix(in srgb, var(--surface) 92%, transparent); color: #000; box-shadow: var(--focus-ring), inset 1px 1px 0 color-mix(in srgb, var(--surface) 76%, transparent), 0 7px 16px color-mix(in srgb, var(--text) 16%, transparent); }
+.admin-sidebar__pin:focus-visible {
+  outline: 0;
+  border-color: var(--admin-ink);
+  color: var(--pin-icon);
+  box-shadow:
+    var(--focus-ring),
+    0 0 0 1px rgba(0, 0, 0, .28),
+    0 12px 6px rgba(0, 0, 0, .06),
+    0 5px 7px rgba(0, 0, 0, .14),
+    inset 0 1px 0 rgba(255, 255, 255, .98),
+    inset 0 -1px 0 rgba(67, 83, 92, .2);
+}
 .admin-sidebar__pin:active { transform: translate3d(0, -50%, 0) rotate(0deg) scale(0.94); }
-.admin-sidebar__pin-glyph { display: grid; width: 20px; height: 20px; place-items: center; line-height: 0; transform: translateY(-1px) rotate(90deg); transform-origin: center; transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1); }
-.admin-sidebar__pin[aria-pressed="true"] .admin-sidebar__pin-glyph { transform: translateY(-1px) rotate(0deg); }
+.admin-sidebar__pin-glyph { position: relative; z-index: 1; display: grid; width: 20px; height: 20px; place-items: center; line-height: 0; color: inherit; transform: rotate(90deg); transform-origin: center; transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1); }
+.admin-sidebar__pin[aria-pressed="true"] .admin-sidebar__pin-glyph { transform: rotate(0deg); }
 .admin-sidebar__pin svg { display: block; width: 19px; height: 19px; }
+
+:global([data-theme="dark"]) .app-frame--admin .admin-sidebar__pin {
+  --pin-icon: var(--admin-ink);
+  border-color: rgba(255, 255, 255, .36);
+  background:
+    linear-gradient(106deg, transparent 0 27%, rgba(255, 255, 255, .22) 43%, transparent 59%),
+    linear-gradient(180deg, #8a8a8a 0%, #626262 42%, #3d3d3d 70%, #292929 100%);
+  color: var(--pin-icon);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, .48),
+    0 9px 9px rgba(0, 0, 0, .2),
+    0 2px 5px rgba(0, 0, 0, .28),
+    inset 0 1px 0 rgba(255, 255, 255, .3),
+    inset 0 -1px 0 rgba(0, 0, 0, .5),
+    inset 1px 0 0 rgba(255, 255, 255, .16);
+}
+:global([data-theme="dark"]) .app-frame--admin .admin-sidebar__pin:hover,
+:global([data-theme="dark"]) .app-frame--admin .admin-sidebar__pin:focus-visible {
+  border-color: #f0f0f0;
+  color: var(--pin-icon);
+  box-shadow:
+    var(--focus-ring),
+    0 0 0 1px rgba(0, 0, 0, .58),
+    0 8px 8px rgba(0, 0, 0, .3),
+    inset 0 1px 0 rgba(255, 255, 255, .36),
+    inset 0 -1px 0 rgba(0, 0, 0, .58);
+}
 
 .admin-brand-mark {
   position: relative;
@@ -499,6 +552,7 @@ onBeforeUnmount(() => {
 }
 .admin-mobile-bar,
 .admin-mobile-nav-layer { display: none; }
+.app-main--workbench { width: 100%; max-width: none; margin: 0; padding: 0; }
 @keyframes admin-workspace-enter { from { opacity: 0; transform: translateY(8px) scale(0.995); } to { opacity: 1; transform: translateY(0) scale(1); } }
 
 @media (max-width: 920px) {

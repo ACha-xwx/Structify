@@ -11,10 +11,13 @@ import RetryButton from "../../shared/components/RetryButton.vue";
 import StatusBadge from "../../shared/components/StatusBadge.vue";
 import InlineNotice from "../../shared/components/InlineNotice.vue";
 import DirectionalArrowIcon from "../../shared/components/DirectionalArrowIcon.vue";
+import RuntimeSelect, { type RuntimeSelectOption } from "../../shared/components/RuntimeSelect.vue";
 
 const page = ref(0); const size = 20; const total = ref(0); const items = ref<BackgroundTask[]>([]); const loading = ref(true); const error = ref(""); const notice = ref(""); const actionBusy = ref<number | null>(null); const selected = ref<BackgroundTask | null>(null); const detailBusy = ref(false); const detailError = ref("");
 const filters = reactive<{ status: string; taskType: string }>({ status: "", taskType: "" });
 const statuses: BackgroundTaskStatus[] = ["PENDING", "RUNNING", "SUCCEEDED", "FAILED", "CANCELED"];
+const taskStatusOptions = computed<RuntimeSelectOption[]>(() => [{ value: "", label: "全部状态" }, ...statuses.map((status) => ({ value: status, label: status }))]);
+const taskTypeOptions: RuntimeSelectOption[] = [{ value: "", label: "全部类型" }, { value: "STALE_TASK_RECOVERY", label: "过期任务恢复" }];
 const tableFilter = ref("");
 const sortKey = ref("createdAt");
 const sortDirection = ref<"asc" | "desc">("desc");
@@ -165,8 +168,8 @@ onMounted(load);
 
     <form class="admin-command-row admin-toolbar" @submit.prevent="applyFilters">
       <div class="admin-command-row__label"><span class="admin-kicker">任务筛选</span><strong>后台任务</strong></div>
-      <label class="admin-field"><span>状态</span><select v-model="filters.status"><option value="">全部状态</option><option v-for="status in statuses" :key="status" :value="status">{{ status }}</option></select></label>
-      <label class="admin-field"><span>任务类型</span><select v-model="filters.taskType"><option value="">全部类型</option><option value="STALE_TASK_RECOVERY">STALE_TASK_RECOVERY</option></select></label>
+      <label class="admin-field"><span>状态</span><RuntimeSelect v-model="filters.status" :options="taskStatusOptions" ariaLabel="状态" /></label>
+      <label class="admin-field"><span>任务类型</span><RuntimeSelect v-model="filters.taskType" :options="taskTypeOptions" ariaLabel="任务类型" /></label>
       <button class="button button--primary admin-command-row__submit" type="submit" :disabled="loading || actionBusy !== null">筛选<span aria-hidden="true">↗</span></button>
     </form>
 

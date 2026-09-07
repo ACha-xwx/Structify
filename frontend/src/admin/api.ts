@@ -16,6 +16,10 @@ import type {
   MailConnectionTest,
   TestMailResult,
   UpdateMailConfigRequest,
+  SandboxConfig,
+  SandboxConfigCapability,
+  SandboxConnectionTest,
+  UpdateSandboxConfigRequest,
   ReviewDetail,
   ReviewHistoryEvent,
   ReviewItem,
@@ -73,6 +77,15 @@ export const adminApi = {
   },
   async sendTestMail(config: UpdateMailConfigRequest, recipient: string): Promise<TestMailResult> {
     return jsonData(await api.post<TestMailResult>("/admin/mail-config/test-email", { config, recipient }));
+  },
+  async getSandboxConfig(): Promise<SandboxConfigCapability> {
+    return jsonData(await api.get<SandboxConfigCapability>("/admin/sandbox-config"));
+  },
+  async updateSandboxConfig(payload: UpdateSandboxConfigRequest): Promise<SandboxConfig> {
+    return jsonData(await api.put<SandboxConfig>("/admin/sandbox-config", payload));
+  },
+  async testSandboxConnection(): Promise<SandboxConnectionTest> {
+    return jsonData(await api.post<SandboxConnectionTest>("/admin/sandbox-config/test"));
   },
   async users(query: AdminQuery = {}): Promise<AdminUserPage> {
     return jsonData(await api.get<AdminUserPage>("/admin/users", { query: compactQuery(query) }));

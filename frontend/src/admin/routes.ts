@@ -6,6 +6,7 @@ import AdminTasksView from "./views/AdminTasksView.vue";
 import AdminAuditView from "./views/AdminAuditView.vue";
 import AdminSettingsView from "./views/AdminSettingsView.vue";
 import AdminMailConfigView from "./views/AdminMailConfigView.vue";
+import AdminSandboxConfigView from "./views/AdminSandboxConfigView.vue";
 
 const adminMeta = { requiresAuth: true, roles: ["ADMIN"], layout: "admin" } as const;
 
@@ -17,4 +18,5 @@ export const adminRoutes: RouteRecordRaw[] = [
   { path: "/admin/audit", name: "admin-audit", component: AdminAuditView, meta: { ...adminMeta, module: "Audit events" } },
   { path: "/admin/settings", name: "admin-settings", component: AdminSettingsView, meta: { ...adminMeta, module: "Model settings" } },
   { path: "/admin/mail", name: "admin-mail", component: AdminMailConfigView, meta: { ...adminMeta, module: "Mail delivery" } },
+  { path: "/admin/sandbox", name: "admin-sandbox", component: AdminSandboxConfigView, meta: { ...adminMeta, module: "Code sandbox" } },
 ];
