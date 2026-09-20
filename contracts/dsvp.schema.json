@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://structify.cn/contracts/dsvp.schema.json",
   "title": "Data Structure Visualization Protocol",
-  "description": "Versioned, validated request and trace envelope shared by classroom, PPT, Node and Spring adapters.",
+  "description": "Versioned, validated request and trace envelope shared by classroom, PPT, Node and Spring adapters. The top-level object is the request. The response side is described by $defs/dsvpSimulationResponse, whose steps carry the engine's rich state snapshots.",
   "type": "object",
   "additionalProperties": false,
   "required": ["version", "structure", "operation", "params", "initial_state"],
@@ -10,22 +10,122 @@
     "version": {"const": "1.0"},
     "structure": {
       "type": "string",
-      "enum": ["stack", "queue", "sequential_list", "linked_list", "tree", "graph", "heap", "hash", "array"]
+      "description": "The nine values frozen in DSVP 1.0 (stack, queue, sequential_list, linked_list, tree, graph, heap, hash, array) plus the reviewed textbook structures served by the local deterministic engine. heap/hash/array have no textbook capability and are answered only by the in-process fallback.",
+      "enum": [
+        "stack",
+        "queue",
+        "sequential_list",
+        "linked_list",
+        "tree",
+        "graph",
+        "heap",
+        "hash",
+        "array",
+        "circular_linked_list",
+        "static_linked_list",
+        "doubly_linked_list",
+        "polynomial",
+        "double_stack",
+        "linked_stack",
+        "stack_app",
+        "recursion",
+        "linked_queue",
+        "circular_queue",
+        "queue_app",
+        "circular_buffer",
+        "string",
+        "heap_string",
+        "special_matrix",
+        "sparse_matrix",
+        "generalized_list",
+        "forest",
+        "huffman",
+        "union_find",
+        "search",
+        "bst",
+        "avl",
+        "btree",
+        "hash_table",
+        "hash_function",
+        "sort",
+        "external_sort"
+      ]
     },
     "operation": {"type": "string", "minLength": 1, "maxLength": 32},
     "params": {
       "type": "object",
       "additionalProperties": false,
+      "description": "Capability arguments. A field may carry two shapes where the frozen surface and the textbook engine disagree: `order` is a traversal name for tree operations and an integer order for B-tree operations, and `edges` is integer index pairs for the frozen surface and labelled/weighted triples for the engine. Both are accepted on purpose; the engine path forwards params verbatim, the in-process fallback validates the subset it can execute.",
       "properties": {
         "value": {"$ref": "#/$defs/scalar"},
-        "capacity": {"type": "integer", "minimum": 1, "maximum": 100},
+        "val": {"$ref": "#/$defs/scalar"},
+        "capacity": {"type": "integer", "minimum": 1, "maximum": 200},
         "position": {"type": "integer", "minimum": 1, "maximum": 1024},
         "index": {"type": "integer", "minimum": 0, "maximum": 1024},
         "node": {"type": "integer", "minimum": 0, "maximum": 1024},
         "i": {"type": "integer", "minimum": 0, "maximum": 1024},
         "j": {"type": "integer", "minimum": 0, "maximum": 1024},
-        "key": {"type": "string", "maxLength": 48},
-        "val": {"type": "string", "maxLength": 48}
+        "n": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "size": {"type": "integer", "minimum": 1, "maximum": 1024},
+        "count": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "mid": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "root": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "pageSize": {"type": "integer", "minimum": 1, "maximum": 64},
+        "memorySize": {"type": "integer", "minimum": 1, "maximum": 64},
+        "tableSize": {"type": "integer", "minimum": 1, "maximum": 200},
+        "blockSize": {"type": "integer", "minimum": 1, "maximum": 64},
+        "width": {"type": "integer", "minimum": 1, "maximum": 32},
+        "modulus": {"type": "integer", "minimum": 1, "maximum": 1000000},
+        "randomValue": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "discardTailDigits": {"type": "integer", "minimum": 0, "maximum": 32},
+        "ways": {"type": "integer", "minimum": 2, "maximum": 16},
+        "rows": {"type": "integer", "minimum": 1, "maximum": 64},
+        "a": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "b": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "element": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "key": {
+          "description": "Search/insert/delete key. The frozen surface uses strings; numeric keys are used by search, B-tree, BST, AVL and hashing capabilities.",
+          "oneOf": [{"type": "string", "maxLength": 48}, {"type": "integer"}]
+        },
+        "target": {"type": "string", "maxLength": 48},
+        "start": {"type": "string", "maxLength": 48},
+        "kind": {"type": "string", "maxLength": 32},
+        "text": {"type": "string", "maxLength": 400},
+        "pattern": {"type": "string", "maxLength": 400},
+        "expression": {"type": "string", "maxLength": 400},
+        "sequence": {"type": "string", "maxLength": 400},
+        "directed": {"type": "boolean"},
+        "order": {
+          "description": "Traversal name for tree visit/highlight/traverse; B-tree order (integer) for btree.* capabilities.",
+          "oneOf": [
+            {"type": "string", "enum": ["preorder", "inorder", "postorder", "levelorder"]},
+            {"type": "integer", "minimum": 2, "maximum": 64}
+          ]
+        },
+        "edges": {
+          "description": "Integer index pairs for the frozen graph surface; labelled/weighted triples ([from, to] or [from, to, weight]) for the textbook graph capabilities.",
+          "type": "array",
+          "maxItems": 256,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 3
+          }
+        },
+        "nodes": {"type": "array", "maxItems": 64},
+        "values": {"type": "array", "maxItems": 64},
+        "left": {"oneOf": [{"type": "array", "maxItems": 64}, {"type": "string", "maxLength": 400}]},
+        "right": {"oneOf": [{"type": "array", "maxItems": 64}, {"type": "string", "maxLength": 400}]},
+        "input": {"oneOf": [{"type": "array", "maxItems": 256}, {"type": "string", "maxLength": 400}]},
+        "matrix": {"type": "array", "maxItems": 32},
+        "terms": {"type": "array", "maxItems": 64},
+        "weights": {"type": "array", "maxItems": 64},
+        "symbols": {"type": "array", "maxItems": 64},
+        "trees": {"type": "array", "maxItems": 32},
+        "usedIndices": {"type": "array", "maxItems": 64},
+        "gaps": {"type": "array", "maxItems": 32},
+        "positions": {"type": "array", "maxItems": 32},
+        "other": {"type": "array", "maxItems": 64}
       }
     },
     "initial_state": {
@@ -33,7 +133,7 @@
       "additionalProperties": false,
       "required": ["data"],
       "properties": {
-        "data": {"type": "array", "maxItems": 64},
+        "data": {"type": "array", "maxItems": 256},
         "metadata": {
           "type": "object",
           "additionalProperties": {"$ref": "#/$defs/scalar"}
@@ -82,6 +182,96 @@
         {"type": "boolean"},
         {"type": "null"}
       ]
+    },
+    "dsvpSimulationResponse": {
+      "description": "Response of POST /api/v1/animations/simulate. `request` echoes the normalized request, `trace` is the executed trace, and `animationData` is the renderer payload.",
+      "type": "object",
+      "required": ["protocol", "request", "trace", "animationData", "evidencePersisted", "matchSource"],
+      "properties": {
+        "protocol": {"const": "dsvp/1.0"},
+        "request": {"$ref": "#"},
+        "trace": {"$ref": "#/$defs/dsvpTrace"},
+        "animationData": {"type": "object"},
+        "recordId": {"type": ["string", "null"]},
+        "evidencePersisted": {"type": "boolean"},
+        "animationRecordId": {"type": ["string", "null"]},
+        "resolvedChapterId": {"type": ["string", "null"]},
+        "matchSource": {"type": "string", "enum": ["NONE", "CLASSROOM_SESSION", "PRESENTATION_PAGE", "EXPLICIT_CHAPTER", "ANIMATION_DEFINITION"]}
+      }
+    },
+    "dsvpTrace": {
+      "type": "object",
+      "required": ["steps"],
+      "properties": {
+        "version": {"type": "string"},
+        "protocol": {"const": "dsvp/1.0"},
+        "trace_id": {"type": "string"},
+        "structure": {"type": "string"},
+        "operation": {"type": "string"},
+        "title": {"type": "string"},
+        "summary": {"type": "object"},
+        "source_ref": {"type": "string"},
+        "steps": {"type": "array", "items": {"$ref": "#/$defs/dsvpTraceStep"}},
+        "errors": {"type": "array"},
+        "warnings": {"type": "array"}
+      }
+    },
+    "dsvpTraceStep": {
+      "type": "object",
+      "properties": {
+        "step_id": {"type": "integer"},
+        "phase": {"type": "string"},
+        "title": {"type": "string"},
+        "description": {"type": "string"},
+        "action": {"type": "object"},
+        "state": {"$ref": "#/$defs/dsvpState"},
+        "highlights": {"$ref": "#/$defs/dsvpHighlights"},
+        "actions": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "dsvpState": {
+      "description": "One deterministic frame. `kind` names the structure family (38 in the reviewed textbook) and `view` is the list of panels a renderer draws. Panel roles carry the panel's meaning (`array`, `tree`, `graph`, `table`, `matrix`, `probe`, `meta`, ...); any extra key on a panel is frame metadata such as front/rear/top/index/pivot.",
+      "type": "object",
+      "properties": {
+        "kind": {"type": "string"},
+        "view": {"type": "array", "items": {"$ref": "#/$defs/dsvpPanel"}},
+        "meta": {"type": "object"}
+      }
+    },
+    "dsvpPanel": {
+      "type": "object",
+      "required": ["role"],
+      "properties": {
+        "role": {"type": "string"},
+        "values": {},
+        "nodes": {"type": "array", "items": {"type": "object"}},
+        "edges": {"type": "array"}
+      },
+      "additionalProperties": true
+    },
+    "dsvpHighlights": {
+      "type": "object",
+      "properties": {
+        "nodes": {"type": "array"},
+        "edges": {"type": "array"},
+        "cells": {"type": "array"},
+        "pointers": {"type": "array"}
+      }
+    },
+    "dsvpPlayerStep": {
+      "description": "One renderable step as returned inside animationData.steps. `dsvpState` is the authoritative frame; `stateSnapshot` is the flat value list kept for the legacy renderer.",
+      "type": "object",
+      "required": ["op", "label"],
+      "properties": {
+        "op": {"type": "string"},
+        "label": {"type": "string"},
+        "note": {"type": "string"},
+        "stateSnapshot": {"type": "array"},
+        "phase": {"type": "string"},
+        "dsvpState": {"$ref": "#/$defs/dsvpState"},
+        "dsvpHighlights": {"$ref": "#/$defs/dsvpHighlights"},
+        "dsvpActions": {"type": "array", "items": {"type": "object"}}
+      }
     }
   }
 }

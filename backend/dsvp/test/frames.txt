@@ -1,0 +1,208 @@
+
+########## graph.dijkstra  steps=9 type=graph title=Dijkstra 单源最短路径
+initial=[{"role":"graph","values":[],"nodes":["A","B","C","D"],"edges":[["A","B",2],["A","C",5],["B","C",1],["B","D",4],["C","D",2]]},{"role":"meta","values":[],"operation":"dijkstra","visited":[],"current":null}]
+--- step 0 op=select label=确定当前最短顶点 | A 的最短距离确定为 0。
+    state={"kind":"graph","view":[{"role":"graph","values":[],"nodes":["A","B","C","D"],"edges":[["A","B",2],["A","C",5],["B","C",1],["B","D",4],["C","D",2]]},{"role":"meta","values":[],"operation":"dijkstra","start":"A","dist":{"A":0,"B":null,"C":null,"D":null},"settled":["A"],"current":"A"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 1 op=relax label=松弛边 | A→B 后 dist[B]=2。
+    state={"kind":"graph","view":[{"role":"graph","values":[],"nodes":["A","B","C","D"],"edges":[["A","B",2],["A","C",5],["B","C",1],["B","D",4],["C","D",2]]},{"role":"meta","values":[],"operation":"dijkstra","start":"A","dist":{"A":0,"B":2,"C":null,"D":null},"settled":["A"],"current":"B","relax":["A","B",2]}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 2 op=relax label=松弛边 | A→C 后 dist[C]=5。
+    state={"kind":"graph","view":[{"role":"graph","values":[],"nodes":["A","B","C","D"],"edges":[["A","B",2],["A","C",5],["B","C",1],["B","D",4],["C","D",2]]},{"role":"meta","values":[],"operation":"dijkstra","start":"A","dist":{"A":0,"B":2,"C":5,"D":null},"settled":["A"],"current":"C","relax":["A","C",5]}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 3 op=select label=确定当前最短顶点 | B 的最短距离确定为 2。
+    state={"kind":"graph","view":[{"role":"graph","values":[],"nodes":["A","B","C","D"],"edges":[["A","B",2],["A","C",5],["B","C",1],["B","D",4],["C","D",2]]},{"role":"meta","values":[],"operation":"dijkstra","start":"A","dist":{"A":0,"B":2,"C":5,"D":null},"settled":["A","B"],"current":"B"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- LAST op=select label=确定当前最短顶点
+    state={"kind":"graph","view":[{"role":"graph","values":[],"nodes":["A","B","C","D"],"edges":[["A","B",2],["A","C",5],["B","C",1],["B","D",4],["C","D",2]]},{"role":"meta","values":[],"operation":"dijkstra","start":"A","dist":{"A":0,"B":2,"C":3,"D":5},"settled":["A","B","C","D"],"current":"D"}],"meta":{}}
+
+########## graph.bfs  steps=5 type=graph title=图的广度优先遍历
+initial=[{"role":"graph","values":[],"nodes":["A","B","C","D","E"],"edges":[["A","B",1],["A","C",1],["B","D",1],["C","E",1]]},{"role":"meta","values":[],"operation":"bfs","visited":[],"current":null}]
+--- step 0 op=visit label=访问顶点 | 访问 A。
+    state={"kind":"graph","view":[{"role":"graph","values":[],"nodes":["A","B","C","D","E"],"edges":[["A","B",1],["A","C",1],["B","D",1],["C","E",1]]},{"role":"meta","values":[],"operation":"bfs","visited":["A"],"current":"A","frontier":[]}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 1 op=visit label=访问顶点 | 访问 B。
+    state={"kind":"graph","view":[{"role":"graph","values":[],"nodes":["A","B","C","D","E"],"edges":[["A","B",1],["A","C",1],["B","D",1],["C","E",1]]},{"role":"meta","values":[],"operation":"bfs","visited":["A","B"],"current":"B","frontier":["C"]}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 2 op=visit label=访问顶点 | 访问 C。
+    state={"kind":"graph","view":[{"role":"graph","values":[],"nodes":["A","B","C","D","E"],"edges":[["A","B",1],["A","C",1],["B","D",1],["C","E",1]]},{"role":"meta","values":[],"operation":"bfs","visited":["A","B","C"],"current":"C","frontier":["D"]}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 3 op=visit label=访问顶点 | 访问 D。
+    state={"kind":"graph","view":[{"role":"graph","values":[],"nodes":["A","B","C","D","E"],"edges":[["A","B",1],["A","C",1],["B","D",1],["C","E",1]]},{"role":"meta","values":[],"operation":"bfs","visited":["A","B","C","D"],"current":"D","frontier":["E"]}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- LAST op=visit label=访问顶点
+    state={"kind":"graph","view":[{"role":"graph","values":[],"nodes":["A","B","C","D","E"],"edges":[["A","B",1],["A","C",1],["B","D",1],["C","E",1]]},{"role":"meta","values":[],"operation":"bfs","visited":["A","B","C","D","E"],"current":"E","frontier":[]}],"meta":{}}
+
+########## graph.topological_sort  steps=5 type=graph title=拓扑排序
+initial=[{"role":"graph","values":[],"nodes":["A","B","C","D","E"],"edges":[["A","C",1],["B","C",1],["B","D",1],["C","E",1],["D","E",1]]},{"role":"meta","values":[],"operation":"topological_sort","visited":[],"current":null}]
+--- step 0 op=output label=输出入度为 0 的顶点 | 输出 A，删除其出边并更新入度。
+    state={"kind":"graph","view":[{"role":"graph","values":[],"nodes":["A","B","C","D","E"],"edges":[["A","C",1],["B","C",1],["B","D",1],["C","E",1],["D","E",1]]},{"role":"meta","values":[],"operation":"topological_sort","topo":["A"],"indegree":{"A":0,"B":0,"C":2,"D":1,"E":2},"current":"A"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 1 op=output label=输出入度为 0 的顶点 | 输出 B，删除其出边并更新入度。
+    state={"kind":"graph","view":[{"role":"graph","values":[],"nodes":["A","B","C","D","E"],"edges":[["A","C",1],["B","C",1],["B","D",1],["C","E",1],["D","E",1]]},{"role":"meta","values":[],"operation":"topological_sort","topo":["A","B"],"indegree":{"A":0,"B":0,"C":1,"D":1,"E":2},"current":"B"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 2 op=output label=输出入度为 0 的顶点 | 输出 C，删除其出边并更新入度。
+    state={"kind":"graph","view":[{"role":"graph","values":[],"nodes":["A","B","C","D","E"],"edges":[["A","C",1],["B","C",1],["B","D",1],["C","E",1],["D","E",1]]},{"role":"meta","values":[],"operation":"topological_sort","topo":["A","B","C"],"indegree":{"A":0,"B":0,"C":0,"D":0,"E":2},"current":"C"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 3 op=output label=输出入度为 0 的顶点 | 输出 D，删除其出边并更新入度。
+    state={"kind":"graph","view":[{"role":"graph","values":[],"nodes":["A","B","C","D","E"],"edges":[["A","C",1],["B","C",1],["B","D",1],["C","E",1],["D","E",1]]},{"role":"meta","values":[],"operation":"topological_sort","topo":["A","B","C","D"],"indegree":{"A":0,"B":0,"C":0,"D":0,"E":1},"current":"D"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- LAST op=output label=输出入度为 0 的顶点
+    state={"kind":"graph","view":[{"role":"graph","values":[],"nodes":["A","B","C","D","E"],"edges":[["A","C",1],["B","C",1],["B","D",1],["C","E",1],["D","E",1]]},{"role":"meta","values":[],"operation":"topological_sort","topo":["A","B","C","D","E"],"indegree":{"A":0,"B":0,"C":0,"D":0,"E":0},"current":"E"}],"meta":{}}
+
+########## sort.quick  steps=4 type=sort title=教材排序演示：quick
+initial=[{"role":"array","values":[49,38,65,97,76,13,27]},{"role":"meta","values":[],"operation":"quick"}]
+--- step 0 op=partition label=完成一次划分 | 枢轴 49 落在位置 3。
+    state={"kind":"sort","view":[{"role":"array","values":[27,38,13,49,76,97,65]},{"role":"meta","values":[],"operation":"quick","low":0,"high":6,"pivotIndex":3}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 1 op=partition label=完成一次划分 | 枢轴 27 落在位置 1。
+    state={"kind":"sort","view":[{"role":"array","values":[13,27,38,49,76,97,65]},{"role":"meta","values":[],"operation":"quick","low":0,"high":2,"pivotIndex":1}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 2 op=partition label=完成一次划分 | 枢轴 76 落在位置 5。
+    state={"kind":"sort","view":[{"role":"array","values":[13,27,38,49,65,76,97]},{"role":"meta","values":[],"operation":"quick","low":4,"high":6,"pivotIndex":5}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 3 op=done label=排序完成 | [13, 27, 38, 49, 65, 76, 97]
+    state={"kind":"sort","view":[{"role":"array","values":[13,27,38,49,65,76,97]},{"role":"meta","values":[],"operation":"quick","done":true}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- LAST op=done label=排序完成
+    state={"kind":"sort","view":[{"role":"array","values":[13,27,38,49,65,76,97]},{"role":"meta","values":[],"operation":"quick","done":true}],"meta":{}}
+
+########## tree.inorder  steps=7 type=tree title=中序遍历
+initial=[{"role":"tree","values":[],"nodes":[{"id":0,"label":"A","index":0},{"id":1,"label":"B","index":1},{"id":2,"label":"C","index":2},{"id":3,"label":"D","index":3},{"id":4,"label":"E","index":4},{"id":5,"label":"F","index":5},{"id":6,"label":"G","index":6}],"edges":[[0,1],[0,2],[1,3],[1,4],[2,5],[2,6]]},{"role":"visited","values":[]},{"role":"meta","values":[],"currentValue":null,"currentIndex":-1,"operation":"inorder"}]
+--- step 0 op=visit label=访问结点 | 访问 D。
+    state={"kind":"tree","view":[{"role":"tree","values":[],"nodes":[{"id":0,"label":"A","index":0},{"id":1,"label":"B","index":1},{"id":2,"label":"C","index":2},{"id":3,"label":"D","index":3},{"id":4,"label":"E","index":4},{"id":5,"label":"F","index":5},{"id":6,"label":"G","index":6}],"edges":[[0,1],[0,2],[1,3],[1,4],[2,5],[2,6]]},{"role":"visited","values":["D"]},{"role":"meta","values":[],"currentValue":"D","currentIndex":3,"operation":"inorder"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 1 op=visit label=访问结点 | 访问 B。
+    state={"kind":"tree","view":[{"role":"tree","values":[],"nodes":[{"id":0,"label":"A","index":0},{"id":1,"label":"B","index":1},{"id":2,"label":"C","index":2},{"id":3,"label":"D","index":3},{"id":4,"label":"E","index":4},{"id":5,"label":"F","index":5},{"id":6,"label":"G","index":6}],"edges":[[0,1],[0,2],[1,3],[1,4],[2,5],[2,6]]},{"role":"visited","values":["D","B"]},{"role":"meta","values":[],"currentValue":"B","currentIndex":1,"operation":"inorder"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 2 op=visit label=访问结点 | 访问 E。
+    state={"kind":"tree","view":[{"role":"tree","values":[],"nodes":[{"id":0,"label":"A","index":0},{"id":1,"label":"B","index":1},{"id":2,"label":"C","index":2},{"id":3,"label":"D","index":3},{"id":4,"label":"E","index":4},{"id":5,"label":"F","index":5},{"id":6,"label":"G","index":6}],"edges":[[0,1],[0,2],[1,3],[1,4],[2,5],[2,6]]},{"role":"visited","values":["D","B","E"]},{"role":"meta","values":[],"currentValue":"E","currentIndex":4,"operation":"inorder"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 3 op=visit label=访问结点 | 访问 A。
+    state={"kind":"tree","view":[{"role":"tree","values":[],"nodes":[{"id":0,"label":"A","index":0},{"id":1,"label":"B","index":1},{"id":2,"label":"C","index":2},{"id":3,"label":"D","index":3},{"id":4,"label":"E","index":4},{"id":5,"label":"F","index":5},{"id":6,"label":"G","index":6}],"edges":[[0,1],[0,2],[1,3],[1,4],[2,5],[2,6]]},{"role":"visited","values":["D","B","E","A"]},{"role":"meta","values":[],"currentValue":"A","currentIndex":0,"operation":"inorder"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- LAST op=visit label=访问结点
+    state={"kind":"tree","view":[{"role":"tree","values":[],"nodes":[{"id":0,"label":"A","index":0},{"id":1,"label":"B","index":1},{"id":2,"label":"C","index":2},{"id":3,"label":"D","index":3},{"id":4,"label":"E","index":4},{"id":5,"label":"F","index":5},{"id":6,"label":"G","index":6}],"edges":[[0,1],[0,2],[1,3],[1,4],[2,5],[2,6]]},{"role":"visited","values":["D","B","E","A","F","C","G"]},{"role":"meta","values":[],"currentValue":"G","currentIndex":6,"operation":"inorder"}],"meta":{}}
+
+########## bst.insert  steps=4 type=bst title=二叉排序树插入
+initial=[{"role":"tree","values":[],"nodes":[{"id":0,"label":"45","key":45},{"id":1,"label":"24","key":24},{"id":2,"label":"12","key":12},{"id":3,"label":"28","key":28},{"id":4,"label":"53","key":53},{"id":5,"label":"90","key":90}],"edges":[[0,1],[1,2],[1,3],[0,4],[4,5]]},{"role":"meta","values":[],"operation":"insert","key":35}]
+--- step 0 op=inspect label=寻找插入位置 | 35 < 45，转向左子树。
+    state={"kind":"tree","view":[{"role":"tree","values":[],"nodes":[{"id":0,"label":"45","key":45},{"id":1,"label":"24","key":24},{"id":2,"label":"12","key":12},{"id":3,"label":"28","key":28},{"id":4,"label":"53","key":53},{"id":5,"label":"90","key":90}],"edges":[[0,1],[1,2],[1,3],[0,4],[4,5]]},{"role":"meta","values":[],"operation":"insert","key":35,"current":45}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 1 op=inspect label=寻找插入位置 | 35 > 24，转向右子树。
+    state={"kind":"tree","view":[{"role":"tree","values":[],"nodes":[{"id":0,"label":"45","key":45},{"id":1,"label":"24","key":24},{"id":2,"label":"12","key":12},{"id":3,"label":"28","key":28},{"id":4,"label":"53","key":53},{"id":5,"label":"90","key":90}],"edges":[[0,1],[1,2],[1,3],[0,4],[4,5]]},{"role":"meta","values":[],"operation":"insert","key":35,"current":24}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 2 op=inspect label=寻找插入位置 | 35 > 28，转向右子树。
+    state={"kind":"tree","view":[{"role":"tree","values":[],"nodes":[{"id":0,"label":"45","key":45},{"id":1,"label":"24","key":24},{"id":2,"label":"12","key":12},{"id":3,"label":"28","key":28},{"id":4,"label":"53","key":53},{"id":5,"label":"90","key":90}],"edges":[[0,1],[1,2],[1,3],[0,4],[4,5]]},{"role":"meta","values":[],"operation":"insert","key":35,"current":28}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 3 op=insert label=插入叶结点 | 把 35 插入空位置。
+    state={"kind":"tree","view":[{"role":"tree","values":[],"nodes":[{"id":0,"label":"45","key":45},{"id":1,"label":"24","key":24},{"id":2,"label":"12","key":12},{"id":3,"label":"28","key":28},{"id":4,"label":"35","key":35},{"id":5,"label":"53","key":53},{"id":6,"label":"90","key":90}],"edges":[[0,1],[1,2],[1,3],[3,4],[0,5],[5,6]]},{"role":"meta","values":[],"operation":"insert","key":35,"current":35}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- LAST op=insert label=插入叶结点
+    state={"kind":"tree","view":[{"role":"tree","values":[],"nodes":[{"id":0,"label":"45","key":45},{"id":1,"label":"24","key":24},{"id":2,"label":"12","key":12},{"id":3,"label":"28","key":28},{"id":4,"label":"35","key":35},{"id":5,"label":"53","key":53},{"id":6,"label":"90","key":90}],"edges":[[0,1],[1,2],[1,3],[3,4],[0,5],[5,6]]},{"role":"meta","values":[],"operation":"insert","key":35,"current":35}],"meta":{}}
+
+########## btree.insert  steps=1 type=btree title=B 树插入
+initial=[{"role":"tree","values":[],"nodes":[{"id":0,"label":"30 | 50","keys":[30,50],"depth":0},{"id":1,"label":"10 | 20","keys":[10,20],"depth":1},{"id":2,"label":"30 | 40","keys":[30,40],"depth":1},{"id":3,"label":"50 | 60","keys":[50,60],"depth":1}],"edges":[[0,1],[0,2],[0,3]],"multiKey":true},{"role":"meta","values":[],"operation":"insert","key":35,"order":3}]
+--- step 0 op=insert label=执行结点调整 | 插入后若结点关键字过多则分裂并向上提升中间关键字。
+    state={"kind":"btree","view":[{"role":"tree","values":[],"nodes":[{"id":0,"label":"30 | 40 | 60","keys":[30,40,60],"depth":0},{"id":1,"label":"10 | 20","keys":[10,20],"depth":1},{"id":2,"label":"30 | 35","keys":[30,35],"depth":1},{"id":3,"label":"40 | 50","keys":[40,50],"depth":1},{"id":4,"label":"60","keys":[60],"depth":1}],"edges":[[0,1],[0,2],[0,3],[0,4]],"multiKey":true},{"role":"meta","values":[],"operation":"insert","key":35,"order":3,"adjusted":true}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- LAST op=insert label=执行结点调整
+    state={"kind":"btree","view":[{"role":"tree","values":[],"nodes":[{"id":0,"label":"30 | 40 | 60","keys":[30,40,60],"depth":0},{"id":1,"label":"10 | 20","keys":[10,20],"depth":1},{"id":2,"label":"30 | 35","keys":[30,35],"depth":1},{"id":3,"label":"40 | 50","keys":[40,50],"depth":1},{"id":4,"label":"60","keys":[60],"depth":1}],"edges":[[0,1],[0,2],[0,3],[0,4]],"multiKey":true},{"role":"meta","values":[],"operation":"insert","key":35,"order":3,"adjusted":true}],"meta":{}}
+
+########## hash_table.chaining_insert  steps=1 type=hash_table title=链地址法处理冲突
+initial=[{"role":"buckets","values":[[{"key":"22","val":""},{"key":"44","val":""}],[],[],[],[{"key":"59","val":""}],[],[],[{"key":"18","val":""}],[{"key":"41","val":""}],[],[]]},{"role":"meta","values":[],"operation":"chaining_insert","key":69,"tableSize":11}]
+--- step 0 op=insert label=链地址法插入 | H(69)=3，把关键字接入第 3 个同义词链。
+    state={"kind":"hash_table","view":[{"role":"buckets","values":[[{"key":"22","val":""},{"key":"44","val":""}],[],[],[{"key":"69","val":""}],[{"key":"59","val":""}],[],[],[{"key":"18","val":""}],[{"key":"41","val":""}],[],[]]},{"role":"meta","values":[],"operation":"chaining_insert","key":69,"tableSize":11}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- LAST op=insert label=链地址法插入
+    state={"kind":"hash_table","view":[{"role":"buckets","values":[[{"key":"22","val":""},{"key":"44","val":""}],[],[],[{"key":"69","val":""}],[{"key":"59","val":""}],[],[],[{"key":"18","val":""}],[{"key":"41","val":""}],[],[]]},{"role":"meta","values":[],"operation":"chaining_insert","key":69,"tableSize":11}],"meta":{}}
+
+########## string.kmp_match  steps=13 type=string title=KMP 模式匹配
+initial=[{"role":"text","values":["A","B","A","B","C","A","B","C","A","C","B","A","B"]},{"role":"pattern","values":["A","B","C","A","C"]},{"role":"meta","values":[],"i":0,"j":0,"operation":"kmp_match"}]
+--- step 0 op=inspect label=字符相等 | A = A
+    state={"kind":"string_match","view":[{"role":"text","values":["A","B","A","B","C","A","B","C","A","C","B","A","B"]},{"role":"pattern","values":["A","B","C","A","C"]},{"role":"next","values":[0,0,0,1,0]},{"role":"meta","values":[],"i":0,"j":0,"operation":"kmp_match"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 1 op=inspect label=字符相等 | B = B
+    state={"kind":"string_match","view":[{"role":"text","values":["A","B","A","B","C","A","B","C","A","C","B","A","B"]},{"role":"pattern","values":["A","B","C","A","C"]},{"role":"next","values":[0,0,0,1,0]},{"role":"meta","values":[],"i":1,"j":1,"operation":"kmp_match"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 2 op=inspect label=利用 next 回退模式指针 | j 从 2 回退到 0，主串指针 i 不回退。
+    state={"kind":"string_match","view":[{"role":"text","values":["A","B","A","B","C","A","B","C","A","C","B","A","B"]},{"role":"pattern","values":["A","B","C","A","C"]},{"role":"next","values":[0,0,0,1,0]},{"role":"meta","values":[],"i":2,"j":0,"operation":"kmp_match"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 3 op=inspect label=字符相等 | A = A
+    state={"kind":"string_match","view":[{"role":"text","values":["A","B","A","B","C","A","B","C","A","C","B","A","B"]},{"role":"pattern","values":["A","B","C","A","C"]},{"role":"next","values":[0,0,0,1,0]},{"role":"meta","values":[],"i":2,"j":0,"operation":"kmp_match"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- LAST op=inspect label=匹配成功
+    state={"kind":"string_match","view":[{"role":"text","values":["A","B","A","B","C","A","B","C","A","C","B","A","B"]},{"role":"pattern","values":["A","B","C","A","C"]},{"role":"next","values":[0,0,0,1,0]},{"role":"meta","values":[],"i":10,"j":5,"match":5,"operation":"kmp_match"}],"meta":{}}
+
+########## generalized_list.depth  steps=1 type=generalized_list title=求广义表深度
+initial=[{"role":"list","values":["a",["b","c"],["d",["e"]]]},{"role":"meta","values":[],"operation":"depth"}]
+--- step 0 op=inspect label=递归比较子表深度 | 最大子表深度加 1，得到深度 3。
+    state={"kind":"generalized_list","view":[{"role":"list","values":["a",["b","c"],["d",["e"]]]},{"role":"meta","values":[],"depth":3,"operation":"depth"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- LAST op=inspect label=递归比较子表深度
+    state={"kind":"generalized_list","view":[{"role":"list","values":["a",["b","c"],["d",["e"]]]},{"role":"meta","values":[],"depth":3,"operation":"depth"}],"meta":{}}
+
+########## external_sort.two_way_merge  steps=3 type=external_sort title=二路归并外排序
+initial=[{"role":"runs","values":[[1,7,13],[2,8,12],[3,6,15],[4,9,11]]},{"role":"meta","values":[],"operation":"two_way_merge"}]
+--- step 0 op=merge label=归并一组顺串 | 2 路输入归并得到 [1,2,7,8,12,13]。
+    state={"kind":"external_sort","view":[{"role":"runs","values":[[1,7,13],[2,8,12],[3,6,15],[4,9,11]]},{"role":"outputRuns","values":[[1,2,7,8,12,13]]},{"role":"meta","values":[],"operation":"two_way_merge","ways":2}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 1 op=merge label=归并一组顺串 | 2 路输入归并得到 [3,4,6,9,11,15]。
+    state={"kind":"external_sort","view":[{"role":"runs","values":[[1,7,13],[2,8,12],[3,6,15],[4,9,11]]},{"role":"outputRuns","values":[[1,2,7,8,12,13],[3,4,6,9,11,15]]},{"role":"meta","values":[],"operation":"two_way_merge","ways":2}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 2 op=merge label=归并一组顺串 | 2 路输入归并得到 [1,2,3,4,6,7,8,9,11,12,13,15]。
+    state={"kind":"external_sort","view":[{"role":"runs","values":[[1,2,7,8,12,13],[3,4,6,9,11,15]]},{"role":"outputRuns","values":[[1,2,3,4,6,7,8,9,11,12,13,15]]},{"role":"meta","values":[],"operation":"two_way_merge","ways":2}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- LAST op=merge label=归并一组顺串
+    state={"kind":"external_sort","view":[{"role":"runs","values":[[1,2,7,8,12,13],[3,4,6,9,11,15]]},{"role":"outputRuns","values":[[1,2,3,4,6,7,8,9,11,12,13,15]]},{"role":"meta","values":[],"operation":"two_way_merge","ways":2}],"meta":{}}
+
+########## union_find.path_compress_find  steps=8 type=union_find title=并查集路径压缩查找
+initial=[{"role":"parent","values":[-6,0,0,2,3,4]},{"role":"meta","values":[],"operation":"path_compress_find","element":5}]
+--- step 0 op=move label=沿父指针向根移动 | 5 → 4
+    state={"kind":"union_find","view":[{"role":"parent","values":[-6,0,0,2,3,4]},{"role":"meta","values":[],"current":5,"path":[5]}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 1 op=move label=沿父指针向根移动 | 4 → 3
+    state={"kind":"union_find","view":[{"role":"parent","values":[-6,0,0,2,3,4]},{"role":"meta","values":[],"current":4,"path":[5,4]}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 2 op=move label=沿父指针向根移动 | 3 → 2
+    state={"kind":"union_find","view":[{"role":"parent","values":[-6,0,0,2,3,4]},{"role":"meta","values":[],"current":3,"path":[5,4,3]}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 3 op=move label=沿父指针向根移动 | 2 → 0
+    state={"kind":"union_find","view":[{"role":"parent","values":[-6,0,0,2,3,4]},{"role":"meta","values":[],"current":2,"path":[5,4,3,2]}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- LAST op=link label=路径压缩
+    state={"kind":"union_find","view":[{"role":"parent","values":[-6,0,0,0,0,0]},{"role":"meta","values":[],"root":0,"compressed":2}],"meta":{}}
+
+########## sparse_matrix.fast_transpose  steps=5 type=sparse_matrix title=稀疏矩阵快速转置
+initial=[{"role":"matrix","values":[[0,5,0],[2,0,3],[0,0,4]]},{"role":"triples","values":[[0,1,5],[1,0,2],[1,2,3],[2,2,4]]},{"role":"result","values":[]},{"role":"meta","values":[],"rows":3,"cols":3,"operation":"fast_transpose"}]
+--- step 0 op=inspect label=统计各列非零元个数 | num=[1,1,2]，cpot=[0,1,2]。
+    state={"kind":"sparse_matrix","view":[{"role":"matrix","values":[[0,5,0],[2,0,3],[0,0,4]]},{"role":"triples","values":[[0,1,5],[1,0,2],[1,2,3],[2,2,4]]},{"role":"result","values":[]},{"role":"num","values":[1,1,2]},{"role":"cpot","values":[0,1,2]},{"role":"meta","values":[],"operation":"fast_transpose"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 1 op=copy label=一次定位写入 | 原三元组 (0,1,5) 直接写入转置表位置 1。
+    state={"kind":"sparse_matrix","view":[{"role":"matrix","values":[[0,5,0],[2,0,3],[0,0,4]]},{"role":"triples","values":[[0,1,5],[1,0,2],[1,2,3],[2,2,4]]},{"role":"result","values":[[1,0,5]]},{"role":"num","values":[1,1,2]},{"role":"cpot","values":[0,1,2]},{"role":"meta","values":[],"current":1,"operation":"fast_transpose"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 2 op=copy label=一次定位写入 | 原三元组 (1,0,2) 直接写入转置表位置 0。
+    state={"kind":"sparse_matrix","view":[{"role":"matrix","values":[[0,5,0],[2,0,3],[0,0,4]]},{"role":"triples","values":[[0,1,5],[1,0,2],[1,2,3],[2,2,4]]},{"role":"result","values":[[0,1,2],[1,0,5]]},{"role":"num","values":[1,1,2]},{"role":"cpot","values":[0,1,2]},{"role":"meta","values":[],"current":0,"operation":"fast_transpose"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 3 op=copy label=一次定位写入 | 原三元组 (1,2,3) 直接写入转置表位置 2。
+    state={"kind":"sparse_matrix","view":[{"role":"matrix","values":[[0,5,0],[2,0,3],[0,0,4]]},{"role":"triples","values":[[0,1,5],[1,0,2],[1,2,3],[2,2,4]]},{"role":"result","values":[[0,1,2],[1,0,5],[2,1,3]]},{"role":"num","values":[1,1,2]},{"role":"cpot","values":[0,1,2]},{"role":"meta","values":[],"current":2,"operation":"fast_transpose"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- LAST op=copy label=一次定位写入
+    state={"kind":"sparse_matrix","view":[{"role":"matrix","values":[[0,5,0],[2,0,3],[0,0,4]]},{"role":"triples","values":[[0,1,5],[1,0,2],[1,2,3],[2,2,4]]},{"role":"result","values":[[0,1,2],[1,0,5],[2,1,3],[2,2,4]]},{"role":"num","values":[1,1,2]},{"role":"cpot","values":[0,1,2]},{"role":"meta","values":[],"current":3,"operation":"fast_transpose"}],"meta":{}}
+
+########## huffman.encode  steps=4 type=huffman title=哈夫曼编码
+initial=[{"role":"tree","values":[],"nodes":[{"id":0,"label":"A","weight":2,"left":null,"right":null,"parent":null},{"id":1,"label":"B","weight":3,"left":null,"right":null,"parent":null},{"id":2,"label":"C","weight":4,"left":null,"right":null,"parent":null},{"id":3,"label":"D","weight":7,"left":null,"right":null,"parent":null}],"edges":[]},{"role":"active","values":[2,3,4,7]},{"role":"meta","values":[],"operation":"encode"}]
+--- step 0 op=merge label=选两个最小权值合并 | 2+3=5，生成新结点。
+    state={"kind":"huffman","view":[{"role":"tree","values":[],"nodes":[{"id":0,"label":"A","weight":2,"left":null,"right":null,"parent":4},{"id":1,"label":"B","weight":3,"left":null,"right":null,"parent":4},{"id":2,"label":"C","weight":4,"left":null,"right":null,"parent":null},{"id":3,"label":"D","weight":7,"left":null,"right":null,"parent":null},{"id":4,"label":"5","weight":5,"left":0,"right":1,"parent":null}],"edges":[[4,0],[4,1]]},{"role":"active","values":[4,7,5]},{"role":"meta","values":[],"operation":"encode"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 1 op=merge label=选两个最小权值合并 | 4+5=9，生成新结点。
+    state={"kind":"huffman","view":[{"role":"tree","values":[],"nodes":[{"id":0,"label":"A","weight":2,"left":null,"right":null,"parent":4},{"id":1,"label":"B","weight":3,"left":null,"right":null,"parent":4},{"id":2,"label":"C","weight":4,"left":null,"right":null,"parent":5},{"id":3,"label":"D","weight":7,"left":null,"right":null,"parent":null},{"id":4,"label":"5","weight":5,"left":0,"right":1,"parent":5},{"id":5,"label":"9","weight":9,"left":2,"right":4,"parent":null}],"edges":[[4,0],[4,1],[5,2],[5,4]]},{"role":"active","values":[7,9]},{"role":"meta","values":[],"operation":"encode"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 2 op=merge label=选两个最小权值合并 | 7+9=16，生成新结点。
+    state={"kind":"huffman","view":[{"role":"tree","values":[],"nodes":[{"id":0,"label":"A","weight":2,"left":null,"right":null,"parent":4},{"id":1,"label":"B","weight":3,"left":null,"right":null,"parent":4},{"id":2,"label":"C","weight":4,"left":null,"right":null,"parent":5},{"id":3,"label":"D","weight":7,"left":null,"right":null,"parent":6},{"id":4,"label":"5","weight":5,"left":0,"right":1,"parent":5},{"id":5,"label":"9","weight":9,"left":2,"right":4,"parent":6},{"id":6,"label":"16","weight":16,"left":3,"right":5,"parent":null}],"edges":[[4,0],[4,1],[5,2],[5,4],[6,3],[6,5]]},{"role":"active","values":[16]},{"role":"meta","values":[],"operation":"encode"}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- step 3 op=inspect label=沿左 0 右 1 生成编码 | D:0，C:10，A:110，B:111
+    state={"kind":"huffman","view":[{"role":"tree","values":[],"nodes":[{"id":0,"label":"A","weight":2,"left":null,"right":null,"parent":4},{"id":1,"label":"B","weight":3,"left":null,"right":null,"parent":4},{"id":2,"label":"C","weight":4,"left":null,"right":null,"parent":5},{"id":3,"label":"D","weight":7,"left":null,"right":null,"parent":6},{"id":4,"label":"5","weight":5,"left":0,"right":1,"parent":5},{"id":5,"label":"9","weight":9,"left":2,"right":4,"parent":6},{"id":6,"label":"16","weight":16,"left":3,"right":5,"parent":null}],"edges":[[4,0],[4,1],[5,2],[5,4],[6,3],[6,5]]},{"role":"active","values":[16]},{"role":"meta","values":[],"operation":"encode"},{"role":"codes","values":[],"codes":{"D":"0","C":"10","A":"110","B":"111"}}],"meta":{}}
+    highlights={"nodes":[],"edges":[],"cells":[],"pointers":[]}
+--- LAST op=inspect label=沿左 0 右 1 生成编码
+    state={"kind":"huffman","view":[{"role":"tree","values":[],"nodes":[{"id":0,"label":"A","weight":2,"left":null,"right":null,"parent":4},{"id":1,"label":"B","weight":3,"left":null,"right":null,"parent":4},{"id":2,"label":"C","weight":4,"left":null,"right":null,"parent":5},{"id":3,"label":"D","weight":7,"left":null,"right":null,"parent":6},{"id":4,"label":"5","weight":5,"left":0,"right":1,"parent":5},{"id":5,"label":"9","weight":9,"left":2,"right":4,"parent":6},{"id":6,"label":"16","weight":16,"left":3,"right":5,"parent":null}],"edges":[[4,0],[4,1],[5,2],[5,4],[6,3],[6,5]]},{"role":"active","values":[16]},{"role":"meta","values":[],"operation":"encode"},{"role":"codes","values":[],"codes":{"D":"0","C":"10","A":"110","B":"111"}}],"meta":{}}

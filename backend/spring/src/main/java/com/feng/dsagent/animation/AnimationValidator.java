@@ -79,6 +79,7 @@ public final class AnimationValidator {
             int index,
             List<AnimationValidationError> errors) {
         String path = "steps[" + index + "]";
+        if (step != null && step.state() != null) errors.add(error(path + ".state", "SERVER_ONLY", "state snapshots must come from the local simulator, not model output"));
         if (step == null) {
             errors.add(error(path, "REQUIRED", "animation step is required"));
             return;

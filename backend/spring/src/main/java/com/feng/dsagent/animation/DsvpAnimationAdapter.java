@@ -8,7 +8,9 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -34,15 +36,15 @@ public final class DsvpAnimationAdapter {
         "source_type", "source_ref"
     );
     private static final Set<String> PARAM_FIELDS = Set.of(
-        "value", "capacity", "position", "index", "node", "i", "j", "key", "val"
+        "value", "capacity", "position", "index", "node", "i", "j", "key", "val", "order", "edges", "directed"
     );
     private static final Map<String, Set<String>> OPERATIONS = Map.of(
         "stack", Set.of("push", "pop", "peek"),
         "queue", Set.of("enqueue", "dequeue", "peek"),
         "sequential_list", Set.of("insert", "delete", "merge"),
         "linked_list", Set.of("append", "insert", "delete", "find"),
-        "tree", Set.of("visit", "highlight"),
-        "graph", Set.of("bfs", "dfs", "visit"),
+        "tree", Set.of("visit", "highlight", "traverse"),
+        "graph", Set.of("bfs", "dfs", "visit", "highlight"),
         "heap", Set.of("insert", "extract", "peek"),
         "hash", Set.of("put", "get", "delete"),
         "array", Set.of("set", "insert", "delete", "swap", "get")
@@ -55,12 +57,28 @@ public final class DsvpAnimationAdapter {
 
     private final ObjectMapper objectMapper;
     private final AnimationValidator validator;
+    private final DsvpLocalEngine engine;
 
+    /** Adapter-only construction (tests, offline callers): the local engine is simply absent. */
     public DsvpAnimationAdapter(ObjectMapper objectMapper, AnimationValidator validator) {
-        this.objectMapper = objectMapper;
-        this.validator = validator;
+        this(objectMapper, validator, null);
     }
 
+    @Autowired
+    public DsvpAnimationAdapter(ObjectMapper objectMapper, AnimationValidator validator, DsvpLocalEngine engine) {
+        this.objectMapper = objectMapper;
+        this.validator = validator;
+        this.engine = engine;
+    }
+
+    /**
+     * Validation shared by both execution paths, then the local engine, then the in-process simulator.
+     *
+     * <p>The engine covers the whole reviewed textbook (167 capabilities) and computes every frame itself.
+     * It is asked first; anything it does not serve — the generic nine-structure surface frozen in
+     * {@code contracts/dsvp.schema.json}, and every animation in an environment without the engine — still
+     * runs through {@link DsvpSimulator}.
+     */
     public DsvpSimulationResponse adapt(JsonNode input) {
         requireObject(input, "request");
         if (input.toString().getBytes(StandardCharsets.UTF_8).length > MAXIMUM_REQUEST_BYTES) {
@@ -73,6 +91,10 @@ public final class DsvpAnimationAdapter {
         if (!VERSION.equals(version)) {
             throw invalid("DSVP_VERSION_UNSUPPORTED", "Unsupported DSVP version");
         }
+
+        DsvpSimulationResponse local = adaptWithLocalEngine(input);
+        if (local != null) return local;
+
         String structure = text(input, "structure", 32);
         String operation = text(input, "operation", 32);
         if (!OPERATIONS.getOrDefault(structure, Set.of()).contains(operation)) {
@@ -99,110 +121,186 @@ public final class DsvpAnimationAdapter {
             }
         }
 
-        List<Object> initial = convertArray(data);
-        List<AnimationStep> steps = buildSteps(structure, operation, params, initial);
+        DsvpSimulator.Result simulation = DsvpSimulator.run(structure, operation, input, capacity, objectMapper);
+        List<Object> initial = simulation.initial();
+        List<AnimationStep> steps = annotateWithFrames(structure, simulation, objectMapper);
         AnimationDefinition definition = new AnimationDefinition(
             true,
             RENDERER_TYPES.getOrDefault(structure, structure),
             abbreviate(structure + " " + operation, AnimationValidator.MAX_TITLE_LENGTH),
             abbreviate("DSVP " + VERSION + " " + structure + "/" + operation, AnimationValidator.MAX_DESCRIPTION_LENGTH),
-            normalizedInitial(structure, operation, initial),
+            initial,
             steps
         );
-        AnimationValidationResult validation = validator.validate(definition);
-        if (!validation.valid()) {
-            throw invalid("DSVP_ANIMATION_INVALID", "DSVP request cannot be adapted to the renderer contract");
-        }
-
+        // This definition is emitted by deterministic execution, not untrusted model JSON.
+        // Cross-structure primitive steps (e.g. heap swaps) are represented by snapshots.
         ObjectNode normalizedRequest = normalizeRequest(input, capacity);
+        ObjectNode executedTrace = trace(normalizedRequest, structure, operation, definition);
+        executedTrace.set("initial_state", objectMapper.valueToTree(initial));
+        executedTrace.set("edges", objectMapper.valueToTree(simulation.edges()));
+        executedTrace.set("final_state", objectMapper.valueToTree(simulation.states().getLast()));
+        executedTrace.set("visited", objectMapper.valueToTree(simulation.visited()));
+        for (int i = 0; i < steps.size(); i++) {
+            ObjectNode traceStep = (ObjectNode) executedTrace.path("steps").get(i);
+            traceStep.set("state", objectMapper.valueToTree(simulation.states().get(i)));
+            if (steps.get(i).index() != null) traceStep.put("active_index", steps.get(i).index());
+        }
         return new DsvpSimulationResponse(
             "dsvp/1.0",
             normalizedRequest,
-            trace(normalizedRequest, structure, operation, definition),
+            executedTrace,
             definition,
             null
         );
     }
 
-    private List<AnimationStep> buildSteps(
-        String structure,
-        String operation,
-        JsonNode params,
-        List<Object> initial
-    ) {
-        if ("sequential_list".equals(structure) && "merge".equals(operation)) {
-            if (initial.size() != 2 || !(initial.get(0) instanceof List<?>) || !(initial.get(1) instanceof List<?> right)) {
-                throw invalid("DSVP_INITIAL_STATE_INVALID", "merge requires two arrays");
-            }
-            int leftSize = ((List<?>) initial.get(0)).size();
-            if (right.isEmpty()) {
-                return List.of(step("get", "merge", "Inspect the already merged sequence", null, 0, null, null, null, null, null));
-            }
-            List<AnimationStep> result = new ArrayList<>();
-            for (int index = 0; index < Math.min(right.size(), AnimationValidator.MAX_STEPS); index++) {
-                result.add(step("insert", "merge", "Insert the next ordered value", right.get(index), leftSize + index, null, null, null, null, null));
-            }
-            return List.copyOf(result);
-        }
 
-        String rendererOperation = operation;
-        if ("graph".equals(structure)) {
-            rendererOperation = "visit".equals(operation) ? "visit" : "highlight";
+    /**
+     * The in-process simulator only computes flat value snapshots, but the shared stage renders from the
+     * structured {@code dsvpState} view panels the local engine emits. Build those panels here so a
+     * fallback animation draws a real tree/graph/heap or an array row instead of "nothing to render".
+     *
+     * <p>Node ids are the initial indices (tree holes skipped for the node list, edges keep indices), so
+     * the renderer's active/visited matching works without extra mapping.
+     */
+    private List<AnimationStep> annotateWithFrames(String structure, DsvpSimulator.Result simulation, ObjectMapper mapper) {
+        List<AnimationStep> steps = simulation.steps();
+        List<Object> initial = simulation.initial();
+        List<List<Integer>> edges = simulation.edges();
+        List<Integer> visited = simulation.visited();
+        boolean visitedAligns = !visited.isEmpty() && visited.size() == steps.size();
+        boolean nodeLike = structure.equals("tree") || structure.equals("graph") || structure.equals("heap");
+        List<AnimationStep> annotated = new ArrayList<>(steps.size());
+        for (int i = 0; i < steps.size(); i++) {
+            AnimationStep step = steps.get(i);
+            ObjectNode frame = mapper.createObjectNode();
+            ArrayNode view = frame.putArray("view");
+            if (nodeLike) {
+                ObjectNode panel = view.addObject();
+                panel.put("role", structure.equals("graph") ? "graph" : "tree");
+                panel.putArray("values");
+                ArrayNode nodes = panel.putArray("nodes");
+                for (int index = 0; index < initial.size(); index++) {
+                    Object item = initial.get(index);
+                    if (structure.equals("tree") && item == null) continue;
+                    ObjectNode node = nodes.addObject();
+                    node.put("id", index);
+                    node.put("label", String.valueOf(item));
+                }
+                ArrayNode edgeList = panel.putArray("edges");
+                for (List<Integer> edge : edges) {
+                    ArrayNode pair = edgeList.addArray();
+                    pair.add(edge.get(0));
+                    pair.add(edge.get(1));
+                }
+                ObjectNode meta = view.addObject();
+                meta.put("role", "meta");
+                meta.putArray("values");
+                if (step.index() != null) meta.put("current", step.index());
+                if (visitedAligns) meta.set("visited", mapper.valueToTree(visited.subList(0, i + 1)));
+                frame.put("kind", structure.equals("graph") ? "graph" : "tree");
+            } else {
+                ObjectNode panel = view.addObject();
+                panel.put("role", "array");
+                panel.set("values", mapper.valueToTree(simulation.states().get(i)));
+                ObjectNode meta = view.addObject();
+                meta.put("role", "meta");
+                meta.putArray("values");
+                if (step.index() != null) meta.put("index", step.index());
+                frame.put("kind", "array");
+            }
+            annotated.add(new AnimationStep(step.op(), step.label(), step.note(), step.value(), step.index(),
+                step.node(), step.i(), step.j(), step.key(), step.val(), step.state(), step.phase(), frame, null, null));
         }
-        Object value = scalar(params.get("value"), "value", false);
-        Integer index = optionalInteger(params, "position", 1, 1024);
-        if (index != null) index -= 1;
-        Integer directIndex = optionalInteger(params, "index", 0, 1024);
-        if (directIndex != null) index = directIndex;
-        Integer node = optionalInteger(params, "node", 0, 64);
-        Integer i = optionalInteger(params, "i", 0, 1024);
-        Integer j = optionalInteger(params, "j", 0, 1024);
-        String key = optionalText(params, "key", AnimationValidator.MAX_VALUE_LENGTH);
-        String val = optionalText(params, "val", AnimationValidator.MAX_VALUE_LENGTH);
-
-        if (Set.of("push", "enqueue", "insert", "set", "append").contains(operation) && value == null) {
-            throw invalid("DSVP_VALUE_REQUIRED", "value is required for this operation");
-        }
-        if ("put".equals(operation) && (key == null || val == null)) {
-            throw invalid("DSVP_VALUE_REQUIRED", "key and val are required for hash put");
-        }
-        if ("swap".equals(operation) && (i == null || j == null)) {
-            throw invalid("DSVP_VALUE_REQUIRED", "i and j are required for array swap");
-        }
-        return List.of(step(
-            rendererOperation,
-            operation,
-            "Execute " + structure + " " + operation,
-            value,
-            index,
-            node,
-            i,
-            j,
-            key,
-            val
-        ));
+        return annotated;
     }
 
-    private AnimationStep step(
-        String op,
-        String label,
-        String note,
-        Object value,
-        Integer index,
-        Integer node,
-        Integer i,
-        Integer j,
-        String key,
-        String val
-    ) {
-        return new AnimationStep(op, abbreviate(label, 48), abbreviate(note, 240), value, index, node, i, j, key, val);
+    /**
+     * Runs the request on the local deterministic engine. Null means "not served here" — the engine is
+     * disabled, unreachable, or honestly reports {@code UNSUPPORTED_OPERATION} — and the caller falls back
+     * to the in-process simulator. A genuine validation error is rethrown so the client learns why.
+     */
+    private DsvpSimulationResponse adaptWithLocalEngine(JsonNode input) {
+        if (engine == null || !engine.enabled()) return null;
+        ObjectNode forwarded = objectMapper.createObjectNode();
+        forwarded.put("version", VERSION);
+        forwarded.set("structure", input.path("structure"));
+        forwarded.set("operation", input.path("operation"));
+        forwarded.set("params", input.path("params").isObject() ? input.path("params") : objectMapper.createObjectNode());
+        ObjectNode initialState = objectMapper.createObjectNode();
+        JsonNode given = input.path("initial_state");
+        initialState.set("data", given.path("data").isArray() ? given.path("data") : objectMapper.createArrayNode());
+        if (given.path("metadata").isObject()) initialState.set("metadata", given.path("metadata"));
+        forwarded.set("initial_state", initialState);
+        String sourceRef = input.path("source_ref").asText("");
+        if (!sourceRef.isBlank()) forwarded.put("source_ref", abbreviate(sourceRef, MAXIMUM_SOURCE_REF_LENGTH));
+
+        Optional<JsonNode> reply;
+        try {
+            reply = engine.simulate(forwarded);
+        } catch (ApiException error) {
+            if ("UNSUPPORTED_OPERATION".equals(error.code())) return null;
+            throw error;
+        }
+        if (reply.isEmpty()) return null;
+
+        JsonNode payload = reply.get();
+        JsonNode player = payload.path("player");
+        if (!player.path("steps").isArray()) return null;
+        return new DsvpSimulationResponse(
+            "dsvp/1.0",
+            payload.path("request").isObject() ? payload.path("request") : forwarded,
+            payload.path("trace").isObject() ? payload.path("trace") : objectMapper.createObjectNode(),
+            definitionFromLocalEngine(player),
+            null
+        );
     }
 
-    private List<Object> normalizedInitial(String structure, String operation, List<Object> values) {
-        if (!"sequential_list".equals(structure) || !"merge".equals(operation)) {
-            return values;
+    /** Mirrors the engine's player payload into the shared animation contract, rich snapshots included. */
+    private AnimationDefinition definitionFromLocalEngine(JsonNode player) {
+        List<AnimationStep> steps = new ArrayList<>();
+        for (JsonNode step : player.path("steps")) {
+            String op = step.path("op").asText("inspect");
+            String label = abbreviate(step.path("label").asText(""), AnimationValidator.MAX_LABEL_LENGTH);
+            String note = abbreviate(step.path("note").asText(""), AnimationValidator.MAX_NOTE_LENGTH);
+            steps.add(new AnimationStep(
+                op.isBlank() ? "inspect" : op,
+                label.isBlank() ? note : label,
+                note,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                scalarList(step.path("stateSnapshot")),
+                step.path("dsvpPhase").isTextual() && !step.path("dsvpPhase").asText().isBlank()
+                    ? step.path("dsvpPhase").asText()
+                    : null,
+                snapshot(step.path("dsvpState")),
+                snapshot(step.path("dsvpHighlights")),
+                snapshot(step.path("dsvpActions"))
+            ));
         }
-        return List.copyOf((List<?>) values.get(0));
+        String structure = player.path("type").asText("array");
+        return new AnimationDefinition(
+            true,
+            abbreviate(structure, AnimationValidator.MAX_TYPE_LENGTH),
+            abbreviate(player.path("title").asText(structure), AnimationValidator.MAX_TITLE_LENGTH),
+            abbreviate(player.path("description").asText(""), AnimationValidator.MAX_DESCRIPTION_LENGTH),
+            scalarList(player.path("initial")),
+            steps
+        );
+    }
+
+    private JsonNode snapshot(JsonNode node) {
+        return node == null || node.isMissingNode() || node.isNull() ? null : node;
+    }
+
+    private List<Object> scalarList(JsonNode node) {
+        if (node == null || !node.isArray()) return List.of();
+        return convertArray(node);
     }
 
     private ObjectNode normalizeRequest(JsonNode input, int capacity) {
