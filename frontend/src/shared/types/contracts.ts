@@ -1,5 +1,8 @@
 /** TypeScript representations of the frozen Spring v1 API contract. */
 
+// Imported as well as re-exported below: the learning-workbench shape in this file is built on it.
+import type { AnimationDefinition } from "./animation";
+
 export type Role = "STUDENT" | "TEACHER" | "ADMIN";
 export type LicenseScope = "PUBLIC" | "TEAM_ONLY" | "CLASSROOM_ONLY";
 
@@ -136,7 +139,7 @@ export interface ClassroomScript {
   versionLabel: string;
 }
 export type ClassroomState = "OPENING" | "EXPLAIN" | "QUESTION" | "WAITING" | "DISCUSS" | "BLACKBOARD" | "SUMMARY";
-export type ClassroomAction = "ANSWER" | "PAUSE" | "RESUME" | "CONTINUE" | "FINISH";
+export type ClassroomAction = "ASK" | "ANSWER" | "PAUSE" | "RESUME" | "CONTINUE" | "FINISH";
 export type ClassroomAnswerStatus = "CORRECT" | "MISCONCEPTION" | "INCORRECT";
 export interface ClassroomAnswerEvaluation {
   status: ClassroomAnswerStatus;
@@ -156,78 +159,27 @@ export interface ClassroomSession {
 export interface ClassroomActionRequest {
   action: ClassroomAction;
   content?: string;
+  expectedRevision?: number;
 }
 
-export type AnimationType = "stack" | "list" | "tree" | "queue" | "heap" | "hash" | "array";
-export interface AnimationStep {
-  op: string;
-  label: string;
-  note: string;
-  value?: string | number | boolean | Record<string, unknown> | null;
-  index?: number | null;
-  node?: number | null;
-  i?: number | null;
-  j?: number | null;
-  key?: string | null;
-  val?: string | null;
-}
-export interface AnimationDefinition {
-  animation: true;
-  type: AnimationType;
-  title: string;
-  description: string;
-  initial: unknown[];
-  steps: AnimationStep[];
-}
-export interface AnimationResponse {
-  definition: AnimationDefinition;
-  recordId?: string | null;
-  persisted: boolean;
-}
-export type DsvpStructure = "stack" | "queue" | "sequential_list" | "linked_list" | "tree" | "graph" | "heap" | "hash" | "array";
-export interface DsvpEvidenceContext {
-  chapter_id?: string;
-  lesson_id?: string;
-  presentation_id?: string;
-  presentation_page_id?: string;
-  classroom_session_id?: string;
-  source_type?: "API" | "CLASSROOM" | "PPT";
-  source_ref?: string;
-}
-export interface DsvpRequest {
-  version: "1.0";
-  structure: DsvpStructure;
-  operation: string;
-  params: Record<string, unknown>;
-  initial_state: { data: unknown[]; metadata?: Record<string, unknown> };
-  options?: Record<string, unknown>;
-  context?: DsvpEvidenceContext;
-  chapter_id?: string;
-  chapterId?: string;
-  lesson_id?: string;
-  lessonId?: string;
-  presentation_id?: string;
-  presentationId?: string;
-  presentation_page_id?: string;
-  presentationPageId?: string;
-  classroom_session_id?: string;
-  classroomSessionId?: string;
-  source_ref?: string;
-}
-export type MatchSource = "NONE" | "CLASSROOM_SESSION" | "PRESENTATION_PAGE" | "EXPLICIT_CHAPTER" | "ANIMATION_DEFINITION";
-export interface DsvpSimulationResponse {
-  protocol: "dsvp/1.0";
-  request: DsvpRequest;
-  trace: Record<string, unknown>;
-  animationData: AnimationDefinition;
-  recordId?: string | null;
-  evidencePersisted: boolean;
-  animationRecordId?: string | null;
-  resolvedChapterId?: string | null;
-  matchSource: MatchSource;
-}
-export interface AnimationObservationRequest { observation: string }
-export interface AnimationObservation { recordId: string; observation: string }
+/**
+ * The animation surface lives in one place (`./animation`) so the classroom and the animation lab cannot
+ * drift apart. These re-exports keep the classroom's existing import path working.
+ */
+export type {
+  AnimationDefinition,
+  AnimationObservation,
+  AnimationObservationRequest,
+  AnimationResponse,
+  AnimationStep,
+  AnimationType,
+  DsvpEvidenceContext,
+  DsvpRequest,
+  DsvpResolution,
+  DsvpSimulationResponse,
+  DsvpStructure
+} from "./animation";
+export type { DsvpMatchSource as MatchSource } from "./animation";
 
 export type CodeLanguage = "c" | "python";
 export type CodeRunStatus = "success" | "compile_error" | "runtime_error";
@@ -304,6 +256,65 @@ export interface AdminUserStatusRequest { status: AdminUserStatus; reason?: stri
 export interface AdminUserRolesRequest { roles: Role[] }
 export interface AdminAuditEvent { id: number; actorUserId: number; action: string; targetType: string; targetId: string; result: string; requestId: string; beforeSummary: string; afterSummary: string; createdAt: string }
 export interface BackgroundTask { id: number; taskType: string; status: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELED"; createdAt: string; startedAt: string | null; deadlineAt: string | null; heartbeatAt: string | null; retryCount: number; maxAttempts: number; requestId: string }
+
+export interface PresentationSlide {
+  id: string;
+  deckId: string;
+  deckTitle: string;
+  slideNumber: number;
+  chapter: string;
+  title: string;
+  rawText: string;
+  speakerNotes: string;
+  semanticSummary: string;
+  teachingRole: string;
+  teachingFocus: string;
+  concepts: string[];
+  visualAnchors: string[];
+  shouldShow: boolean;
+  lessonIds: string[];
+  imageUrl: string;
+  section: string;
+  role: string;
+  terms: string[];
+}
+
+/** Why the current page is on screen, reported by the classroom API for the active step. */
+export interface ClassroomSlideMatch {
+  slideId: string;
+  slideTitle?: string;
+  kind: "DIRECT" | "CONTINUITY" | "NONE";
+  score: number;
+  source: "override" | "script" | "auto";
+  /** Why this page: the step's own page, a declared range with no page of its own, or a fallback match. */
+  reason?: "pinned" | "script-refs" | "scope-only" | "opening" | "aligned";
+  subLessonId?: string;
+  subLessonTitle?: string;
+  scene?: string;
+}
+export interface PresentationDeck {
+  deckId: string;
+  title: string;
+  chapter: string;
+  slideCount: number;
+  coverSlideId: string;
+}
+export interface LessonCourseware {
+  lessonId: string;
+  coursewareKey: string;
+  title: string;
+  source: string;
+  ready: boolean;
+  builtAt: string;
+  slides: PresentationSlide[];
+}
+export interface PresentationMeta {
+  ready: boolean;
+  builtAt: string;
+  slideCount: number;
+  deckCount: number;
+  lessonCount: number;
+}
 
 export type SseEvent =
   | { event: "sources"; data: { sources: ChatSource[] } | ChatSource[] }

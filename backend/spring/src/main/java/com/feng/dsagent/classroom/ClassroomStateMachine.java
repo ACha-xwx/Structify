@@ -35,6 +35,7 @@ public final class ClassroomStateMachine {
         }
 
         return switch (action) {
+            case ASK -> current;
             case PAUSE -> new ClassroomStatus(current.state(), true);
             case FINISH -> new ClassroomStatus(ClassroomState.SUMMARY, false);
             case ANSWER -> answer(current, true);

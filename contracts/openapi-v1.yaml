@@ -348,6 +348,67 @@ paths:
         '204': {description: Session deleted}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {$ref: '#/components/responses/NotFound'}
+  /classroom/lessons:
+    get:
+      tags: [Classroom]
+      summary: List lessons backed by verified textbook chunks (not PPT or fixtures)
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      parameters:
+        - name: chapterId
+          in: query
+          schema: {type: string, maxLength: 64}
+      responses:
+        '200':
+          description: Empty list when no eligible textbook source is configured
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ClassroomLesson'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /classroom/preparations:
+    post:
+      tags: [Classroom]
+      summary: Start background textbook JSON preparation for the authenticated learner
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lessonId]
+              properties:
+                lessonId: {type: string}
+      responses:
+        '200':
+          description: Poll this learner-owned job until ready or failed; ready includes the new session
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ClassroomPreparation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '429':
+          description: Preparation queue is full
+  /classroom/preparations/{id}:
+    get:
+      tags: [Classroom]
+      summary: Get a learner-owned preparation job (in-memory; expires or is lost on restart)
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      responses:
+        '200':
+          description: Current preparation phase and result
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ClassroomPreparation'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
   /classroom/scripts:
     get:
       tags: [Classroom]
@@ -420,8 +481,9 @@ paths:
               properties:
                 action:
                   type: string
-                  enum: [ANSWER, PAUSE, RESUME, CONTINUE, FINISH]
+                  enum: [ASK, ANSWER, PAUSE, RESUME, CONTINUE, FINISH]
                 content: {type: string, maxLength: 4000}
+                expectedRevision: {type: integer, minimum: 0, description: Reject stale or replayed actions against another classroom revision}
       responses:
         '200':
           description: Updated classroom session
@@ -463,6 +525,66 @@ paths:
         '502': {$ref: '#/components/responses/BadGateway'}
         '503': {$ref: '#/components/responses/ServiceUnavailable'}
         '504': {$ref: '#/components/responses/GatewayTimeout'}
+  /animations/interpret:
+    post:
+      tags: [Animation]
+      summary: Use the model to select a deterministic DSVP request for a published chapter
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chapterId]
+              properties:
+                chapterId: {type: string, minLength: 1, maxLength: 64}
+                prompt: {type: string, maxLength: 2000}
+      responses:
+        '200':
+          description: Validated operation request, not model-generated animation frames
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DsvpRequest'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '502': {$ref: '#/components/responses/BadGateway'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /animations/plan:
+    post:
+      tags: [Animation]
+      summary: Turn an explicitly chosen capability and its arguments into an executable DSVP request
+      description: >-
+        The animation lab's deterministic path. The caller has already decided which capability to show,
+        so no model is consulted and no token quota is consumed; the local engine validates the arguments,
+        fills in its canonical teaching example when they are missing, and returns the request that
+        /animations/simulate can execute. A capability outside the reviewed catalog is rejected rather
+        than guessed at.
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [capability]
+              properties:
+                capability: {type: string, minLength: 1, maxLength: 64, example: 'bst.insert'}
+                arguments:
+                  type: object
+                  description: Capability arguments; a missing required argument falls back to the engine's canonical example, reported as toolRequest.demoFallback.
+                sourceRef: {type: string, maxLength: 160}
+      responses:
+        '200':
+          description: Resolution carrying the engine-built request when the status is `ready`
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DsvpPlanResolution'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
   /animations/simulate:
     post:
       tags: [Animation]
@@ -1543,6 +1665,27 @@ components:
           maxItems: 200
           description: Latest persisted messages, returned in chronological order
           items: {$ref: '#/components/schemas/ChatMessage'}
+    ClassroomLesson:
+      type: object
+      required: [id, chapterId, title, source]
+      properties:
+        id: {type: string}
+        chapterId: {type: string}
+        title: {type: string}
+        source: {type: string}
+        pages: {type: string, nullable: true}
+    ClassroomPreparation:
+      type: object
+      required: [id, state, phase]
+      properties:
+        id: {type: string}
+        state: {type: string, enum: [preparing, ready, failed]}
+        phase: {type: string}
+        error: {type: string, nullable: true}
+        session:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ClassroomSession'
     ClassroomScript:
       type: object
       required: [id, chapterId, title, versionLabel]
@@ -1594,7 +1737,13 @@ components:
         i: {type: integer, minimum: 0, maximum: 1024, nullable: true}
         j: {type: integer, minimum: 0, maximum: 1024, nullable: true}
         key: {type: string, maxLength: 48, nullable: true}
-        val: {type: string, maxLength: 48, nullable: true}
+          val: {type: string, maxLength: 48, nullable: true}
+          state:
+            type: array
+            nullable: true
+            readOnly: true
+            items: {}
+            description: Exact step snapshot from deterministic local execution; not accepted from model-generated definitions.
     AnimationDefinition:
       type: object
       required: [animation, type, title, description, initial, steps]
@@ -1607,11 +1756,12 @@ components:
           type: array
           maxItems: 64
           items: {}
-        steps:
-          type: array
-          minItems: 1
-          maxItems: 20
-          items: {$ref: '#/components/schemas/AnimationStep'}
+          steps:
+            type: array
+            minItems: 1
+            maxItems: 256
+            description: Deterministic DSVP output may contain up to 256 steps; untrusted model-generated definitions remain limited to 20.
+            items: {$ref: '#/components/schemas/AnimationStep'}
     AnimationResponse:
       type: object
       required: [definition, persisted]
@@ -1649,6 +1799,43 @@ components:
         classroom_session_id: {type: string, maxLength: 160}
         classroomSessionId: {type: string, maxLength: 160}
         source_ref: {type: string, maxLength: 160}
+    DsvpPlanResolution:
+      type: object
+      required: [status, missingArguments]
+      description: >-
+        Outcome of asking the local engine to turn a chosen capability into a request. `ready` carries
+        toolRequest; `missing-arguments`, `invalid-arguments`, `unsupported`, `not-needed` and
+        `low-confidence` carry the reason instead.
+      properties:
+        status:
+          type: string
+          enum: [ready, not-needed, low-confidence, missing-arguments, invalid-arguments, unsupported]
+        capability:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: The engine's catalog entry for the chosen capability, when it recognised it.
+        missingArguments:
+          type: array
+          items: {type: string}
+        error: {type: string, nullable: true}
+        toolRequest:
+          type: object
+          nullable: true
+          required: [kind, protocol, capability, request]
+          properties:
+            kind: {type: string, enum: [animation]}
+            protocol: {type: string, example: 'dsvp/1'}
+            capability: {type: string, example: 'bst.insert'}
+            purpose: {type: string, maxLength: 240}
+            confidence: {type: number, minimum: 0, maximum: 1}
+            sourceChunkIds:
+              type: array
+              items: {type: string}
+            demoFallback:
+              type: boolean
+              description: True when required arguments were missing and the engine supplied its canonical teaching example.
+            request: {$ref: '#/components/schemas/DsvpRequest'}
     DsvpEvidenceContext:
       type: object
       additionalProperties: false

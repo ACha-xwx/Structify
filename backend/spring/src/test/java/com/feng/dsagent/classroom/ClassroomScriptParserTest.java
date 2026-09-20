@@ -11,6 +11,30 @@ class ClassroomScriptParserTest {
 
     private final ClassroomScriptParser parser = new ClassroomScriptParser(new ObjectMapper());
 
+    @Test void normalizesCasingOfClosedVocabularyFieldsButStillRejectsUnknownValues() {
+        // The model sometimes returns "Explain"/"QUESTION"; that casing slip used to make a whole lesson
+        // unteachable, so the closed-vocabulary fields are lower-cased before validation.
+        ClassroomScriptPlan normalized = parser.parse("""
+            {"lessonId":"case-test","title":"测试","steps":[{"type":"QUESTION","role":"TEACHER","prompt":"问题","expected":["答案"]}]}
+            """);
+        assertThat(normalized.question().path("expected").get(0).asText()).isEqualTo("答案");
+        assertThat(normalized.stage(ClassroomState.WAITING).path("prompt").asText()).isEqualTo("问题");
+
+        // Anything outside the vocabulary must still fail loudly instead of being guessed at.
+        assertThatThrownBy(() -> parser.parse("""
+            {"lessonId":"case-test-2","title":"测试","steps":[{"type":"quiz","prompt":"问题","expected":["答案"]}]}
+            """)).hasMessageContaining("$.steps[0]").hasMessageContaining("type 必须使用小写");
+    }
+
+    @Test void acceptsNullOptionalAnimationAndReportsExactInvalidStep() {
+        assertThat(parser.parse("""
+            {"lessonId":"null-animation","title":"测试","steps":[{"type":"explain","role":"teacher","content":"讲解","animationRef":null}]}
+            """).stage(ClassroomState.EXPLAIN).path("content").asText()).isEqualTo("讲解");
+        assertThatThrownBy(() -> parser.parse("""
+            {"lessonId":"invalid-field","title":"测试","steps":[{"type":"question","prompt":"","expected":["参考"]}]}
+            """)).hasMessageContaining("$.steps[0]").hasMessageContaining("prompt");
+    }
+
     @Test
     void parsesTheTeacherApprovedStepBasedContract() {
         ClassroomScriptPlan plan = parser.parse("""
@@ -109,6 +133,49 @@ class ClassroomScriptParserTest {
             .isInstanceOfSatisfying(ApiException.class, error ->
                 assertThat(error.code()).isEqualTo("CLASSROOM_SCRIPT_INVALID")
             );
+    }
+
+    @Test
+    void acceptsLabeledQuestionSourcesAndRejectsUnknownOnes() {
+        // Where a question came from (the model's design, the textbook, or a courseware page) is shown in
+        // the classroom, so a value outside that vocabulary is a mistake worth echoing back.
+        ClassroomScriptPlan plan = parser.parse("""
+            {"lessonId":"source-test","title":"测试","steps":[
+            {"type":"question","prompt":"中序遍历的结果是什么？","expected":["左、根、右"],"questionSource":"slide"}]}
+            """);
+        assertThat(plan.stage(ClassroomState.WAITING).path("questionSource").asText()).isEqualTo("slide");
+
+        assertThatThrownBy(() -> parser.parse("""
+            {"lessonId":"source-test-2","title":"测试","steps":[
+            {"type":"question","prompt":"问题","expected":["答案"],"questionSource":"teacher"}]}
+            """)).hasMessageContaining("questionSource 必须是 model、textbook 或 slide")
+            .hasMessageContaining("teacher");
+    }
+    @Test
+    void acceptsALongCoursewareLessonWithInterleavedQuestions() {
+        // A 36-page deck with a question after every third page is 48 steps. The guard used to sit at 40,
+        // which rejected the whole lesson at runtime - after preparation had already paid for it.
+        StringBuilder steps = new StringBuilder();
+        for (int page = 1; page <= 36; page++) {
+            if (page > 1) steps.append(',');
+            steps.append("{\"type\":\"explain\",\"role\":\"teacher\",\"content\":\"第 ").append(page).append(" 页讲解\"}");
+            if (page % 3 == 0) {
+                steps.append(",{\"type\":\"question\",\"role\":\"teacher\",\"prompt\":\"第 ").append(page)
+                    .append(" 页的要点是什么？\",\"expected\":[\"要点\"],\"questionSource\":\"slide\"}");
+            }
+        }
+        ClassroomScriptPlan plan = parser.parse("{\"lessonId\":\"long-deck\",\"title\":\"长课件课时\",\"steps\":[" + steps + "]}");
+        assertThat(plan.lessonId()).isEqualTo("long-deck");
+        assertThat(plan.stage(ClassroomState.WAITING).path("prompt").asText()).contains("第 3 页");
+    }
+
+    @Test
+    void namesTheFieldThatBrokeAControlledArray() {
+        // A bare "format invalid" leaves the repair round nothing to fix, so the offending element is echoed.
+        assertThatThrownBy(() -> parser.parse("""
+            {"lessonId":"bad-expected","title":"测试","steps":[{"type":"question","prompt":"问题","expected":[1,2]}]}
+            """)).hasMessageContaining("expected 的每一项都必须是字符串")
+            .hasMessageContaining("$.steps[0]");
     }
 
     @Test

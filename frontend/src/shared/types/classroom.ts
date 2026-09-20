@@ -16,7 +16,7 @@ export type ClassroomState =
   | "BLACKBOARD"
   | "SUMMARY";
 
-export type ClassroomAction = "ANSWER" | "PAUSE" | "RESUME" | "CONTINUE" | "FINISH";
+export type ClassroomAction = "ASK" | "ANSWER" | "PAUSE" | "RESUME" | "CONTINUE" | "FINISH";
 
 export type ClassroomEvaluationStatus = "CORRECT" | "MISCONCEPTION" | "INCORRECT";
 
@@ -44,4 +44,5 @@ export interface CreateClassroomSessionRequest {
 export interface ClassroomActionRequest {
   action: ClassroomAction;
   content?: string;
+  expectedRevision?: number;
 }

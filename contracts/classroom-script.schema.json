@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/feng129685/data-structure-agent/contracts/classroom-script.schema.json",
+  "$id": "https://github.com/ACha-xwx/Structify/contracts/classroom-script.schema.json",
   "title": "Data Structure Classroom Script",
   "description": "Reviewed, script-driven classroom content. The script is stored with chapter and review metadata in the classroom_scripts table.",
   "oneOf": [
@@ -15,6 +15,7 @@
       "properties": {
         "lessonId": {"type": "string", "minLength": 1, "maxLength": 64},
         "title": {"type": "string", "minLength": 1, "maxLength": 200},
+        "textbookSources": {"type": "array", "items": {"type": "object"}},
         "objectives": {
           "type": "array",
           "maxItems": 12,
@@ -35,11 +36,16 @@
       "properties": {
         "type": {"type": "string", "enum": ["explain", "question", "discussion", "blackboard", "summary"]},
         "role": {"type": "string", "enum": ["teacher", "assistant", "student"]},
+        "keywords": {"type": "array", "maxItems": 4, "items": {"type": "string", "maxLength": 16}},
+        "sourceChunkIds": {"type": "array", "items": {"type": "string"}},
+        "sourcePages": {"type": "array", "items": {"type": "string"}},
+        "evidence": {"type": "string"},
         "title": {"type": "string", "maxLength": 200},
         "content": {"type": "string", "maxLength": 4000},
         "contentRef": {"type": "string", "minLength": 1, "maxLength": 160},
         "animationRef": {
           "oneOf": [
+            {"type": "null"},
             {"type": "string", "minLength": 1, "maxLength": 64},
             {
               "type": "object",
@@ -58,6 +64,30 @@
           ]
         },
         "codeRef": {"type": "string", "minLength": 1, "maxLength": 64},
+        "textbookMatch": {
+          "description": "How precisely the reviewed textbook backs this step: exact section, parent section, whole lesson, an extension page, or none.",
+          "type": "string",
+          "enum": ["exact", "parent", "chapter", "extension", "none"]
+        },
+        "slideTitle": {"type": "string", "minLength": 1, "maxLength": 200},
+        "slidePage": {"type": "integer", "minimum": 1},
+        "slideScope": {
+          "description": "The part of the lesson deck this step was placed in, chosen before the page itself.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["subLessonId", "scene"],
+          "properties": {
+            "subLessonId": {"type": "string", "minLength": 1, "maxLength": 64},
+            "scene": {"type": "string", "minLength": 1, "maxLength": 64}
+          }
+        },
+        "slideRefs": {
+          "description": "Courseware pages this step shows, chosen from the slides prepared for the lesson. Absent means the slide pane follows the lesson order instead.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {"type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9._-]+$"}
+        },
         "prompt": {"type": "string", "minLength": 1, "maxLength": 1000},
         "expected": {
           "type": "array",
