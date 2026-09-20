@@ -9,17 +9,28 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import tools.jackson.databind.ObjectMapper;
 
+/**
+ * Loads locally reviewed textbook lessons into classroom knowledge chunks.
+ *
+ * <p>Publication is gated by a machine readable page-level manifest: a lesson file contributes
+ * chunks only when it is listed in {@code import-manifest.json}, its bytes match the recorded
+ * SHA-256, every page block carries the reviewed label, and the declared textbook/PDF pages match
+ * the manifest exactly. Anything else is skipped and reported instead of being published.
+ */
 public final class KnowledgeCorpusLoader {
 
     private static final Pattern LESSON_FILE = Pattern.compile("^(\\d{2})-\\d{2}-.+\\.md$");
+    private static final Pattern PAGE_HEADER = Pattern.compile("^### 教材页 (\\d+)（PDF页 (\\d+)）$");
     private static final Pattern TITLE = Pattern.compile("(?m)^#\\s*课时标题[：:]\\s*(.+?)\\s*$");
-    private static final Pattern PAGE = Pattern.compile("(?m)^-\\s*教材页码[：:]\\s*(.+?)\\s*$");
     private static final Map<String, String> CHAPTER_IDS = Map.ofEntries(
         Map.entry("01", "01-introduction"),
         Map.entry("02", "02-linear-list"),
@@ -33,13 +44,35 @@ public final class KnowledgeCorpusLoader {
         Map.entry("10", "10-external-sort")
     );
 
+    private final ObjectMapper mapper;
+
+    public KnowledgeCorpusLoader(ObjectMapper mapper) {
+        this.mapper = mapper;
+    }
+
     public KnowledgeCorpus load(Path textbookDirectory, int chunkSize) {
         if (textbookDirectory == null) {
             return KnowledgeCorpus.empty();
         }
-        Path lessonsDirectory = textbookDirectory.toAbsolutePath().normalize().resolve("lessons");
+        Path root = textbookDirectory.toAbsolutePath().normalize();
+        Path lessonsDirectory = root.resolve("lessons");
         if (!Files.isDirectory(lessonsDirectory)) {
             return KnowledgeCorpus.empty();
+        }
+
+        KnowledgeImportManifest manifest;
+        try {
+            manifest = KnowledgeImportManifest.read(root, mapper);
+        } catch (RuntimeException error) {
+            return KnowledgeCorpus.empty(List.of(new KnowledgeImportManifest.Rejection(
+                KnowledgeImportManifest.FILE_NAME,
+                "IMPORT_MANIFEST_UNUSABLE: " + error.getClass().getSimpleName() + ": " + error.getMessage()
+            )));
+        }
+        if (manifest == null) {
+            return KnowledgeCorpus.empty(List.of(new KnowledgeImportManifest.Rejection(
+                KnowledgeImportManifest.FILE_NAME, "IMPORT_MANIFEST_MISSING"
+            )));
         }
 
         List<Path> lessonFiles;
@@ -54,46 +87,87 @@ public final class KnowledgeCorpusLoader {
         }
 
         List<KnowledgeChunk> chunks = new ArrayList<>();
+        List<KnowledgeImportManifest.Rejection> rejections = new ArrayList<>();
+        int acceptedLessons = 0;
         for (Path lessonFile : lessonFiles) {
-            chunks.addAll(loadLesson(lessonFile, chunkSize));
+            String filename = lessonFile.getFileName().toString();
+            byte[] bytes;
+            try {
+                bytes = Files.readAllBytes(lessonFile);
+            } catch (IOException error) {
+                throw new IllegalStateException("Unable to read textbook lesson " + filename, error);
+            }
+            String markdown = new String(bytes, StandardCharsets.UTF_8);
+            List<KnowledgeImportManifest.LessonPageBlock> blocks = pageBlocks(markdown);
+            KnowledgeImportManifest.Entry entry = manifest.accepted().get(filename);
+            List<KnowledgeImportManifest.Rejection> problems =
+                KnowledgeImportManifest.validate(filename, sha256(bytes), blocks, entry);
+            if (!problems.isEmpty()) {
+                rejections.addAll(problems);
+                continue;
+            }
+            String chapterId = chapterId(filename);
+            if (chapterId == null) {
+                rejections.add(new KnowledgeImportManifest.Rejection(filename, "UNKNOWN_CHAPTER_PREFIX"));
+                continue;
+            }
+            String title = match(TITLE, markdown, filename.substring(0, filename.length() - 3));
+            String source = "textbook/lessons/" + filename;
+            // One chunk per reviewed page, split further only when a page exceeds the budget. Page-scoped
+            // chunks are what let a classroom step cite the exact page it drew from and what lets a
+            // courseware page's section number select the textbook passages that belong to it.
+            for (KnowledgeImportManifest.LessonPageBlock block : blocks) {
+                List<String> parts = split(block.text(), Math.max(80, chunkSize));
+                for (int part = 0; part < parts.size(); part++) {
+                    chunks.add(new KnowledgeChunk(
+                        chunkId(source, block.page(), part),
+                        chapterId,
+                        title,
+                        parts.get(part),
+                        source,
+                        "第 " + block.page() + " 页",
+                        "CLASSROOM_ONLY"
+                    ));
+                }
+            }
+            acceptedLessons++;
         }
         return new KnowledgeCorpus(
             chunks,
-            new KnowledgeCorpusStats(!lessonFiles.isEmpty(), lessonFiles.size(), chunks.size())
+            new KnowledgeCorpusStats(acceptedLessons > 0, acceptedLessons, chunks.size(), List.copyOf(rejections))
         );
     }
 
-    private List<KnowledgeChunk> loadLesson(Path lessonFile, int chunkSize) {
-        String markdown;
-        try {
-            markdown = Files.readString(lessonFile, StandardCharsets.UTF_8);
-        } catch (IOException error) {
-            throw new IllegalStateException("Unable to read textbook lesson " + lessonFile.getFileName(), error);
-        }
-
-        String filename = lessonFile.getFileName().toString();
-        String chapterId = chapterId(filename);
-        if (chapterId == null) {
-            return List.of();
-        }
-        String title = match(TITLE, markdown, filename.substring(0, filename.length() - 3));
-        String pageLabel = match(PAGE, markdown, null);
-        String source = "textbook/lessons/" + filename;
-        List<String> parts = split(markdown, Math.max(80, chunkSize));
-
-        List<KnowledgeChunk> chunks = new ArrayList<>(parts.size());
-        for (int index = 0; index < parts.size(); index++) {
-            chunks.add(new KnowledgeChunk(
-                chunkId(source, index),
-                chapterId,
-                title,
-                parts.get(index),
-                source,
-                pageLabel,
-                "CLASSROOM_ONLY"
+    /** Recovers the exact text of every {@code ### 教材页 N（PDF页 M）} block, in file order. */
+    static List<KnowledgeImportManifest.LessonPageBlock> pageBlocks(String markdown) {
+        List<String> lines = List.of(markdown.replace("\r\n", "\n").replace('\r', '\n').split("\n", -1));
+        List<KnowledgeImportManifest.LessonPageBlock> blocks = new ArrayList<>();
+        for (int index = 0; index < lines.size(); index++) {
+            Matcher header = PAGE_HEADER.matcher(lines.get(index).trim());
+            if (!header.matches()) {
+                continue;
+            }
+            int end = index + 1;
+            while (end < lines.size()
+                && !PAGE_HEADER.matcher(lines.get(end).trim()).matches()
+                && !lines.get(end).startsWith("## ")) {
+                end++;
+            }
+            List<String> block = lines.subList(index, end);
+            String label = block.stream()
+                .map(String::trim)
+                .filter(line -> line.startsWith("> OCR质量："))
+                .findFirst()
+                .orElse("");
+            blocks.add(new KnowledgeImportManifest.LessonPageBlock(
+                Integer.parseInt(header.group(1)),
+                Integer.parseInt(header.group(2)),
+                label,
+                String.join("\n", block).strip()
             ));
+            index = end - 1;
         }
-        return chunks;
+        return blocks;
     }
 
     private List<String> split(String markdown, int chunkSize) {
@@ -159,13 +233,21 @@ public final class KnowledgeCorpusLoader {
         return matcher.find() ? matcher.group(1).trim() : fallback;
     }
 
-    private String chunkId(String source, int index) {
+    static String sha256(byte[] content) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest((source + "#" + index).getBytes(StandardCharsets.UTF_8));
-            return "textbook-" + HexFormat.of().formatHex(hash, 0, 16);
+            return HexFormat.of().formatHex(digest.digest(content));
         } catch (NoSuchAlgorithmException error) {
             throw new IllegalStateException("SHA-256 is unavailable", error);
         }
+    }
+
+    private String chunkId(String source, int page, int part) {
+        return "textbook-" + sha256((source + "#" + page + "#" + part).getBytes(StandardCharsets.UTF_8)).substring(0, 32);
+    }
+
+    /** Exposed for diagnostics and tests; keeps the chapter prefix mapping in one place. */
+    static Set<String> knownChapterIds() {
+        return new LinkedHashSet<>(CHAPTER_IDS.values());
     }
 }

@@ -1,0 +1,38 @@
+{
+  "version": 2,
+  "policy": "合成测试夹具；只允许清单内的页进入课堂知识库。",
+  "accepted": [
+    {
+      "source": "02-03-线性表-单链表.md",
+      "target": "lessons/02-03-线性表-单链表.md",
+      "targetSha256": "6c22978500510610caf160d1fe0217e5107a2b54733252b54af8463930544005",
+      "pageRange": "第 35–36 页",
+      "pages": [
+        {
+          "page": 35,
+          "pdfPage": 46
+        },
+        {
+          "page": 36,
+          "pdfPage": 47
+        }
+      ]
+    },
+    {
+      "source": "06-03-树与二叉树-遍历.md",
+      "target": "lessons/06-03-树与二叉树-遍历.md",
+      "targetSha256": "81e68a980a6fcdc976eb7af0fed5bfe0558ed751d0d4f6015646892c87ff8a3f",
+      "pageRange": "第 168–169 页",
+      "pages": [
+        {
+          "page": 168,
+          "pdfPage": 179
+        },
+        {
+          "page": 169,
+          "pdfPage": 180
+        }
+      ]
+    }
+  ]
+}

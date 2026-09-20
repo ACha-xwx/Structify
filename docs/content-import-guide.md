@@ -80,7 +80,46 @@ ON DUPLICATE KEY UPDATE
 
 知识片段也必须有明确的 `license_scope`。当 `knowledge_chunks.resource_id` 关联资料时，检索权限以对应 `resources.license_scope` 为准，并且资料及所属章节都必须已发布；未关联资料时，以知识片段自身的 `license_scope` 为准。手工导入未关联片段时应显式填写授权范围，未知值会按不可见处理。本地教材导入默认使用 `CLASSROOM_ONLY`，不能作为游客公开语料。
 
-## 4. 课堂脚本
+## 4. 教材课时的页级导入闸门
+
+`KNOWLEDGE_AUTO_PUBLISH_LOCAL` 不再等同于“全部自动发布”。开启它只会装载**通过页级清单校验**的页面，未通过的文件会被拒绝并写入启动日志。
+
+流程如下：
+
+```text
+原书扫描 PDF（本机私有，核对 SHA-256）
+  └─ private/reviewed-textbook/revisions/page-revisions.json   逐页核验记录
+        └─ node scripts/build-reviewed-textbook.mjs
+              ├─ private/reviewed-textbook/lessons/*.md          已核验页正文（装载器只读这里）
+              └─ private/reviewed-textbook/import-manifest.json  页级白名单
+                    └─ KnowledgeCorpusLoader 逐页校验 → knowledge_chunks
+```
+
+`KnowledgeCorpusLoader` 对每个候选课时文件执行以下校验，任何一条不通过就整份文件不产出片段：
+
+| 校验 | 失败原因码 |
+|---|---|
+| 文件必须在 `import-manifest.json` 中列出（按 `target` 文件名匹配） | `NOT_LISTED_IN_IMPORT_MANIFEST` |
+| 文件 SHA-256 必须等于清单中的 `targetSha256` | `TARGET_HASH_MISMATCH` |
+| 每个 `### 教材页 N（PDF页 M）` 块必须带 `> OCR质量：已对照原始教材 PDF 核验（` 标签 | `PAGE_N_LABEL_NOT_REVIEWED` |
+| 页号集合必须与清单完全一致 | `PAGE_SET_MISMATCH` |
+| 每页声明的 PDF 页必须与清单一致 | `PAGE_N_PDF_PAGE_MISMATCH` |
+| 清单必须声明该课时的已核验页码范围 | `MANIFEST_PAGE_RANGE_MISSING` |
+| 清单缺失或版本不受支持 | `IMPORT_MANIFEST_MISSING` / `IMPORT_MANIFEST_UNUSABLE` |
+
+装载器把通过校验的页面合成知识片段，`page_label` 统一取清单中的已核验页码范围（例如 `第 38–39 页`），因此课堂接口返回的页范围与清单一致。
+
+核验记录中一页只能有三种状态：
+
+- `textFile`：对照 PDF 逐字重录的正文（公式、C 代码、表格、图注按原书修订）；
+- `mode: "verbatim"`：确认 OCR 与原文一致，正文沿用；
+- `mode: "replacements"`：只需定点替换，替换串必须恰好命中一次，否则构建失败。
+
+**图形的处理**：图内文字或连线无法准确转录时，正文只保留图号、图注与可定位说明，并注明“以原书该图为准，已保存页面图像作为可定位证据”，不据文字描述推断图形内容。
+
+**禁止事项**：不要把 `lesson-materials/raw/ocr_pages.json` 之外的“清洗改写稿”当作教材原文，也不要用模型总结替换正文。历史的 `lesson-materials/lessons/*.md` 中有部分页面已被改写，只能作为定位参考。
+
+## 5. 课堂脚本
 
 课堂脚本正文存入 `classroom_scripts.script_json`，元数据存入同一行的 `id`、`chapter_id`、`title`、`version_label` 和 `review_status`。格式以以下文件为准：
 
@@ -108,7 +147,7 @@ cd backend/spring
 
 新脚本在通过教师审核前保持 `DRAFT`。发布后若修改核心定义、伪代码、复杂度或标准答案，应提升 `version_label` 并保留审核记录。
 
-## 5. 学习证据与复现规则
+## 6. 学习证据与复现规则
 
 以下记录由具体业务流程在后端生成，前端或通用学习事件接口不能自行声明：
 
@@ -122,7 +161,7 @@ cd backend/spring
 
 通用 `POST /api/v1/learning/events` 只用于资料查看、资料下载、复习完成和薄弱点记录。内容与前端负责人不应直接提交上述三种可信证据，也不应在浏览器中伪造代码运行结果、课堂评价或动画归属。
 
-## 6. 栈与队列验收清单
+## 7. 栈与队列验收清单
 
 第一批内容至少满足：
 
