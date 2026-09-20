@@ -1,484 +1,214 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+import BrandStage from "../components/BrandStage.vue";
+import DirectionalArrowIcon from "../components/DirectionalArrowIcon.vue";
+import { useI18n } from "../i18n/locale";
 import { auth } from "../../app/providers/runtime";
-import brandIconSprite from "../../assets/brand-icons.svg";
-import runtimePoster from "../../assets/ai-runtime-poster.webp";
-import AiRuntimeFrame, { type AiRuntimeMenuItem } from "../components/AiRuntimeFrame.vue";
-import ThemeToggle from "../design/ThemeToggle.vue";
-import { useLocale } from "../i18n/locale";
 
-const { locale } = useLocale();
-const isEnglish = computed(() => locale.value === "en-US");
-const copy = computed(() => isEnglish.value ? {
-  brand: "Structify home",
-  nav: ["Home", "Product", "Case Studies", "Contact"],
-  trust: "Structured data-structure learning",
-  title: ["Intelligence", "Designed To Evolve"],
-  summary: "Trace structures, compare operations, and keep course material, code practice, and questions in one learning workspace.",
-  cta: "Get Started",
-  account: auth.state.user ? "Account" : "Sign in",
-  metricsNote: "These are AI Runtime visual-contract preview values, not production telemetry.",
-  metrics: [
-    { label: "Inference Time", detail: "AI Runtime visual-contract preview value; not a production latency claim." },
-    { label: "Platform Uptime", detail: "AI Runtime visual-contract preview value; not a production availability claim." },
-    { label: "Autonomous Runtime", detail: "AI Runtime visual-contract preview value; not a production service status." },
-    { label: "Context Windows", detail: "AI Runtime visual-contract preview value; not a production capacity claim." },
-  ],
-} : {
-  brand: "Structify 首页",
-  nav: ["首页", "产品", "案例", "联系"],
-  trust: "面向数据结构的智能学习",
-  title: ["让智能持续进化", "把结构真正学会"],
-  summary: "沿着结构变化学习，比较操作过程，把课件、代码练习和问题追问放进同一张学习工作台。",
-  cta: "开始学习",
-  account: auth.state.user ? "账户" : "登录",
-  metricsNote: "以下是 AI Runtime 视觉合同中的预览值，不代表生产统计或个人学习记录。",
-  metrics: [
-    { label: "推理耗时", detail: "AI Runtime 视觉合同预览值，不代表生产延迟指标。" },
-    { label: "平台可用性", detail: "AI Runtime 视觉合同预览值，不代表生产可用性指标。" },
-    { label: "自主运行", detail: "AI Runtime 视觉合同预览值，不代表生产服务状态。" },
-    { label: "上下文窗口", detail: "AI Runtime 视觉合同预览值，不代表生产容量指标。" },
-  ],
-});
+/**
+ * The entry page. Structify has two learning surfaces, and this page exists to ask which one to open.
+ * The classroom used to be mounted on the root path, so signing in dropped a learner into a lesson
+ * they had not picked yet. Nothing here starts a lesson, loads a courseware deck, or resumes a
+ * session on its own - both choices are one click away and both are deliberate.
+ *
+ * Visually it is the same stage as the sign-in screen, because that stage is shared (BrandStage), so
+ * signing in feels like moving one step forward rather than into another product.
+ */
+const LAST_KEY = "structify.classroom.last";
+const { t } = useI18n();
+const router = useRouter();
+const lastSessionId = ref("");
+const leaving = ref(false);
 
-const menuItems = computed<AiRuntimeMenuItem[]>(() => [
-  { id: "home", label: copy.value.nav[0], href: "/", active: true },
-  { id: "product", label: copy.value.nav[1], href: "/user/home" },
-  { id: "case-studies", label: copy.value.nav[2], href: "/user/animation?chapterId=sequential-list&from=home" },
-  { id: "contact", label: copy.value.nav[3], href: "/user/knowledge" },
-]);
+const signedIn = computed(() => Boolean(auth.state.user));
+/** Resuming stays a link, not an implicit restore: only a learner who asks for it goes back in. */
+const resumeTarget = computed(() => ({ path: "/classroom", query: { session: lastSessionId.value } }));
 
-const accountHref = computed(() => auth.state.user ? "/user/profile" : "/login");
-const accountLabel = computed(() => copy.value.account);
-
-type RuntimeMetric = {
-  glyph: string;
-  target: number;
-  suffix: string;
-  decimals: number;
-  minimumDigits?: number;
-  label: string;
-  detail: string;
-  to: string;
-};
-
-// These values are part of the AI Runtime visual contract. The accessible
-// disclosure above keeps them from being mistaken for production telemetry.
-const runtimeMetrics = computed<RuntimeMetric[]>(() => [
-  { glyph: "<", target: 120, suffix: "ms", decimals: 0, ...copy.value.metrics[0], to: "/user/home" },
-  { glyph: "%", target: 99.99, suffix: "%", decimals: 2, ...copy.value.metrics[1], to: "/user/animation?chapterId=sequential-list&from=home" },
-  { glyph: "*", target: 24, suffix: "/7", decimals: 0, ...copy.value.metrics[2], to: "/user/presentation?lessonId=01-01A&chapterId=sequential-list&from=home" },
-  { glyph: "#", target: 2.4, suffix: "M", decimals: 1, ...copy.value.metrics[3], to: "/user/code?chapterId=sequential-list&from=home" },
-]);
-
-const capabilitiesRoot = ref<HTMLElement | null>(null);
-const pixelHeadline = ref<HTMLCanvasElement | null>(null);
-const capabilityValues = ref<number[]>(runtimeMetrics.value.map(() => 0));
-let metricObserver: IntersectionObserver | null = null;
-let metricAnimationFrame: number | null = null;
-let redrawPixelHeadline: (() => void) | null = null;
-
-function drawChinesePixelHeadline() {
-  const canvas = pixelHeadline.value;
-  if (!canvas || isEnglish.value) return;
-  if (typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent)) return;
-  const width = Math.max(canvas.parentElement?.clientWidth ?? 320, 240);
-  const cssHeight = Math.min(Math.max(width * 0.19, 78), 168);
-  // Paint at the display's native pixel density. The previous implementation
-  // deliberately rendered at half resolution and then enlarged the bitmap,
-  // which made the Chinese glyphs look soft even with a pixel font loaded.
-  const pixelRatio = Math.min(Math.max(window.devicePixelRatio || 1, 1), 3);
-  canvas.width = Math.round(width * pixelRatio);
-  canvas.height = Math.round(cssHeight * pixelRatio);
-  canvas.style.height = `${cssHeight}px`;
-  let context: CanvasRenderingContext2D | null = null;
+async function signOut() {
+  if (leaving.value) return;
+  leaving.value = true;
   try {
-    context = canvas.getContext("2d");
-  } catch {
-    // jsdom and restricted webviews can omit canvas; the semantic h1 remains.
-    return;
+    await auth.logout();
+    await router.replace("/login");
+  } finally {
+    leaving.value = false;
   }
-  if (!context) return;
-  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-  context.clearRect(0, 0, width, cssHeight);
-  context.imageSmoothingEnabled = false;
-  const fontSize = Math.min(80, Math.max(34, width * 0.088));
-  context.fillStyle = "#ffffff";
-  context.textAlign = "center";
-  context.textBaseline = "top";
-  context.font = `400 ${fontSize}px "Fusion Pixel CJK", "Fusion Pixel 12px Proportional SC", monospace`;
-  const lineHeight = fontSize * 1.08;
-  copy.value.title.forEach((line, index) => context.fillText(line, width / 2, index * lineHeight));
-}
-
-function formatRuntimeMetric(metric: RuntimeMetric, index: number): string {
-  const value = capabilityValues.value[index] ?? 0;
-  const formatted = metric.decimals > 0
-    ? value.toFixed(metric.decimals)
-    : String(Math.round(value)).padStart(metric.minimumDigits ?? 1, "0");
-  return `${formatted}${metric.suffix}`;
-}
-
-function completeCapabilityCounts() {
-  capabilityValues.value = runtimeMetrics.value.map((metric) => metric.target);
-}
-
-function animateCapabilityCounts() {
-  if (metricAnimationFrame !== null) return;
-  const startedAt = performance.now();
-  const update = (now: number) => {
-    capabilityValues.value = runtimeMetrics.value.map((metric, index) => {
-      const delay = 480 + index * 90;
-      const duration = 1500 + index * 80;
-      const progress = Math.min(Math.max((now - startedAt - delay) / duration, 0), 1);
-      const eased = 1 - ((1 - progress) ** 3);
-      return metric.target * eased;
-    });
-    if (runtimeMetrics.value.some((metric, index) => (capabilityValues.value[index] ?? 0) < metric.target)) metricAnimationFrame = window.requestAnimationFrame(update);
-    else {
-      metricAnimationFrame = null;
-      completeCapabilityCounts();
-    }
-  };
-  metricAnimationFrame = window.requestAnimationFrame(update);
 }
 
 onMounted(() => {
-  drawChinesePixelHeadline();
-  redrawPixelHeadline = () => drawChinesePixelHeadline();
-  window.addEventListener("resize", redrawPixelHeadline);
-  if (document.fonts?.load) void document.fonts.load('80px "Fusion Pixel CJK"').then(redrawPixelHeadline);
-  if (document.fonts?.ready) void document.fonts.ready.then(redrawPixelHeadline);
-  const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  if (prefersReducedMotion || typeof IntersectionObserver === "undefined" || typeof window.requestAnimationFrame !== "function") {
-    completeCapabilityCounts();
-    return;
-  }
-
-  metricObserver = new IntersectionObserver((entries) => {
-    if (!entries.some((entry) => entry.isIntersecting)) return;
-    metricObserver?.disconnect();
-    metricObserver = null;
-    animateCapabilityCounts();
-  }, { threshold: 0.25 });
-  if (capabilitiesRoot.value) metricObserver.observe(capabilitiesRoot.value);
-  else completeCapabilityCounts();
-});
-
-watch(locale, () => requestAnimationFrame(drawChinesePixelHeadline));
-
-onBeforeUnmount(() => {
-  metricObserver?.disconnect();
-  if (redrawPixelHeadline) window.removeEventListener("resize", redrawPixelHeadline);
-  redrawPixelHeadline = null;
-  if (metricAnimationFrame !== null) window.cancelAnimationFrame(metricAnimationFrame);
+  lastSessionId.value = localStorage.getItem(LAST_KEY) ?? "";
 });
 </script>
 
 <template>
-  <AiRuntimeFrame
-    class="home-runtime"
-    mode="landing"
-    :menu-items="menuItems"
-    :brand-label="copy.brand"
-    :sign-in-href="accountHref"
-    :sign-in-label="accountLabel"
-    :video-poster="runtimePoster"
-  >
-    <template #actions>
-      <ThemeToggle />
-      <RouterLink class="ai-runtime-frame__sign-in" :to="accountHref">{{ accountLabel }}</RouterLink>
-    </template>
+  <BrandStage>
+    <section class="entry-flow" aria-labelledby="entry-title">
+      <h1 id="entry-title" class="entry__title">{{ t("home.title") }}</h1>
 
-    <template #nav>
-      <RouterLink v-for="item in menuItems" :key="item.id" :to="item.href || '/'" :class="{ 'is-active': item.active }" :aria-current="item.active ? 'page' : undefined">{{ item.label }}</RouterLink>
-    </template>
-
-    <template #mobile-nav>
-      <RouterLink v-for="item in menuItems" :key="item.id" :to="item.href || '/'" :class="{ 'is-active': item.active }" :aria-current="item.active ? 'page' : undefined">{{ item.label }}</RouterLink>
-    </template>
-
-    <template #hero>
-      <section class="runtime-landing" aria-labelledby="runtime-landing-title">
-        <div class="runtime-landing__trust-row runtime-landing__reveal" style="--d: .05s" aria-label="Structured data-structure learning">
-          <span class="runtime-landing__ring runtime-landing__ring--one"><span><svg class="runtime-landing__brand-icon runtime-landing__brand-icon--microsoft" viewBox="0 0 24 24" aria-hidden="true"><use :href="`${brandIconSprite}#brand-microsoft`" /></svg></span></span>
-          <span class="runtime-landing__ring runtime-landing__ring--two"><span><svg class="runtime-landing__brand-icon runtime-landing__brand-icon--amazon" viewBox="0 0 24 24" aria-hidden="true"><use :href="`${brandIconSprite}#brand-amazon`" /></svg></span></span>
-          <span class="runtime-landing__ring runtime-landing__ring--three"><span><svg class="runtime-landing__brand-icon runtime-landing__brand-icon--google" viewBox="0 0 24 24" aria-hidden="true"><use :href="`${brandIconSprite}#brand-google`" /></svg></span></span>
-          <span class="runtime-landing__trust-copy">{{ copy.trust }}</span>
-        </div>
-
-        <h1 v-if="isEnglish" id="runtime-landing-title" class="runtime-landing__headline">
-          <span>{{ copy.title[0] }}</span>
-          <span>{{ copy.title[1] }}</span>
-        </h1>
-        <template v-else>
-          <h1 id="runtime-landing-title" class="runtime-sr-only">{{ copy.title.join(" / ") }}</h1>
-          <canvas ref="pixelHeadline" class="runtime-landing__pixel-headline" role="img" :aria-label="copy.title.join(' / ')" />
-        </template>
-
-        <p class="runtime-landing__summary runtime-landing__reveal" style="--d: .28s">
-          {{ copy.summary }}
-        </p>
-
-        <RouterLink class="runtime-landing__cta runtime-landing__reveal runtime-landing__pulse" style="--d: .4s" to="/user/home">
-          {{ copy.cta }}
+      <nav class="entry__choices" :aria-label="t('home.choices')">
+        <RouterLink class="choice" to="/classroom">
+          <span class="choice__symbol" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+              <rect x="3" y="4" width="18" height="12.5" rx="2.2" />
+              <path d="M12 16.5V20M8.6 20h6.8" />
+            </svg>
+          </span>
+          <span class="choice__name">{{ t("home.classroom") }}</span>
+          <span class="choice__go" aria-hidden="true"><DirectionalArrowIcon direction="right" /></span>
         </RouterLink>
-      </section>
-    </template>
 
-    <template #footer>
-      <nav ref="capabilitiesRoot" class="runtime-capabilities" aria-label="Runtime metrics" aria-describedby="runtime-metrics-note">
-        <span id="runtime-metrics-note" class="runtime-sr-only">{{ copy.metricsNote }}</span>
-        <RouterLink
-          v-for="(metric, index) in runtimeMetrics"
-          :key="metric.label"
-          class="runtime-capability runtime-landing__reveal"
-          :style="{ '--d': `${.5 + index * .08}s` }"
-          :to="metric.to"
-          :aria-label="`${metric.label}: ${formatRuntimeMetric(metric, index)}`"
-          :title="metric.detail"
-        >
-          <span class="runtime-capability__glyph" aria-hidden="true">{{ metric.glyph }}</span>
-          <span class="runtime-capability__copy"><strong>{{ formatRuntimeMetric(metric, index) }}</strong><small>{{ metric.label }}</small></span>
+        <RouterLink class="choice" to="/animation">
+          <span class="choice__symbol" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+              <circle cx="12" cy="12" r="8.6" />
+              <path d="M10.2 8.6l5.4 3.4-5.4 3.4z" />
+            </svg>
+          </span>
+          <span class="choice__name">{{ t("home.animation") }}</span>
+          <span class="choice__go" aria-hidden="true"><DirectionalArrowIcon direction="right" /></span>
         </RouterLink>
       </nav>
-    </template>
-  </AiRuntimeFrame>
+
+      <nav class="entry-links" :aria-label="t('home.account')">
+        <RouterLink v-if="lastSessionId" class="entry__resume" :to="resumeTarget">{{ t("home.resume") }}</RouterLink>
+        <button v-if="signedIn" class="entry__signout" type="button" :disabled="leaving" @click="signOut">{{ t("common.signOut") }}</button>
+      </nav>
+    </section>
+  </BrandStage>
 </template>
 
 <style scoped>
-.runtime-landing {
-  display: grid;
-  width: min(900px, 100%);
-  margin: auto;
-  justify-items: center;
-  padding: clamp(24px, 5vh, 56px) 0 clamp(20px, 3vh, 34px);
-  color: #ffffff;
-  text-align: center;
-}
+.entry-flow { display: grid; width: min(100%, 420px); gap: 28px; justify-items: center; text-align: center; }
+.entry__title { margin: 0; color: var(--text); font-family: var(--font-ui); font-size: clamp(40px, 5vw, 58px); font-weight: 400; letter-spacing: 0; line-height: 1.04; }
 
-.runtime-landing__trust-row {
-  --trust-size: clamp(36px, 4.5vw, 42px);
-  display: inline-flex;
-  min-height: var(--trust-size);
-  align-items: center;
-  margin-bottom: clamp(16px, 2.5vh, 26px);
-}
+.entry__choices { display: grid; width: 100%; gap: 14px; }
 
-.runtime-landing__ring {
+/* Each entry is the same pill as a sign-in field: double hairline, glass surface, lit rim. */
+.choice {
+  --field-angle: 220deg;
   position: relative;
+  display: flex;
+  width: 100%;
+  min-height: 58px;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 6px 5px 10px;
+  overflow: visible;
+  border: 1px double color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 18%, transparent);
+  box-shadow: inset 2px -2px 1px -1px color-mix(in srgb, var(--surface) 90%, transparent), inset -2px 2px 1px -1px color-mix(in srgb, var(--surface) 90%, transparent), inset 6px -6px 1px -6px color-mix(in srgb, var(--surface) 55%, transparent), inset -6px 6px 1px -6px color-mix(in srgb, var(--surface) 55%, transparent), inset 0 0 2px color-mix(in srgb, var(--text) 44%, transparent), 0 7px 13px color-mix(in srgb, var(--text) 12%, transparent);
+  -webkit-backdrop-filter: blur(7px) saturate(1.08);
+  backdrop-filter: blur(7px) saturate(1.08);
+  color: var(--text);
+  font: inherit;
+  text-decoration: none;
+  transition: transform 180ms cubic-bezier(0.25, 1, 0.5, 1), box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.choice::before,
+.choice::after { position: absolute; border-radius: inherit; content: ""; pointer-events: none; }
+
+.choice::before {
+  z-index: 2;
+  inset: -1px;
+  padding: 1.2px;
+  background: conic-gradient(from var(--field-angle) at 50% 50%, color-mix(in srgb, var(--text) 52%, transparent), color-mix(in srgb, var(--surface) 86%, transparent) 15%, transparent 29% 40%, color-mix(in srgb, var(--text-muted) 56%, transparent) 53%, color-mix(in srgb, var(--surface) 82%, transparent) 61%, transparent 74% 86%, color-mix(in srgb, var(--text) 48%, transparent));
+  opacity: 0.58;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  transition: opacity 180ms ease, filter 180ms ease;
+}
+
+.choice::after {
   z-index: 1;
-  display: grid;
-  width: var(--trust-size);
-  height: var(--trust-size);
-  place-items: center;
-  padding: 5px;
-  border: 1px solid rgba(255, 255, 255, .4);
-  border-radius: 50%;
-  background: #28282a;
-  color: #111111;
-  transition: transform .35s ease;
-}
-
-.runtime-landing__ring + .runtime-landing__ring { margin-left: calc(var(--trust-size) * -.42); }
-.runtime-landing__ring--one { z-index: 1; }
-.runtime-landing__ring--two { z-index: 2; }
-.runtime-landing__ring--three { z-index: 4; }
-.runtime-landing__ring > span {
-  display: grid;
-  width: 100%;
-  height: 100%;
-  place-items: center;
-  border-radius: 50%;
-  background: #ffffff;
-  font-family: var(--font-mono);
-  font-size: calc(var(--trust-size) * .34);
-  font-weight: 700;
-  line-height: 1;
-}
-
-.runtime-landing__brand-icon {
-  display: block;
-  width: calc(var(--trust-size) * .34);
-  height: calc(var(--trust-size) * .34);
-  color: currentColor;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .runtime-landing__ring--one:hover { transform: translateY(-2px); }
-  .runtime-landing__ring--two:hover { transform: translateY(-4px); }
-  .runtime-landing__ring--three:hover { transform: translateY(-2px); }
-}
-
-.runtime-landing__trust-copy {
-  z-index: 3;
-  display: inline-flex;
-  min-height: var(--trust-size);
-  align-items: center;
-  margin-left: calc(var(--trust-size) * -.42);
-  padding: 0 clamp(14px, 2vw, 18px) 0 calc(var(--trust-size) * .58);
-  border: 1px solid rgba(255, 255, 255, .4);
-  border-radius: 999px;
-  background: #28282a;
-  color: #c4c2c3;
-  font-family: var(--ai-runtime-font-sans);
-  font-size: clamp(12px, 1.4vw, 13.5px);
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.runtime-landing__headline {
-  display: grid;
-  width: 100%;
-  margin: 0;
-  color: #ffffff;
-  font-family: "Fusion Pixel CJK", "Fusion Pixel 12px Proportional SC", "Geist Pixel Circle", monospace;
-  font-size: clamp(28px, 6.2vw, 80px);
-  font-weight: 400;
-  letter-spacing: 0;
-  line-height: 1.12;
-}
-
-.runtime-landing__pixel-headline {
-  display: block;
-  width: 100%;
-  height: clamp(78px, 12.5vw, 168px);
-  image-rendering: pixelated;
-}
-
-.runtime-landing__headline span {
+  inset: 2px;
   overflow: hidden;
-  animation: runtime-headline-fade .85s cubic-bezier(.22, 1, .36, 1) both;
-  white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--surface) 24%, transparent);
+  background: linear-gradient(118deg, transparent 0 35%, color-mix(in srgb, var(--surface) 48%, transparent) 47%, transparent 59%);
+  mix-blend-mode: screen;
+  opacity: 0.74;
+  transition: opacity 180ms ease, transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.runtime-landing__headline span:nth-child(1) { animation-delay: .12s; }
-.runtime-landing__headline span:nth-child(2) { animation-delay: .3s; }
-
-.runtime-landing__summary {
-  width: min(500px, 92%);
-  margin: clamp(16px, 2.4vh, 22px) 0 0;
-  color: #d0d0d0;
-  font-family: var(--ai-runtime-font-sans);
-  font-size: clamp(calc(13.5px + 2pt), calc(1.55vw + 2pt), calc(16.5px + 2pt));
-  font-weight: 400;
-  line-height: 1.55;
-  opacity: .8;
+.choice:hover,
+.choice:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--surface) 28%, transparent);
+  box-shadow: inset 2px -2px 1px -1px color-mix(in srgb, var(--surface) 94%, transparent), inset -2px 2px 1px -1px color-mix(in srgb, var(--surface) 94%, transparent), inset 0 0 2px color-mix(in srgb, var(--text) 52%, transparent), 0 10px 17px color-mix(in srgb, var(--text) 16%, transparent);
+  transform: translateY(-1px);
 }
 
-.runtime-landing__cta {
-  display: inline-grid;
-  min-height: 46px;
-  margin-top: clamp(18px, 3vh, 28px);
+.choice:hover::before,
+.choice:focus-visible::before { filter: saturate(1.18) brightness(1.08); opacity: 0.96; }
+.choice:hover::after,
+.choice:focus-visible::after { opacity: 1; transform: translateX(9%); }
+
+.choice__symbol { position: relative; z-index: 4; display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; border-radius: 50%; color: var(--text-muted); }
+.choice__symbol svg { display: block; width: 20px; height: 20px; }
+.choice__name { position: relative; z-index: 4; flex: 1 1 auto; min-width: 0; text-align: left; font-size: 16px; font-weight: 650; letter-spacing: 0.01em; line-height: 1.2; }
+
+/* The right-hand chip is the same round affordance the sign-in fields carry. */
+.choice__go {
+  position: relative;
+  z-index: 5;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
   place-items: center;
-  padding: clamp(11px, 1.6vh, 13px) clamp(22px, 3vw, 28px);
-  border-radius: 999px;
-  background: #ffffff;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, .15), 0 0 22px rgba(255, 255, 255, .32), 0 0 44px rgba(255, 255, 255, .12);
-  color: #000000;
-  font-family: var(--ai-runtime-font-sans);
-  font-size: clamp(13.5px, 1.5vw, 14.5px);
-  font-weight: 600;
-  text-decoration: none;
-  transition: transform 150ms ease, box-shadow 150ms ease;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text);
+  transition: background-color 180ms ease, transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .runtime-landing__cta:hover {
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, .26), 0 0 28px rgba(255, 255, 255, .46), 0 0 58px rgba(255, 255, 255, .18);
-    transform: translateY(-2px) scale(1.02);
-  }
-}
+.choice:hover .choice__go,
+.choice:focus-visible .choice__go { background: color-mix(in srgb, var(--text) 14%, transparent); transform: translateX(3px); }
 
-.runtime-landing__cta:active { transform: scale(.97); }
-.runtime-landing__cta.runtime-landing__pulse { animation: runtime-reveal-pulse .9s cubic-bezier(.22, 1, .36, 1) both; animation-delay: var(--d, 0s); }
+.entry-links { display: flex; width: 100%; align-items: center; justify-content: center; gap: 32px; padding-top: 2px; color: var(--text-muted); font-size: 17px; font-weight: 650; text-align: center; }
 
-.runtime-capabilities {
-  display: grid;
-  width: min(920px, 100%);
-  margin: 0 auto;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  color: #ffffff;
-}
-
-.runtime-capability {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: clamp(9px, 1.15vw, 13px);
+.entry-links a,
+.entry__signout {
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  padding: 0 clamp(10px, 2vw, 22px);
+  padding: 0;
   border: 0;
+  background: transparent;
   color: inherit;
-  text-align: left;
+  cursor: pointer;
+  font: inherit;
   text-decoration: none;
-  transition: opacity 150ms ease, transform 150ms ease;
+  transition: color 150ms ease, transform 150ms cubic-bezier(0.25, 1, 0.5, 1);
 }
 
-.runtime-capability + .runtime-capability { border-left: 1px solid rgba(255, 255, 255, .24); }
-.runtime-capability__glyph {
-  color: #ffffff;
-  font-family: "Geist Pixel Circle", monospace;
-  font-size: clamp(22px, 3vw, 33px);
-  line-height: 1;
-}
-.runtime-capability__copy { display: grid; min-width: 0; gap: 2px; }
-.runtime-capability__copy strong { min-width: 0; color: #ffffff; font-family: "Geist Pixel Circle", monospace; font-size: clamp(18px, 2.2vw, 26px); font-variant-numeric: tabular-nums; font-weight: 400; letter-spacing: 0; line-height: 1; }
-.runtime-capability__copy small { overflow: hidden; color: #8e8e8e; font-family: var(--ai-runtime-font-sans); font-size: clamp(11px, 1.2vw, 12.5px); line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
-.runtime-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+.entry-links a::after,
+.entry__signout::after { position: absolute; right: 0; bottom: -4px; left: 0; height: 1px; background: var(--text); content: ""; transform: scaleX(0); transform-origin: left; transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1); }
+.entry-links a:focus-visible,
+.entry__signout:focus-visible { color: var(--text); outline: 0; }
+.entry-links a:focus-visible::after,
+.entry__signout:focus-visible::after { transform: scaleX(1); }
+.entry__signout:disabled { cursor: default; opacity: 0.5; }
 
 @media (hover: hover) and (pointer: fine) {
-  .runtime-capability:hover { opacity: .74; transform: translateY(-2px); }
-}
-.runtime-capability:active { transform: scale(.97); }
-
-.runtime-landing__reveal {
-  animation: runtime-reveal .85s cubic-bezier(.22, 1, .36, 1) both;
-  animation-delay: var(--d, 0s);
+  .entry-links a:hover,
+  .entry__signout:hover:not(:disabled) { color: var(--text); transform: translateY(-1px); }
+  .entry-links a:hover::after,
+  .entry__signout:hover:not(:disabled)::after { transform: scaleX(1); }
 }
 
-@keyframes runtime-headline-fade {
-  from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: translateY(0); }
+@media (max-width: 520px) {
+  .entry-flow { gap: 24px; }
+  .entry__title { font-size: 42px; }
 }
 
-@keyframes runtime-reveal {
-  from { opacity: 0; filter: blur(6px); transform: translateY(22px) scale(.98); }
-  to { opacity: 1; filter: blur(0); transform: translateY(0) scale(1); }
-}
-
-@keyframes runtime-reveal-pulse {
-  0% { opacity: 0; box-shadow: 0 0 0 1px rgba(255, 255, 255, .02), 0 0 0 rgba(255, 255, 255, 0); transform: translateY(22px) scale(.98); }
-  72% { opacity: 1; box-shadow: 0 0 0 1px rgba(255, 255, 255, .22), 0 0 30px rgba(255, 255, 255, .42), 0 0 58px rgba(255, 255, 255, .18); transform: translateY(0) scale(1.025); }
-  100% { opacity: 1; box-shadow: 0 0 0 1px rgba(255, 255, 255, .15), 0 0 22px rgba(255, 255, 255, .32), 0 0 44px rgba(255, 255, 255, .12); transform: translateY(0) scale(1); }
-}
-
-@media (max-width: 720px) {
-  .runtime-landing { padding-top: clamp(20px, 5vh, 34px); padding-bottom: 18px; }
-  .runtime-landing__headline { letter-spacing: 0; line-height: 1.05; }
-  .runtime-capabilities { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 18px; }
-  .runtime-capability { padding: 0 clamp(8px, 3vw, 16px); }
-  .runtime-capability:nth-child(3) { border-left: 0; }
-}
-
-@media (max-width: 420px) {
-  .runtime-landing__trust-row { --trust-size: 34px; margin-bottom: 16px; }
-  .runtime-landing__trust-copy { max-width: 205px; overflow: hidden; text-overflow: ellipsis; }
-  .runtime-landing__headline { font-size: clamp(28px, 10.8vw, 42px); letter-spacing: 0; line-height: 1.04; }
-  .runtime-landing__summary { font-size: 15px; }
-  .runtime-capability__copy small { white-space: normal; }
-}
-
-@media (max-height: 700px) and (max-width: 720px) {
-  .runtime-landing { padding-top: 12px; padding-bottom: 12px; }
-  .runtime-landing__trust-row { margin-bottom: 12px; }
-  .runtime-landing__summary { margin-top: 12px; }
-  .runtime-landing__cta { margin-top: 14px; }
-  .runtime-capabilities { row-gap: 10px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .runtime-landing__headline span,
-  .runtime-landing__reveal { animation: none; }
+@media (prefers-reduced-motion: reduce) { .entry-flow * { animation: none !important; transition-duration: 1ms !important; } }
+@media (prefers-reduced-transparency: reduce) {
+  .choice { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .choice::after { display: none; }
 }
 </style>

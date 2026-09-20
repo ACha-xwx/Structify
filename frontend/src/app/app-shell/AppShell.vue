@@ -8,8 +8,7 @@ import DirectionalArrowIcon from "../../shared/components/DirectionalArrowIcon.v
 import ExitArrowIcon from "../../shared/components/ExitArrowIcon.vue";
 
 type NavigationIcon = "overview" | "users" | "reviews" | "tasks" | "audit" | "settings" | "mail" | "sandbox";
-type NavigationItem = { to: string; label: string };
-type AdminNavigationItem = NavigationItem & { icon: NavigationIcon };
+type AdminNavigationItem = { to: string; label: string; icon: NavigationIcon };
 
 const route = useRoute();
 const router = useRouter();
@@ -36,13 +35,6 @@ const adminNavItems: AdminNavigationItem[] = [
   { to: "/admin/mail", label: "邮件设置", icon: "mail" },
   { to: "/admin/sandbox", label: "沙箱配置", icon: "sandbox" },
 ];
-const learningNavItems: NavigationItem[] = [
-  { to: "/user/chapters", label: "章节" },
-  { to: "/user/coach", label: "教练" },
-  { to: "/user/classroom", label: "课堂" },
-  { to: "/user/animation", label: "舞台" },
-];
-
 const navigationIconPaths: Record<NavigationIcon, string[]> = {
   overview: ["M4 4h6v6H4z", "M14 4h6v6h-6z", "M4 14h6v6H4z", "M14 14h6v6h-6z"],
   users: ["M16 20v-1.6a3.4 3.4 0 0 0-3.4-3.4H7.4A3.4 3.4 0 0 0 4 18.4V20", "M10 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7", "M16 4.5a3.5 3.5 0 0 1 0 6.8", "M20 20v-1.6a3.4 3.4 0 0 0-2.4-3.25"],
@@ -261,17 +253,6 @@ onBeforeUnmount(() => {
       <main class="app-main app-main--workbench" id="main-content"><slot /></main>
     </template>
 
-    <template v-else>
-      <header class="app-header">
-        <RouterLink class="app-brand" to="/" aria-label="返回首页"><span class="app-brand__mark" aria-hidden="true">ds</span><span class="app-brand__name">数据结构工作台</span></RouterLink>
-        <nav class="app-nav" aria-label="学习端导航"><RouterLink v-for="item in learningNavItems" :key="item.to" :to="item.to">{{ item.label }}</RouterLink></nav>
-        <span class="app-header__spacer"></span>
-        <ThemeToggle />
-        <div class="app-user"><span class="app-user__email">{{ auth.state.user?.email || '访客' }}</span><button v-if="hasRetainedSession" class="button button--small" type="button" @click="signOut">退出</button><RouterLink v-else class="button button--small" to="/login">登录</RouterLink></div>
-      </header>
-      <main class="app-main" id="main-content"><slot /></main>
-      <footer class="app-footer">Spring v1 共享基础 · 学习端</footer>
-    </template>
   </div>
 </template>
 

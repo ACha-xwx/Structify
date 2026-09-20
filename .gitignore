@@ -75,6 +75,12 @@ local-root-*.html
 chrome-*.html
 tmp-*/
 tmp-*.html
+# Scratch probes used while verifying OCR/textbook alignment. They hard-code local paths and are
+# throwaway by design; the durable scripts live in scripts/ and tools/.
+tmp_*.py
+tmp_*.mjs
+tmp_*.txt
+tmp-*.sql
 audit-current-report.json
 
 # === Server Config (contains IP/infra info) ===
@@ -93,6 +99,7 @@ progress.md
 # === AI Tool Config ===
 .superpowers/
 .codegraph/
+.workbuddy/
 
 # === OS & Editor ===
 .DS_Store

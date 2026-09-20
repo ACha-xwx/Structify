@@ -15,23 +15,6 @@ const authMock = vi.hoisted(() => ({
 
 vi.mock("../providers/runtime", () => ({ auth: authMock }));
 
-async function mountShell() {
-  const router = createRouter({
-    history: createMemoryHistory(),
-    routes: [
-      { path: "/", component: { template: "<div />" } },
-      { path: "/user/chapters", component: { template: "<div />" } },
-      { path: "/user/coach", component: { template: "<div />" } },
-      { path: "/user/classroom", component: { template: "<div />" } },
-      { path: "/user/animation", component: { template: "<div />" } },
-      { path: "/login", component: { template: "<div />" } },
-    ],
-  });
-  await router.push("/user/chapters");
-  await router.isReady();
-  return { router, wrapper: mount(AppShell, { attachTo: document.body, global: { plugins: [router] }, slots: { default: "<p>content</p>" } }) };
-}
-
 async function mountAdminShell() {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -73,16 +56,6 @@ describe("AppShell retained session presentation", () => {
     authMock.state.status = "offline";
     authMock.state.user = { id: 7, email: "student@example.com", roles: ["STUDENT"] };
     authMock.logout.mockClear();
-  });
-
-  it.each(["offline", "error"])("keeps the logout action when a retained session is temporarily %s", async (status) => {
-    authMock.state.status = status;
-    const { wrapper } = await mountShell();
-
-    expect(wrapper.text()).toContain("student@example.com");
-    expect(wrapper.get(".app-user button").text()).toContain("退出");
-    expect(wrapper.find("a[href=\"/login\"]").exists()).toBe(false);
-    wrapper.unmount();
   });
 
   it("does not mount the retired header and duplicate theme switch on workbench surfaces", async () => {
@@ -196,15 +169,6 @@ describe("AppShell retained session presentation", () => {
     } finally {
       wrapper.unmount();
     }
-  });
-
-  it("keeps learning navigation in the header without rendering the admin sidebar", async () => {
-    const { wrapper } = await mountShell();
-
-    expect(wrapper.find("header nav[aria-label=\"学习端导航\"]").exists()).toBe(true);
-    expect(wrapper.find("aside[data-layout=\"admin-sidebar\"]").exists()).toBe(false);
-    expect(wrapper.get(".app-frame").classes()).not.toContain("app-frame--admin");
-    wrapper.unmount();
   });
 
   it("uses the requested collapsed desktop sidebar and expands it for pointer or keyboard access", async () => {
