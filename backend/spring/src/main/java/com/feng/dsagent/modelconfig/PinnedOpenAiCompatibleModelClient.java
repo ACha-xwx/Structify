@@ -163,6 +163,11 @@ final class PinnedOpenAiCompatibleModelClient implements ModelClient {
         return "azure".equals(normalized) || "azure-openai".equals(normalized);
     }
 
+    /** The deployment switch turns thinking off for every feature; a call site may also opt in. */
+    private boolean disablesThinking(ModelRequest request) {
+        return request.disableThinking() || Boolean.TRUE.equals(defaults.disableThinking());
+    }
+
     private String serialize(ModelRequest request, boolean stream) {
         List<Map<String, String>> messages = new ArrayList<>(request.messages().size());
         for (ModelMessage message : request.messages()) {
@@ -175,6 +180,8 @@ final class PinnedOpenAiCompatibleModelClient implements ModelClient {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", requiredModelName());
         payload.put("messages", messages);
+        if (request.jsonObject()) payload.put("response_format", Map.of("type", "json_object"));
+        if (disablesThinking(request) && "deepseek".equalsIgnoreCase(settings.provider())) payload.put("thinking", Map.of("type", "disabled"));
         payload.put("temperature", request.temperature() == null ? settings.temperature() : request.temperature());
         int configuredMaxTokens = settings.maxOutputTokens();
         int requestedMaxTokens = request.maxTokens() == null || request.maxTokens() < 1

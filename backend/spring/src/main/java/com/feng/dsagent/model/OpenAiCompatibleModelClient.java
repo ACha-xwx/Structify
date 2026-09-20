@@ -156,6 +156,8 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", requiredModelName());
         payload.put("messages", messages);
+        if (request.jsonObject()) payload.put("response_format", Map.of("type", "json_object"));
+        if (disablesThinking(request) && "deepseek".equalsIgnoreCase(properties.provider())) payload.put("thinking", Map.of("type", "disabled"));
         if (request.temperature() != null) {
             payload.put("temperature", request.temperature());
         }
@@ -278,6 +280,11 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
             throw failure(MODEL_NOT_CONFIGURED);
         }
         return apiKey.strip();
+    }
+
+    /** The deployment switch turns thinking off for every feature; a call site may also opt in. */
+    private boolean disablesThinking(ModelRequest request) {
+        return request.disableThinking() || Boolean.TRUE.equals(properties.disableThinking());
     }
 
     private String requiredModelName() {

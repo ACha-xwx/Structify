@@ -58,6 +58,34 @@ class PinnedOpenAiCompatibleModelClientTest {
     }
 
     @Test
+    void deploymentSwitchDisablesThinkingForPersistedDeepSeekEndpoints() {
+        RecordingConnections connections = new RecordingConnections("""
+            {"choices":[{"message":{"content":"database"}}]}
+            """);
+        ModelConfigRuntimeSettings settings = new ModelConfigRuntimeSettings(
+            "deepseek",
+            new ModelConfigResolvedTarget(
+                URI.create("https://model.example/v1"),
+                "model.example",
+                443,
+                List.of(ip(1, 1, 1, 1))
+            ),
+            "deepseek-flash",
+            "opaque-key"
+        );
+        PinnedOpenAiCompatibleModelClient client = new PinnedOpenAiCompatibleModelClient(
+            settings,
+            defaults(true),
+            new ObjectMapper(),
+            new PinnedHttpsTransport(connections)
+        );
+
+        client.complete(new ModelRequest(List.of(new ModelMessage("user", "hello"))));
+
+        assertThat(connections.request()).contains("\"thinking\":{\"type\":\"disabled\"}");
+    }
+
+    @Test
     void appliesPersistedTemperatureAndOutputLimitWhileCappingPerRequestOverrides() {
         RecordingConnections connections = new RecordingConnections("""
             {"choices":[{"message":{"content":"database"}}]}
@@ -188,6 +216,10 @@ class PinnedOpenAiCompatibleModelClientTest {
     }
 
     private ModelProperties defaults() {
+        return defaults(false);
+    }
+
+    private ModelProperties defaults(boolean disableThinking) {
         return new ModelProperties(
             "environment",
             "environment-key",
@@ -195,7 +227,8 @@ class PinnedOpenAiCompatibleModelClientTest {
             "environment-model",
             Duration.ofSeconds(2),
             Duration.ofSeconds(1),
-            1_048_576
+            1_048_576,
+            disableThinking
         );
     }
 

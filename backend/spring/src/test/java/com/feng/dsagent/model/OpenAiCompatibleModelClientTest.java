@@ -402,6 +402,18 @@ class OpenAiCompatibleModelClientTest {
         Duration streamIdleTimeout,
         int maximumResponseBytes
     ) {
+        return client(provider, baseUrl, apiKey, timeout, streamIdleTimeout, maximumResponseBytes, null);
+    }
+
+    private ModelClient client(
+        String provider,
+        URI baseUrl,
+        String apiKey,
+        Duration timeout,
+        Duration streamIdleTimeout,
+        int maximumResponseBytes,
+        Boolean disableThinking
+    ) {
         ModelProperties properties = new ModelProperties(
             provider,
             apiKey,
@@ -409,7 +421,8 @@ class OpenAiCompatibleModelClientTest {
             "test-model",
             timeout,
             streamIdleTimeout,
-            maximumResponseBytes
+            maximumResponseBytes,
+            disableThinking
         );
         return new OpenAiCompatibleModelClient(properties, objectMapper);
     }
@@ -421,8 +434,43 @@ class OpenAiCompatibleModelClientTest {
         return URI.create("http://" + server.getAddress().getHostString() + ":" + server.getAddress().getPort());
     }
 
-    private static void respond(HttpExchange exchange, int status, String contentType, String body) throws IOException {
-        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+    @Test
+    void classroomJsonRequestDisablesThinkingOnlyForDeepSeek() throws Exception {
+        AtomicReference<JsonNode> sent = new AtomicReference<>();
+        URI url = startServer("/chat/completions", exchange -> {
+            sent.set(objectMapper.readTree(exchange.getRequestBody()));
+            respond(exchange, 200, "application/json", "{\"choices\":[{\"message\":{\"content\":\"{}\"}}]}");
+        });
+        var request = new ModelRequest(List.of(new ModelMessage("user", "Return JSON")), 0.2, 500, true, true);
+        client("deepseek", url, API_KEY, Duration.ofSeconds(2), Duration.ofSeconds(2)).complete(request);
+        assertThat(sent.get().path("response_format").path("type").asText()).isEqualTo("json_object");
+        assertThat(sent.get().path("thinking").path("type").asText()).isEqualTo("disabled");
+        client("openai-compatible", url, API_KEY, Duration.ofSeconds(2), Duration.ofSeconds(2)).complete(request);
+        assertThat(sent.get().has("thinking")).isFalse();
+    }
+
+    @Test
+    void deploymentSwitchDisablesThinkingForCallSitesThatNeverAskedForIt() throws Exception {
+        AtomicReference<JsonNode> sent = new AtomicReference<>();
+        URI url = startServer("/chat/completions", exchange -> {
+            sent.set(objectMapper.readTree(exchange.getRequestBody()));
+            respond(exchange, 200, "text/event-stream", """
+                data: {"choices":[{"delta":{"content":"push"}}]}
+
+                data: [DONE]
+
+                """);
+        });
+        var request = new ModelRequest(List.of(new ModelMessage("user", "What is a stack?")));
+        client("deepseek", url, API_KEY, Duration.ofSeconds(2), Duration.ofSeconds(2), 1_048_576, true)
+            .stream(request, ignored -> { });
+        assertThat(sent.get().path("thinking").path("type").asText()).isEqualTo("disabled");
+        client("openai-compatible", url, API_KEY, Duration.ofSeconds(2), Duration.ofSeconds(2), 1_048_576, true)
+            .stream(request, ignored -> { });
+        assertThat(sent.get().has("thinking")).isFalse();
+    }
+
+    private static void respond(HttpExchange exchange, int status, String contentType, String body) throws IOException {        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", contentType);
         exchange.sendResponseHeaders(status, bytes.length);
         try (var output = exchange.getResponseBody()) {
