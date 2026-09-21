@@ -121,10 +121,14 @@ services:
   spring-api:
     image: ${SPRING_IMAGE:?set immutable SPRING_IMAGE release tag}
     build:
-      context: ../backend/spring
+      # The context is backend/ so the image can carry the DSVP engine that the
+      # API launches as a child process. See backend/.dockerignore.
+      context: ../backend
+      dockerfile: spring/Dockerfile
       args:
         JAVA_BUILD_IMAGE: ${JAVA_BUILD_IMAGE:-eclipse-temurin:21-jdk}
         JAVA_RUNTIME_IMAGE: ${JAVA_RUNTIME_IMAGE:-eclipse-temurin:21-jre}
+        NODE_RUNTIME_IMAGE: ${NODE_BASE_IMAGE:-node:22-bookworm-slim}
     restart: unless-stopped
     init: true
     mem_limit: ${SPRING_MEMORY_LIMIT:-320m}
@@ -142,6 +146,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set a strong JWT_SECRET}
       NODE_COMPAT_ENABLED: ${NODE_COMPAT_ENABLED:-true}
       NODE_COMPAT_JWT_SECRET: ${NODE_COMPAT_JWT_SECRET:?set a strong NODE_COMPAT_JWT_SECRET}
+      # Baked into the image at /dsvp by backend/spring/Dockerfile.
+      DSVP_ENGINE_SCRIPT: /dsvp/dsvp-service.js
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?set CORS_ALLOWED_ORIGINS}
       AUTH_TOKEN_ISSUER: ${AUTH_TOKEN_ISSUER:-structify.cn}
       AUTH_TOKEN_TTL: ${AUTH_TOKEN_TTL:-PT2H}
