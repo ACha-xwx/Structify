@@ -139,7 +139,13 @@ const SPA_HISTORY_EXACT_PATHS = new Set([
   "/register",
   "/reset-password",
   "/403",
-  "/404"
+  "/404",
+  // The entry page hands the classroom and the animation lab their own paths,
+  // so a refresh, a bookmark, or a shared resume link must still return the
+  // SPA shell instead of a bare 404 from this compatibility server.
+  "/classroom",
+  "/courseware",
+  "/animation"
 ]);
 const DOMPURIFY_PATH = path.join(path.dirname(require.resolve("dompurify")), "purify.min.js");
 const SECURITY_HEADERS = Object.freeze({
