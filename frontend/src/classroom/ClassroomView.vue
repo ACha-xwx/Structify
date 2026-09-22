@@ -7,6 +7,7 @@ import type { ClassroomAction, ClassroomSession, ClassroomSlideMatch, DsvpReques
 import { useI18n } from "../shared/i18n/locale";
 import { userApi } from "../user/runtime";
 import type { ClassroomLesson, ClassroomPreparationStatus } from "../user/api";
+import { preparationPollDelayMs } from "./preparation-poll";
 import SlidePanel from "./SlidePanel.vue";
 
 /**
@@ -32,6 +33,12 @@ const coursewareError = ref("");
 const route = useRoute();
 const router = useRouter();
 let pollTimer: number | null = null;
+/**
+ * How many preparation polls this attempt has already fired. The delay grows with it, so a long
+ * preparation (a whole deck of slides) costs a handful of round trips instead of one per second -
+ * each of those round trips crosses the same slow link the lesson content does.
+ */
+let pollCount = 0;
 
 const stage = computed<Record<string, unknown>>(() => session.value?.stage ?? {});
 const response = computed<Record<string, unknown> | null>(() => record(stage.value.teacherResponse));
@@ -237,7 +244,9 @@ async function restoreLast() {
 }
 
 function schedulePoll(id: string) {
-  pollTimer = window.setTimeout(() => void pollPreparation(id), 1200);
+  const delay = preparationPollDelayMs(pollCount);
+  pollCount += 1;
+  pollTimer = window.setTimeout(() => void pollPreparation(id), delay);
 }
 
 function acceptPreparation(status: ClassroomPreparationStatus) {
@@ -268,6 +277,7 @@ async function startLesson() {
   if (!lessonId.value || busy.value || preparing.value) return;
   busy.value = true;
   error.value = "";
+  pollCount = 0;
   try {
     acceptPreparation(await userApi.prepareClassroom(lessonId.value));
   } catch (cause) {

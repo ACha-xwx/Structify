@@ -132,7 +132,7 @@ public class ClassroomPreparation {
                 JsonNode spineScript = SlideSpinePlan.build(mapper, lesson.id(), lesson.title(), lesson.pages(), spine, textbook).plan();
                 // The locally built spine goes through the same contract check a model answer would.
                 parser.parse(spineScript.toString());
-                publish(job, lesson, spineScript);
+                publish(job, lesson, spineScript, null);
                 return;
             }
             String prompt = """
@@ -153,25 +153,28 @@ public class ClassroomPreparation {
                 动画必须与本步教材例子一致，不支持的算法不要冒充已实现的动画。动画状态由程序计算，你只返回输入和操作。
                 若本步内容找不到匹配的已实现操作（例如外部排序、多路归并、Dijkstra、AVL 树、B 树等本平台未实现的算法），必须省略 animationRef 字段，直接生成不带动画的步骤，不要为了凑动画而使用无关结构。
                 """;
-            List<com.feng.dsagent.presentation.PresentationSlide> slides = presentations.forLesson(lesson.id()).slides();
-            Set<String> allowedSlides = slides.stream().map(com.feng.dsagent.presentation.PresentationSlide::id)
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-            Map<String, Set<String>> scopeSlides = new LinkedHashMap<>();
-            for (com.feng.dsagent.presentation.PresentationCatalog.SubLessonPlan subLesson : presentations.subLessons(lesson.id())) {
-                for (com.feng.dsagent.presentation.PresentationCatalog.ScenePlan scene : subLesson.scenes()) {
-                    scopeSlides.put(subLesson.lessonId() + "#" + scene.key(), new LinkedHashSet<>(scene.slideIds()));
-                }
-            }
-            // When the deck defines the spine, the scopes the model may declare are the pages' own
-            // sub-lesson and scene - the same values the spine instruction echoes - so a declared scope
-            // can never drift away from the page the step must show.
+            // Which teaching beat each page belongs to. A step never declares this itself: the page it shows
+            // already decides the beat, and asking the model to transcribe it as well turned a transcription
+            // slip into a rejected lesson (a 42-page deck was rejected over one wrong scope string). With a
+            // spine the page dictates the answer; without one the catalogue the model was shown is the
+            // allowed set, so the prompt and the validator can never disagree about which pages exist.
+            Map<String, String[]> scopeOfSlide = new LinkedHashMap<>();
             if (!spine.isEmpty()) {
-                scopeSlides.clear();
-                for (SlideSpinePlan.Slide slide : spine) {
-                    scopeSlides.computeIfAbsent(slide.subLessonId() + "#" + slide.scene(), key -> new LinkedHashSet<>())
-                        .add(slide.id());
+                for (SlideSpinePlan.Slide page : spine) {
+                    scopeOfSlide.put(page.id(), new String[] {page.subLessonId(), page.scene()});
+                }
+            } else {
+                for (com.feng.dsagent.presentation.PresentationCatalog.SubLessonPlan subLesson : presentations.subLessons(lesson.id())) {
+                    for (com.feng.dsagent.presentation.PresentationCatalog.ScenePlan scene : subLesson.scenes()) {
+                        for (String slideId : scene.slideIds()) {
+                            if (presentations.slide(slideId) != null) {
+                                scopeOfSlide.putIfAbsent(slideId, new String[] {subLesson.lessonId(), scene.key()});
+                            }
+                        }
+                    }
                 }
             }
+            Set<String> allowedSlides = scopeOfSlide.keySet();
             prompt = prompt + (spine.isEmpty() ? slideInstruction(lesson.id()) : "");
             final String fullPrompt = prompt;
             final String modelInput = "课时ID：" + lesson.id() + "\n课时：" + lesson.title() + "\n教材片段：" + evidence;
@@ -182,133 +185,57 @@ public class ClassroomPreparation {
             final int partCount = spine.isEmpty() ? 1 : (spine.size() + partSize - 1) / partSize;
             JsonNode first = null;
             ArrayNode mergedSteps = mapper.createArrayNode();
+            // Parts the model could not get right, taught from the locally assembled spine instead. Named in
+            // the job's own words so a reader can tell which stretch of the lesson came from the deck.
+            List<String> localParts = new ArrayList<>();
             for (int partIndex = 0; partIndex < partCount; partIndex++) {
-                final List<SlideSpinePlan.Slide> part = spine.isEmpty() ? List.of()
-                    : spine.subList(partIndex * partSize, Math.min(spine.size(), (partIndex + 1) * partSize));
-                final boolean lastPart = partIndex == partCount - 1;
                 final int partNumber = partIndex + 1;
+                final int partOffset = partIndex * partSize;
+                final List<SlideSpinePlan.Slide> part = spine.isEmpty() ? List.of()
+                    : spine.subList(partOffset, Math.min(spine.size(), partOffset + partSize));
+                final boolean lastPart = partIndex == partCount - 1;
+                final PartRules rules = new PartRules(lesson.id(), spine, part, partOffset, partNumber, partCount,
+                    scopeOfSlide, allowedSlides, ids, chunks, textbook);
                 // The repair loop calls this validator once per attempt, so the steps of an accepted answer
                 // are collected in an array that exists only for that one call. A shared array would keep
                 // a rejected attempt's steps and the merge would make the learner walk the same pages twice.
                 final java.util.concurrent.atomic.AtomicReference<ArrayNode> accepted = new java.util.concurrent.atomic.AtomicReference<>();
-                JsonNode partPlan = model.generate(job.user, fullPrompt
-                    + (spine.isEmpty() ? "" : spineInstruction(part, textbook, partNumber, partCount)),
-                    modelInput, 5000, json -> {
-                    if (!lesson.id().equals(json.path("lessonId").asText())) throw new IllegalArgumentException("$.lessonId 与请求课时不一致");
-                    parser.parse(json.toString());
-                    int questionLimit = spine.isEmpty() ? 0 : questionLimit(part.size());
-                    // One narration step per page, at least one question about one of those pages, room for
-                    // textbook extensions in the final part, and room for the one short closing step a part
-                    // may end on - the model reliably writes one, and rejecting it only burned repairs.
-                    int minimumSteps = spine.isEmpty() ? 3 : part.size() + 1;
-                    int maximumSteps = spine.isEmpty() ? 12 : part.size() + questionLimit + (lastPart ? 4 : 1);
-                    int stepCount = json.path("steps").size();
-                    if (stepCount < minimumSteps || stepCount > maximumSteps) {
-                        // Report the shape that arrived: without it the repair round (and this message) cannot
-                        // tell a missing page step from a question that was repeated after every page.
-                        throw new IllegalArgumentException("$.steps 必须包含" + minimumSteps + "至" + maximumSteps
-                            + "个步骤（" + part.size() + " 个页面讲解步 + 1 至 " + questionLimit + " 个提问步"
-                            + (lastPart ? " + 最多 4 个教材延伸步" : " + 最多 1 个段末收束步")
-                            + "），当前 " + stepCount + " 个：" + typeSummary(json.path("steps")));
+                try {
+                    JsonNode partPlan = model.generate(job.user, fullPrompt
+                        + (spine.isEmpty() ? "" : spineInstruction(part, textbook, partNumber, partCount)),
+                        modelInput, 5000, json -> accepted.set(validatePart(json, rules, parser, mapper)));
+                    if (accepted.get() != null) {
+                        mergedSteps.addAll(accepted.get());
                     }
-                    boolean teacher = false;
-                    int index = 0;
-                    ArrayNode partSteps = mapper.createArrayNode();
-                    // How many of this part's pages the teaching steps have consumed. A question step consumes
-                    // none - it interrogates the page already on screen - so the page promise holds for every
-                    // teaching step even when questions are interleaved between them.
-                    int pageCursor = 0;
-                    int questions = 0;
-                    for (JsonNode step : json.path("steps")) {
-                        teacher |= step.path("role").asText().equals("teacher");
-                        if (!step.path("sourceChunkIds").isArray() || step.path("sourceChunkIds").isEmpty()) throw new IllegalArgumentException("$.steps[" + index + "].sourceChunkIds 缺少教材依据");
-                        Set<String> cited = new HashSet<>();
-                        for (JsonNode source : step.path("sourceChunkIds")) { if (!ids.contains(source.asText())) throw new IllegalArgumentException("$.steps[" + index + "].sourceChunkIds 引用了不存在的教材片段"); cited.add(source.asText()); }
-                        // Resolve literal evidence on the server, never trust model-transcribed quotations.
-                        List<Map<String, Object>> sources = chunks.stream().filter(chunk -> cited.contains(String.valueOf(chunk.get("id")))).toList();
-                        ((ObjectNode) step).put("evidence", sources.stream().map(chunk -> String.valueOf(chunk.get("content"))).collect(java.util.stream.Collectors.joining("\n\n")));
-                        ((ObjectNode) step).set("sourcePages", mapper.valueToTree(sources.stream().map(chunk -> String.valueOf(chunk.get("page_label"))).distinct().toList()));
-                        if (!step.path("keywords").isArray() || step.path("keywords").size() > 4) throw new IllegalArgumentException("$.steps[" + index + "].keywords 应是最多4个关键词");
-                        Set<String> scope = null;
-                        if (step.has("slideScope")) {
-                            JsonNode declared = step.path("slideScope");
-                            String scopeKey = declared.path("subLessonId").asText("") + "#" + declared.path("scene").asText("");
-                            scope = scopeSlides.get(scopeKey);
-                            if (scope == null) throw new IllegalArgumentException("$.steps[" + index + "].slideScope 不是本课时的细分课时与场景：\"" + scopeKey + "\"");
-                        }
-                        if (step.has("slideRefs")) {
-                            if (allowedSlides.isEmpty()) throw new IllegalArgumentException("$.steps[" + index + "].slideRefs 本课时没有配套课件，不能引用幻灯片");
-                            for (JsonNode slideRef : step.path("slideRefs")) {
-                                String value = slideRef.asText();
-                                if (!allowedSlides.contains(value)) throw new IllegalArgumentException("$.steps[" + index + "].slideRefs 引用了本课时不存在的幻灯片：\"" + value + "\"");
-                                if (scope != null && !scope.contains(value)) throw new IllegalArgumentException("$.steps[" + index + "].slideRefs 的页面不在 slideScope 范围内：\"" + value + "\"");
-                            }
-                        }
-                        for (JsonNode keyword : step.path("keywords")) if (!keyword.isTextual() || keyword.asText().length() > 16) throw new IllegalArgumentException("$.steps[" + index + "].keywords 只允许短关键词");
-                        // The spine is a promise: this part's teaching step n teaches its page n, so the
-                        // pane can never drift - and parts concatenated keep the full deck order. A question
-                        // step is the one exception: it asks about the page that is already up, so it repeats
-                        // that page instead of advancing, and the learner answers before the lesson moves on.
-                        // Steps beyond the part's pages are extensions: they must keep the previous page on
-                        // screen, never name a page of their own (a referenced extra step would masquerade as
-                        // a page).
-                        if (!spine.isEmpty() && "question".equals(step.path("type").asText())) {
-                            if (pageCursor == 0) throw new IllegalArgumentException("$.steps[" + index + "]: 提问步骤必须紧跟它提问的那一页，不能放在本段第一个步骤");
-                            SlideSpinePlan.Slide anchor = part.get(pageCursor - 1);
-                            Set<String> referenced = new HashSet<>();
-                            for (JsonNode ref : step.path("slideRefs")) referenced.add(ref.asText());
-                            if (!referenced.contains(anchor.id())) throw new IllegalArgumentException("$.steps[" + index + "]: 提问步骤必须引用它正在提问的课件页 \"" + anchor.id() + "\"，让屏幕停在那一页");
-                            if (!anchor.subLessonId().equals(step.path("slideScope").path("subLessonId").asText(""))
-                                || !anchor.scene().equals(step.path("slideScope").path("scene").asText(""))) {
-                                throw new IllegalArgumentException("$.steps[" + index + "]: 提问步骤的 slideScope 必须与它提问的那一页一致");
-                            }
-                            String source = step.path("questionSource").asText("");
-                            if (!QUESTION_SOURCES.contains(source)) throw new IllegalArgumentException("$.steps[" + index + "].questionSource 必须是 model、textbook 或 slide，当前值为 \"" + source + "\"");
-                            // A page that visibly carries its own exercise already asks something, so the
-                            // question asked on it is the deck's question. The label is what the learner reads
-                            // ("课件出题"), and a model that turns the deck's own exercise into one it claims to
-                            // have invented hides that the courseware really does drive the questions.
-                            if (pagePosesItsOwnQuestion(anchor) && !"slide".equals(source)) {
-                                throw new IllegalArgumentException("$.steps[" + index + "].questionSource 这一页（\"" + anchor.title() + "\"）本身就带练习/例题/测试题，问题出自课件，questionSource 必须写 slide（当前值为 \"" + source + "\"），prompt 用该页的题目来问");
-                            }
-                            questions++;
-                        } else if (!spine.isEmpty() && pageCursor < part.size()) {
-                            String expected = part.get(pageCursor).id();
-                            Set<String> referenced = new HashSet<>();
-                            for (JsonNode ref : step.path("slideRefs")) referenced.add(ref.asText());
-                            if (!referenced.contains(expected)) throw new IllegalArgumentException("$.steps[" + index + "].slideRefs 必须包含本段第 " + (pageCursor + 1) + " 页课件 \"" + expected + "\"");
-                            pageCursor++;
-                        } else if (!spine.isEmpty()) {
-                            if (step.has("slideRefs")) throw new IllegalArgumentException("$.steps[" + index + "].slideRefs 延伸步骤不能引用课件页，请删除该字段");
-                            if (!step.has("slideScope")) throw new IllegalArgumentException("$.steps[" + index + "].slideScope 延伸步骤必须沿用前一页的 slideScope");
-                        }
-                        // Provenance label the classroom shows beside the narration. The local spine builder writes
-                        // it itself, so a model-written step has to report it in the same vocabulary, otherwise a
-                        // model-narrated lesson silently loses the "which part of the book backs this page" note.
-                        if (!spine.isEmpty()) ((ObjectNode) step).put("textbookMatch", textbookMatch(step, spine, textbook));
-                        partSteps.add(step);
-                        index++;
+                    if (first == null) {
+                        first = partPlan;
                     }
-                    if (!teacher) throw new IllegalArgumentException("$.steps 必须包含主讲老师");
-                    // A lesson that never asks anything is not the classroom the learner asked for, so every
-                    // part has to interrogate at least one of the pages it just taught.
-                    if (!spine.isEmpty() && questions == 0) throw new IllegalArgumentException("$.steps 必须包含至少 1 个 type=question 的提问步骤，并紧跟它所提问的那一页；不能整段只讲解不提问");
-                    // Only an answer that passed every check is handed over, so a part that needed repairs
-                    // contributes its accepted steps exactly once.
-                    accepted.set(partSteps);
-                });
-                ArrayNode acceptedSteps = accepted.get();
-                if (acceptedSteps != null) {
-                    mergedSteps.addAll(acceptedSteps);
-                }
-                if (first == null) {
-                    first = partPlan;
+                } catch (ApiException error) {
+                    // An answer the model keeps getting wrong must not cost the learner the whole lesson: the
+                    // same pages are taught from the locally assembled spine instead, which cannot drift and
+                    // spends nothing. Anything else - an exhausted quota, a provider outage - is still raised,
+                    // because quietly falling back to the deck would hide the real problem.
+                    List<ObjectNode> localSteps = fallbackSteps(error, mapper, part, textbook, lastPart);
+                    if (localSteps.isEmpty()) {
+                        throw error;
+                    }
+                    localSteps.forEach(mergedSteps::add);
+                    localParts.add(String.valueOf(partNumber));
+                    LOGGER.warn("Lesson {} part {}/{} was taught from the local spine after the model answer was rejected: {}",
+                        lesson.id(), partNumber, partCount, error.getMessage());
                 }
             }
-            ObjectNode plan = (ObjectNode) first;
+            ObjectNode plan = first instanceof ObjectNode object ? object : mapper.createObjectNode();
+            if (plan.path("lessonId").asText("").isBlank()) {
+                plan.put("lessonId", lesson.id());
+            }
+            if (plan.path("title").asText("").isBlank()) {
+                plan.put("title", lesson.title());
+            }
             plan.set("steps", mergedSteps);
             ((ObjectNode) plan).set("textbookSources", mapper.valueToTree(chunks));
-            publish(job, lesson, plan);
+            publish(job, lesson, plan, localParts.isEmpty() ? null
+                : "第 " + String.join("、", localParts) + " 段由本地课件脊线补齐");
         } catch (Exception error) {
             String message = error instanceof com.feng.dsagent.model.ModelClientException modelError
                 ? "模型调用失败 [" + modelError.code() + "]：" + modelError.getMessage()
@@ -406,12 +333,11 @@ public class ClassroomPreparation {
             catalogue.append('\n').append(index + 1).append(". ").append(slide.id())
                 .append(" [").append(slide.section().isBlank() ? "-" : slide.section()).append('/')
                 .append(slide.role().isBlank() ? "-" : slide.role()).append("] ").append(label);
-            // The page's own range, written in the exact shape the step must echo back: a model that has to
-            // infer the scene key from the section marker invents one, and the whole lesson is rejected.
-            catalogue.append("\n   slideScope={\"subLessonId\":\"").append(slide.subLessonId())
-                .append("\",\"scene\":\"").append(slide.scene()).append("\"}");
+            // The teaching beat of the page, so the narration knows which part of the book it belongs to. The
+            // range a step declares is deliberately not echoed here any more: the server derives it from the
+            // page the step shows, so a hand-copied range can never be why a lesson gets rejected.
             if (!slide.subLessonTitle().isBlank()) {
-                catalogue.append(" (").append(slide.subLessonTitle()).append(')');
+                catalogue.append("（").append(slide.subLessonTitle()).append('）');
             }
             if (!slide.terms().isEmpty()) {
                 catalogue.append(" · ").append(String.join("/", slide.terms().subList(0, Math.min(5, slide.terms().size()))));
@@ -433,20 +359,20 @@ public class ClassroomPreparation {
                 + "程序负责拼接各段，只输出本段页面，绝不要复述前面各段已经讲过的页面，也不要提前讲后面各段的页面）：\n";
         return header + catalogue
             + """
-第 k 个页面讲解步骤必须写入该页的 slideScope（{subLessonId, scene} 从清单取）与 slideRefs:[该页ID]；type 用 explain，属于小结的页面用 summary。
+第 k 个页面讲解步骤必须写入 slideRefs:[该页ID]；不要写 slideScope（这一步属于哪个细分课时与场景，程序按你引用的页面自动补上，写了也会被覆盖）；type 用 explain，属于小结的页面用 summary。
 第 k 个页面讲解步骤只讲第 k 页：开头先点明该页标题/话题，再顺着该页内容展开，不得跳到其它页的话题；只有清单中角色为[小结]的页面才允许写成全课收束，回顾页就带学生复习该页所列内容，绝不能把普通讲解页讲成总结或预告下一课。
 每个步骤的 sourceChunkIds 优先取该页标注的"教材候选"，让讲解有教材依据；候选为空时可以引用本课时其它片段，但不能编造。
 讲解顺着这一页展开，不要跳到别的页面的话题，也不要把整页文字念一遍；keywords 至多4个。
 课堂必须提问：本段 %d 页，steps 总数必须是 %d 至 %d 个 = %d 个讲解步骤（每页恰好一个，顺序与清单一致）+ 1 至 %d 个提问步骤（type=question）%s。
-提问步骤紧跟在它所提问的那一页的讲解步骤之后，slideRefs 与 slideScope 都沿用那一页（屏幕就停在那一页，不要换页、不要引用其它页），且不能放在本段第一个步骤；一页最多提 1 个问题，不要连续提两个，也不要每页都提问。
+提问步骤紧跟在它所提问的那一页的讲解步骤之后，slideRefs 沿用那一页、不要写 slideScope（屏幕就停在那一页，不要换页、不要引用其它页），且不能放在本段第一个步骤；一页最多提 1 个问题，不要连续提两个，也不要每页都提问。
 提问步骤要写 prompt（要学生回答的具体问题）、expected（2 至 5 条可判定的答案要点）、keywords（至多4个）、sourceChunkIds（该页的教材候选），并用 questionSource 标注问题来源：model＝你针对这一页自己设计的问题；textbook＝直接取该页对应教材片段里的例题、习题或思考题（把原题的设问写进 prompt）；slide＝这一页课件本身就是练习/例题/测试页，就按该页的题目提问。
 问题来源要如实标注，不要一律写 model：本段清单里标题带"练习""习题""例题""测试"的页面，questionSource 必须写 slide，prompt 就用该页出给学生的题；这一页的"教材候选"片段里如果本来就有例题、习题或思考题，优先写 textbook 并把原题设问搬进 prompt。
 问题必须能靠这一页的内容判定对错，不要问与这一页无关的内容，也不要在提问步骤里把答案念出来。
 """.formatted(part.size(), part.size() + 1, part.size() + questionLimit(part.size()), part.size(),
                 questionLimit(part.size()), partNumber < partCount ? " + 最多 1 个段末收束步骤" : " + 最多 4 个教材延伸步骤")
             + (partNumber < partCount
-                ? "这一部分讲完课堂还会继续：只允许在最后一个提问步骤之后再追加 1 个简短收束步骤（type 用 summary、不写 slideRefs、slideScope 沿用这一部分最后一页，最多 1 步），除此之外不要再追加其它步骤；收束的话要像老师接着往下讲，不要出现“本段”“这节课结束了”这类过程用语。\n"
-                : "如果教材里有例题、推导或算法描述而课件没有对应页，可以在本段页面步骤之后追加延伸步骤：这些步骤不写 slideRefs，slideScope 沿用前一页，type 用 explain，最多 4 步。\n");
+                ? "这一部分讲完课堂还会继续：只允许在最后一个提问步骤之后再追加 1 个简短收束步骤（type 用 summary、不写 slideRefs、也不要写 slideScope，程序会让屏幕停在最后一页，最多 1 步），除此之外不要再追加其它步骤；收束的话要像老师接着往下讲，不要出现“本段”“这节课结束了”这类过程用语。\n"
+                : "如果教材里有例题、推导或算法描述而课件没有对应页，可以在本段页面步骤之后追加延伸步骤：这些步骤不写 slideRefs、也不要写 slideScope（程序会让屏幕停在上一页），type 用 explain，最多 4 步。\n");
     }
 
     /**
@@ -482,8 +408,268 @@ public class ClassroomPreparation {
             .collect(java.util.stream.Collectors.joining("、"));
     }
 
+    /**
+     * Everything one part of a lesson is judged against. The page a step shows is dictated by its position
+     * in the part, and the teaching beat it belongs to follows from that page - so both are derived here
+     * rather than transcribed by the model, which is what used to turn a hand-copied scope string into a
+     * rejected lesson.
+     */
+    record PartRules(String lessonId, List<SlideSpinePlan.Slide> spine, List<SlideSpinePlan.Slide> part,
+                     int partOffset, int partNumber, int partCount, Map<String, String[]> scopeOfSlide,
+                     Set<String> allowedSlides, Set<String> chunkIds, List<Map<String, Object>> chunks,
+                     LessonPassageIndex textbook) {
+
+        boolean spineDriven() {
+            return !spine.isEmpty();
+        }
+
+        boolean lastPart() {
+            return partNumber == partCount;
+        }
+    }
+
+    /**
+     * What one part of a courseware lesson is taught from when the model could not get it right: the deck's
+     * own pages, assembled locally. Only a rejected answer is answered this way - an exhausted quota or a
+     * provider outage still fails the job, because teaching the lesson from the deck would hide a problem
+     * the author has to see. A lesson without courseware has no local spine to fall back on, so it fails too.
+     */
+    static List<ObjectNode> fallbackSteps(ApiException error, ObjectMapper mapper, List<SlideSpinePlan.Slide> part,
+                                          LessonPassageIndex textbook, boolean lastPart) {
+        if (!ClassroomModelJson.REJECTED_ANSWER.equals(error.code()) || part.isEmpty()) {
+            return List.of();
+        }
+        return SlideSpinePlan.steps(mapper, part, textbook, lastPart);
+    }
+
+    /**
+     * Accepts one part of a model-written lesson, or explains exactly what to change. The courseware page of
+     * every teaching and question step follows from the step's position, so the step's slideRefs are checked
+     * and then rewritten to that one page, and the step's teaching range is written from the page itself.
+     * A rejection therefore only ever means the lesson's own rules were broken, and every message carries the
+     * value the next attempt must use.
+     */
+    static ArrayNode validatePart(JsonNode json, PartRules rules, ClassroomScriptParser parser, ObjectMapper mapper) {
+        if (!rules.lessonId().equals(json.path("lessonId").asText())) {
+            throw new IllegalArgumentException("$.lessonId 必须是请求里的课时ID \"" + rules.lessonId()
+                + "\"，当前值为 \"" + json.path("lessonId").asText() + "\"");
+        }
+        parser.parse(json.toString());
+        int questionLimit = rules.spineDriven() ? questionLimit(rules.part().size()) : 0;
+        // One narration step per page, at least one question about one of those pages, room for textbook
+        // extensions in the final part, and room for the one short closing step a part may end on - the
+        // model reliably writes one, and rejecting it only burned repairs.
+        int minimumSteps = rules.spineDriven() ? rules.part().size() + 1 : 3;
+        int maximumSteps = rules.spineDriven() ? rules.part().size() + questionLimit + (rules.lastPart() ? 4 : 1) : 12;
+        int stepCount = json.path("steps").size();
+        if (stepCount < minimumSteps || stepCount > maximumSteps) {
+            throw new IllegalArgumentException("$.steps 必须包含" + minimumSteps + "至" + maximumSteps + "个步骤（"
+                + (rules.spineDriven()
+                    ? rules.part().size() + " 个页面讲解步 + 1 至 " + questionLimit + " 个提问步"
+                        + (rules.lastPart() ? " + 最多 4 个教材延伸步" : " + 最多 1 个段末收束步")
+                    : "讲解、提问、总结共 3 至 12 个步骤")
+                + "），当前 " + stepCount + " 个：" + typeSummary(json.path("steps")) + untaughtPages(json, rules));
+        }
+        boolean teacher = false;
+        int index = 0;
+        ArrayNode partSteps = mapper.createArrayNode();
+        // How many of this part's pages the teaching steps have consumed. A question step consumes none - it
+        // interrogates the page already on screen - so the page promise holds for every teaching step even
+        // when questions are interleaved between them.
+        int pageCursor = 0;
+        int questions = 0;
+        for (JsonNode step : json.path("steps")) {
+            if (!step.isObject()) {
+                throw new IllegalArgumentException("$.steps[" + index + "] 必须是 JSON 对象");
+            }
+            ObjectNode node = (ObjectNode) step;
+            // The model occasionally returns the controlled vocabulary in a different case. The script parser
+            // already tolerates that, so normalise here as well: otherwise "Question" reads as a step that
+            // teaches a page and the whole part is rejected for a capital letter.
+            lowerCaseInPlace(node, "type");
+            lowerCaseInPlace(node, "role");
+            teacher |= "teacher".equals(node.path("role").asText());
+            if (!node.path("sourceChunkIds").isArray() || node.path("sourceChunkIds").isEmpty()) {
+                throw new IllegalArgumentException("$.steps[" + index + "].sourceChunkIds 缺少教材依据：请填入本步依据的教材片段ID");
+            }
+            Set<String> cited = new HashSet<>();
+            for (JsonNode source : node.path("sourceChunkIds")) {
+                if (!rules.chunkIds().contains(source.asText())) {
+                    throw new IllegalArgumentException("$.steps[" + index + "].sourceChunkIds 引用了不存在的教材片段：\""
+                        + source.asText() + "\"；只能用请求提供的片段ID（例如 " + sample(rules.chunkIds()) + "）");
+                }
+                cited.add(source.asText());
+            }
+            // Resolve literal evidence on the server, never trust model-transcribed quotations.
+            List<Map<String, Object>> sources = rules.chunks().stream().filter(chunk -> cited.contains(String.valueOf(chunk.get("id")))).toList();
+            node.put("evidence", sources.stream().map(chunk -> String.valueOf(chunk.get("content"))).collect(java.util.stream.Collectors.joining("\n\n")));
+            node.set("sourcePages", mapper.valueToTree(sources.stream().map(chunk -> String.valueOf(chunk.get("page_label"))).distinct().toList()));
+            if (!node.path("keywords").isArray() || node.path("keywords").size() > 4) {
+                throw new IllegalArgumentException("$.steps[" + index + "].keywords 应是最多4个关键词");
+            }
+            for (JsonNode keyword : node.path("keywords")) {
+                if (!keyword.isTextual() || keyword.asText().length() > 16) {
+                    throw new IllegalArgumentException("$.steps[" + index + "].keywords 只允许短关键词");
+                }
+            }
+            List<String> references = references(node, index, rules);
+            // The spine is a promise: this part's teaching step n teaches its page n, so the pane can never
+            // drift - and parts concatenated keep the full deck order. A question step is the one exception:
+            // it asks about the page that is already up, so it repeats that page instead of advancing, and
+            // the learner answers before the lesson moves on.
+            if (rules.spineDriven() && "question".equals(node.path("type").asText())) {
+                if (pageCursor == 0) {
+                    throw new IllegalArgumentException("$.steps[" + index + "] 是提问步骤，但它提问的那一页还没有讲解："
+                        + "请把它移到第 1 页 \"" + rules.part().get(0).id() + "\" 的讲解步骤之后");
+                }
+                SlideSpinePlan.Slide anchor = rules.part().get(pageCursor - 1);
+                if (!references.contains(anchor.id())) {
+                    throw new IllegalArgumentException("$.steps[" + index + "] 是提问步骤，必须引用它提问的那一页 "
+                        + anchor.id() + "（屏幕停在那一页）：slideRefs 请写成 [\"" + anchor.id() + "\"]");
+                }
+                singleReference(node, anchor.id());
+                writeScope(node, anchor.subLessonId(), anchor.scene());
+                String source = node.path("questionSource").asText("");
+                if (!QUESTION_SOURCES.contains(source)) {
+                    throw new IllegalArgumentException("$.steps[" + index + "].questionSource 必须是 model、textbook 或 slide，当前值为 \"" + source + "\"");
+                }
+                // A page that visibly carries its own exercise already asks something, so the question asked
+                // on it is the deck's question. The label is what the learner reads ("课件出题"), and a model
+                // that turns the deck's own exercise into one it claims to have invented hides that the
+                // courseware really does drive the questions.
+                if (pagePosesItsOwnQuestion(anchor) && !"slide".equals(source)) {
+                    throw new IllegalArgumentException("$.steps[" + index + "].questionSource 这一页（\"" + anchor.title() + "\"）本身就带练习/例题/测试题，问题出自课件，questionSource 必须写 slide（当前值为 \"" + source + "\"），prompt 用该页的题目来问");
+                }
+                questions++;
+            } else if (rules.spineDriven() && pageCursor < rules.part().size()) {
+                SlideSpinePlan.Slide expected = rules.part().get(pageCursor);
+                if (!references.contains(expected.id())) {
+                    throw new IllegalArgumentException("$.steps[" + index + "] 必须讲本段第 " + (pageCursor + 1) + " 页 "
+                        + expected.id() + "（" + slideLabel(expected) + "）：slideRefs 请写成 [\"" + expected.id() + "\"]");
+                }
+                singleReference(node, expected.id());
+                writeScope(node, expected.subLessonId(), expected.scene());
+                pageCursor++;
+            } else if (rules.spineDriven()) {
+                if (node.has("slideRefs")) {
+                    throw new IllegalArgumentException("$.steps[" + index + "] 是本段页面讲完之后的延伸/收束步骤，屏幕停在上一页：请删除 slideRefs 字段");
+                }
+                SlideSpinePlan.Slide previous = rules.part().get(rules.part().size() - 1);
+                writeScope(node, previous.subLessonId(), previous.scene());
+            } else {
+                // Without a spine the step chose its pages from the catalogue it was shown, so its teaching
+                // range is the range of the page it actually shows - a step with no page teaches reviewed
+                // textbook material over the page already on screen.
+                String[] scope = scopeOfFirstReference(references, rules);
+                writeScope(node, scope == null ? null : scope[0], scope == null ? null : scope[1]);
+            }
+            // Provenance label the classroom shows beside the narration. The local spine builder writes it
+            // itself, so a model-written step has to report it in the same vocabulary, otherwise a
+            // model-narrated lesson silently loses the "which part of the book backs this page" note.
+            if (rules.spineDriven()) {
+                node.put("textbookMatch", textbookMatch(node, rules.spine(), rules.textbook()));
+            }
+            partSteps.add(node);
+            index++;
+        }
+        if (!teacher) {
+            throw new IllegalArgumentException("$.steps 必须包含主讲老师：请至少给一个步骤写 role=\"teacher\"");
+        }
+        // A lesson that never asks anything is not the classroom the learner asked for, so every part has to
+        // interrogate at least one of the pages it just taught.
+        if (rules.spineDriven() && questions == 0) {
+            throw new IllegalArgumentException("$.steps 必须包含至少 1 个 type=question 的提问步骤，并紧跟它所提问的那一页；本段当前一个提问步都没有");
+        }
+        return partSteps;
+    }
+
+    /** The part's pages that no step points at, so a repair round is told which steps are missing. */
+    private static String untaughtPages(JsonNode json, PartRules rules) {
+        if (!rules.spineDriven()) {
+            return "";
+        }
+        Set<String> referenced = new HashSet<>();
+        for (JsonNode step : json.path("steps")) {
+            for (JsonNode reference : step.path("slideRefs")) {
+                referenced.add(reference.asText());
+            }
+        }
+        List<String> missing = rules.part().stream().map(SlideSpinePlan.Slide::id)
+            .filter(id -> !referenced.contains(id)).limit(5).toList();
+        return missing.isEmpty() ? "" : "；以下页面没有对应的讲解步骤：" + String.join("、", missing);
+    }
+
+    /** Slides one step names, each of them checked against the pages this lesson really has. */
+    private static List<String> references(ObjectNode node, int index, PartRules rules) {
+        if (!node.has("slideRefs")) {
+            return List.of();
+        }
+        JsonNode refs = node.path("slideRefs");
+        if (!refs.isArray() || refs.isEmpty()) {
+            throw new IllegalArgumentException("$.steps[" + index + "].slideRefs 必须是 1 至 3 个课件页ID的数组；"
+                + "本步没有对应课件页时请直接省略这个字段");
+        }
+        if (rules.allowedSlides().isEmpty()) {
+            throw new IllegalArgumentException("$.steps[" + index + "].slideRefs 本课时没有配套课件，不能引用幻灯片：请删除这个字段");
+        }
+        List<String> values = new ArrayList<>();
+        for (JsonNode reference : refs) {
+            String value = reference.asText("");
+            if (!rules.allowedSlides().contains(value)) {
+                throw new IllegalArgumentException("$.steps[" + index + "].slideRefs 引用了本课时不存在的课件页：\"" + value
+                    + "\"；本课时可用页面例如 " + sample(rules.allowedSlides()));
+            }
+            values.add(value);
+        }
+        return values;
+    }
+
+    /** The step shows exactly one page, so a list the model ordered differently cannot move the screen. */
+    private static void singleReference(ObjectNode node, String slideId) {
+        node.putArray("slideRefs").add(slideId);
+    }
+
+    /** Teaching range of a step, written from the page it shows; a page outside every range carries none. */
+    private static void writeScope(ObjectNode node, String subLessonId, String scene) {
+        node.remove("slideScope");
+        if (subLessonId == null || subLessonId.isBlank() || scene == null || scene.isBlank()) {
+            return;
+        }
+        ObjectNode written = node.putObject("slideScope");
+        written.put("subLessonId", subLessonId);
+        written.put("scene", scene);
+    }
+
+    private static String[] scopeOfFirstReference(List<String> references, PartRules rules) {
+        for (String reference : references) {
+            String[] scope = rules.scopeOfSlide().get(reference);
+            if (scope != null) {
+                return scope;
+            }
+        }
+        return null;
+    }
+
+    /** A few ids, so a rejected answer says what it could have used instead of only what was wrong. */
+    private static String sample(java.util.Collection<String> values) {
+        return values.stream().limit(3).collect(java.util.stream.Collectors.joining("、"));
+    }
+
+    private static String slideLabel(SlideSpinePlan.Slide slide) {
+        String label = slide.title().isBlank() ? slide.summary() : slide.title();
+        return label.length() > 24 ? label.substring(0, 24) + "…" : label;
+    }
+
+    /** Mirrors the script parser's tolerance: a casing slip must not reject a lesson. */
+    private static void lowerCaseInPlace(ObjectNode node, String field) {
+        JsonNode value = node.get(field);
+        if (value != null && value.isTextual()) {
+            node.put(field, value.asText().trim().toLowerCase(Locale.ROOT));
+        }
+    }
+
     /** Stores the prepared classroom as a draft script and opens a session for its author. */
-    private void publish(Job job, Lesson lesson, JsonNode plan) {
+    private void publish(Job job, Lesson lesson, JsonNode plan, String note) {
         String title = plan.path("title").asText("");
         if (title.isBlank()) {
             title = lesson.title();
@@ -492,7 +678,7 @@ public class ClassroomPreparation {
         // Generated content stays draft and is not published to other learners.
         jdbc.update("INSERT INTO classroom_scripts (id, chapter_id, title, version_label, review_status, script_json) VALUES (?, ?, ?, 'runtime-json-v1', 'DRAFT', ?)", scriptId, lesson.chapterId(), title, plan.toString());
         ClassroomSessionRecord session = repository.createSession(job.user, new ClassroomScript(scriptId, lesson.chapterId(), title, "runtime-json-v1", plan.toString()), new ClassroomStatus(ClassroomState.OPENING, false));
-        job.status = new Status(job.id, "ready", "课堂已准备完成", null, timeline.get(job.user, session.id()));
+        job.status = new Status(job.id, "ready", note == null ? "课堂已准备完成" : "课堂已准备完成（" + note + "）", null, timeline.get(job.user, session.id()));
     }
 
     /**
@@ -515,11 +701,10 @@ public class ClassroomPreparation {
         }
         return "\n本课时配套课件（已按细分课时与场景整理，每页附本地标注：[小节/角色] 标题 · 关键词）：\n" + catalog
             + """
-先定范围，再选页：每一步先判断它属于哪个细分课时与场景，写入 slideScope，例如 {"subLessonId":"08-02B","scene":"concept-one"}；
-然后只从该范围的页面里选 1 至 3 页写入 slideRefs，例如 ["ch08-deck01-0e683da-s046"]。
-slideScope 必须来自上面的清单，slideRefs 必须落在 slideScope 之内，不能跨细分课时选页，也不能编造页面ID。
-如果这一步讲的是教材例题、图示或推导，而该范围里确实没有对应页，就省略 slideRefs（或给空数组）表示本段没有课件页，不要拉一个无关的页面充数。
-幻灯片按讲解推进展示，同一范围的连续步骤可以复用同一页。
+每一步从上面的清单里选 1 至 3 页写入 slideRefs（页面ID必须与清单完全一致，例如 ["ch08-deck01-0e683da-s046"]，不能编造）。
+不要写 slideScope：这一步属于哪个细分课时与场景，由程序按你引用的页面判定，写了也会被覆盖。
+如果这一步讲的是教材例题、图示或推导，而清单里确实没有对应页，就省略 slideRefs 字段（不要给空数组），不要拉一个无关的页面充数。
+幻灯片按讲解推进展示，同一批页面的连续步骤可以复用同一页。
 """;
     }
 

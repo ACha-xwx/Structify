@@ -1,6 +1,17 @@
 # 当前进度总览
 
-更新时间：2026-09-19（最新实测记录优先，历史内容保留）
+更新时间：2026-09-22（最新实测记录优先，历史内容保留）
+
+## 2026-09-22 备课拒收的根因治理：范围改由服务端派生、被拒段自动退为本地课件脊线
+
+- **背景**：生产 9/21 首次挂上课件脊线（v1.0.68 加 `PRESENTATION_DIR`）后，08-04 第 4 段被拒一次即整课失败：`模型修正后仍未通过校验：$.steps[6].slideRefs 的页面不在 slideScope 范围内："ch08-deck03-5780942-s009"`——`slideScope` 本是由页面 id **唯一决定**的记账字段，模型手抄一次写错就毙掉整段，重试（`temperature=0.2`、要求重写完整 JSON）又极易原样复发。用户拍板 **A+B+C：连根拔掉这类错**。
+- **为什么本地从未遇到（已定论，不是环境差异）**：两侧提示词数据 md5 完全相同（`slides.json` `17186de0fd3b8fc150ef523d7889810f`、`lesson-presentation-plans.json` `5761cb6c39b20999642af972823f34a1`），模型与参数一致（flash / 0.2 / `disable-thinking=true` / 32768 / `retry_count=1`）；本地对同一课时 08-04 连跑 **4 次真实备课 4/4 成功（57–66 s）**。真实原因是**概率性笔误 × 本地样本极小**：`scripts/verify-slide-spine.mjs` 默认课时是 08-02，9/19 的复验只演练过 08-02 / 02-03，而生产到 9/21 才第一次跑第 8 章。可触发面也已量化：48 个有课件课时中 **43 个**至少有一段含 ≥2 个 scope（单 scope 段结构上不可能出现该报错），08-04 四段的 scope 数为 [3,4,1,2]（第 4 段末尾还回跳到 `08-04A#concept`）。
+- **A｜拒收消息带正确值**（`ClassroomPreparation.validatePart`）：页码错位、引用不存在页、scope 缺失等每一条拒绝都回显"下一次必须写成的值"，例如 `$.steps[6] 必须讲本段第 7 页 ch08-deck03-5780942-s009（8.3.7 B 树查找性能分析）：slideRefs 请写成 ["ch08-deck03-5780942-s009"]`；`$.steps` 数量不符时附带"以下页面没有对应的讲解步骤：…"，让修复轮知道缺什么而不是只知道自己错了。
+- **B｜`slideScope` 改为服务端从 `slideRefs` 派生，模型不再写这个字段**：`validatePart` 现在按"第 k 个讲解步讲第 k 页"把 `slideRefs` **归一为单页**，再用 page→scope 表（有脊线取 `spineSlides()` 的 `subLessonId`/`scene`；无脊线取模型看到过的 catalogue）**覆盖/删除**模型写的 scope——写得对也一样被覆盖，校验里"scope 必须落在声明范围内"的整类拒收因此消失。提示词同步去掉"照抄 slideScope"的要求（改为"不要写 slideScope，程序按你引用的页面自动补上"），问题步/收束步/延伸步同理。`type`/`role` 也做大小写容错（与 `ClassroomScriptParser` 对齐），大写 `QUESTION` 不再被当成讲解步而撞页序承诺。
+- **C｜被拒段自动退为本地课件脊线**（新增 `SlideSpinePlan.steps(mapper, slides, textbook, withExtensions)`）：某段模型三次都没写对时，不再让整课失败——该段改用**本地按页组装**的步骤（页序、scope、`textbookMatch` 与人工路径同源，**不花配额**），整课照常发布，阶段文案写明"课堂已准备完成（第 N 段由本地课件脊线补齐）"；只有名额耗尽、上游故障等非"答案被拒"的错误仍然抛出。`ClassroomModelJson` 同时把被拒原文（截 800 字）打进日志，便于回溯模型到底写了什么。
+- **契约与前端**：`contracts/classroom-script.schema.json` 更新 `slideScope`（说明为服务端派生）与 `slideRefs`（说明在课件主线课上由步位决定并会被重写）的描述；顺带把 `steps.maxItems` 由 40 改为 **80**，与 `ClassroomScriptParser` 的上限（提问插步后 36 页 deck 可超 40）对齐。前端 **0 处**引用 `slideScope`，无需改动。
+- **验证**：本机构建链打通（Temurin **21.0.12.1+1** + `tmp-tools/apache-maven-3.9.16/bin/mvn.cmd`，PowerShell 调用；Git Bash 下 `mvn` 脚本会被 `C:` 冒号切断 classpath）后 `mvn -o -B -DskipTests compile` **BUILD SUCCESS**（267 文件）；新增 `ClassroomPreparationPartTest` **10 项**（scope 派生覆盖模型手抄值、跳页被拒且消息带正确页、大小写容错不把提问当讲解、整段无提问被拒、最后一页之后不得带 `slideRefs`、延伸步沿用末页 scope、无脊线时按所选页派生 scope、引用不存在的页被拒并回显可用页、本地脊线页序与 scope、本地脊线满足脚本契约但按"每段必须提问"被拒——这正是它必须直接并入而非回炉校验的原因），classroom 相关 **32 项全绿**；`SlideSpinePlanTest` / `ClassroomPreparationSceneTest` / `ClassroomScriptParserTest` / `ClassroomModelJsonTest` 无回归。
+- **顺带发现（未修，待用户拍板）**：生产**从未部署** `slides.annotations.json`（宿主 `/srv/structify/private/presentation-annotations/` 不存在，容器内也没有；`app.presentation.annotations` 默认相对 dev 路径在容器里解析成 `/private/…`），`loadAnnotations()` 缺失时静默降级 → 每页 `section/role/terms` 全空，脊线清单标注恒为 `[-/-]`、`LessonPassageIndex` 退化为整课检索（每页"教材候选"不再来自所属小节）、`sceneOf()` 少 role 线索。08-04 第 1 段恰好不受影响（已验）。
 
 ## 2026-09-19 课堂问答回归课件主线：提问不占页、大模型判答、答错必须重答
 

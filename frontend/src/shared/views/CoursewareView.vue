@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import BrandStage from "../components/BrandStage.vue";
+import { prefetchSlideImages, prefetchSlideWindow } from "../courseware/prefetch-slides";
 import { useI18n } from "../i18n/locale";
 import type { PresentationDeck, PresentationSlide } from "../types/contracts";
 import { userApi } from "../../user/runtime";
@@ -49,6 +50,9 @@ function onKeydown(event: KeyboardEvent) {
   if (event.key === "ArrowLeft") select(index.value - 1);
   if (event.key === "ArrowRight") select(index.value + 1);
 }
+
+/** Warm the pages around this one, so 下一页 is a lookup rather than a round trip through the edge. */
+watch([index, slides], () => prefetchSlideWindow(slides.value, index.value));
 
 onMounted(async () => {
   window.addEventListener("keydown", onKeydown);

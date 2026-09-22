@@ -9,7 +9,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * The directory is read-only material and never serves anything outside its root.
  */
 @ConfigurationProperties("app.presentation")
-public record PresentationProperties(boolean enabled, String directory, String imageDirectory, String annotations) {
+public record PresentationProperties(
+    boolean enabled,
+    String directory,
+    String imageDirectory,
+    String annotations,
+    String assetSecret
+) {
 
     public Path root() {
         if (directory == null || directory.isBlank()) {
@@ -32,6 +38,14 @@ public record PresentationProperties(boolean enabled, String directory, String i
             return null;
         }
         return Path.of(annotations).toAbsolutePath().normalize();
+    }
+
+    /**
+     * Secret that signs the urls page images are served from. A url is a capability, so this has to be a
+     * real secret: with a guessable one the whole courseware could be read by walking page ids.
+     */
+    public String assetSecret() {
+        return assetSecret == null ? "" : assetSecret;
     }
 
     public boolean ready() {

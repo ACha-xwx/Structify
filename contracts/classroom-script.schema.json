@@ -24,7 +24,7 @@
         "steps": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 40,
+          "maxItems": 80,
           "items": {"$ref": "#/$defs/step"}
         }
       }
@@ -72,7 +72,7 @@
         "slideTitle": {"type": "string", "minLength": 1, "maxLength": 200},
         "slidePage": {"type": "integer", "minimum": 1},
         "slideScope": {
-          "description": "The part of the lesson deck this step was placed in, chosen before the page itself.",
+          "description": "The part of the lesson deck this step belongs to. Derived by the server from the page the step shows (the sub-lesson the deck filed that page under and the scene the page itself reads as), so it is never supplied by a model - a hand-copied range used to cost a whole lesson its preparation.",
           "type": "object",
           "additionalProperties": false,
           "required": ["subLessonId", "scene"],
@@ -82,7 +82,7 @@
           }
         },
         "slideRefs": {
-          "description": "Courseware pages this step shows, chosen from the slides prepared for the lesson. Absent means the slide pane follows the lesson order instead.",
+          "description": "Courseware page this step shows. In a courseware-driven lesson the page is dictated by the step's position in the lesson (the nth teaching step teaches the nth page, a question repeats the page already on screen, and a step after the last page carries no page at all), so the server rewrites this to the single page the step must teach. Absent means the step teaches over the page already on screen.",
           "type": "array",
           "minItems": 1,
           "maxItems": 3,

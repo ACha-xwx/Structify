@@ -2345,7 +2345,7 @@ components:
         lastConnectionTestStatus:
           type: string
           nullable: true
-          description: Diagnostic result of the most recent explicit connection probe, including CONNECTION_OK, CONNECTION_RESPONSE_INVALID, CONNECTION_FAILED, REDIRECT_REJECTED, or UPSTREAM_REJECTED. It is not a model-availability or generation-readiness gate; clients must use /ai/readiness and the generation response for those decisions.
+          description: Diagnostic result of the most recent explicit connection probe, including CONNECTION_OK, CONNECTION_RESPONSE_INVALID, CONNECTION_FAILED, REDIRECT_REJECTED, UPSTREAM_REJECTED, UPSTREAM_AUTHENTICATION_REJECTED, UPSTREAM_PAYMENT_REQUIRED, or UPSTREAM_RATE_LIMITED. It is not a model-availability or generation-readiness gate; clients must use /ai/readiness and the generation response for those decisions.
         lastConnectionTestedAt:
           type: string
           format: date-time
@@ -2378,7 +2378,7 @@ components:
         code:
           type: string
           pattern: '^[A-Z0-9_]{1,64}$'
-          description: Controlled result code. CONNECTION_OK requires a non-blank OpenAI-compatible choices[0].message.content value; CONNECTION_RESPONSE_INVALID means a 2xx response failed that shape check. Other standard outcomes are CONNECTION_FAILED, REDIRECT_REJECTED, and UPSTREAM_REJECTED.
+          description: Controlled result code. CONNECTION_OK requires a 2xx OpenAI-compatible chat-completion envelope (a non-empty choices array whose first entry carries a message object), so a reasoning model that returns reasoning_content or an empty content under the capped probe is still reported as connected; CONNECTION_RESPONSE_INVALID means a 2xx response failed that shape check. Other standard outcomes are CONNECTION_FAILED, REDIRECT_REJECTED, UPSTREAM_REJECTED, and the actionable upstream rejections UPSTREAM_AUTHENTICATION_REJECTED (401/403), UPSTREAM_PAYMENT_REQUIRED (402), and UPSTREAM_RATE_LIMITED (429).
     MailConfigCapability:
       type: object
       required: [available]

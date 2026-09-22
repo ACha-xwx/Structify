@@ -90,11 +90,13 @@ public class PresentationCatalog {
     }
 
     private final PresentationProperties properties;
+    private final SlideImageLinks links;
     private final ObjectMapper mapper;
     private volatile Snapshot snapshot;
 
-    public PresentationCatalog(PresentationProperties properties, ObjectMapper mapper) {
+    public PresentationCatalog(PresentationProperties properties, SlideImageLinks links, ObjectMapper mapper) {
         this.properties = properties;
+        this.links = links;
         this.mapper = mapper;
     }
 
@@ -166,7 +168,7 @@ public class PresentationCatalog {
                     strings(node.path("visualAnchors")),
                     node.path("shouldShow").asBoolean(true),
                     strings(node.path("lessonIds")),
-                    "/api/v1/presentation/slides/" + id + "/image",
+                    imageUrl(id, node.path("imagePath").asText("")),
                     annotations.path(id).path("section").asText(""),
                     annotations.path(id).path("role").asText(""),
                     strings(annotations.path(id).path("terms"))
@@ -402,6 +404,10 @@ public class PresentationCatalog {
     /**
      * Absolute path of a rendered page image. The stored path is relative to the courseware root and
      * is re-checked after normalisation so a slide record can never address a file outside the mount.
+     *
+     * <p>When the pipeline has also published a converted twin of the page, the twin is what gets served:
+     * it is the same picture at a fraction of the bytes, which is the difference between a page turn that
+     * waits on the network and one that does not.
      */
     public Path imageFile(String slideId) {
         Snapshot current = snapshot();
@@ -422,8 +428,10 @@ public class PresentationCatalog {
             if (!candidate.startsWith(root) || !Files.isRegularFile(candidate)) {
                 throw notFound();
             }
+            Path twin = convertedTwin(candidate);
+            Path chosen = twin != null && Files.isRegularFile(twin) ? twin : candidate;
             Path realRoot = root.toRealPath();
-            Path realCandidate = candidate.toRealPath();
+            Path realCandidate = chosen.toRealPath();
             if (!realCandidate.startsWith(realRoot)) {
                 throw notFound();
             }
@@ -432,6 +440,42 @@ public class PresentationCatalog {
             throw error;
         } catch (IOException | RuntimeException error) {
             throw notFound();
+        }
+    }
+
+    /**
+     * The url a page image is fetched from. It carries a signature so the deck cannot be walked by guessing
+     * page ids, and the extension of the form that will actually be served, because that is how a cache in
+     * front of the deployment decides an object is worth storing.
+     */
+    private String imageUrl(String slideId, String storedPath) {
+        return links.url(slideId, convertedFormat(storedPath));
+    }
+
+    private String convertedFormat(String storedPath) {
+        Path file = imageRootOrNull();
+        if (file != null && !storedPath.isBlank()) {
+            Path twin = convertedTwin(file.resolve(storedPath).normalize());
+            if (twin != null && Files.isRegularFile(twin)) {
+                return SlideImageLinks.WEBP;
+            }
+        }
+        return SlideImageLinks.PNG;
+    }
+
+    /** Sibling file a converted page would live in, or null when the page is already the converted form. */
+    private static Path convertedTwin(Path image) {
+        String name = image.getFileName().toString();
+        return name.endsWith(".png")
+            ? image.resolveSibling(name.substring(0, name.length() - ".png".length()) + ".webp")
+            : null;
+    }
+
+    private Path imageRootOrNull() {
+        try {
+            return properties.imageRoot();
+        } catch (RuntimeException error) {
+            return null;
         }
     }
 

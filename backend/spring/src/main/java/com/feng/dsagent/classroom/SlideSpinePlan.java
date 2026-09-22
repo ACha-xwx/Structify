@@ -91,6 +91,25 @@ public final class SlideSpinePlan {
     }
 
     /**
+     * The page steps of one part, for a caller that assembles a lesson part by part - the fallback used when
+     * a model answer for that part was rejected. Extensions are only added for the final part, because the
+     * steps after them belong to the next part of the deck.
+     */
+    public static List<ObjectNode> steps(ObjectMapper mapper, List<Slide> slides, LessonPassageIndex textbook,
+                                         boolean withExtensions) {
+        List<ObjectNode> steps = new ArrayList<>();
+        for (Slide slide : slides) {
+            steps.add(slideStep(mapper, slide, textbook.evidence(slide.section(), query(slide), 2)));
+        }
+        if (withExtensions && !steps.isEmpty()) {
+            for (LessonPassageIndex.Passage passage : extensionPassages(textbook, slides, new ArrayList<>())) {
+                steps.add(extensionStep(mapper, passage, steps.get(steps.size() - 1)));
+            }
+        }
+        return steps;
+    }
+
+    /**
      * How precisely the textbook backs one courseware page: its own section, the parent section, or only
      * the lesson as a whole. Shared by both narration paths so a model-written step reports the same
      * textbook provenance a locally assembled one does; without it the classroom cannot tell the learner

@@ -19,6 +19,7 @@ class PresentationCatalogTest {
     Path root;
 
     private PresentationCatalog catalog;
+    private SlideImageLinks links;
 
     @BeforeEach
     void setUp() throws IOException {
@@ -41,7 +42,15 @@ class PresentationCatalogTest {
               "02-99A":{"lessonId":"02-99A","title":"习题","slideOrder":["deck-b-s001","deck-a-s002"]}
             }}
             """);
-        catalog = new PresentationCatalog(new PresentationProperties(true, root.toString(), "", ""), JsonMapper.builder().build());
+        catalog = catalogFor(root, true);
+    }
+
+    /** A catalogue over `root`, wired the way the application wires it. */
+    private PresentationCatalog catalogFor(Path root, boolean enabled) {
+        PresentationProperties properties =
+            new PresentationProperties(enabled, root.toString(), "", "", "test-asset-secret");
+        links = new SlideImageLinks(properties);
+        return new PresentationCatalog(properties, links, JsonMapper.builder().build());
     }
 
     private void write(String relative) throws IOException {
@@ -76,7 +85,31 @@ class PresentationCatalogTest {
 
         assertThat(slides).hasSize(1);
         assertThat(slides.get(0).shouldShow()).isFalse();
-        assertThat(slides.get(0).imageUrl()).isEqualTo("/api/v1/presentation/slides/deck-b-s001/image");
+        // The url is signed and carries the form the page is served in, because that is what lets a cache
+        // in front of the deployment hold on to it instead of forwarding every page turn to the origin.
+        assertThat(slides.get(0).imageUrl()).isEqualTo(links.url("deck-b-s001", SlideImageLinks.PNG));
+        assertThat(slides.get(0).imageUrl()).startsWith("/api/v1/presentation/slides/deck-b-s001/").endsWith(".png");
+    }
+
+    @Test
+    void prefersTheConvertedTwinWhenThePipelinePublishedOne() throws IOException {
+        write("rendered/deck-a/002.webp");
+        catalog = catalogFor(root, true);
+
+        // Same page, a fraction of the bytes: the url says .webp and the served file is the twin.
+        assertThat(catalog.slidesForCoursewareKey("01-01").get(1).imageUrl())
+            .isEqualTo(links.url("deck-a-s002", SlideImageLinks.WEBP));
+        assertThat(catalog.imageFile("deck-a-s002"))
+            .isEqualTo(root.resolve("rendered/deck-a/002.webp").toRealPath());
+        // A page without a twin keeps being served as the png it is.
+        assertThat(catalog.imageFile("deck-a-s001"))
+            .isEqualTo(root.resolve("rendered/deck-a/001.png").toRealPath());
+    }
+
+    @Test
+    void signsEveryPageDifferentlySoTheDeckCannotBeWalkedById() {
+        assertThat(catalog.slide("deck-a-s001").imageUrl())
+            .isNotEqualTo(catalog.slide("deck-a-s002").imageUrl());
     }
 
     @Test
@@ -99,13 +132,13 @@ class PresentationCatalogTest {
             {"version":1,"slides":[{"id":"deck-a-s009","deckId":"deck-a","deckTitle":"x","slideNumber":9,"imagePath":"../../secret.png"}],
              "builtAt":"now"}
             """);
-        catalog = new PresentationCatalog(new PresentationProperties(true, root.toString(), "", ""), JsonMapper.builder().build());
+        catalog = catalogFor(root, true);
         assertThatThrownBy(() -> catalog.imageFile("deck-a-s009")).isInstanceOf(ApiException.class);
     }
 
     @Test
     void reportsNotReadyWhenThePipelineHasNotPublishedAnything() {
-        PresentationCatalog empty = new PresentationCatalog(new PresentationProperties(false, root.resolve("missing").toString(), "", ""), JsonMapper.builder().build());
+        PresentationCatalog empty = catalogFor(root.resolve("missing"), false);
 
         assertThat(empty.snapshot().ready).isFalse();
         assertThat(empty.slidesForCoursewareKey("01-01")).isEmpty();

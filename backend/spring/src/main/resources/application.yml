@@ -101,6 +101,10 @@ app:
     directory: ${PRESENTATION_DIR:../../../../presentation-materials}
     image-directory: ${PRESENTATION_IMAGE_DIR:}
     annotations: ${PRESENTATION_ANNOTATIONS:../../private/presentation-annotations/slides.annotations.json}
+    # Signs the urls courseware pages are served from. The url is a capability - anyone holding it can read
+    # that one page - so the key has to be a real secret. It also has to be stable: the url is cached for as
+    # long as the page exists, and rotating this value is what invalidates every url at once.
+    asset-secret: ${PRESENTATION_ASSET_SECRET:${JWT_SECRET:local-development-only-asset-secret}}
   animation:
     maximum-concurrent-simulations: ${ANIMATION_MAX_CONCURRENT:4}
   dsvp:
