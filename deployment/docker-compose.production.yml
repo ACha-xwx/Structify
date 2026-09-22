@@ -178,6 +178,11 @@ services:
       # rendered courseware the same way the compatibility server does. Without this the catalog
       # reports ready:false and every lesson answers with an empty slide list.
       PRESENTATION_DIR: /app/private/presentation-materials
+      # Per-page courseware annotations (section/role/terms) built by scripts/build-slide-annotations.mjs.
+      # Without them the spine's textbook evidence degrades to lesson-level matching and model answers are
+      # rejected far more often, which is what used to leave stretches of a lesson narrated by the local
+      # fallback instead of the teacher's voice.
+      APP_PRESENTATION_ANNOTATIONS: /app/annotations/slides.annotations.json
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_CONNECT_HOST: ${SMTP_CONNECT_HOST:-}
       SMTP_TLS_SERVERNAME: ${SMTP_TLS_SERVERNAME:-}
@@ -207,6 +212,8 @@ services:
       - ${KNOWLEDGE_DIR_HOST:?set KNOWLEDGE_DIR_HOST}:/app/private/knowledge:ro
       - ${RESOURCE_DIR_HOST:?set RESOURCE_DIR_HOST}:/app/private/course-content:ro
       - ${PRESENTATION_DIR_HOST:?set PRESENTATION_DIR_HOST}:/app/private/presentation-materials:ro
+      # Relative to the compose file, so it points into the release tree that ships the file.
+      - ${PRESENTATION_ANNOTATIONS_HOST:-../private/presentation-annotations/slides.annotations.json}:/app/annotations/slides.annotations.json:ro
     ports:
       - 127.0.0.1:${SPRING_HOST_PORT:-18792}:8792
     expose:

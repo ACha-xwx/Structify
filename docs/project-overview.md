@@ -402,10 +402,20 @@ const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "execute-security-check-"
 
 ### 仍未处理（要你拍板或属内容工程）
 
-- **A1 / D1** `slides.annotations.json` 部署——影响备课质量最大，但涉及生产数据，等你点头。
 - **A8 / A9 / A10** 教材核验剩余页、8 个改写稿重录、旧动画记录迁移——内容工程，代码加不了速。
 - **C2** 管理端 8 页生产验收——需要管理员会话在真实浏览器里逐页走一遍，本轮只做了接口层（capability/用户/审计/审核/后台任务/模型配置的匿名拒绝 + 预检）。
 - **D2 / D3 / D6 / D7 / D9** 备案路线、备课结果复用、陈旧文件清理、Node 收敛节奏。
+
+### 2026-09-22 晚补记：A15 兜底讲稿"念课本" + A1 落地（用户截图实证）
+
+用户在课堂上截到一段"超长、整段背教材原文"的讲稿。排查结论是一条新缺陷（A15）叠加 A1：
+
+| 项 | 现象与根因 | 修法 |
+|---|---|---|
+| **A15** | 兜底讲稿模板把教材片段**原文**整段拼进 `content`（`"教材（第 N 页）的表述：…"`，上限 360 字）。当模型答案连续 3 次没过契约校验时，该段课堂按设计用本地脊线补齐——学员看到的就是这段背书。生产日志实锤：19:29 `Lesson textbook-087292… part 2/3 was taught from the local spine`（模型三次把第 10 步指错页） | `SlideSpinePlan.narration()` 改为"本页是 X + 教材第 N 页摘要 ≤110 字"，总上限 360→200；完整原文仍在该步的 evidence 里，不丢失 |
+| **A1** | `slides.annotations.json` 在 `private/` 下且被 `.gitignore` 忽略、从未 `git add` → 发布包（读 git 索引）永远带不上它 → 生产课件页 `section/role/terms` 全空 → 脊线清单退化为 `[-/-]`、教材候选整课检索 → 模型更容易答错 → A15 兜底被触发。**A1 与 A15 是一条因果链** | `git add -f` 入库随发布分发；compose 给 spring-api 增 `APP_PRESENTATION_ANNOTATIONS=/app/annotations/slides.annotations.json` 与相对发布树的只读挂载 |
+
+配套：前端讲稿面板本就支持滚动（细滚动条不明显），讲稿变短后一步一屏可读完；后续新生成的课堂应显著减少落入兜底的段落。
 
 ---
 

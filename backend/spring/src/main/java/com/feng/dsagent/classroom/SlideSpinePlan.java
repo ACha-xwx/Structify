@@ -31,7 +31,13 @@ public final class SlideSpinePlan {
     }
 
     private static final int MAX_EXTENSION_STEPS = 4;
-    private static final int NARRATION_LIMIT = 360;
+    /**
+     * A fallback step is shown to the learner as-is whenever the model part was rejected, so its narration
+     * must read like speech, not like a copied page: the passage quoted here is a digest (the full reviewed
+     * wording stays one click away in the step's evidence), and the cap keeps one step to a single screen.
+     */
+    private static final int NARRATION_LIMIT = 200;
+    private static final int QUOTE_LIMIT = 110;
     private static final int EXTENSION_LIMIT = 300;
     private static final Pattern WORKED_EXAMPLE = Pattern.compile(
         "例\\s*\\d+\\.\\d+|【算法描述】|【算法思想】|【算法分析】|【分析】|解："
@@ -275,18 +281,20 @@ public final class SlideSpinePlan {
     }
 
     /**
-     * Draft narration for one page: what the page is, followed by the reviewed textbook wording that backs
-     * it. Deliberately plain - the model rewrites this into a teacher's voice when narration is enabled.
+     * Draft narration for one page: what the page is, then a short digest of the reviewed textbook wording
+     * that backs it. Deliberately plain - the model rewrites this into a teacher's voice when narration is
+     * enabled, and a rejected part shows it as-is, which is exactly why it must not recite the page.
      */
     private static String narration(Slide slide, LessonPassageIndex.Evidence evidence) {
         String subject = slide.title().isBlank() ? slide.summary() : slide.title();
         StringBuilder narration = new StringBuilder("本页是").append(shorten(subject, 40)).append("。");
         String quoted = evidence.present() ? plain(evidence.passages().get(0).text()) : "";
         if (!quoted.isBlank()) {
-            narration.append("教材（").append(evidence.passages().get(0).pageLabel()).append("）的表述：").append(quoted);
+            narration.append("教材（").append(evidence.passages().get(0).pageLabel()).append("）：")
+                .append(shorten(quoted, QUOTE_LIMIT));
         } else {
             String body = plain(slide.body());
-            narration.append(body.isBlank() ? shorten(slide.summary(), 80) : "本页要点：" + body);
+            narration.append(body.isBlank() ? shorten(slide.summary(), 80) : "本页要点：" + shorten(body, 80));
         }
         return shorten(narration.toString(), NARRATION_LIMIT);
     }
