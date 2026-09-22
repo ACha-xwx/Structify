@@ -37,8 +37,8 @@ describe("entry page", () => {
     const { wrapper } = mountHome();
     await flushPromises();
 
-    expect(wrapper.findAll(".choice__name").map((node) => node.text())).toEqual(["课堂", "动画学习"]);
-    expect(wrapper.findAll(".choice").map((node) => node.attributes("href"))).toEqual(["/classroom", "/animation"]);
+    expect(wrapper.findAll(".choice__name").map((node) => node.text())).toEqual(["课堂", "动画学习", "C 编辑器"]);
+    expect(wrapper.findAll(".choice").map((node) => node.attributes("href"))).toEqual(["/classroom", "/animation", "/compiler"]);
     // Nothing classroom-shaped is mounted here: no lesson picker, and no session was opened for us.
     expect(wrapper.find("select").exists()).toBe(false);
     wrapper.unmount();
@@ -89,7 +89,7 @@ describe("entry page", () => {
     await nextTick();
 
     expect(wrapper.get(".entry__title").text()).toBe("Where do you want to start?");
-    expect(wrapper.findAll(".choice__name").map((node) => node.text())).toEqual(["Classroom", "Animation lab"]);
+    expect(wrapper.findAll(".choice__name").map((node) => node.text())).toEqual(["Classroom", "Animation lab", "C editor"]);
     expect(wrapper.get(".entry__resume").text()).toBe("Resume last class");
     wrapper.unmount();
   });

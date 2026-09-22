@@ -33,7 +33,28 @@ export const messages = {
   "home.account": { zh: "账户操作", en: "Account" },
   "home.classroom": { zh: "课堂", en: "Classroom" },
   "home.animation": { zh: "动画学习", en: "Animation lab" },
+  "home.compiler": { zh: "C 编辑器", en: "C editor" },
   "home.resume": { zh: "继续上次课堂", en: "Resume last class" },
+
+  /** The C editor restored from the original single-page app. */
+  "compiler.title": { zh: "C 编辑器", en: "C editor" },
+  "compiler.templates": { zh: "代码模板", en: "Code templates" },
+  "compiler.template.hello": { zh: "基础输入", en: "Basic input" },
+  "compiler.template.stack": { zh: "栈 push/pop", en: "Stack push/pop" },
+  "compiler.template.list": { zh: "链表头插", en: "Linked list head insert" },
+  "compiler.template.queue": { zh: "循环队列", en: "Circular queue" },
+  "compiler.template.tree": { zh: "二叉树遍历", en: "Binary tree traversal" },
+  "compiler.code": { zh: "C 代码", en: "C code" },
+  "compiler.stdin": { zh: "程序输入（stdin）", en: "Program input (stdin)" },
+  "compiler.run": { zh: "运行代码", en: "Run code" },
+  "compiler.running": { zh: "运行中…", en: "Running…" },
+  "compiler.emptyCode": { zh: "代码不能为空。", en: "Code cannot be empty." },
+  "compiler.tooLong": { zh: "代码过长，请先缩小到 20000 字符以内再运行。", en: "Code is too long; keep it under 20000 characters." },
+  "compiler.noOutput": { zh: "（程序没有输出）", en: "(no output)" },
+  "compiler.statusSuccess": { zh: "运行完成", en: "Finished" },
+  "compiler.statusCompile": { zh: "编译错误", en: "Compile error" },
+  "compiler.statusRuntime": { zh: "运行时错误", en: "Runtime error" },
+  "compiler.statusNetwork": { zh: "执行请求失败", en: "Execution request failed" },
 
   /** Sign in, register and password reset. */
   "auth.title.login": { zh: "开始使用", en: "Get started" },

@@ -20,8 +20,10 @@ import org.springframework.stereotype.Component;
  *
  * <ul>
  *   <li>Page ids are sequence numbers inside a guessable deck id, so an unsigned url would let anyone walk
- *       the whole courseware. The signature is a keyed digest of the page id, which turns the url into a
- *       capability: unguessable, but still stable, so it can be cached for as long as the page exists.
+ *       the whole courseware. The signature is a keyed digest of the page id plus a render generation,
+ *       which turns the url into a capability: unguessable, and stable for as long as both the page and
+ *       its rendered bytes exist - bumping the generation is the one sanctioned way to re-point every
+ *       cache at re-rendered bytes.
  *   <li>A cache decides whether an object is static from its path. A path without a file extension is
  *       treated as an API call and forwarded to the origin on every request - which is exactly the round
  *       trip per page turn this class exists to remove. Carrying the extension is therefore part of the
@@ -44,6 +46,14 @@ public class SlideImageLinks {
     private static final String PREFIX = "/api/v1/presentation/slides/";
     private static final String PURPOSE = "courseware-page:";
     private static final String ALGORITHM = "HmacSHA256";
+
+    /**
+     * Render generation of the page images. It is part of the signed input, so bumping it issues
+     * every page a fresh url and lets immutable edge caches pick up the new bytes instead of
+     * serving a stale render for a year. Bump it whenever the rendered bytes change in place
+     * (v2: pages re-rendered at the decks' true 4:3 ratio after they shipped stretched to 16:9).
+     */
+    private static final String IMAGE_GENERATION = "v2";
 
     /** 128 bits of the digest: far beyond guessing, and short enough to keep the url readable. */
     private static final int SIGNATURE_BYTES = 16;
@@ -86,7 +96,7 @@ public class SlideImageLinks {
         try {
             Mac mac = Mac.getInstance(ALGORITHM);
             mac.init(new SecretKeySpec(key, ALGORITHM));
-            byte[] digest = mac.doFinal((PURPOSE + slideId).getBytes(StandardCharsets.UTF_8));
+            byte[] digest = mac.doFinal((PURPOSE + IMAGE_GENERATION + ":" + slideId).getBytes(StandardCharsets.UTF_8));
             return Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(Arrays.copyOf(digest, SIGNATURE_BYTES));
         } catch (GeneralSecurityException error) {

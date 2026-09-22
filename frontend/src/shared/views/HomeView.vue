@@ -68,6 +68,17 @@ onMounted(() => {
           <span class="choice__name">{{ t("home.animation") }}</span>
           <span class="choice__go" aria-hidden="true"><DirectionalArrowIcon direction="right" /></span>
         </RouterLink>
+
+        <RouterLink class="choice" to="/compiler">
+          <span class="choice__symbol" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+              <path d="M8.6 8.2L4.8 12l3.8 3.8" />
+              <path d="M15.4 8.2l3.8 3.8-3.8 3.8" />
+            </svg>
+          </span>
+          <span class="choice__name">{{ t("home.compiler") }}</span>
+          <span class="choice__go" aria-hidden="true"><DirectionalArrowIcon direction="right" /></span>
+        </RouterLink>
       </nav>
 
       <nav class="entry-links" :aria-label="t('home.account')">

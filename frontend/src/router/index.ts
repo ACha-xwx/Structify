@@ -5,6 +5,7 @@ import HomeView from "../shared/views/HomeView.vue";
 import ClassroomView from "../classroom/ClassroomView.vue";
 import CoursewareView from "../shared/views/CoursewareView.vue";
 import AnimationLabView from "../animation/AnimationLabView.vue";
+import CodeEditorView from "../compiler/CodeEditorView.vue";
 import AuthView from "../shared/views/AuthView.vue";
 import ForbiddenView from "../shared/views/ForbiddenView.vue";
 import NotFoundView from "../shared/views/NotFoundView.vue";
@@ -20,6 +21,8 @@ export const routes: RouteRecordRaw[] = [
   { path: "/classroom", name: "classroom", component: ClassroomView, meta: { requiresAuth: true, layout: "workbench", module: "课堂" } },
   { path: "/courseware", name: "courseware", component: CoursewareView, meta: { requiresAuth: true, layout: "workbench", module: "课件浏览" } },
   { path: "/animation", name: "animation-lab", component: AnimationLabView, meta: { requiresAuth: true, layout: "workbench", module: "动画实验室" } },
+  // The original app let guests run C experiments without an account; that stays.
+  { path: "/compiler", name: "compiler", component: CodeEditorView, meta: { layout: "workbench", module: "C 编辑器" } },
   { path: "/login", name: "login", component: AuthView, props: { mode: "login" }, meta: { layout: "auth" } },
   { path: "/register", name: "register", component: AuthView, props: { mode: "register" }, meta: { layout: "auth" } },
   { path: "/reset-password", name: "reset-password", component: AuthView, props: { mode: "reset" }, meta: { layout: "auth" } },
