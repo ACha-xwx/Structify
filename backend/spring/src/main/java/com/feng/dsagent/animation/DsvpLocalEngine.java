@@ -89,6 +89,32 @@ public final class DsvpLocalEngine {
         });
     }
 
+    /** Chapter and lesson ids both begin with the textbook chapter number ("08-tree", "08-02"). */
+    private static final java.util.regex.Pattern LEADING_CHAPTER = java.util.regex.Pattern.compile("^(\\d{1,2})");
+
+    /**
+     * The scope the registry filters by: the leading chapter number plus a dash, so "08-tree" and "08-02"
+     * both ask for chapter 8. A value without a leading number is passed through and the engine answers
+     * with the whole registry.
+     */
+    public static String chapterScope(String chapterOrLessonId) {
+        String value = chapterOrLessonId == null ? "" : chapterOrLessonId.trim();
+        java.util.regex.Matcher matcher = LEADING_CHAPTER.matcher(value);
+        return matcher.find() ? matcher.group(1) + "-" : value;
+    }
+
+    /**
+     * The registry's own prompt fragment for one chapter: every capability it can really simulate, each
+     * with its required arguments. Callers pass this to the model instead of a hand-written list, so a
+     * prompt can never claim an implemented algorithm is missing - or offer one that does not exist.
+     * Blank means the engine is unreachable, and the caller should fall back rather than guess.
+     */
+    public String catalogueFor(String chapterOrLessonId) {
+        return capabilities(chapterScope(chapterOrLessonId))
+            .map(node -> node.path("prompt").asText(""))
+            .orElse("");
+    }
+
     public Optional<JsonNode> resolve(JsonNode intent, JsonNode options) {
         return call("resolve", node -> {
             node.set("intent", intent == null ? objectMapper.createObjectNode() : intent);

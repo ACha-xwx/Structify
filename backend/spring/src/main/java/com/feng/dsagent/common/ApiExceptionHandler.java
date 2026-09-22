@@ -10,6 +10,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -93,6 +94,24 @@ public final class ApiExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiError(
             "RESOURCE_NOT_FOUND",
             "请求的资源不存在",
+            requestId(request),
+            List.of()
+        ));
+    }
+
+    /**
+     * A request whose {@code Accept} header cannot be satisfied by the endpoint's {@code produces}
+     * used to fall through to the catch-all below and be reported as a server fault. It is a client
+     * error, and the difference matters: it must not appear in the log as a 500.
+     */
+    @ExceptionHandler(HttpMediaTypeNotAcceptableException.class)
+    ResponseEntity<ApiError> handleUnacceptableMediaType(
+        HttpMediaTypeNotAcceptableException error,
+        HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.NOT_ACCEPTABLE).body(new ApiError(
+            "NOT_ACCEPTABLE",
+            "请求的响应格式不被支持",
             requestId(request),
             List.of()
         ));

@@ -72,6 +72,51 @@ public final class DsvpAnimationAdapter {
     }
 
     /**
+     * The animation section of a teaching prompt: what this platform can really animate, right now.
+     *
+     * <p>Prompts used to carry a written-out list of operations each, and every one of them had drifted
+     * from the code they described: they told the model that Dijkstra, AVL trees, B trees and external
+     * sorting were not implemented, when the engine simulates all of them, while offering {@code array},
+     * {@code heap} and {@code hash}, which the engine rejects. Both halves matter, because there are two
+     * execution paths: the engine serves the textbook's own structures, and the in-process simulator
+     * serves the generic ones. The offer below is the union, so a lesson never loses an animation the
+     * platform can actually draw.
+     *
+     * <p>The shape rules are the ones the simulators accept, not a guess: all 167 engine capabilities were
+     * driven end to end from their own teaching example through intent resolution into the simulator, so a
+     * model that follows them produces a request the validator accepts.
+     */
+    public String animationRules(String chapterOrLessonId) {
+        String catalogue = engine == null ? "" : engine.catalogueFor(chapterOrLessonId);
+        StringBuilder rules = new StringBuilder();
+        if (catalogue.isBlank()) {
+            // A dead engine is not "no animations": the simulator below still draws them, so the prompt
+            // only loses the chapter-specific half instead of being told to give up on animation.
+            rules.append("本机动画引擎当前不可用，本次只使用下面这套内建演示。\n");
+        } else {
+            rules.append("可做动画的操作（本教材章的真实能力，来自动画引擎的能力表，格式为「结构.操作[必需参数]：说明」）：\n")
+                .append(catalogue).append('\n');
+        }
+        rules.append("内建演示（第二条执行路径）支持：").append(fallbackOperations()).append("；两处都出现的结构用法相同。\n")
+            .append("写 animationRef 的规则：structure 与 operation 必须取自上面两处清单，不能使用或发明清单外的操作；")
+            .append("initial_state.data 放 initialData（树与哈夫曼树放 parent 或 runs；顺序表的 merge 放 [左表, 右表]），其余参数原样放进 params；")
+            .append("顺序表的插入与删除位置用 params.position（从 1 开始），array 与 heap 的位置用 params.index（从 0 开始）；")
+            .append("图的顶点放 params.nodes、边放 params.edges（形如 [起点, 终点, 权值]，端点可写顶点值也可写下标）、起点放 params.start；")
+            .append("树是层序数组、空位用 null；单次初始元素最多 16 个。");
+        return rules.toString();
+    }
+
+    /**
+     * The structures the in-process simulator serves, read from the very table that accepts or rejects a
+     * request, so this offer cannot drift from what actually runs. Sorted, so the prompt is stable.
+     */
+    private String fallbackOperations() {
+        return new java.util.TreeMap<>(OPERATIONS).entrySet().stream()
+            .map(entry -> entry.getKey() + " " + String.join("/", new java.util.TreeSet<>(entry.getValue())))
+            .collect(java.util.stream.Collectors.joining("；"));
+    }
+
+    /**
      * Validation shared by both execution paths, then the local engine, then the in-process simulator.
      *
      * <p>The engine covers the whole reviewed textbook (167 capabilities) and computes every frame itself.
@@ -93,7 +138,7 @@ public final class DsvpAnimationAdapter {
         }
 
         DsvpSimulationResponse local = adaptWithLocalEngine(input);
-        if (local != null) return local;
+        if (local != null) return withClientContext(local, input);
 
         String structure = text(input, "structure", 32);
         String operation = text(input, "operation", 32);
@@ -256,6 +301,31 @@ public final class DsvpAnimationAdapter {
         );
     }
 
+    /**
+     * Puts the caller's own context back onto a request the local engine echoed.
+     *
+     * <p>The engine returns its own normalized request and never carries the {@code context} block:
+     * context is a Java-side concern (which chapter, lesson, classroom session or presentation page the
+     * animation belongs to, and which reviewed resource it cites), so it is not forwarded. The evidence
+     * layer authorizes by reading exactly that block from the executed request, and an echo without it
+     * means "the caller named no source" — a team-only animation stayed readable through the API channel
+     * and a classroom run silently stopped being recorded as evidence. Restoring the block keeps one
+     * request shape for authorization, for the evidence hashes and for what the caller sees back.
+     */
+    private DsvpSimulationResponse withClientContext(DsvpSimulationResponse response, JsonNode input) {
+        ObjectNode context = canonicalContext(input);
+        if (context.isEmpty() || !response.request().isObject()) return response;
+        ObjectNode request = (ObjectNode) response.request().deepCopy();
+        request.set("context", context);
+        return new DsvpSimulationResponse(
+            response.protocol(),
+            request,
+            response.trace(),
+            response.animationData(),
+            response.recordId()
+        );
+    }
+
     /** Mirrors the engine's player payload into the shared animation contract, rich snapshots included. */
     private AnimationDefinition definitionFromLocalEngine(JsonNode player) {
         List<AnimationStep> steps = new ArrayList<>();
@@ -346,20 +416,7 @@ public final class DsvpAnimationAdapter {
     }
 
     private void normalizeContext(ObjectNode request) {
-        ObjectNode context;
-        if (request.has("context")) {
-            context = (ObjectNode) request.get("context");
-        } else {
-            context = objectMapper.createObjectNode();
-        }
-        copyAlias(request, context, "chapter_id", "chapterId");
-        copyAlias(request, context, "lesson_id", "lessonId");
-        copyAlias(request, context, "presentation_id", "presentationId");
-        copyAlias(request, context, "presentation_page_id", "presentationPageId");
-        copyAlias(request, context, "classroom_session_id", "classroomSessionId");
-        if (request.has("source_ref") && !context.has("source_ref")) {
-            context.set("source_ref", request.get("source_ref"));
-        }
+        ObjectNode context = canonicalContext(request);
         if (context.isEmpty()) {
             request.remove("context");
         } else {
@@ -368,9 +425,37 @@ public final class DsvpAnimationAdapter {
         removeAliases(request);
     }
 
-    private void copyAlias(ObjectNode request, ObjectNode context, String canonical, String alias) {
-        if (!context.has(canonical) && request.has(alias)) context.set(canonical, request.get(alias));
-        if (!context.has(canonical) && request.has(canonical)) context.set(canonical, request.get(canonical));
+    /**
+     * The single context block a client request means: whatever it sent under {@code context}, plus the
+     * top-level aliases of the same fields, plus a top-level {@code source_ref}.
+     *
+     * <p>Exactly one shape is derived here so the three consumers of a context cannot disagree: the
+     * evidence layer authorizes from it, the executed request is hashed and snapshotted with it, and the
+     * caller's echo carries it.
+     */
+    private ObjectNode canonicalContext(JsonNode request) {
+        ObjectNode context = objectMapper.createObjectNode();
+        JsonNode given = request.path("context");
+        if (given.isObject()) {
+            for (String field : CONTEXT_FIELDS) {
+                if (given.has(field)) context.set(field, given.get(field).deepCopy());
+            }
+        }
+        copyAlias(request, context, "chapter_id", "chapterId");
+        copyAlias(request, context, "lesson_id", "lessonId");
+        copyAlias(request, context, "presentation_id", "presentationId");
+        copyAlias(request, context, "presentation_page_id", "presentationPageId");
+        copyAlias(request, context, "classroom_session_id", "classroomSessionId");
+        if (!context.has("source_ref") && request.has("source_ref")) {
+            context.set("source_ref", request.get("source_ref").deepCopy());
+        }
+        return context;
+    }
+
+    private void copyAlias(JsonNode request, ObjectNode context, String canonical, String alias) {
+        if (context.has(canonical)) return;
+        JsonNode value = request.has(alias) ? request.get(alias) : request.get(canonical);
+        if (value != null && !value.isNull()) context.set(canonical, value.deepCopy());
     }
 
     private void removeAliases(ObjectNode request) {

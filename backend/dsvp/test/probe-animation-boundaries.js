@@ -284,4 +284,26 @@ section("汇总");
 const classes = {};
 for (const item of report) classes[item.klass] = (classes[item.klass] || 0) + 1;
 for (const klass of Object.keys(classes).sort()) console.log(`  ${klass.padEnd(12)} ${classes[klass]}`);
-console.log(`\n  共 ${report.length} 条发现（本脚本只报告，不判定成败）`);
+console.log(`\n  共 ${report.length} 条发现`);
+
+/*
+ * The count is the regression signal, so the probe has to fail on it. It used to report and exit 0, which
+ * meant a newly introduced boundary - or a fix quietly rolled back - would pass CI unnoticed. A count below
+ * the baseline is accepted as an improvement (and asks for the baseline to be lowered); a count above it
+ * fails. Override for a deliberate change: `--baseline=N`.
+ */
+const requested = process.argv.find((arg) => arg.startsWith("--baseline="));
+const BASELINE = requested ? Number(requested.slice("--baseline=".length)) : 13;
+if (!Number.isInteger(BASELINE) || BASELINE < 0) {
+  console.error(`  FAIL：--baseline 需要非负整数，收到 ${requested}`);
+  process.exit(2);
+}
+if (report.length > BASELINE) {
+  console.error(`  FAIL：边界发现 ${report.length} 条，高于基线 ${BASELINE} 条。请修复新增的边界，确属预期再调高基线。`);
+  process.exit(1);
+}
+if (report.length < BASELINE) {
+  console.log(`  PASS：边界发现 ${report.length} 条，低于基线 ${BASELINE} 条 —— 修复生效了，请把基线下调到 ${report.length}。`);
+  process.exit(0);
+}
+console.log(`  PASS：边界发现 ${report.length} 条，与基线一致。`);

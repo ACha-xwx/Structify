@@ -8,8 +8,6 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -34,7 +32,6 @@ import tools.jackson.databind.node.ObjectNode;
 @RequestMapping("/api/v1/animations")
 public class AnimationIntentController {
 
-    private static final Pattern LEADING_CHAPTER = Pattern.compile("^(\\d{1,2})");
     private static final String DEMO_SOURCE_REF = "系统标准教学示例（非教材原例）";
 
     private final ClassroomModelJson model;
@@ -117,29 +114,28 @@ public class AnimationIntentController {
             : input.prompt();
         JsonNode capabilityList = localCapabilities(input.chapterId());
         if (capabilityList != null) {
-            return interpretThroughLocalEngine(user, titles.getFirst(), studentRequest, input.currentRequest(), capabilityList);
+            return interpretThroughLocalEngine(user, input.chapterId(), titles.getFirst(), studentRequest, input.currentRequest(), capabilityList);
         }
-        return interpretWithModelRequest(user, titles.getFirst(), studentRequest, input.currentRequest());
+        return interpretWithModelRequest(user, input.chapterId(), titles.getFirst(), studentRequest, input.currentRequest());
     }
 
     /** Chapter ids in this codebase start with the textbook chapter number ("06-tree"), which is how the engine scopes. */
     private JsonNode localCapabilities(String chapterId) {
         if (engine == null || !engine.enabled()) return null;
-        Matcher matcher = LEADING_CHAPTER.matcher(chapterId == null ? "" : chapterId);
-        String lessonId = matcher.find() ? matcher.group(1) + "-" : chapterId;
-        return engine.capabilities(lessonId).orElse(null);
+        return engine.capabilities(DsvpLocalEngine.chapterScope(chapterId)).orElse(null);
     }
 
     /** Primary path: the model picks a capability; the engine validates it and builds the executable request. */
     private JsonNode interpretThroughLocalEngine(
         AuthenticatedUser user,
+        String chapterId,
         String chapterTitle,
         String studentRequest,
         JsonNode currentRequest,
         JsonNode capabilityList
     ) {
         String capabilities = capabilityList.path("prompt").asText("");
-        if (capabilities.isBlank()) return interpretWithModelRequest(user, chapterTitle, studentRequest, currentRequest);
+        if (capabilities.isBlank()) return interpretWithModelRequest(user, chapterId, chapterTitle, studentRequest, currentRequest);
 
         ObjectNode context = mapper.createObjectNode();
         context.put("chapter", chapterTitle);
@@ -208,7 +204,7 @@ public class AnimationIntentController {
     }
 
     /** Fallback path: no engine, so the model returns a whole DSVP request and the in-process simulator judges it. */
-    private JsonNode interpretWithModelRequest(AuthenticatedUser user, String chapterTitle, String studentRequest, JsonNode currentRequest) {
+    private JsonNode interpretWithModelRequest(AuthenticatedUser user, String chapterId, String chapterTitle, String studentRequest, JsonNode currentRequest) {
         var context = mapper.createObjectNode();
         context.put("chapter", chapterTitle);
         context.put("studentRequest", studentRequest);
@@ -219,11 +215,10 @@ public class AnimationIntentController {
         JsonNode request = model.generateFor(user.userId(), "animation-intent", """
             理解数据结构学习主题和学生要求，返回一个可执行 DSVP JSON 请求；不要生成动画帧。
             这是程序构造的教学小例子，不得冒称教材原例。只输出 version, structure, operation, params, initial_state 五个字段。
-            格式 {"version":"1.0","structure":"stack","operation":"push","params":{"value":3,"capacity":12},"initial_state":{"data":[1,2]}}。
-            支持 stack push/pop/peek，queue enqueue/dequeue/peek，sequential_list insert/delete/merge，linked_list append/insert/delete/find，array set/insert/delete/swap/get，heap insert/extract/peek（小顶堆），hash put/get/delete，tree traverse/visit，graph bfs/dfs。
-            insert/delete/get/set 需要 index（0起），写入和 find 需要 value，swap 需要 i,j；merge data 为两个有序数值数组；tree data 为层序数组、order 为 preorder/inorder/postorder/levelorder；graph data 为顶点数组，edges 为下标边数组，node 为起点；hash data 为 {key,val} 对象数组，参数 key 和 val。容量取16，元素不超过8个。
+            格式 {"version":"1.0","structure":"stack","operation":"push","params":{"value":3,"capacity":12},"initial_state":{"data":[1,2]}}。容量取16，元素不超过8个。
+            %s
             不能用一次交换冒充排序、用读取一个元素冒充查找算法或用访问结点冒充旋转。若目标算法不支持，返回 {"unsupported":true,"reason":"说明未实现范围"}。
-            """ + DsvpModelContract.INSTRUCTIONS, context.toString(), 1200, json -> {
+            """.formatted(simulator.animationRules(chapterId)) + DsvpModelContract.INSTRUCTIONS, context.toString(), 1200, json -> {
             if (json.path("unsupported").asBoolean(false)) ClassroomModelJson.requireText(json, "reason");
             else simulator.adapt(json);
         });

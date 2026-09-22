@@ -30,17 +30,21 @@ function tokenFor(userId, email) {
   return `${header}.${payload}.${signature}`;
 }
 
-async function waitForHealth(baseUrl, child) {
+async function waitForHealth(baseUrl, child, diagnostics = () => "") {
   const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
-    if (child.exitCode !== null) throw new Error(`server exited early with code ${child.exitCode}`);
+    if (child.exitCode !== null) {
+      // Without the child's own output this reads as "something failed" and nothing more, which is
+      // exactly the wrong place to lose information - the child is the thing being verified.
+      throw new Error(`server exited early with code ${child.exitCode}\n${diagnostics()}`);
+    }
     try {
       const response = await fetch(`${baseUrl}/healthz`);
       if (response.ok) return;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  throw new Error("server did not become healthy in time");
+  throw new Error(`server did not become healthy in time\n${diagnostics()}`);
 }
 
 async function stopChild(child) {
@@ -99,6 +103,9 @@ async function main() {
       PORT: String(port),
       DB_PATH: fixture.dbPath,
       JWT_SECRET: secret,
+      // A production image refuses to start without this one, and ignores JWT_SECRET. Pointing both
+      // at the same value keeps the verifier runnable outside a development checkout.
+      NODE_COMPAT_JWT_SECRET: secret,
       PRESENTATION_DIR: fixture.presentationDir,
       FRONTEND_DIR: path.join(root, "frontend"),
       MODEL_API_KEY: "",
@@ -114,7 +121,7 @@ async function main() {
   child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
 
   try {
-    await waitForHealth(baseUrl, child);
+    await waitForHealth(baseUrl, child, () => stderr);
 
     const guest = await fetch(`${baseUrl}/api/classroom/presentation-plan?lessonId=03-01A`);
     assert.equal(guest.status, 401, "presentation plans should require authentication");
@@ -137,6 +144,11 @@ async function main() {
 
     const guestImage = await fetch(`${baseUrl}/presentation/rendered/deck-a/001.png`);
     assert.equal(guestImage.status, 401, "presentation images should not be enumerable by guests");
+
+    // Access is decided before existence, so the status of a real page and a missing one are
+    // indistinguishable to a stranger - otherwise the responses alone list the courseware.
+    const guestMissingImage = await fetch(`${baseUrl}/presentation/rendered/deck-a/missing-page.png`);
+    assert.equal(guestMissingImage.status, 401, "a guest must not be able to tell a missing page from a real one");
 
     const imageResponse = await fetch(`${baseUrl}${payload.slides["deck-a-s001"].imageUrl}`);
     assert.equal(imageResponse.status, 200);

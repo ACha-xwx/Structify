@@ -124,6 +124,9 @@ async function main() {
       PORT: String(port),
       DB_PATH: dbPath,
       JWT_SECRET: secret,
+      // A production image refuses to start without this one, and ignores JWT_SECRET. Pointing both
+      // at the same value keeps the verifier runnable outside a development checkout.
+      NODE_COMPAT_JWT_SECRET: secret,
       STRUCTIFY_PRIVATE_ROOT: privateRoot,
       PRESENTATION_DIR: "",
       FRONTEND_DIR: path.join(root, "frontend"),

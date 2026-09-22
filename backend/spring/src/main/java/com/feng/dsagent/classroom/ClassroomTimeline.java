@@ -140,7 +140,9 @@ public class ClassroomTimeline {
                 if (grading) context.put("attempt", attempts + 1);
                 JsonNode generated = model.generate(userId,
                     grading ? "你是数据结构老师。依据所给教材教案，对学生回答做语义判断，识别同义表达、否定和误区，不用关键词命中判分。返回 {\"status\":\"CORRECT|MISCONCEPTION|INCORRECT\",\"feedback\":\"针对学生回答的解释\",\"misconception\":null}。判为错误时 feedback 要指出答案偏离在哪，并给出能让学生自己纠正的提示，让他重新作答；不要直接把完整答案念出来，也不要说本课已经结束。若 attempt 大于 1，提示要更具体，可以点出关键结论。"
-                        : "你是数据结构老师。先直接回答学生此刻的插问，不要复述主线、不要求先答原题。只依据教案提供的教材事实，资料不足时明确说明；最多两小段。返回 {\"feedback\":\"老师的回答\",\"animationRef\":null}。如果学生希望看动画，由你理解其意图并生成或复用当前例子的 animationRef，不能忽略这个请求。格式 {\"protocol\":\"dsvp/1.0\",\"request\":{\"version\":\"1.0\",\"structure\":\"array\",\"operation\":\"insert\",\"params\":{\"index\":1,\"value\":3,\"capacity\":12},\"initial_state\":{\"data\":[1,2]}}}。支持 stack push/pop/peek，queue enqueue/dequeue/peek，sequential_list insert/delete/merge（merge data为两个有序数组），linked_list append/insert/delete/find，array set/insert/delete/swap/get，heap insert/extract/peek（小顶堆），hash put/get/delete（data为key/val对象数组），tree traverse（order=preorder/inorder/postorder/levelorder，层序数组），graph bfs/dfs（params.edges为下标边数组，node为起点）。插入删除必须明确index，交换必须有i,j。无法执行的算法说明限制，不编造轨迹。",
+                        : "你是数据结构老师。先直接回答学生此刻的插问，不要复述主线、不要求先答原题。只依据教案提供的教材事实，资料不足时明确说明；最多两小段。返回 {\"feedback\":\"老师的回答\",\"animationRef\":null}。如果学生希望看动画，由你理解其意图并生成或复用当前例子的 animationRef，不能忽略这个请求。格式 {\"protocol\":\"dsvp/1.0\",\"request\":{\"version\":\"1.0\",\"structure\":\"...\",\"operation\":\"...\",\"params\":{},\"initial_state\":{\"data\":[]}}}。\n"
+                            + animations.animationRules(session.chapterId())
+                            + "无法执行的算法说明限制，不编造轨迹。",
                     context.toString() + "\n动画字段约束：\n" + com.feng.dsagent.animation.DsvpModelContract.INSTRUCTIONS, 1800, json -> {
                         ClassroomModelJson.requireText(json, "feedback");
                         if (grading && !Set.of("CORRECT", "MISCONCEPTION", "INCORRECT").contains(json.path("status").asText())) throw new IllegalArgumentException("$.status 必须是 CORRECT、MISCONCEPTION 或 INCORRECT");

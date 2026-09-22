@@ -1,8 +1,7 @@
 package com.feng.dsagent.security;
 
 import com.feng.dsagent.auth.RolePolicy;
-import com.feng.dsagent.common.ApiError;
-import com.feng.dsagent.common.RequestIdFilter;
+import com.feng.dsagent.common.ApiErrors;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.time.Clock;
@@ -169,15 +168,8 @@ public class SecurityConfig {
         String code,
         String message
     ) throws java.io.IOException {
-        Object requestIdValue = request.getAttribute(RequestIdFilter.ATTRIBUTE);
-        String requestId = requestIdValue == null ? "" : requestIdValue.toString();
-        response.setStatus(status);
-        response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write(objectMapper.writeValueAsString(new ApiError(
-            code,
-            message,
-            requestId,
-            List.of()
-        )));
+        // Refusals at this layer happen before the dispatch has a handler, so they are written
+        // directly - the same envelope the rest of the API returns, from one shared place.
+        ApiErrors.write(request, response, objectMapper, status, code, message);
     }
 }

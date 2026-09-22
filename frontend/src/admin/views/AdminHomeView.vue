@@ -28,9 +28,10 @@ const modules = computed(() => {
   return Object.entries(labels).map(([key, info]) => ({
     key,
     ...info,
-    status: capability.value?.modules?.[key] || (key === "sandboxSettings"
-      ? { available: false, status: "UNAVAILABLE" as const, reason: "SANDBOX_CONFIG_UNAVAILABLE" }
-      : undefined),
+    // The server describes every module it knows, sandbox included, and reports its own reason when a
+    // module is unavailable. A local fallback for one key only meant that key could disagree with the
+    // server - it claimed the interface was missing long after the endpoint shipped.
+    status: capability.value?.modules?.[key],
   }));
 });
 

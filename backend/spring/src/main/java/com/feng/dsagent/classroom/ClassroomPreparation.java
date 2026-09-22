@@ -41,6 +41,11 @@ public class ClassroomPreparation {
     private final ClassroomTimeline timeline;
     private final com.feng.dsagent.presentation.PresentationService presentations;
     /**
+     * The animation surface. It is the one object that knows both execution paths - the local engine and
+     * the in-process simulator - so the prompt offers exactly the union of what can really be drawn.
+     */
+    private final com.feng.dsagent.animation.DsvpAnimationAdapter animations;
+    /**
      * How the teaching steps of a courseware lesson are written: {@code model} lets the model narrate each
      * courseware page from the reviewed textbook, while {@code deterministic} assembles the narration
      * locally so the classroom can be inspected without calling (or paying for) a model.
@@ -50,13 +55,16 @@ public class ClassroomPreparation {
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     public ClassroomPreparation(JdbcTemplate jdbc, ClassroomModelJson model, ObjectMapper mapper, ClassroomScriptParser parser,
             ClassroomRepository repository, ClassroomTimeline timeline, com.feng.dsagent.presentation.PresentationService presentations,
+            com.feng.dsagent.animation.DsvpAnimationAdapter animations,
             @org.springframework.beans.factory.annotation.Value("${app.classroom.slide-narration:model}") String narration) {
         this.jdbc = jdbc; this.model = model; this.mapper = mapper; this.parser = parser; this.repository = repository; this.timeline = timeline;
         this.presentations = presentations;
+        this.animations = animations;
         this.narration = narration == null ? "model" : narration.trim().toLowerCase(Locale.ROOT);
         LOGGER.info("Classroom slide narration mode = {} (courseware lessons are {}); configure with app.classroom.slide-narration",
             this.narration, "model".equals(this.narration) ? "narrated by the model" : "assembled locally without a model call");
     }
+
     public List<Lesson> lessons(String chapterId) {
         Map<String, String> ranges = pageRanges();
         return jdbc.query("""
@@ -148,11 +156,10 @@ public class ClassroomPreparation {
                 每步必须选择支持本步教学内容的给定片段ID；不要重复抄写原文，evidence 和页码将由程序从所选片段原样附上，不能编造来源。keywords 至多4个，每个不超过16字。
                 question 步骤要写 questionSource 说明问题出处：model＝你针对本步内容设计的问题；textbook＝取自教材片段里的例题、习题或思考题；slide＝取自课件页上的练习/例题。
                 适合动画的例子尽量在相应步骤加入 animationRef:{"protocol":"dsvp/1.0","request":{"version":"1.0","structure":"...","operation":"...","params":{},"initial_state":{"data":[],"metadata":{}}}}。
-                可执行操作：stack push/pop/peek；queue enqueue/dequeue/peek；sequential_list insert/delete/merge；linked_list append/insert/delete/find；array set/insert/delete/swap/get；heap insert/extract/peek（小顶堆）；hash put/get/delete（逻辑键值表）；tree traverse/visit/highlight；graph bfs/dfs/visit/highlight。
-                插入/删除/数组访问需要 index（0起）；插入需要 value；swap 需要 i,j；merge 的 data 是两个非递减数值数组，capacity 足够容纳两表；heap 仅数值；hash 的 data 为 {key,val} 数组、params 包含 key/val；tree 是层序数组，可用 null，traverse 的 order 为 preorder/inorder/postorder/levelorder；graph 的 data 是顶点值，params.edges 为下标边数组、node 为起点。初始元素最多16个。
-                动画必须与本步教材例子一致，不支持的算法不要冒充已实现的动画。动画状态由程序计算，你只返回输入和操作。
-                若本步内容找不到匹配的已实现操作（例如外部排序、多路归并、Dijkstra、AVL 树、B 树等本平台未实现的算法），必须省略 animationRef 字段，直接生成不带动画的步骤，不要为了凑动画而使用无关结构。
-                """;
+                %s
+                动画必须与本步教材例子一致，只能用上面那张表里的操作，不支持的算法不要冒充已实现的动画。动画状态由程序计算，你只返回输入和操作。
+                表里没有匹配操作时，省略 animationRef 字段，直接生成不带动画的步骤，不要为了凑动画而使用无关结构。
+                """.formatted(animations.animationRules(lesson.chapterId()));
             // Which teaching beat each page belongs to. A step never declares this itself: the page it shows
             // already decides the beat, and asking the model to transcribe it as well turned a transcription
             // slip into a rejected lesson (a 42-page deck was rejected over one wrong scope string). With a
