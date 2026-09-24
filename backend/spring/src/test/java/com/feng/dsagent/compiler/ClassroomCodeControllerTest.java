@@ -1,6 +1,7 @@
 package com.feng.dsagent.compiler;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.greaterThan;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -45,9 +46,10 @@ class ClassroomCodeControllerTest {
     void listsEverySampleWhenNoLessonIsRequested() throws Exception {
         mockMvc.perform(get("/api/v1/code/samples"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.sampleCount").value(4))
-            .andExpect(jsonPath("$.lessons[0].coursewareKey").value("03-01"))
-            .andExpect(jsonPath("$.lessons[0].samples[0].id").value("03-01-s1"))
+            // One lesson used to be all there was; the map now carries most of the book.
+            .andExpect(jsonPath("$.sampleCount").value(greaterThan(100)))
+            .andExpect(jsonPath("$.lessons[0].coursewareKey").value("02-01"))
+            .andExpect(jsonPath("$.lessons[0].samples[0].id").value("02-01-s1"))
             .andExpect(jsonPath("$.lessons[0].samples[0].code").isNotEmpty())
             .andExpect(jsonPath("$.lessons[0].samples[0].expectedStdout").isNotEmpty());
     }
@@ -56,7 +58,8 @@ class ClassroomCodeControllerTest {
     void filtersToOneLesson() throws Exception {
         mockMvc.perform(get("/api/v1/code/samples").param("coursewareKey", "03-01"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.sampleCount").value(4))
+            // Four hand-written pilots plus the storage variants the map adds.
+            .andExpect(jsonPath("$.sampleCount").value(9))
             .andExpect(jsonPath("$.lessons.length()").value(1));
     }
 

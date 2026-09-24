@@ -1,0 +1,70 @@
+{
+ "03-01": [
+  {
+   "id": "03-01-s1",
+   "title": "顺序栈的四个基本运算",
+   "file": "ch03/code/seqstack.h",
+   "sections": [
+    "3.1.2"
+   ],
+   "targets": [
+    "3.1",
+    "3.2",
+    "3.3",
+    "3.4"
+   ],
+   "summary": "教材顺序栈的类型定义与 InitStack/Push/Pop/GetTop；输入一串字符，观察判空、取栈顶与逆序出栈。",
+   "stdin": "abcde\n",
+   "expectedStdout": "入栈元素个数: 5\nIsEmpty? 0, IsFull? 0\n栈顶（不弹出）: e, 此时元素个数仍为 5\n依次出栈: edcba\n",
+   "code": "#include <stdio.h>\ntypedef char StackElementType;\n\n/* ============================================================\n   顺序栈的类型定义与基本运算：3.1 InitStack / 3.2 Push / 3.3 Pop / 3.4 GetTop\n   摘自教材配套源码（耿国华《数据结构——用C语言描述》第 3 章），原样保留。\n   下列 main 为课堂演示驱动，可自由修改后重新运行。\n   ============================================================ */\n#define TRUE 1\n#define FALSE 0\n#define Stack_Size 50\n\n/*顺序栈*/\n\ntypedef struct\n{\n\tStackElementType elem[Stack_Size]; /*用来存放栈中元素的一维数组*/\n\tint top;          \t\t/*用来存放栈顶元素的下标，top为-1表示空栈*/\n}SeqStack;\n\n\n/*初始化*/\nvoid InitStack(SeqStack *S)\n{\n\t/*构造一个空栈S*/\n  \tS->top = -1;\n}\n\n/*判栈空*/\nint IsEmpty(SeqStack *S) /*判断栈S为空栈时返回值为真，反之为假*/\n{\n\treturn(S->top==-1?TRUE:FALSE);\n}\n\n/*判栈满*/\nint IsFull(SeqStack *S)\t/*判断栈S为满栈时返回值为真，反之为假*/\n{\n\treturn(S->top==Stack_Size-1?TRUE:FALSE);\n}\n\nint Push(SeqStack *S,StackElementType x)\n{\n\tif(S->top==Stack_Size-1)  \n\t\treturn(FALSE);  /*栈已满*/\n\tS->top++;\n\tS->elem[S->top] = x;\n\treturn(TRUE);\n}\n\nint Pop(SeqStack *S,StackElementType *x)\n{  \n\t/* 将栈S的栈顶元素弹出，放到x所指的存储空间中 */\n\tif(S->top == -1)  /*栈为空*/\n\t\treturn(FALSE);\n\telse\n\t{\n  \t\t*x = S->elem[S->top];\n\t\tS->top--;    /* 修改栈顶指针 */\n  \t\treturn(TRUE);\n\t}\n}\n\n/*取栈顶元素。*/\nint GetTop(SeqStack *S,StackElementType *x)\n{  \n\t/* 将栈S的栈顶元素弹出，放到x所指的存储空间中，但栈顶指针保持不变 */\n\tif(S->top == -1)  /*栈为空*/\n\t\treturn(FALSE);\n\telse\n\t{\n  \t\t*x = S->elem[S->top];\n  \t\treturn(TRUE);\n\t}\t\n}\n\n/*进行匹配*/\nint Match(char ch,char str)\n{\t\t\n\tif(ch=='(' && str==')')\n\t{\n\t\treturn TRUE;\n\t}\n\telse if(ch=='[' && str==']')\n\t{\n\t\treturn TRUE;\n\t}\n\telse if(ch=='{' && str=='}')\n\t{\n\t\treturn TRUE;\n\t}\n\telse \n\t\treturn FALSE;\n}\n\nint main(void) {\n  SeqStack S;\n  char c, top;\n  int count = 0;\n\n  InitStack(&S);\n  while ((c = (char)getchar()) != '\\n' && c != EOF) {\n    if (c == ' ') continue;\n    if (Push(&S, c) == FALSE) {\n      printf(\"栈满，无法继续入栈\\n\");\n      break;\n    }\n    count++;\n  }\n\n  printf(\"入栈元素个数: %d\\n\", count);\n  printf(\"IsEmpty? %d, IsFull? %d\\n\", IsEmpty(&S), IsFull(&S));\n\n  if (GetTop(&S, &top) == TRUE) {\n    printf(\"栈顶（不弹出）: %c, 此时元素个数仍为 %d\\n\", top, S.top + 1);\n  }\n\n  printf(\"依次出栈: \");\n  while (IsEmpty(&S) == FALSE) {\n    Pop(&S, &top);\n    putchar(top);\n  }\n  putchar('\\n');\n  return 0;\n}\n"
+  },
+  {
+   "id": "03-01-s2",
+   "title": "顺序栈的判满边界",
+   "file": "ch03/code/seqstack.h",
+   "sections": [
+    "3.1.2"
+   ],
+   "targets": [
+    "3.2"
+   ],
+   "summary": "连续入栈超过 Stack_Size，验证 Push 的边界返回与 IsFull 判据。",
+   "stdin": "",
+   "expectedStdout": "尝试入栈 55 次\n成功 50 次，失败 5 次\nIsFull? 1\n栈顶下标 top = 49\n",
+   "code": "#include <stdio.h>\ntypedef char StackElementType;\n\n/* ============================================================\n   顺序栈判满：Stack_Size 个元素后 Push 返回 FALSE（3.1.2）\n   摘自教材配套源码（耿国华《数据结构——用C语言描述》第 3 章），原样保留。\n   下列 main 为课堂演示驱动，可自由修改后重新运行。\n   ============================================================ */\n#define TRUE 1\n#define FALSE 0\n#define Stack_Size 50\n\n/*顺序栈*/\n\ntypedef struct\n{\n\tStackElementType elem[Stack_Size]; /*用来存放栈中元素的一维数组*/\n\tint top;          \t\t/*用来存放栈顶元素的下标，top为-1表示空栈*/\n}SeqStack;\n\n\n/*初始化*/\nvoid InitStack(SeqStack *S)\n{\n\t/*构造一个空栈S*/\n  \tS->top = -1;\n}\n\n/*判栈空*/\nint IsEmpty(SeqStack *S) /*判断栈S为空栈时返回值为真，反之为假*/\n{\n\treturn(S->top==-1?TRUE:FALSE);\n}\n\n/*判栈满*/\nint IsFull(SeqStack *S)\t/*判断栈S为满栈时返回值为真，反之为假*/\n{\n\treturn(S->top==Stack_Size-1?TRUE:FALSE);\n}\n\nint Push(SeqStack *S,StackElementType x)\n{\n\tif(S->top==Stack_Size-1)  \n\t\treturn(FALSE);  /*栈已满*/\n\tS->top++;\n\tS->elem[S->top] = x;\n\treturn(TRUE);\n}\n\nint Pop(SeqStack *S,StackElementType *x)\n{  \n\t/* 将栈S的栈顶元素弹出，放到x所指的存储空间中 */\n\tif(S->top == -1)  /*栈为空*/\n\t\treturn(FALSE);\n\telse\n\t{\n  \t\t*x = S->elem[S->top];\n\t\tS->top--;    /* 修改栈顶指针 */\n  \t\treturn(TRUE);\n\t}\n}\n\n/*取栈顶元素。*/\nint GetTop(SeqStack *S,StackElementType *x)\n{  \n\t/* 将栈S的栈顶元素弹出，放到x所指的存储空间中，但栈顶指针保持不变 */\n\tif(S->top == -1)  /*栈为空*/\n\t\treturn(FALSE);\n\telse\n\t{\n  \t\t*x = S->elem[S->top];\n  \t\treturn(TRUE);\n\t}\t\n}\n\n/*进行匹配*/\nint Match(char ch,char str)\n{\t\t\n\tif(ch=='(' && str==')')\n\t{\n\t\treturn TRUE;\n\t}\n\telse if(ch=='[' && str==']')\n\t{\n\t\treturn TRUE;\n\t}\n\telse if(ch=='{' && str=='}')\n\t{\n\t\treturn TRUE;\n\t}\n\telse \n\t\treturn FALSE;\n}\n\nint main(void) {\n  SeqStack S;\n  int accepted = 0, rejected = 0, i;\n\n  InitStack(&S);\n  for (i = 0; i < Stack_Size + 5; i++) {\n    if (Push(&S, (char)('A' + i % 26)) == TRUE) {\n      accepted++;\n    } else {\n      rejected++;\n    }\n  }\n\n  printf(\"尝试入栈 %d 次\\n\", Stack_Size + 5);\n  printf(\"成功 %d 次，失败 %d 次\\n\", accepted, rejected);\n  printf(\"IsFull? %d\\n\", IsFull(&S));\n  printf(\"栈顶下标 top = %d\\n\", S.top);\n  return 0;\n}\n"
+  },
+  {
+   "id": "03-01-s3",
+   "title": "两栈共享一片空间",
+   "file": "ch03/code/dqstack.h",
+   "sections": [
+    "3.1.2"
+   ],
+   "targets": [
+    "3.5",
+    "3.6",
+    "3.7"
+   ],
+   "summary": "两个栈共用一个数组、从两端向中间生长；观察 top[0]/top[1] 与剩余空位。",
+   "stdin": "",
+   "expectedStdout": "0 号栈 top[0] = 2，1 号栈 top[1] = 98\n两栈之间还剩 95 个空位\n0 号栈出栈: 300 200 100 \n1 号栈出栈: 14 7 \n",
+   "code": "#include <stdio.h>\ntypedef int StackElementType;\n\n/* ============================================================\n   两栈共享一片数组空间：3.5 InitStack / 3.6 Push / 3.7 Pop\n   摘自教材配套源码（耿国华《数据结构——用C语言描述》第 3 章），原样保留。\n   下列 main 为课堂演示驱动，可自由修改后重新运行。\n   ============================================================ */\n#define TRUE 1\n#define FALSE 0\n#define M 100\n\ntypedef struct\n{\n\tStackElementType Stack[M];\n\tStackElementType top[2];  /*top[0]和top[1]分别为两个栈顶指示器*/\n}DqStack;\n\n/*初始化操作。*/\nvoid InitStack(DqStack *S)\n{\n\tS->top[0]=-1;\n\tS->top[1]=M;\n}\n\n/*进栈操作。*/\nint Push(DqStack *S,StackElementType x,int i)\n{\n\t/*把数据元素x压入i号堆栈*/\n\tif(S->top[0]+1==S->top[1]) /*栈已满*/\n\t\treturn(FALSE);\n\tswitch(i)\n\t{\n\tcase 0:\n\t\tS->top[0]++;\n\t\tS->Stack[S->top[0]]=x;\n\t\tbreak;\n\tcase 1:\n\t\tS->top[1]--;\n\t\tS->Stack[S->top[1]]=x;\n\t\tbreak;\n\tdefault:  /*参数错误*/\n        return(FALSE);  /* 原书此处漏了分号，为能编译已补 */\n \t}\n\treturn(TRUE);\n}\n\n/*出栈操作。*/\nint Pop(DqStack *S,StackElementType *x,int i)\n{\n\t/* 从i 号堆栈中弹出栈顶元素并送到x中 */\n\tswitch(i)\n\t{\n\tcase 0:\n\t\tif(S->top[0]==-1)  \n\t\t\treturn(FALSE);\n\t\t*x=S->Stack[S->top[0]];\n\t\tS->top[0]--;\n\t\tbreak;\n\tcase 1:\n\t\tif(S->top[1]==M)  \n\t\t\treturn(FALSE);\n\t\t*x=S->Stack[S->top[1]];\n\t\tS->top[1]++;\n\t\tbreak;\n\tdefault:\n\t\treturn(FALSE);\n\t}\n\treturn(TRUE);\n}\n\n\nint main(void) {\n  DqStack S;\n  StackElementType x;\n  int i;\n\n  InitStack(&S);\n  for (i = 1; i <= 3; i++) Push(&S, i * 100, 0);\n  for (i = 1; i <= 2; i++) Push(&S, i * 7, 1);\n\n  printf(\"0 号栈 top[0] = %d，1 号栈 top[1] = %d\\n\", S.top[0], S.top[1]);\n  printf(\"两栈之间还剩 %d 个空位\\n\", S.top[1] - S.top[0] - 1);\n\n  printf(\"0 号栈出栈: \");\n  while (Pop(&S, &x, 0) == TRUE) printf(\"%d \", x);\n  printf(\"\\n1 号栈出栈: \");\n  while (Pop(&S, &x, 1) == TRUE) printf(\"%d \", x);\n  putchar('\\n');\n  return 0;\n}\n"
+  },
+  {
+   "id": "03-01-s4",
+   "title": "链栈的进栈与出栈",
+   "file": "ch03/code/linkstack.h",
+   "sections": [
+    "3.1.2"
+   ],
+   "targets": [
+    "3.8",
+    "3.9"
+   ],
+   "summary": "链栈（头插法）的 Push/Pop，并与顺序栈对比空间取舍。",
+   "stdin": "hello\n",
+   "expectedStdout": "链栈元素个数: 5\n依次出栈: olleh\nPop 空栈返回: 0\n",
+   "code": "#include <stdio.h>\n#include <stdlib.h>\ntypedef char StackElementType;\n\n/* ============================================================\n   链栈的进栈与出栈：3.8 Push / 3.9 Pop\n   摘自教材配套源码（耿国华《数据结构——用C语言描述》第 3 章），原样保留。\n   下列 main 为课堂演示驱动，可自由修改后重新运行。\n   ============================================================ */\n#define TRUE 1\n#define FALSE 0\n\ntypedef struct node\n{\n\tStackElementType data;\n\tstruct node *next;\n}LinkStackNode;\n\ntypedef LinkStackNode *LinkStack;\n\n/*进栈操作。*/\nint Push(LinkStack top, StackElementType x)/* 将数据元素x压入栈top中 */ \n{\n\tLinkStackNode *temp;\n\ttemp=(LinkStackNode *)malloc(sizeof(LinkStackNode));\n \tif(temp==NULL)  \n \t\treturn(FALSE);   /* 申请空间失败 */\n\ttemp->data=x;\n\ttemp->next=top->next;\n\ttop->next=temp;   /* 修改当前栈顶指针 */ \n\treturn(TRUE);\n}\n\n/*出栈操作。*/\nint Pop(LinkStack top, StackElementType *x)\n{  \n\t/* 将栈top的栈顶元素弹出，放到x所指的存储空间中 */\n\tLinkStackNode * temp;\n\ttemp=top->next;\n\tif(temp==NULL)  /*栈为空*/\n\t\treturn(FALSE);\n\ttop->next=temp->next;\n\t*x=temp->data;\n\tfree(temp);   /* 释放存储空间 */\n\treturn(TRUE);\n}\n\n\n\nint main(void) {\n  LinkStackNode head;\n  char c, top;\n  int count = 0;\n\n  head.next = NULL;\n  while ((c = (char)getchar()) != '\\n' && c != EOF) {\n    if (c == ' ') continue;\n    Push(&head, c);\n    count++;\n  }\n\n  printf(\"链栈元素个数: %d\\n\", count);\n  printf(\"依次出栈: \");\n  while (Pop(&head, &top) == TRUE) putchar(top);\n  putchar('\\n');\n  printf(\"Pop 空栈返回: %d\\n\", Pop(&head, &top));\n  return 0;\n}\n"
+  }
+ ]
+}
