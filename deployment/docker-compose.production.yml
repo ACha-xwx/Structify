@@ -204,10 +204,17 @@ services:
       EXECUTE_CODE_MAX_LENGTH: ${EXECUTE_CODE_MAX_LENGTH:-20000}
       EXECUTE_INPUT_MAX_LENGTH: ${EXECUTE_INPUT_MAX_LENGTH:-12000}
       EXECUTE_OUTPUT_MAX_LENGTH: ${EXECUTE_OUTPUT_MAX_LENGTH:-6000}
-      EXECUTE_MAX_CONCURRENT: ${EXECUTE_MAX_CONCURRENT:-4}
-      EXECUTE_MAX_CONCURRENT_PER_CLIENT: ${EXECUTE_MAX_CONCURRENT_PER_CLIENT:-1}
+      EXECUTE_MAX_CONCURRENT: ${EXECUTE_MAX_CONCURRENT:-16}
+      EXECUTE_MAX_CONCURRENT_PER_CLIENT: ${EXECUTE_MAX_CONCURRENT_PER_CLIENT:-8}
       EXECUTE_COMPILE_TIMEOUT_MS: ${EXECUTE_COMPILE_TIMEOUT_MS:-10000}
       EXECUTE_RUN_TIMEOUT_MS: ${EXECUTE_RUN_TIMEOUT_MS:-3000}
+      # The interactive console runs learner programs in this container, so it stays off unless the
+      # host has turned it on (and the image ships a compiler).
+      SANDBOX_ENABLED: ${SANDBOX_ENABLED:-false}
+      SANDBOX_WORK_DIRECTORY: ${SANDBOX_WORK_DIRECTORY:-}
+      SANDBOX_MAX_SESSIONS: ${SANDBOX_MAX_SESSIONS:-32}
+      SANDBOX_IDLE_TIMEOUT_SECONDS: ${SANDBOX_IDLE_TIMEOUT_SECONDS:-180}
+      SANDBOX_LIFETIME_SECONDS: ${SANDBOX_LIFETIME_SECONDS:-900}
     volumes:
       - ${KNOWLEDGE_DIR_HOST:?set KNOWLEDGE_DIR_HOST}:/app/private/knowledge:ro
       - ${RESOURCE_DIR_HOST:?set RESOURCE_DIR_HOST}:/app/private/course-content:ro
@@ -221,6 +228,9 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=128m,mode=1777
+      # The interactive console compiles and runs here. A docker tmpfs is noexec by default, so the
+      # exec option is what makes a compiled program runnable at all.
+      - /app/sandbox-work:size=64m,mode=1777,exec
     cap_drop:
       - ALL
     security_opt:
