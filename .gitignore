@@ -109,3 +109,11 @@ Thumbs.db
 
 # === Test Output ===
 test-results/
+
+# === Local canvas artifacts ===
+*.miora
+
+# Frame-capture audit: reads backend/dsvp/engine from the repo root, which the
+# production image does not ship. Local probe only - keeping it out of the index
+# keeps it out of the release pack too.
+frontend/src/animation/engine-frames.spec.ts
