@@ -36,6 +36,8 @@ export interface FramePanel {
   multiKey: boolean;
   /** Zero-based index inside this panel that the step is operating on, when the engine says so. */
   focus: number | null;
+  /** Zero-based [row, column] of the one cell a grid step is standing on (matrix panels only). */
+  focusCell: [number, number] | null;
   /** Half-open index range a sort pass is working on (`low`..`high`). */
   range: [number, number] | null;
   /** Frame metadata belonging to this panel (front/rear/top/position/pivot/...). */
@@ -92,6 +94,7 @@ const POINTER_KEYS = new Set([
   "targetIndex",
   "movingIndex",
   "pivotIndex",
+  "mid",
   "column",
 ]);
 
@@ -136,6 +139,7 @@ const ROLE_LABELS: Record<string, string> = {
   matrix: "矩阵",
   matrix_index: "下标",
   memory: "内存工作区",
+  new: "新结点",
   next: "next 数组",
   node: "结点",
   nodes: "静态链表",
@@ -230,6 +234,7 @@ const META_LABELS: Record<string, string> = {
   targetIndex: "目标下标",
   movingIndex: "移动中",
   pivotIndex: "枢轴位置",
+  mid: "中点",
   column: "列",
   attempt: "探测次数",
   mode: "探测方式",
@@ -264,11 +269,24 @@ const META_LABELS: Record<string, string> = {
   order: "阶",
   root: "根",
   element: "元素",
+  edge: "边",
   source: "来源",
   parent: "parent",
   head: "头",
   totalWeight: "总权值",
   merged: "已合并",
+  mismatch: "失配",
+  result: "结果",
+  peek: "读取值",
+  removed: "移出",
+  found: "命中",
+  digit: "数位",
+  pass: "趟",
+  bucket: "桶号",
+  pivot: "枢轴",
+  compare: "比较",
+  next: "next",
+  path: "路径",
 };
 
 export function frameKindLabel(kind: string): string {
@@ -293,6 +311,14 @@ export function frameValueText(value: unknown): string {
     const record = value as Record<string, unknown>;
     if (typeof record.coef === "number" && typeof record.exp === "number") {
       return record.exp === 0 ? String(record.coef) : `${record.coef}x^${record.exp}`;
+    }
+    // A hash chain cell is `{key, val}`; with the (common) empty payload the key alone is the honest
+    // rendering — "key=22 val=" reads like a bug because it is one.
+    if ("key" in record) {
+      const payload = record.val ?? record.value;
+      return payload === "" || payload === null || payload === undefined
+        ? frameValueText(record.key)
+        : `${frameValueText(record.key)}：${frameValueText(payload)}`;
     }
     if ("data" in record || "cursor" in record) {
       return `${record.index ?? "?"}: ${frameValueText(record.data)} → ${frameValueText(record.cursor)}`;
@@ -327,7 +353,7 @@ export function normalizeFrame(state: DsvpState | null | undefined): AnimationFr
     for (const panel of view) {
       if (!panel || typeof panel !== "object") continue;
       if (panel.role === "meta" || panel.role === "probe" || panel.role === "matrix_index") continue;
-      panels.push(panelFromView(panel, pointers));
+      panels.push(panelFromView(panel, pointers, raw));
     }
   } else {
     panels.push(...panelsFromLegacy(kind, state as Record<string, unknown>, chips, raw));
@@ -350,7 +376,7 @@ export function normalizeFrame(state: DsvpState | null | undefined): AnimationFr
   };
 }
 
-function panelFromView(panel: DsvpPanel, pointers: Record<string, number>): FramePanel {
+function panelFromView(panel: DsvpPanel, pointers: Record<string, number>, raw: Record<string, unknown>): FramePanel {
   const role = String(panel.role ?? "");
   const nodes = normalizeNodes(panel.nodes);
   const edges = Array.isArray(panel.edges) ? (panel.edges as unknown[][]) : [];
@@ -367,6 +393,7 @@ function panelFromView(panel: DsvpPanel, pointers: Record<string, number>): Fram
     edges,
     multiKey: false,
     focus: null,
+    focusCell: null,
     range: null,
     chips: [],
   };
@@ -386,13 +413,12 @@ function panelFromView(panel: DsvpPanel, pointers: Record<string, number>): Fram
   if (!Array.isArray(values)) return frame;
 
   const allArrays = values.length > 0 && values.every((item) => Array.isArray(item));
-  const cellObjects = allArrays ? (values as unknown[][]).flat().filter((item) => item !== null && typeof item === "object" && !Array.isArray(item)) : [];
-  const chainCells = cellObjects.length > 0 && cellObjects.every((item) => "key" in (item as Record<string, unknown>));
 
   if (allArrays) {
     frame.kind = "matrix";
-    // A hash table's buckets are lists of key records; the renderer draws them as chains, not as a grid.
-    frame.variant = chainCells && role === "buckets" ? "bucket" : "plain";
+    // A hash table's buckets render as labelled chain rows, whatever the entries look like
+    // (objects `{key,val}` or the plain keys they now render as).
+    frame.variant = role === "buckets" ? "bucket" : "plain";
     frame.rows = values as unknown[][];
     frame.values = values;
   } else if (values.length && values.every((item) => item !== null && typeof item === "object")) {
@@ -401,10 +427,38 @@ function panelFromView(panel: DsvpPanel, pointers: Record<string, number>): Fram
   } else {
     frame.kind = "array";
     frame.values = values;
+    // 空结构不能画成一块空白画布。顺序栈、循环队列这类结构自己知道容量，就把 capacity 个空槽摆出来，
+    // 「空」才有形状——2026-09-24 用户反馈：「初始化操作没什么可演示的，但你不能空空的啥也没有」。
+    if (!values.length) {
+      const capacity = typeof raw.capacity === "number" ? raw.capacity : null;
+      if (capacity !== null && Number.isInteger(capacity) && capacity > 0 && capacity <= 64) {
+        frame.values = new Array(capacity).fill(null);
+      }
+    }
   }
 
-  frame.focus = focusFor(role, pointers, frame.values.length);
+  frame.focusCell = focusCellOf(panel);
+  // A panel may carry its own cursor (`focusIndex`); that beats the shared pointer pool, which several
+  // panels read at once and which therefore cannot say "slot 7 of the packed array, not column 7".
+  const ownFocus = typeof panel.focusIndex === "number" ? panel.focusIndex : null;
+  frame.focus = ownFocus === null ? focusFor(role, pointers, frame.values.length) : clamp(ownFocus, frame.values.length);
+  // Pattern matching: both string panels would stay unhighlighted because i/j are not in focusFor's
+  // cursor set. Each side rides its own pointer — i over the text, j over the pattern.
+  // （left/right 已由 focusFor 自己处理，不在这里兜底，免得两套规则打架。）
+  if (ownFocus === null && frame.focus === null) {
+    if (role === "pattern" && pointers.j !== undefined) frame.focus = clamp(pointers.j, frame.values.length);
+    else if (role === "text" && pointers.i !== undefined && pointers.j !== undefined) frame.focus = clamp(pointers.i, frame.values.length);
+  }
   return frame;
+}
+
+/** The one cell a grid step stands on, when the engine names it as `focusCell: [row, column]`. */
+function focusCellOf(panel: DsvpPanel): [number, number] | null {
+  const value = panel.focusCell;
+  if (!Array.isArray(value) || value.length < 2) return null;
+  const row = Number(value[0]);
+  const column = Number(value[1]);
+  return Number.isInteger(row) && Number.isInteger(column) && row >= 0 && column >= 0 ? [row, column] : null;
 }
 
 /** The four legacy snapshot shapes carry their fields at the top level instead of inside `view`. */
@@ -420,6 +474,7 @@ function panelsFromLegacy(kind: string, state: Record<string, unknown>, chips: F
     edges: [],
     multiKey: false,
     focus: null,
+    focusCell: null,
     range: null,
     chips: [],
   });
@@ -432,6 +487,8 @@ function panelsFromLegacy(kind: string, state: Record<string, unknown>, chips: F
       panel.focus = clamp(pointer, values.length);
       panel.chips.push({ label: kind === "stack" ? "top" : "front", value: String(pointer) });
     }
+    // 队列/栈在读元素、写入元素的帧会给 current（这一步正踩着的下标），它比 front/top 更具体。
+    if (typeof state.current === "number") panel.focus = clamp(state.current, values.length);
     if (kind === "queue" && typeof state.rear === "number") panel.chips.push({ label: "rear", value: String(state.rear) });
     const metadata = isRecord(state.metadata) ? state.metadata : {};
     if (typeof metadata.capacity === "number") panel.chips.push({ label: "容量", value: String(metadata.capacity) });
@@ -441,8 +498,10 @@ function panelsFromLegacy(kind: string, state: Record<string, unknown>, chips: F
   if (kind === "sequential_list") {
     const values = asArray(state.items).map((item) => (isRecord(item) ? item.value : item));
     const panel = base("array", values);
-    if (typeof state.targetIndex === "number" && state.targetIndex >= 0) panel.focus = clamp(state.targetIndex, values.length);
-    else if (typeof state.movingIndex === "number" && state.movingIndex >= 0) panel.focus = clamp(state.movingIndex, values.length);
+    // 移动中的那个元素优先于插入/删除位置：后移/前移帧的高亮要跟着元素走，
+    // 否则整条动画都钉在目标位置上，看起来就是"高亮卡住不动"。
+    if (typeof state.movingIndex === "number" && state.movingIndex >= 0) panel.focus = clamp(state.movingIndex, values.length);
+    else if (typeof state.targetIndex === "number" && state.targetIndex >= 0) panel.focus = clamp(state.targetIndex, values.length);
     pushChip(panel.chips, "表长", state.length);
     pushChip(panel.chips, "插入位置", state.position);
     pushChip(panel.chips, "新值", state.value);
@@ -482,14 +541,23 @@ function panelsFromLegacy(kind: string, state: Record<string, unknown>, chips: F
  * can highlight the index the step is standing on. Nothing is filtered out: when the engine starts
  * reporting a new field, it shows up in the header without a frontend change.
  */
+/**
+ * Meta fields that never deserve a chip: the operation is already the player's headline, and a
+ * graph's directedness is drawn as arrowheads, not spelled out.
+ */
+const HIDDEN_META_CHIPS = new Set(["operation", "directed"]);
+
 function collectMeta(panel: DsvpPanel, chips: FrameChip[], raw: Record<string, unknown>, pointers: Record<string, number>): void {
   const isMeta = panel.role === "meta" || panel.role === "probe" || panel.role === "matrix_index";
   for (const [key, value] of Object.entries(panel)) {
     if (key === "role" || key === "values" || key === "nodes" || key === "edges") continue;
     if (isMeta) raw[key] = value;
     if (typeof value === "number" && POINTER_KEYS.has(key)) pointers[key] = value;
-    if (isMeta || POINTER_KEYS.has(key)) {
+    if ((isMeta || POINTER_KEYS.has(key)) && !HIDDEN_META_CHIPS.has(key)) {
       if (value === null || value === undefined || value === "") continue;
+      // true/false 胶囊（"循环 true"、"headSelfLoop true"）对学生没有信息量——
+      // 这些性质要么已经画在画面上（自环、箭头），要么根本没画出来，念一遍值毫无意义。
+      if (typeof value === "boolean") continue;
       chips.push({ label: chipLabel(key), value: frameValueText(value) });
     }
   }
@@ -499,9 +567,25 @@ function focusFor(role: string, pointers: Record<string, number>, length: number
   if (role === "table" && pointers.index !== undefined) return clamp(pointers.index, length);
   if (role === "stack" && pointers.top !== undefined) return clamp(pointers.top, length);
   if (role === "queue" && pointers.front !== undefined) return clamp(pointers.front, length);
+  // 双序列合并（链表归并 LA/LB/LC、多项式相加 PA/PB/PC）：A/B 各自跟着"刚被取走的那个元素"走，
+  // C 是正在增长的结果——高亮最新写入的分量。没有这些规则时整条动画一格高亮都没有。
+  if (/A$/.test(role) && pointers.i !== undefined) return clamp(pointers.i - 1, length);
+  if (/B$/.test(role) && pointers.j !== undefined) return clamp(pointers.j - 1, length);
+  if (/C$/.test(role) && length > 0) return length - 1;
+  // 阶乘非递归这类"逐轮写入"的结果数组：高亮刚乘出来的那一格。
+  if (role === "result" && length > 0) return length - 1;
+  // 分列的面板（归并的「左段/右段」）各跟自己的指针。这两条必须排在通用指针规则之前：
+  // 否则 j（甚至 current）会同时命中左右两段，两段一起跳，看不出"取的是哪一边"。
+  if (role === "left" && pointers.i !== undefined) return clamp(pointers.i, length);
+  if (role === "right" && pointers.j !== undefined) return clamp(pointers.j, length);
+  // 排序家族（冒泡/快排划分/希尔/基数/锦标赛…）用 i、j 报"正在比较的两个下标"，
+  // 归并类用 left/mid/right 报当前区间。没有这几条，整个排序动画一格高亮都没有。
   if (pointers.current !== undefined) return clamp(pointers.current, length);
-  if (pointers.index !== undefined) return clamp(pointers.index, length);
   if (pointers.pivotIndex !== undefined) return clamp(pointers.pivotIndex, length);
+  if (pointers.j !== undefined) return clamp(pointers.j, length);
+  if (pointers.i !== undefined) return clamp(pointers.i, length);
+  if (pointers.mid !== undefined) return clamp(pointers.mid, length);
+  if (pointers.index !== undefined) return clamp(pointers.index, length);
   if (pointers.position !== undefined) return clamp(pointers.position - 1, length);
   return null;
 }

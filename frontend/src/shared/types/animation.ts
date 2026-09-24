@@ -6,12 +6,17 @@ export type AnimationType = "stack" | "list" | "tree" | "queue" | "heap" | "hash
  * A panel of one engine frame. `role` says what the panel means (`array`, `tree`, `graph`, `table`,
  * `probe`, `meta`, ...); `values` is the payload. A tree or graph panel carries `nodes`/`edges` instead.
  * Any other key is frame metadata the header renders as a chip (front/rear/top/index/pivot/depth...).
+ * Two keys are read by the renderer itself: `focusIndex` marks one slot of this panel (a step of the
+ * packed-array mapping points at slot k, which the shared pointer pool cannot express) and `focusCell`
+ * marks one `[row, column]` of a grid.
  */
 export interface DsvpPanel {
   role: string;
   values?: unknown;
   nodes?: DsvpNode[];
   edges?: unknown[];
+  focusIndex?: number | null;
+  focusCell?: [number, number] | null;
   [key: string]: unknown;
 }
 

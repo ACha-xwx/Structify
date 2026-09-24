@@ -26,7 +26,11 @@ const props = withDefaults(defineProps<{
 const { t } = useI18n();
 const steps = computed(() => props.definition?.steps ?? []);
 const stepCount = computed(() => steps.value.length);
-const playback = useAnimationPlayback(stepCount);
+/** 这条动画的身份：标题 + 步数 + 首步标题。步数相同的两条动画也必须各自从起点开始播。 */
+const playbackIdentity = computed(() =>
+  `${props.definition?.title ?? ""}|${stepCount.value}|${steps.value[0]?.label ?? ""}`,
+);
+const playback = useAnimationPlayback(stepCount, { identity: playbackIdentity });
 
 const currentStep = computed(() => (playback.index.value >= 0 ? steps.value[playback.index.value] ?? null : null));
 /** Before the first step the learner sees the input, not a blank canvas. */
@@ -61,10 +65,11 @@ function onKeydown(event: KeyboardEvent) {
 
       <div class="player__viewport" tabindex="0" role="group" :aria-label="t('player.canvas')" @keydown="onKeydown">
         <!-- The initial frame is only for the "before the first step" position: once a step is active its
-             own frame must win, or playback would repaint the input on every tick. -->
+             own frame must win, or playback would repaint the input on every tick. A step that carries no
+             frame of its own falls back to the input rather than painting an empty canvas. -->
         <AnimationStage
           :step="currentStep"
-          :state="playback.index.value < 0 ? initialState : null"
+          :state="playback.index.value < 0 || !currentStep?.dsvpState ? initialState : null"
           :empty-label="t('player.empty')"
         />
       </div>
@@ -85,15 +90,20 @@ function onKeydown(event: KeyboardEvent) {
         </label>
       </div>
 
-      <input
-        class="player__scrubber"
-        type="range"
-        min="-1"
-        :max="Math.max(0, stepCount - 1)"
-        :value="playback.index.value"
-        :aria-label="t('player.scrubber')"
-        @input="playback.goTo(Number(($event.target as HTMLInputElement).value))"
-      >
+      <!-- An animation is discrete, so its progress control is too: one tick per step, and a click jumps
+           straight to that step (the classroom uses this to park on "the merge step" and talk). -->
+      <div v-if="stepCount" class="player__rail" role="group" :aria-label="t('player.rail')">
+        <button
+          v-for="(step, index) in steps"
+          :key="`tick-${index}-${step.op}`"
+          class="player__tick"
+          :class="{ 'player__tick--done': index <= playback.index.value, 'player__tick--current': index === playback.index.value }"
+          type="button"
+          :title="step.label"
+          :aria-label="step.label"
+          @click="playback.goTo(index)"
+        />
+      </div>
     </template>
 
     <p v-else class="player__placeholder">{{ placeholder || t("player.placeholder") }}</p>
@@ -101,6 +111,8 @@ function onKeydown(event: KeyboardEvent) {
 </template>
 
 <style scoped>
+/* Player chrome is page-level UI, so it speaks the site's one register: 19px and up. Only the canvas
+   inside the viewport has its own (still never-tiny) scale. */
 .player {
   display: grid;
   gap: 14px;
@@ -110,7 +122,7 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 .player__head { display: grid; gap: 4px; }
-.player__title { margin: 0; font-size: 21px; font-weight: 680; letter-spacing: -.01em; }
+.player__title { margin: 0; font-size: 22px; font-weight: 680; letter-spacing: -.01em; }
 
 .player__headline {
   margin: 0;
@@ -120,11 +132,12 @@ function onKeydown(event: KeyboardEvent) {
   text-wrap: pretty;
 }
 
+/* The canvas the panels stand on: lighter than the cards inside it, so they read as raised. */
 .player__viewport {
   padding: 16px;
   border: 1px double color-mix(in srgb, var(--text) 15%, transparent);
   border-radius: 22px;
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  background: color-mix(in srgb, var(--surface) 46%, transparent);
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 92%, transparent), 0 8px 18px color-mix(in srgb, var(--text) 9%, transparent);
   outline: none;
   overflow-x: auto;
@@ -136,19 +149,19 @@ function onKeydown(event: KeyboardEvent) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .player__button {
-  min-height: 40px;
-  padding: 8px 18px;
+  min-height: 44px;
+  padding: 10px 20px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   background: transparent;
   color: var(--text);
   cursor: pointer;
   font: inherit;
-  font-size: 15px;
+  font-size: 19px;
   transition: background-color .16s ease, border-color .16s ease, color .16s ease;
 }
 
@@ -159,27 +172,44 @@ function onKeydown(event: KeyboardEvent) {
 
 .player__position {
   margin-left: auto;
-  color: var(--text-muted);
-  font-size: 14px;
+  color: var(--text);
+  font-size: 19px;
+  font-weight: 620;
   font-variant-numeric: tabular-nums;
 }
 
-.player__speed { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 14px; }
+.player__speed { display: inline-flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 19px; }
 .player__speed select {
-  min-height: 36px;
-  padding: 4px 12px;
+  min-height: 40px;
+  padding: 6px 14px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface) 76%, transparent);
   color: var(--text);
   font: inherit;
+  font-size: 19px;
 }
 
-.player__scrubber { width: 100%; accent-color: var(--accent); }
+.player__rail { display: flex; align-items: flex-end; gap: 3px; height: 16px; }
+.player__tick {
+  flex: 1 1 0;
+  min-width: 3px;
+  height: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+  cursor: pointer;
+  transition: background-color .16s ease, height .16s ease;
+}
+.player__tick:hover { height: 12px; background: color-mix(in srgb, var(--text) 36%, transparent); }
+.player__tick--done { background: color-mix(in srgb, var(--text) 52%, transparent); }
+.player__tick--current { height: 14px; background: var(--text); }
+.player__tick:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
-.player__placeholder { margin: 0; color: var(--text-muted); font-size: 15px; }
+.player__placeholder { margin: 0; color: var(--text-muted); font-size: 19px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .player__button { transition: none; }
+  .player__button, .player__tick { transition: none; }
 }
 </style>

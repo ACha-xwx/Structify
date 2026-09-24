@@ -227,13 +227,14 @@ function stackState(items, capacity, top = items.length - 1) {
   };
 }
 
-function queueState(items, capacity) {
+function queueState(items, capacity, extra = {}) {
   return {
     kind: "queue",
     items: items.map((value, index) => ({ index, value })),
     front: items.length ? 0 : -1,
     rear: items.length ? items.length - 1 : -1,
-    metadata: { capacity }
+    metadata: { capacity },
+    ...extra
   };
 }
 
@@ -331,7 +332,7 @@ function simulateQueue(request) {
       makeStep(1, "init", "初始状态", `当前队列为 ${initialText}。`, queueState(items, capacity)),
       makeStep(2, "check", "检查队列容量", "当前队列未满，可以入队。", queueState(items, capacity), [action("check_condition", "检查队列是否已满。", { target: "rear" })]),
       makeStep(3, "move", "rear 后移", `rear 移动到位置 ${items.length}。`, queueState(items, capacity), [action("move", "rear 指向新的队尾位置。", { target: "rear", value: items.length })], { ...emptyHighlights(), pointers: [{ role: "changed", name: "rear" }] }),
-      makeStep(4, "enqueue", "元素进入队尾", `${String(value)} 从队尾进入队列。`, queueState(result, capacity), [action("enqueue", "在队尾写入新元素。", { target: "rear", value })], { ...emptyHighlights(), cells: [{ role: "new", index: result.length - 1 }] }),
+      makeStep(4, "enqueue", "元素进入队尾", `${String(value)} 从队尾进入队列。`, queueState(result, capacity, { current: result.length - 1 }), [action("enqueue", "在队尾写入新元素。", { target: "rear", value })], { ...emptyHighlights(), cells: [{ role: "new", index: result.length - 1 }] }),
       makeStep(5, "done", "入队完成", `结果为队首 ${result.join(" → ")} 队尾。`, queueState(result, capacity))
     ]);
   }
@@ -345,7 +346,7 @@ function simulateQueue(request) {
   return makeTrace(request, "队列出队演示", initialText, resultText, [
     makeStep(1, "init", "初始状态", `当前队列为 ${initialText}。`, queueState(items, capacity)),
     makeStep(2, "check", "检查队列是否为空", "当前队列非空，可以出队。", queueState(items, capacity), [action("check_condition", "检查队列是否为空。", { target: "front" })]),
-    makeStep(3, "read", "读取队首元素", `读取即将出队的元素 ${String(removed)}。`, queueState(items, capacity), [action("assign", "读取队首元素。", { target: "value", value: removed })], { ...emptyHighlights(), cells: [{ role: "target", index: 0 }] }),
+    makeStep(3, "read", "读取队首元素", `读取即将出队的元素 ${String(removed)}。`, queueState(items, capacity, { current: 0 }), [action("assign", "读取队首元素。", { target: "value", value: removed })], { ...emptyHighlights(), cells: [{ role: "target", index: 0 }] }),
     makeStep(4, "dequeue", "队首元素离开", `${String(removed)} 从队首离开，其余元素依次成为新的队列。`, queueState(result, capacity), [action("dequeue", "移除队首元素。", { target: "front", value: removed }), action("move", "front 指向新的队首。", { target: "front", value: result.length ? 0 : -1 })], { ...emptyHighlights(), pointers: [{ role: "changed", name: "front" }] }),
     makeStep(5, "done", "出队完成", `结果为${resultText === "空队列" ? "空队列" : ` ${resultText}`}。`, queueState(result, capacity))
   ]);
@@ -689,7 +690,12 @@ function traceToPlayerData(trace) {
       ? trace.errors[0].message
       : `${trace.summary.initial} → ${trace.summary.result}`,
     initial,
-    steps: steps.length ? steps : [{ op: "inspect", label: "查看结果", note: trace.summary.result, stateSnapshot: initial }],
+    // 只有一帧的操作（初始化、读栈顶…）会落到这条兜底步：它必须带上 dsvpState，
+    // 否则播放器第一步拿不到任何帧数据，渲染成一块空白画布——2026-09-24 用户反馈的
+    // "初始化动画空空的啥也没有"就是这里：起点帧有画面，点一下「下一步」反而全空。
+    steps: steps.length
+      ? steps
+      : [{ op: "inspect", label: "查看结果", note: trace.summary.result, stateSnapshot: initial, dsvpState: firstState }],
     dsvpTrace: trace
   };
 }

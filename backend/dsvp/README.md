@@ -26,6 +26,7 @@
 node backend/dsvp/test/verify-dsvp-engine.js
 node backend/dsvp/test/verify-animation-capability-router.js
 node backend/dsvp/test/verify-textbook-animation-coverage.js
+node backend/dsvp/test/verify-special-matrix.js     # 特殊矩阵压缩映射：812 组下标的「A 的值 = B[k] 的值」
 ```
 
 当前基线（本机 node 22）：
@@ -33,7 +34,8 @@ node backend/dsvp/test/verify-textbook-animation-coverage.js
 ```text
 dsvp-engine-ok core-traces=6 extended-peek=1 strict-validation=2
 animation capability router verification passed
-Textbook animation coverage PASS: 167 capabilities, 898 deterministic trace steps across canonical demos.
+Textbook animation coverage PASS: 167 capabilities, 911 deterministic trace steps across canonical demos.
+Special-matrix compression PASS: 812 index combinations across 4 kinds, 2156 playable steps, invalid kinds rejected with explicit errors.
 ```
 
 ## JSONL 服务（后端调用入口）

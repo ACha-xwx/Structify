@@ -146,11 +146,17 @@ describe("animation player", () => {
     wrapper.unmount();
   });
 
-  it("jumps to a position from the scrubber", async () => {
+  it("jumps to a step from the rail, and marks how far the playback has come", async () => {
     const wrapper = mount(AnimationPlayer, { props: { definition } });
 
-    await wrapper.get("input[type='range']").setValue("1");
+    const ticks = wrapper.findAll(".player__tick");
+    expect(ticks).toHaveLength(2);
+    expect(wrapper.findAll(".player__tick--done")).toHaveLength(0);
+
+    await ticks[1].trigger("click");
     expect(wrapper.get(".player__position").text()).toBe("2 / 2");
+    expect(wrapper.findAll(".player__tick--done")).toHaveLength(2);
+    expect(wrapper.get(".player__tick--current").attributes("title")).toBe("排序完成");
     wrapper.unmount();
   });
 

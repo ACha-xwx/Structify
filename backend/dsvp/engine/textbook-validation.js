@@ -180,7 +180,11 @@ function normalizeGraphSpec(request, defaults = {}) {
     }
     edges.push([from, to, w]);
   });
-  const directed = params.directed === undefined ? Boolean(defaults.directed) : params.directed === true;
+  // 布尔参数从界面过来是**文本**（参数框里填 "true"/"false"），严格 `=== true` 会把 "true" 判成 false：
+  // 有向图演示会悄悄变成无向图，而"计算各顶点入度"这类要求有向的动画直接报 UNDIRECTED_INDEGREE
+  // （2026-09-24 真机扫描发现：这条动画从课堂点进去从来没能跑起来）。
+  const asBoolean = (value) => value === true || value === 1 || value === "true" || value === "1";
+  const directed = params.directed === undefined ? Boolean(defaults.directed) : asBoolean(params.directed);
   return { nodes, edges, directed, nodeSet };
 }
 

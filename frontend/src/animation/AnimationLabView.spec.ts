@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RouterLinkStub, flushPromises, mount } from "@vue/test-utils";
 import AnimationLabView from "./AnimationLabView.vue";
 import type { DsvpRequest, DsvpSimulationResponse, DsvpStructure } from "../shared/types/animation";
@@ -17,10 +17,25 @@ vi.mock("vue-router", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
-/** The lab stands on the shared stage; its brand link is a router link, stubbed for these mounts. */
+/** The lab stands on the shared stage; its brand link is a router link, stubbed for these mounts.
+ * Attached to the body because the rejected-argument dialog is teleported there. */
 function mountLab() {
-  return mount(AnimationLabView, { global: { stubs: { RouterLink: RouterLinkStub } } });
+  return mount(AnimationLabView, { attachTo: document.body, global: { stubs: { RouterLink: RouterLinkStub } } });
 }
+
+function bodyDialog(): HTMLElement | null {
+  return document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+}
+
+function dialogButton(label: string): HTMLButtonElement {
+  const button = [...document.body.querySelectorAll("button")].find((item) => item.textContent?.trim() === label);
+  if (!button) throw new Error(`Expected a dialog button labelled ${label}`);
+  return button as HTMLButtonElement;
+}
+
+afterEach(() => {
+  document.body.replaceChildren();
+});
 
 /** A minimal but real-shaped simulation response: one frame with an engine snapshot. */
 function simulation(structure: DsvpStructure = "sort"): DsvpSimulationResponse {
@@ -118,7 +133,7 @@ describe("animation lab", () => {
     wrapper.unmount();
   });
 
-  it("reports the arguments the engine says are missing instead of inventing them", async () => {
+  it("raises the missing arguments in a dialog instead of printing them as small print", async () => {
     api.planAnimation.mockResolvedValue({
       status: "missing-arguments",
       capability: null,
@@ -131,8 +146,49 @@ describe("animation lab", () => {
     await wrapper.findAll("button").find((button) => button.text() === "生成动画")!.trigger("click");
     await flushPromises();
 
-    expect(wrapper.text()).toContain("还缺参数：initialData、key");
+    const dialog = bodyDialog();
+    expect(dialog).not.toBeNull();
+    expect(dialog!.textContent).toContain("参数不完整");
+    expect(dialog!.textContent).toContain("还缺参数：initialData、key");
+    // The line this replaced was 14px grey text under the stage, which is why nobody noticed the refusal.
+    expect(wrapper.find(".panel__error").exists()).toBe(false);
+    expect(wrapper.find(".panel__note").exists()).toBe(false);
     expect(api.simulateAnimation).not.toHaveBeenCalled();
+
+    dialogButton("知道了").click();
+    await flushPromises();
+    expect(bodyDialog()).toBeNull();
+    wrapper.unmount();
+  });
+
+  it("shows the engine's own refusal in the dialog when an argument is out of range", async () => {
+    api.planAnimation.mockResolvedValue({
+      status: "ready",
+      capability: null,
+      missingArguments: [],
+      toolRequest: {
+        kind: "animation",
+        protocol: "dsvp/1",
+        capability: "sort.quick",
+        purpose: "",
+        confidence: 1,
+        sourceChunkIds: [],
+        demoFallback: false,
+        request: { version: "1.0", structure: "sort", operation: "quick", params: {}, initial_state: { data: [] } },
+      },
+    });
+    api.simulateAnimation.mockRejectedValue(new Error("插入位置必须在 1 到 7 之间"));
+
+    const wrapper = mountLab();
+    await flushPromises();
+    await wrapper.findAll("button").find((button) => button.text() === "生成动画")!.trigger("click");
+    await flushPromises();
+
+    const dialog = bodyDialog();
+    expect(dialog!.textContent).toContain("参数不合理");
+    expect(dialog!.textContent).toContain("插入位置必须在 1 到 7 之间");
+    // The engine sentence must survive; a generic "operation failed" would hide the fix.
+    expect(dialog!.textContent).not.toContain("操作失败");
     wrapper.unmount();
   });
 
@@ -202,7 +258,8 @@ describe("animation lab", () => {
     await wrapper.findAll("button").find((button) => button.text() === "让模型选一个演示")!.trigger("click");
     await flushPromises();
 
-    expect(wrapper.get("[role='alert']").text()).toBe("这个问题不需要动画演示");
+    const dialog = bodyDialog();
+    expect(dialog!.textContent).toContain("这个问题不需要动画演示");
     expect(api.simulateAnimation).not.toHaveBeenCalled();
     wrapper.unmount();
   });

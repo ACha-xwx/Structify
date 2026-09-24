@@ -27,7 +27,10 @@ export interface AnimationPlayback {
   toggle: () => void;
 }
 
-export function useAnimationPlayback(stepCount: Ref<number>, options: { baseIntervalMs?: number } = {}): AnimationPlayback {
+export function useAnimationPlayback(
+  stepCount: Ref<number>,
+  options: { baseIntervalMs?: number; identity?: Ref<string> } = {},
+): AnimationPlayback {
   const baseIntervalMs = options.baseIntervalMs ?? 1100;
   const index = ref(-1);
   const playing = ref(false);
@@ -110,6 +113,16 @@ export function useAnimationPlayback(stepCount: Ref<number>, options: { baseInte
     pause();
     index.value = -1;
   });
+
+  // 只盯步数是不够的：连着看两条**步数相同**的动画时（"链栈进栈"→"链栈出栈"都是 2 步），
+  // 第二条会停在上一条的帧号上——如果上一条正好停在末帧，「下一步」就是灰的，看上去就是
+  // "卡住、动画根本没成功"（2026-09-24 用户反馈）。identity 由调用方给出，任何新动画都回到起点。
+  if (options.identity) {
+    watch(options.identity, () => {
+      pause();
+      index.value = -1;
+    });
+  }
 
   onBeforeUnmount(stopTimer);
 

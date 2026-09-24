@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import AnimationPlayer from "./AnimationPlayer.vue";
 import catalog from "./capability-catalog.json";
 import BrandStage from "../shared/components/BrandStage.vue";
+import NoticeDialog from "../shared/components/NoticeDialog.vue";
 import type { AnimationCatalog, AnimationCatalogStructure, DsvpCapabilityArgument, DsvpSimulationResponse } from "../shared/types/animation";
 import type { Chapter } from "../shared/types/course";
 import { useI18n } from "../shared/i18n/locale";
@@ -29,8 +30,13 @@ const capabilityName = ref("");
 const argumentText = ref<Record<string, string>>({});
 const prompt = ref("");
 const response = ref<DsvpSimulationResponse | null>(null);
-const notice = ref("");
-const error = ref("");
+/**
+ * Anything that stops an animation from running — the engine refusing an argument, a required argument
+ * left blank, a failed request — is raised here and shown as a dialog. It used to be a 14px grey line
+ * under the stage, which read as small print nobody notices: a rejected argument looked indistinguishable
+ * from a broken engine (2026-09-24: "是个非常小的小字提醒…改成弹窗提醒").
+ */
+const alert = ref<{ title: string; message: string } | null>(null);
 const busy = ref(false);
 /** True when the engine had to fill in its canonical example because the source carried no values. */
 const demoFallback = ref(false);
@@ -93,6 +99,9 @@ function hintFor(name: string, demo: unknown): string {
 function parseArgument(raw: string): unknown {
   const text = raw.trim();
   if (!text) return undefined;
+  // 布尔参数（如图的 directed）在界面上就是一行文本；不认 true/false 的话它会被当成字符串传下去，
+  // 引擎侧的有向/无向判断就会把 "true" 当成假（2026-09-24：计算各顶点入度因此整条动画跑不起来）。
+  if (text === "true" || text === "false") return text === "true";
   if (text.startsWith("[") || text.startsWith("{")) {
     try {
       return JSON.parse(text);
@@ -130,6 +139,11 @@ function failureMessage(cause: unknown): string {
   return cause instanceof Error && cause.message ? cause.message : t("common.failed");
 }
 
+/** Opens the dialog. The engine writes its refusal in a full Chinese sentence, so it rides as the body. */
+function raise(title: string, message: string) {
+  alert.value = { title, message };
+}
+
 async function loadChapters() {
   try {
     chapters.value = await userApi.listChapters();
@@ -137,7 +151,7 @@ async function loadChapters() {
     const matched = chapters.value.find((item) => item.id === fromQuery) ?? chapters.value[0];
     chapterId.value = matched?.id ?? "";
   } catch (cause) {
-    error.value = failureMessage(cause);
+    raise(t("common.failed"), failureMessage(cause));
   }
 }
 
@@ -145,8 +159,7 @@ async function loadChapters() {
 async function runDeterministic() {
   if (!selected.value || busy.value) return;
   busy.value = true;
-  error.value = "";
-  notice.value = "";
+  alert.value = null;
   observationSaved.value = false;
   try {
     const resolution = await userApi.planAnimation({
@@ -156,16 +169,24 @@ async function runDeterministic() {
     });
     if (resolution.status !== "ready" || !resolution.toolRequest) {
       demoFallback.value = false;
-      notice.value = resolution.missingArguments.length
-        ? t("lab.missingArguments", { names: resolution.missingArguments.join(t("common.listSeparator")) })
-        : resolution.error || t("lab.cannotGenerate");
+      const missing = resolution.missingArguments;
+      raise(
+        missing.length ? t("lab.argumentsIncomplete") : t("lab.cannotGenerate"),
+        missing.length
+          ? `${t("lab.missingArguments", { names: missing.join(t("common.listSeparator")) })}\n${t("lab.argumentsHint")}`
+          : resolution.error || t("lab.cannotGenerate"),
+      );
       return;
     }
     demoFallback.value = resolution.toolRequest.demoFallback;
+    // 标题必须等新动画真正拿到手再换：提前改的话，一旦 simulate 失败，旧动画会被贴上新标题——
+    // 界面上"看起来生成成功了"，画面却是上一条（2026-09-24 扫描器就是这样被骗过的）。
+    const data = await userApi.simulateAnimation(resolution.toolRequest.request);
     generatedTitle.value = selected.value.label;
-    response.value = await userApi.simulateAnimation(resolution.toolRequest.request);
+    response.value = data;
   } catch (cause) {
-    error.value = failureMessage(cause);
+    // The engine's own refusal travels as the message: "顺序表插入位置必须在 1..n+1 之间" beats "操作失败".
+    raise(t("lab.inputRejected"), `${failureMessage(cause)}\n${t("lab.argumentsHint")}`);
   } finally {
     busy.value = false;
   }
@@ -179,8 +200,7 @@ async function runFromPrompt() {
   const text = prompt.value.trim();
   if (!text || !chapterId.value || busy.value) return;
   busy.value = true;
-  error.value = "";
-  notice.value = "";
+  alert.value = null;
   demoFallback.value = false;
   observationSaved.value = false;
   try {
@@ -197,7 +217,7 @@ async function runFromPrompt() {
       resetArguments();
     }
   } catch (cause) {
-    error.value = failureMessage(cause);
+    raise(t("lab.cannotGenerate"), failureMessage(cause));
   } finally {
     busy.value = false;
   }
@@ -213,7 +233,7 @@ async function saveObservation() {
     observationSaved.value = true;
     observation.value = "";
   } catch (cause) {
-    error.value = failureMessage(cause);
+    raise(t("common.failed"), failureMessage(cause));
   } finally {
     busy.value = false;
   }
@@ -297,8 +317,6 @@ onMounted(() => void loadChapters());
 
         <section class="panel panel--stage" :aria-label="t('lab.playerTitle')">
           <p v-if="demoFallback" class="panel__flag">{{ t("lab.demoFallback") }}</p>
-          <p v-if="notice && !error" class="panel__note">{{ notice }}</p>
-          <p v-if="error" class="panel__error" role="alert">{{ error }}</p>
 
           <AnimationPlayer
             :definition="playerDefinition"
@@ -312,11 +330,19 @@ onMounted(() => void loadChapters());
               <textarea v-model="observation" class="field__control field__control--area" rows="2" :placeholder="t('lab.observationPlaceholder')" />
             </label>
             <button class="lab__button" type="button" :disabled="busy || !observation.trim()" @click="saveObservation">{{ t("lab.saveObservation") }}</button>
-            <p v-if="observationSaved" class="panel__note">{{ t("lab.observationSaved") }}</p>
+            <p v-if="observationSaved" class="panel__saved">{{ t("lab.observationSaved") }}</p>
           </div>
         </section>
       </div>
     </div>
+
+    <NoticeDialog
+      :open="alert !== null"
+      :title="alert?.title ?? ''"
+      :message="alert?.message ?? ''"
+      :close-label="t('common.gotIt')"
+      @close="alert = null"
+    />
   </BrandStage>
 </template>
 
@@ -410,10 +436,11 @@ onMounted(() => void loadChapters());
 
 .fields { display: grid; gap: 12px; }
 
-.panel__note { margin: 0; color: var(--text-muted); font-size: 14px; line-height: 1.65; }
 .panel__divider { height: 1px; margin: 2px 0; border: 0; background: var(--line); }
-.panel__flag { margin: 0; padding: 9px 14px; border: 1px solid color-mix(in srgb, var(--text) 15%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--text) 7%, transparent); color: var(--text); font-size: 14px; line-height: 1.6; }
-.panel__error { margin: 0; color: var(--text); font-size: 14px; }
+/* The two remaining status lines are read, not skimmed: they stay at the site's body size and never
+   drop back to the 14px small print that the arguments dialog replaced. */
+.panel__flag { margin: 0; padding: 12px 18px; border: 1px solid color-mix(in srgb, var(--text) 18%, transparent); border-radius: 16px; background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); font-size: 19px; font-weight: 620; line-height: 1.55; }
+.panel__saved { margin: 0; color: var(--text); font-size: 19px; font-weight: 620; }
 
 .lab__button {
   min-height: 46px;

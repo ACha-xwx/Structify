@@ -124,6 +124,46 @@ describe("normalizeFrame", () => {
     expect(normalizeFrame(state).chips).toContainEqual({ label: "深度", value: "3" });
   });
 
+  it("points at one cell of a grid when the engine names it, instead of a whole column", () => {
+    // The special-matrix mapping marks A[i,j]: the column alone would not say which row the step is on.
+    const state: DsvpState = {
+      kind: "special_matrix",
+      view: [
+        { role: "matrix", values: [[1, 0, 0], [2, 3, 0], [4, 5, 6]] },
+        { role: "compressed", values: [1, 2, 3, 4, 5, 6], focusIndex: 4 },
+        { role: "meta", values: [], n: 3, kind: "lower_triangular", i: 3, j: 2 },
+      ],
+    };
+
+    const frame = normalizeFrame(state);
+    const [matrix, packed] = frame.panels;
+
+    expect(matrix.kind).toBe("matrix");
+    expect(matrix.focusCell).toBeNull();
+    expect(packed.focus).toBe(4);
+    expect(frame.chips).toEqual([
+      { label: "阶", value: "3" },
+      { label: "类型", value: "lower_triangular" },
+      { label: "i", value: "3" },
+      { label: "j", value: "2" },
+    ]);
+
+    const marked = normalizeFrame({
+      kind: "special_matrix",
+      view: [{ role: "matrix", values: [[1, 0, 0], [2, 3, 0], [4, 5, 6]], focusCell: [2, 1] }],
+    });
+    expect(marked.panels[0].focusCell).toEqual([2, 1]);
+  });
+
+  it("ignores a malformed cell pointer rather than marking the wrong cell", () => {
+    const frame = normalizeFrame({
+      kind: "special_matrix",
+      view: [{ role: "matrix", values: [[1]], focusCell: ["x", 0] }],
+    } as unknown as DsvpState);
+
+    expect(frame.panels[0].focusCell).toBeNull();
+  });
+
   it("renders the legacy stack frame that carries no view at all", () => {
     const state = {
       kind: "stack",
