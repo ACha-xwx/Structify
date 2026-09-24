@@ -27,6 +27,13 @@ COPY --from=build /workspace/target/ds-agent-server-*.jar app.jar
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 COPY dsvp /dsvp
 
+# The interactive console compiles and runs learner programs here, in-process, instead of shipping
+# them to a batch sandbox that cannot wait for input. gcc alone is not enough: without libc6-dev
+# there are no headers at all, and every program fails with "stdio.h: No such file or directory".
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 USER appuser
 EXPOSE 8792
 

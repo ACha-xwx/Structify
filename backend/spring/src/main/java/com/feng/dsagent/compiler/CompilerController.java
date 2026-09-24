@@ -18,7 +18,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/code")
 public final class CompilerController {
 
-    private static final int REQUESTS_PER_MINUTE = 20;
+    /**
+     * A whole class shares one egress address, and the concurrency gate now admits several runs at
+     * once, so the window has to be generous enough that the gate is what throttles - not this.
+     */
+    static final int REQUESTS_PER_MINUTE = 60;
 
     private final CompilerService compiler;
     private final Clock clock;

@@ -121,10 +121,24 @@ app:
     maximum-code-length: ${EXECUTE_CODE_MAX_LENGTH:20000}
     maximum-input-length: ${EXECUTE_INPUT_MAX_LENGTH:12000}
     maximum-output-length: ${EXECUTE_OUTPUT_MAX_LENGTH:6000}
-    maximum-concurrent-executions: ${EXECUTE_MAX_CONCURRENT:4}
-    maximum-concurrent-executions-per-client: ${EXECUTE_MAX_CONCURRENT_PER_CLIENT:1}
+    maximum-concurrent-executions: ${EXECUTE_MAX_CONCURRENT:16}
+    maximum-concurrent-executions-per-client: ${EXECUTE_MAX_CONCURRENT_PER_CLIENT:8}
     compile-timeout-millis: ${EXECUTE_COMPILE_TIMEOUT_MS:10000}
     run-timeout-millis: ${EXECUTE_RUN_TIMEOUT_MS:3000}
+  # Interactive console: the program stays alive between keystrokes instead of being handed its
+  # whole input up front. Off until the host actually ships a compiler.
+  sandbox:
+    enabled: ${SANDBOX_ENABLED:false}
+    gcc-command: ${SANDBOX_GCC_COMMAND:gcc}
+    python-command: ${SANDBOX_PYTHON_COMMAND:python3}
+    maximum-sessions: ${SANDBOX_MAX_SESSIONS:32}
+    session-idle-timeout-seconds: ${SANDBOX_IDLE_TIMEOUT_SECONDS:180}
+    session-maximum-lifetime-seconds: ${SANDBOX_LIFETIME_SECONDS:900}
+    compile-timeout-millis: ${SANDBOX_COMPILE_TIMEOUT_MS:20000}
+    maximum-output-length: ${SANDBOX_MAX_OUTPUT_LENGTH:60000}
+    # Empty means the system temporary directory. A host whose tmpfs is mounted noexec must point
+    # this at a writable volume that allows execution, or no compiled program can run.
+    work-directory: ${SANDBOX_WORK_DIRECTORY:}
 
 logging:
   level:

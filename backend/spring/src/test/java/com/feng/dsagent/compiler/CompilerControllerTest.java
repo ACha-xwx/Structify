@@ -34,7 +34,7 @@ class CompilerControllerTest {
         CompilerGateway gateway = (language, code, stdin) ->
             new CompilerExecution("success", language == SupportedLanguage.C ? "c-ok" : "python-ok", "");
         CompilerService service = new CompilerService(properties, gateway);
-        CompilerController controller = new CompilerController(service, Clock.systemUTC());
+        CompilerController controller = new CompilerController(service, Clock.systemUTC(), new CompilerConcurrencyLimiter(16, 8));
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
             .setControllerAdvice(new ApiExceptionHandler())
             .build();
@@ -89,8 +89,8 @@ class CompilerControllerTest {
     }
 
     @Test
-    void rateLimitsTheTwentyFirstRequestFromTheSameClient() throws Exception {
-        for (int requestNumber = 1; requestNumber <= 20; requestNumber++) {
+    void rateLimitsTheClientOnceItsWindowIsFull() throws Exception {
+        for (int requestNumber = 1; requestNumber <= CompilerController.REQUESTS_PER_MINUTE; requestNumber++) {
             mockMvc.perform(post("/api/v1/code/runs")
                     .with(request -> {
                         request.setRemoteAddr("192.0.2.20");

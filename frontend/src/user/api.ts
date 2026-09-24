@@ -9,12 +9,16 @@ import type {
   ChatSession,
   ChatSessionSummary,
   ClassroomActionRequest,
+  ClassroomCodeSamplesResponse,
   ClassroomScript,
   ClassroomSession,
   CodeAnalysisRequest,
   CodeAnalysisResponse,
+  CodeLanguage,
   CodeRunRequest,
   CodeRunResponse,
+  CodeSessionChunk,
+  CodeSessionStart,
   DsvpRequest,
   DsvpResolution,
   DsvpSimulationResponse,
@@ -27,6 +31,7 @@ import type {
   PresentationMeta,
   PresentationSlide,
   Resource,
+  TextbookCodeLibraryResponse,
 } from "../shared/types/contracts";
 import type { Chapter, KnowledgeSearchResponse } from "../shared/types/course";
 
@@ -84,6 +89,17 @@ export interface UserApi {
   planAnimation(input: { capability: string; arguments?: Record<string, unknown>; sourceRef?: string }): Promise<DsvpResolution>;
   saveObservation(animationId: string, input: AnimationObservationRequest): Promise<AnimationObservation>;
   runCode(input: CodeRunRequest): Promise<CodeRunResponse>;
+  /** Runs the code in a live session, so the program can ask for input while it runs. */
+  startCodeSession(input: { language: CodeLanguage; code: string }): Promise<CodeSessionStart>;
+  /** Watches a live session: one event per piece of output, one when the program exits. */
+  streamCodeSession(sessionId: string, signal?: AbortSignal): Promise<SseApiResponse<CodeSessionChunk>>;
+  /** Hands the learner's keystrokes to a program that is waiting for them. */
+  typeInCodeSession(sessionId: string, text: string): Promise<void>;
+  stopCodeSession(sessionId: string): Promise<void>;
+  /** The runnable classroom samples, optionally narrowed to one courseware lesson (03-01). */
+  listCodeSamples(coursewareKey?: string): Promise<ClassroomCodeSamplesResponse>;
+  /** Every textbook listing that ships with the app, so the editor is never empty. */
+  getCodeLibrary(): Promise<TextbookCodeLibraryResponse>;
   analyzeCode(input: CodeAnalysisRequest): Promise<CodeAnalysisResponse>;
   getLearningProgress(): Promise<LearningProgress>;
   getLearningWorkbench(): Promise<LearningWorkbenchProjection>;
@@ -150,6 +166,27 @@ export function createUserApi(client: { request: UserRequest }): UserApi {
     async planAnimation(input) { return jsonData(await request<DsvpResolution>("/animations/plan", { method: "POST", body: input })); },
     async saveObservation(animationId, input) { return jsonData(await request<AnimationObservation>(`/animations/${encoded(animationId)}/observations`, { method: "POST", body: input })); },
     async runCode(input) { return jsonData(await request<CodeRunResponse>("/code/runs", { method: "POST", body: input })); },
+    async startCodeSession(input) { return jsonData(await request<CodeSessionStart>("/code/sessions", { method: "POST", body: input })); },
+    async streamCodeSession(sessionId, signal) {
+      const response = await request<CodeSessionChunk>(
+        `/code/sessions/${encoded(sessionId)}/stream`,
+        { method: "GET", signal, responseType: "sse" },
+        { responseType: "sse", parseSseData: true },
+      );
+      if (response.kind !== "sse") throw new Error("接口未返回 SSE 数据流");
+      return response;
+    },
+    async typeInCodeSession(sessionId, text) {
+      await request(`/code/sessions/${encoded(sessionId)}/stdin`, { method: "POST", body: { text } });
+    },
+    async stopCodeSession(sessionId) {
+      await request(`/code/sessions/${encoded(sessionId)}`, { method: "DELETE" });
+    },
+    async listCodeSamples(coursewareKey) {
+      const query = coursewareKey ? `?coursewareKey=${encoded(coursewareKey)}` : "";
+      return jsonData(await request<ClassroomCodeSamplesResponse>(`/code/samples${query}`));
+    },
+    async getCodeLibrary() { return jsonData(await request<TextbookCodeLibraryResponse>("/code/library")); },
     async analyzeCode(input) { return jsonData(await request<CodeAnalysisResponse>("/code/analyze", { method: "POST", body: input })); },
     async getLearningProgress() { return jsonData(await request<LearningProgress>("/learning/progress")); },
     async getLearningWorkbench() { return jsonData(await request<LearningWorkbenchProjection>("/learning/workbench")); },

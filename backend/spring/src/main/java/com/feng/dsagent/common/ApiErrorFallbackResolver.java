@@ -4,6 +4,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Locale;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
@@ -32,6 +34,8 @@ import tools.jackson.databind.ObjectMapper;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 final class ApiErrorFallbackResolver implements HandlerExceptionResolver {
 
+    private static final Logger log = LoggerFactory.getLogger(ApiErrorFallbackResolver.class);
+
     private final ObjectMapper objectMapper;
 
     ApiErrorFallbackResolver(ObjectMapper objectMapper) {
@@ -56,6 +60,13 @@ final class ApiErrorFallbackResolver implements HandlerExceptionResolver {
             code = apiError.code();
             message = apiError.getMessage();
         } else {
+            // Without this the failure vanishes into a bare 500 and nothing is ever diagnosed.
+            log.warn(
+                "unhandled error on {} {} -> INTERNAL_ERROR",
+                request.getMethod(),
+                request.getRequestURI(),
+                error
+            );
             status = HttpStatus.INTERNAL_SERVER_ERROR.value();
             code = "INTERNAL_ERROR";
             message = "服务器暂时无法处理该请求";
