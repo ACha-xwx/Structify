@@ -81,10 +81,10 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
           class="courseware__deck"
           :class="{ 'courseware__deck--active': deck.deckId === activeDeck }"
           type="button"
+          :title="t('courseware.deckMeta', { chapter: deck.chapter, count: deck.slideCount })"
           @click="openDeck(deck.deckId)"
         >
           <span class="courseware__deckTitle">{{ deck.title }}</span>
-          <span class="courseware__deckMeta">{{ t("courseware.deckMeta", { chapter: deck.chapter, count: deck.slideCount }) }}</span>
         </button>
         <p v-if="!loading && !decks.length" class="courseware__hint">{{ t("courseware.empty") }}</p>
         <RouterLink class="courseware__back" to="/classroom">{{ t("common.backToClassroom") }}</RouterLink>
@@ -105,9 +105,12 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
             >
             <p v-else class="courseware__hint courseware__hint--error">{{ t("courseware.imageFailed") }}</p>
           </div>
+          <header class="courseware__bar">
+            <p class="courseware__caption">{{ current.title || current.semanticSummary }}</p>
+            <p class="courseware__position" aria-live="polite">{{ position }}</p>
+          </header>
           <div class="courseware__controls">
             <button class="courseware__button" type="button" :disabled="index <= 0" @click="select(index - 1)">{{ t("courseware.previous") }}</button>
-            <p class="courseware__caption">{{ position }} · {{ current.title || current.semanticSummary }}</p>
             <button class="courseware__button" type="button" :disabled="index >= slides.length - 1" @click="select(index + 1)">{{ t("courseware.next") }}</button>
           </div>
         </template>
@@ -122,7 +125,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
   display: grid;
   width: min(1560px, 100%);
   margin: 0 auto;
-  grid-template-columns: minmax(220px, 300px) minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
   gap: 20px;
   align-items: start;
   color: var(--text);
@@ -145,11 +148,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
 
 .courseware__heading {
   margin: 0 0 6px;
-  color: var(--text-muted);
-  font-size: 14px;
-  font-weight: 650;
-  letter-spacing: .14em;
-  text-transform: uppercase;
+  font-size: 19px;
+  font-weight: 620;
 }
 
 .courseware__deck {
@@ -157,7 +157,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
   gap: 3px;
   padding: 11px 16px;
   border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
-  border-radius: 999px;
+  border-radius: 16px;
   background: transparent;
   color: var(--text);
   cursor: pointer;
@@ -169,15 +169,13 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
 .courseware__deck:hover { border-color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); transform: translateY(-1px); }
 .courseware__deck--active { border-color: var(--text); background: color-mix(in srgb, var(--text) 10%, transparent); }
 
-.courseware__deckTitle { font-size: 15px; font-weight: 620; }
-
-.courseware__deckMeta { color: var(--text-muted); font-size: 13px; }
+.courseware__deckTitle { overflow: hidden; font-size: 19px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
 
 .courseware__back {
   margin-top: 10px;
   color: var(--text-muted);
-  font-size: 14px;
-  font-weight: 650;
+  font-size: 19px;
+  font-weight: 620;
   text-decoration: none;
 }
 
@@ -213,32 +211,44 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
   object-fit: contain;
 }
 
-.courseware__controls {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 10px;
+/* One heading row plus one chip row, same reading order as the classroom pane. */
+.courseware__bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
 }
 
 .courseware__caption {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
   overflow: hidden;
-  color: var(--text-muted);
-  font-size: 14px;
-  text-align: center;
+  font-size: 19px;
+  font-weight: 620;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.courseware__position { flex: 0 0 auto; margin: 0; color: var(--text-muted); font-size: 19px; font-weight: 620; }
+
+.courseware__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .courseware__button {
-  padding: 10px 18px;
+  padding: 9px 18px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface) 76%, transparent);
   color: var(--text);
   cursor: pointer;
   font: inherit;
-  font-size: 15px;
+  font-size: 19px;
+  font-weight: 620;
   text-decoration: none;
 }
 
@@ -248,7 +258,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
 .courseware__hint {
   margin: 0;
   color: var(--text-muted);
-  font-size: 16px;
+  font-size: 19px;
   line-height: 1.5;
   text-align: center;
 }
