@@ -139,7 +139,7 @@ export interface ClassroomScript {
   versionLabel: string;
 }
 export type ClassroomState = "OPENING" | "EXPLAIN" | "QUESTION" | "WAITING" | "DISCUSS" | "BLACKBOARD" | "SUMMARY";
-export type ClassroomAction = "ASK" | "ANSWER" | "PAUSE" | "RESUME" | "CONTINUE" | "FINISH";
+export type ClassroomAction = "ASK" | "ANSWER" | "HINT" | "SKIP" | "PAUSE" | "RESUME" | "CONTINUE" | "FINISH";
 export type ClassroomAnswerStatus = "CORRECT" | "MISCONCEPTION" | "INCORRECT";
 export interface ClassroomAnswerEvaluation {
   status: ClassroomAnswerStatus;
@@ -185,6 +185,53 @@ export type CodeLanguage = "c" | "python";
 export type CodeRunStatus = "success" | "compile_error" | "runtime_error";
 export interface CodeRunRequest { language: CodeLanguage; code: string; stdin?: string; chapterId?: string }
 export interface CodeRunResponse { language: CodeLanguage; status: CodeRunStatus; stdout: string; stderr: string; durationMs: number; runId: string | null }
+/**
+ * Starting an interactive run: either a live program (sessionId set, status "running"), or the
+ * compiler refusing the code before anything ran (status "compile_error", output holds the
+ * diagnosis).
+ */
+export interface CodeSessionStart { sessionId: string | null; status: "running" | "compile_error"; output: string }
+/** One piece of output from a program that is still running. */
+export interface CodeSessionChunk { stream: "stdout" | "stderr"; text: string }
+/** One runnable classroom sample: the textbook listing kept verbatim, plus its driver and input. */
+export interface ClassroomCodeSample {
+  id: string;
+  title: string;
+  sourceFile: string;
+  sections: string[];
+  targets: string[];
+  summary: string;
+  stdin: string;
+  expectedStdout: string;
+  code: string;
+}
+export interface ClassroomCodeLesson {
+  coursewareKey: string;
+  lessonTitle: string;
+  chapterId: string;
+  samples: ClassroomCodeSample[];
+}
+export interface ClassroomCodeSamplesResponse { lessons: ClassroomCodeLesson[]; sampleCount: number }
+/** A complete runnable program built around one listing, plus the output it is expected to print. */
+export interface TextbookCodeExample {
+  code: string;
+  stdin: string;
+  expectedStdout: string;
+  note: string;
+}
+/** One class listing: verbatim source, and either a runnable example or the reason there is none. */
+export interface TextbookCodeFragment {
+  id: string;
+  file: string;
+  title: string;
+  kind: "algorithm" | "type";
+  startWith: string;
+  code: string;
+  example: TextbookCodeExample | null;
+  blocked: string;
+}
+export interface TextbookCodeChapter { chapter: string; title: string; fragments: TextbookCodeFragment[] }
+export interface TextbookCodeLibraryResponse { chapters: TextbookCodeChapter[]; fragmentCount: number }
 export type CodeAnalysisRequest =
   | { runId: string }
   | { runId?: null; language: CodeLanguage; code: string; stdin?: string; stdout?: string; stderr?: string; status?: CodeRunStatus | "unknown"; chapterId?: string };

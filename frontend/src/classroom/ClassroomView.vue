@@ -66,6 +66,19 @@ const failedAttempt = computed(() => response.value?.kind === "answer" && !respo
 const interruption = computed(() => response.value?.kind === "question" && !responseAnswered.value
   && session.value?.state !== "WAITING");
 const attempts = computed(() => typeof response.value?.attempts === "number" ? response.value?.attempts as number : 0);
+/**
+ * A question the learner cannot answer has two honest ways out, and neither pretends to be an answer:
+ * a hint first (free, once per question - it points at the idea without giving it away), then the
+ * explained skip, which the lesson budgets. Asking for help is never hidden, and the pane never offers a
+ * button the server would refuse.
+ */
+const hinted = computed(() => response.value?.hinted === true);
+const skipsUsed = computed(() => typeof stage.value.skipsUsed === "number" ? stage.value.skipsUsed as number : 0);
+const skipLimit = computed(() => typeof stage.value.skipLimit === "number" ? stage.value.skipLimit as number : 0);
+const skipsLeft = computed(() => Math.max(0, skipLimit.value - skipsUsed.value));
+const canHint = computed(() => canAnswer.value && !hinted.value);
+const canSkip = computed(() => canAnswer.value && hinted.value && skipsLeft.value > 0);
+const skipNote = computed(() => t("classroom.skipsLeft", { count: skipsLeft.value }));
 const canType = computed(() => !finished.value && !responseAnswered.value && !interruption.value);
 const canAnswer = computed(() => questionOpen.value && !interruption.value);
 const placeholder = computed(() => (canAnswer.value ? t("classroom.placeholderAnswer") : t("classroom.placeholderAsk")));
@@ -113,8 +126,6 @@ const message = computed(() => {
   if (content) return content;
   return session.value?.summary || t("classroom.ready");
 });
-/** A wall of text reads centered like a greeting does, so long teaching copy switches to reading layout. */
-const longSpeech = computed(() => message.value.length > 160);
 /** The lesson card header: which class this is and how far along it is. */
 const lessonTitle = computed(() => {
   const fromCourseware = lessonName(text(courseware.value?.title));
@@ -309,20 +320,6 @@ async function submit(action: "ASK" | "ANSWER") {
   await apply(action, content);
 }
 
-/** Remember the page the teacher or student chose for the current step. */
-async function pinSlide(slideId: string) {
-  if (!session.value || busy.value) return;
-  busy.value = true;
-  error.value = "";
-  try {
-    remember(await userApi.pinClassroomSlide(session.value.id, typeof stage.value.stepIndex === "number" ? stage.value.stepIndex : 0, slideId));
-  } catch (cause) {
-    error.value = failureMessage(cause);
-  } finally {
-    busy.value = false;
-  }
-}
-
 async function openAnimation() {
   if (!animationRequest.value || busy.value) return;
   busy.value = true;
@@ -414,7 +411,7 @@ onBeforeUnmount(() => {
         </section>
 
         <section v-else class="classroom__lesson">
-          <p class="classroom__speech" :class="{ 'classroom__speech--long': longSpeech }">{{ message }}</p>
+          <p class="classroom__speech">{{ message }}</p>
           <p v-if="failedAttempt" class="classroom__verdict" :aria-label="t('classroom.verdict')">{{ t("classroom.answerWrong") }}</p>
 
           <div class="classroom__composer">
@@ -425,7 +422,11 @@ onBeforeUnmount(() => {
               <button class="classroom__button" type="button" @click="router.push(labRoute)">{{ t("classroom.lab") }}</button>
               <button v-if="canType" class="classroom__button" type="button" :disabled="busy || !input.trim()" @click="submit('ASK')">{{ t("classroom.ask") }}</button>
               <button v-if="interruption" class="classroom__button classroom__button--primary" type="button" :disabled="busy" @click="apply('CONTINUE')">{{ t("classroom.continue") }}</button>
-              <button v-else-if="canAnswer" class="classroom__button classroom__button--primary" type="button" :disabled="busy || !input.trim()" @click="submit('ANSWER')">{{ attempts > 0 ? t("classroom.answerAgain") : t("classroom.answer") }}</button>
+              <template v-else-if="canAnswer">
+                <button v-if="canHint" class="classroom__button" type="button" :disabled="busy" @click="apply('HINT')">{{ t("classroom.hint") }}</button>
+                <button v-else-if="canSkip" class="classroom__button" type="button" :disabled="busy" :title="skipNote" @click="apply('SKIP')">{{ t("classroom.skipQuestion") }}</button>
+                <button class="classroom__button classroom__button--primary" type="button" :disabled="busy || !input.trim()" @click="submit('ANSWER')">{{ attempts > 0 ? t("classroom.answerAgain") : t("classroom.answer") }}</button>
+              </template>
               <button v-else-if="!finished" class="classroom__button classroom__button--primary" type="button" :disabled="busy" @click="apply('CONTINUE')">{{ continueLabel }}</button>
               <button v-else class="classroom__button classroom__button--primary" type="button" @click="exitClassroom">{{ t("classroom.changeLesson") }}</button>
             </div>
@@ -443,7 +444,6 @@ onBeforeUnmount(() => {
         :loading="coursewareLoading"
         :error="coursewareError"
         @open-browser="router.push('/courseware')"
-        @pin="pinSlide"
       />
     </div>
   </BrandStage>
@@ -619,33 +619,27 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 
+/* One register for the narration, at a fixed size: the copy used to switch between a large centred
+   variant and a smaller reading variant depending on how long the text was, and the size itself was
+   viewport-relative - so the same step looked different from one window to the next. */
 .classroom__speech,
 .classroom__status {
   margin: 0;
   color: var(--text);
-  font-size: clamp(20px, 2.2vw, 28px);
-  font-weight: 500;
+  font-size: 19px;
+  font-weight: 400;
   letter-spacing: .01em;
-  line-height: 1.66;
-  text-align: center;
+  line-height: 1.85;
+  text-align: left;
   text-wrap: pretty;
 }
 
-/* Long teaching copy is reading material: left-aligned, quieter, and scrolled inside the card. */
 .classroom__speech {
   min-height: 0;
   overflow-y: auto;
   padding-right: 8px;
   scrollbar-width: thin;
   scrollbar-color: var(--line-strong) transparent;
-}
-
-.classroom__speech--long {
-  align-self: stretch;
-  font-size: clamp(17px, 1.6vw, 20px);
-  font-weight: 400;
-  line-height: 1.85;
-  text-align: left;
 }
 
 .classroom__error {
@@ -655,7 +649,7 @@ onBeforeUnmount(() => {
   left: 24px;
   margin: 0;
   color: var(--text);
-  font-size: clamp(16px, 1.8vw, 20px);
+  font-size: 19px;
   text-align: center;
 }
 
@@ -674,7 +668,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .classroom__actions--start .classroom__button--primary { flex: 1; }
@@ -692,6 +686,7 @@ onBeforeUnmount(() => {
   padding: 11px 22px;
   cursor: pointer;
   white-space: nowrap;
+  font-size: 19px;
   background: transparent;
   transition: background .18s ease, border-color .18s ease, color .18s ease;
 }
@@ -732,7 +727,6 @@ onBeforeUnmount(() => {
 }
 
 @media (max-height: 760px) {
-  .classroom__speech { font-size: clamp(19px, 2vw, 25px); }
   .classroom__select,
   .classroom__input,
   .classroom__button { min-height: 46px; }

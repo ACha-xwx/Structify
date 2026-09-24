@@ -119,6 +119,44 @@ class ClassroomServiceTest {
         // Only a passed question lets the lesson move on.
         assertThat(service.apply(user,id,ClassroomAction.CONTINUE,null).stage().path("content").asText()).isEqualTo("讲解 B");
     }
+    @Test void aHintKeepsTheQuestionOpenAndIsOfferedOnlyOnce() {
+        String id = service.create(user, "timeline-test").id();
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        when(model.generate(anyLong(),anyString(),anyString(),anyInt(),any()))
+            .thenReturn(mapper.readTree("{\"feedback\":\"先看它有没有孩子\"}"));
+        ClassroomSessionView hinted = service.apply(user,id,ClassroomAction.HINT,null);
+        // A hint is not an answer and not a move: the same question stays open on the same step, so the
+        // learner can still answer it, and CONTINUE still cannot walk past it.
+        assertThat(hinted.state()).isEqualTo(ClassroomState.WAITING);
+        assertThat(hinted.stage().path("stepIndex").asInt()).isEqualTo(1);
+        assertThat(hinted.stage().path("teacherResponse").path("hinted").asBoolean()).isTrue();
+        assertThat(hinted.stage().path("teacherResponse").path("answered").asBoolean()).isFalse();
+        assertThat(hinted.stage().path("teacherResponse").path("feedback").asText()).isEqualTo("先看它有没有孩子");
+        assertThat(service.apply(user,id,ClassroomAction.CONTINUE,null).stage().path("stepIndex").asInt()).isEqualTo(1);
+        // A second hint would be the answer in disguise; the way out from here is answering or skipping.
+        assertThatThrownBy(() -> service.apply(user,id,ClassroomAction.HINT,null)).isInstanceOf(ApiException.class);
+    }
+    @Test void skippingResolvesTheQuestionWithinTheLessonBudget() {
+        String id = service.create(user, "timeline-test").id();
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        when(model.generate(anyLong(),anyString(),anyString(),anyInt(),any()))
+            .thenReturn(mapper.readTree("{\"feedback\":\"参考答案：根结点先访问，再递归左右子树\"}"));
+        ClassroomSessionView skipped = service.apply(user,id,ClassroomAction.SKIP,null);
+        // The question is resolved without an answer: the explanation stands in for it, the cursor has not
+        // moved (the learner reads it here), and the next step is free to take.
+        assertThat(skipped.state()).isEqualTo(ClassroomState.BLACKBOARD);
+        assertThat(skipped.stage().path("teacherResponse").path("skipped").asBoolean()).isTrue();
+        assertThat(skipped.stage().path("teacherResponse").path("answered").asBoolean()).isTrue();
+        assertThat(skipped.stage().path("teacherResponse").path("feedback").asText()).contains("根结点");
+        assertThat(skipped.stage().path("stepIndex").asInt()).isEqualTo(1);
+        assertThat(skipped.stage().path("skipsUsed").asInt()).isEqualTo(1);
+        assertThat(skipped.stage().path("skipLimit").asInt()).isEqualTo(3);
+        assertThat(service.apply(user,id,ClassroomAction.CONTINUE,null).stage().path("content").asText()).isEqualTo("讲解 B");
+        // Skipping is recorded, so a lesson's evidence can tell "did not know" from "skipped".
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM classroom_events WHERE session_id = ? AND action = 'SKIP'", Integer.class, id)).isEqualTo(1);
+    }
     @Test void anUnansweredQuestionCannotBeWalkedPast() {
         String id = service.create(user, "timeline-test").id();
         service.apply(user,id,ClassroomAction.CONTINUE,null);

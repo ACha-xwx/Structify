@@ -23,12 +23,16 @@ public class ClassroomTimeline {
     private final LearningEventService events;
     private final com.feng.dsagent.animation.DsvpAnimationAdapter animations;
     private final ClassroomSlideAlignment slides;
+    /** How many questions one lesson may be skipped outright. Zero disables skipping. */
+    private final int skipLimit;
     public ClassroomTimeline(ClassroomRepository repository, JdbcTemplate jdbc, ObjectMapper mapper,
             ClassroomScriptParser parser, ClassroomModelJson model, LearningEventService events,
-            com.feng.dsagent.animation.DsvpAnimationAdapter animations, ClassroomSlideAlignment slides) {
+            com.feng.dsagent.animation.DsvpAnimationAdapter animations, ClassroomSlideAlignment slides,
+            @org.springframework.beans.factory.annotation.Value("${app.classroom.skip-limit:3}") int skipLimit) {
         this.repository = repository; this.jdbc = jdbc; this.mapper = mapper; this.parser = parser; this.model = model; this.events = events;
         this.animations = animations;
         this.slides = slides;
+        this.skipLimit = Math.max(0, skipLimit);
     }
     private record Cursor(int index, int revision, String response) {}
     private Cursor cursor(String id) {
@@ -73,6 +77,10 @@ public class ClassroomTimeline {
         // Answer keys are retained server-side only.
         stage.remove(List.of("expected", "misconceptions", "misconceptionFeedback", "teacherResponse", "answerEvaluation"));
         stage.put("stepIndex", cursor.index()); stage.put("stepCount", steps.size()); stage.put("revision", cursor.revision()); stage.put("chapterId", session.chapterId());
+        // Skipping a question is allowed a fixed number of times per lesson; the pane shows the offer only
+        // while the budget lasts, so the learner never clicks a button that the server would refuse.
+        stage.put("skipsUsed", skipsUsed(session.id()));
+        stage.put("skipLimit", skipLimit);
         // The slide pane needs the lesson identity to load the courseware prepared for this lesson.
         String lessonId = mapper.readTree(session.scriptJson()).path("lessonId").asText("");
         stage.put("lessonId", lessonId);
@@ -179,9 +187,51 @@ public class ClassroomTimeline {
                     events.record(userId, new LearningEventCommand("CLASSROOM_ANSWER", session.chapterId(), id, reply));
                 }
             }
+            case HINT -> {
+                // A nudge, not an answer: the cursor stays, the question stays open, and the learner can
+                // still answer it. One hint per question - a second one would just be the answer.
+                JsonNode previous = response == null ? null : mapper.readTree(response);
+                requireOpenQuestion(session, previous);
+                if (previous != null && previous.path("hinted").asBoolean(false)) throw conflict("这一题已经给过提示了，可以直接作答，或选择跳过");
+                int attempts = previous == null ? 0 : previous.path("attempts").asInt(0);
+                JsonNode generated = model.generate(userId,
+                    "你是数据结构老师。学生正在回答当前这一步的问题却没有把握，请给一个能帮他想出答案的提示：点一下该往哪个概念、哪一步去想，说明他可能漏了什么角度；不要给出答案本身，也不要把完整推理念出来。最多两句话。返回 {\"feedback\":\"提示\"}。",
+                    questionContext(session, steps, index, previous, attempts, "").toString(), 700,
+                    json -> ClassroomModelJson.requireText(json, "feedback"));
+                ObjectNode hint = mapper.createObjectNode();
+                hint.put("feedback", generated.path("feedback").asText());
+                hint.put("kind", "hint"); hint.put("hinted", true); hint.put("answered", false);
+                hint.put("attempts", attempts);
+                if (previous != null && previous.path("question").isTextual()) hint.put("question", previous.path("question").asText());
+                response = hint.toString();
+            }
+            case SKIP -> {
+                // Skipping is an honest way out: the learner gets the explanation and the question is
+                // resolved, so the next step is theirs to take. Budgeted per lesson, recorded as an event.
+                JsonNode previous = response == null ? null : mapper.readTree(response);
+                requireOpenQuestion(session, previous);
+                int used = skipsUsed(id);
+                if (skipLimit == 0 || used >= skipLimit) throw conflict("本课不再允许跳过问题，请作答");
+                int attempts = previous == null ? 0 : previous.path("attempts").asInt(0);
+                JsonNode generated = model.generate(userId,
+                    "你是数据结构老师。学生选择跳过这一步的提问，请给出这道题的参考答案和简要讲解：先给答案要点，再用两三句说明为什么，依据所给教案，不要编造教材之外的结论。不要提到学生跳过这件事。最多两段。返回 {\"feedback\":\"参考答案与讲解\"}。",
+                    questionContext(session, steps, index, previous, attempts, "").toString(), 900,
+                    json -> ClassroomModelJson.requireText(json, "feedback"));
+                ObjectNode skipped = mapper.createObjectNode();
+                skipped.put("feedback", generated.path("feedback").asText());
+                skipped.put("kind", "skip"); skipped.put("skipped", true); skipped.put("answered", true);
+                skipped.put("attempts", attempts);
+                response = skipped.toString();
+                nextState = ClassroomState.BLACKBOARD;
+                events.record(userId, new LearningEventCommand("CLASSROOM_SKIP", session.chapterId(), id, skipped));
+            }
             case CONTINUE -> {
                 if (response != null && !mapper.readTree(response).path("answered").asBoolean(false)) {
-                    response = null; // Explicit return to the exact interrupted step; do not consume it.
+                    // Explicit return to the exact interrupted step; do not consume it. A hint is the one
+                    // thing that stays with the question: it already pointed at the answer, so offering a
+                    // fresh one after coming back would just be handing the answer over in pieces.
+                    JsonNode previous = mapper.readTree(response);
+                    response = previous.path("hinted").asBoolean(false) ? hintOnly(previous) : null;
                 } else {
                     if (session.state() == ClassroomState.WAITING && response == null) throw conflict("请先回答当前问题");
                     index++; response = null;
@@ -195,8 +245,53 @@ public class ClassroomTimeline {
         repository.appendEvent(new ClassroomEventRecord(id, action, input, session.state(), nextState, evaluation));
         return view(updated);
     }
-    /** Records the page a teacher or student chose for one step of this lesson. */
-    @Transactional
+    /** A hint or a skip only makes sense while this question is still waiting for an answer. */
+    private void requireOpenQuestion(ClassroomSessionRecord session, JsonNode previous) {
+        if (session.state() != ClassroomState.WAITING) throw conflict("当前没有等待作答的问题");
+        if (previous != null && previous.path("answered").asBoolean(false)) throw conflict("当前没有等待作答的问题");
+    }
+
+    /** The step, the lesson and the attempt so far: the material a hint or an explanation is written from. */
+    private ObjectNode questionContext(ClassroomSessionRecord session, List<JsonNode> steps, int index,
+            JsonNode previous, int attempts, String input) {
+        JsonNode active = index >= 0 && index < steps.size() ? steps.get(index) : mapper.createObjectNode();
+        ObjectNode context = mapper.createObjectNode();
+        ObjectNode stepContext = (ObjectNode) active.deepCopy();
+        JsonNode lesson = mapper.readTree(session.scriptJson());
+        ObjectNode lessonContext = mapper.createObjectNode();
+        lessonContext.set("title", lesson.path("title"));
+        lessonContext.set("objectives", lesson.path("objectives"));
+        if (lesson.path("textbookSources").isArray()) {
+            lessonContext.set("textbookSources", lesson.path("textbookSources"));
+            stepContext.remove("evidence");
+        }
+        context.set("currentStep", stepContext);
+        context.set("lesson", lessonContext);
+        context.put("studentInput", input);
+        if (previous != null) context.set("previousResponse", previous);
+        if (attempts > 0) context.put("attempt", attempts + 1);
+        return context;
+    }
+
+    /** The hint alone, carried back onto its question when the learner returns to it. */
+    private String hintOnly(JsonNode previous) {
+        ObjectNode kept = mapper.createObjectNode();
+        kept.put("feedback", previous.path("feedback").asText(""));
+        kept.put("kind", "hint"); kept.put("hinted", true); kept.put("answered", false);
+        kept.put("attempts", previous.path("attempts").asInt(0));
+        if (previous.path("question").isTextual()) kept.put("question", previous.path("question").asText());
+        return kept.toString();
+    }
+
+    /** Skips already spent on this lesson: the action log is the ledger, so nothing extra needs storing. */
+    private int skipsUsed(String id) {
+        Integer used = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM classroom_events WHERE session_id = ? AND action = ?",
+            Integer.class, id, ClassroomAction.SKIP.name());
+        return used == null ? 0 : used;
+    }
+
+    /** Records the page a teacher or student chose for one step of this lesson. */    @Transactional
     public ClassroomSessionView pinSlide(long userId, String id, int stepIndex, String slideId) {
         ClassroomSessionRecord session = owned(userId, id);
         String lessonId = mapper.readTree(session.scriptJson()).path("lessonId").asText("");

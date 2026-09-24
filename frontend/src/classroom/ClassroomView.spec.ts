@@ -154,6 +154,97 @@ describe("minimal classroom", () => {
     wrapper.unmount();
   });
 
+  /**
+   * The narration used to switch between a large centred layout and a smaller reading layout once the
+   * copy passed 160 characters, on top of a viewport-relative size - so one step could look quite
+   * different from the next, and from one window to another. One register now.
+   */
+  it("keeps one layout for the narration no matter how long the step is", async () => {
+    const longPrompt = "改用尾指针表示后，两个循环单链表分别用 RA、RB 指向它们的终端结点，先把 RB 的开始结点链到 RA 的终端结点之后，再把 RA 的头结点链到 RB 的终端结点之后。".repeat(3);
+    const waiting: ClassroomSession = {
+      ...opening,
+      state: "WAITING",
+      stage: { prompt: longPrompt, stepIndex: 0, stepCount: 3, revision: 1, chapterId: "02-list" },
+    };
+    api.actInClassroom.mockResolvedValue(waiting);
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+    await wrapper.get(".classroom__button--primary").trigger("click");
+    await flushPromises();
+    await wrapper.get(".classroom__button--primary").trigger("click");
+    await flushPromises();
+
+    const speech = wrapper.get(".classroom__speech");
+    expect(speech.text()).toBe(longPrompt);
+    expect(speech.classes()).toEqual(["classroom__speech"]);
+  });
+
+  /**
+   * A learner who cannot answer gets two honest ways out instead of having to pretend they answered: a
+   * hint first (which keeps the question open), then the explained skip, which the lesson budgets.
+   */
+  it("offers a hint first, then the explained skip, while a question is open", async () => {
+    const waiting: ClassroomSession = {
+      ...opening,
+      state: "WAITING",
+      stage: { prompt: "根结点是什么？", stepIndex: 0, stepCount: 3, revision: 1, chapterId: "06-tree", skipsUsed: 0, skipLimit: 3 },
+    };
+    const hinted: ClassroomSession = {
+      ...waiting,
+      stage: {
+        ...waiting.stage,
+        revision: 2,
+        teacherResponse: { feedback: "先看它有没有孩子", kind: "hint", hinted: true, answered: false },
+      },
+    };
+    api.actInClassroom.mockResolvedValueOnce(waiting).mockResolvedValueOnce(hinted);
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+    await wrapper.get(".classroom__button--primary").trigger("click");   // 开始
+    await flushPromises();
+    await wrapper.get(".classroom__button--primary").trigger("click");   // 进入这一步
+    await flushPromises();
+    expect(wrapper.get(".classroom__speech").text()).toBe("根结点是什么？");
+
+    const hint = wrapper.findAll(".classroom__button").find((button) => button.text() === "要点提示");
+    expect(hint, "提问时应当先给出「要点提示」").toBeTruthy();
+    await hint!.trigger("click");
+    await flushPromises();
+
+    expect(api.actInClassroom).toHaveBeenLastCalledWith("session-1", { action: "HINT", content: undefined, expectedRevision: 1 });
+    expect(wrapper.get(".classroom__speech").text()).toBe("先看它有没有孩子");
+    // The question is still open, so the learner can answer it - or take the explained skip now.
+    expect(wrapper.findAll(".classroom__button").some((button) => button.text() === "回答")).toBe(true);
+    expect(wrapper.findAll(".classroom__button").some((button) => button.text() === "看讲解，跳过这题")).toBe(true);
+    expect(wrapper.findAll(".classroom__button").some((button) => button.text() === "要点提示")).toBe(false);
+  });
+
+  it("stops offering the skip once the lesson has spent its budget", async () => {
+    const spent: ClassroomSession = {
+      ...opening,
+      state: "WAITING",
+      stage: {
+        prompt: "根结点是什么？",
+        stepIndex: 0, stepCount: 3, revision: 1, chapterId: "06-tree", skipsUsed: 3, skipLimit: 3,
+        teacherResponse: { feedback: "先看它有没有孩子", kind: "hint", hinted: true, answered: false },
+      },
+    };
+    api.actInClassroom.mockResolvedValue(spent);
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+    await wrapper.get(".classroom__button--primary").trigger("click");
+    await flushPromises();
+    await wrapper.get(".classroom__button--primary").trigger("click");
+    await flushPromises();
+
+    const labels = wrapper.findAll(".classroom__button").map((button) => button.text());
+    expect(labels).not.toContain("看讲解，跳过这题");
+    expect(labels).toContain("回答");
+  });
+
   it("keeps a wrong answer on the same question until it is answered again", async () => {
     // The regression this guards: grading a wrong answer used to consume the question, so the very next
     // "下一步" walked past it - and off the end of the lesson when the question was the last step.
