@@ -6,6 +6,7 @@ import { userApi } from "../user/runtime";
 import type { CodeRunResponse, TextbookCodeChapter, TextbookCodeExample } from "../shared/types/contracts";
 import { runCodeWithBusyRetry } from "../shared/compiler/run-with-retry";
 import { createInteractiveConsole } from "../shared/compiler/interactive-console";
+import { ApiClientError } from "../shared/api";
 import { compilerTemplates, type CompilerTemplate } from "./templates";
 
 /**
@@ -307,7 +308,11 @@ async function load() {
     const first = sampleEntries[0] ?? exampleEntries[0] ?? entries.value[0];
     if (first) select(first);
   } catch (error) {
-    loadError.value = error instanceof Error ? `${t("compiler.loadFailed")}：${error.message}` : t("compiler.loadFailed");
+    if (error instanceof ApiClientError && error.code === "NETWORK_TIMEOUT") {
+      loadError.value = t("compiler.loadTimeout");
+    } else {
+      loadError.value = error instanceof Error ? `${t("compiler.loadFailed")}：${error.message}` : t("compiler.loadFailed");
+    }
   } finally {
     loading.value = false;
   }
@@ -323,7 +328,10 @@ onMounted(load);
 
       <div class="library__panel">
         <p v-if="loading" class="library__hint">{{ t("common.loading") }}</p>
-        <p v-else-if="loadError" class="library__hint library__hint--error" role="alert">{{ loadError }}</p>
+        <div v-else-if="loadError" class="library__failed">
+          <p class="library__hint library__hint--error" role="alert">{{ loadError }}</p>
+          <button class="library__retry" type="button" @click="load">{{ t("common.reload") }}</button>
+        </div>
 
         <div v-else class="library__grid">
           <div class="library__list" role="group" :aria-label="t('compiler.search')">
@@ -482,6 +490,19 @@ onMounted(load);
 .library__origin { margin: 0; font-size: 19px; font-weight: 620; }
 .library__hint { margin: 0; font-size: 19px; line-height: 1.5; }
 .library__hint--error { font-weight: 620; }
+.library__failed { display: grid; gap: 14px; justify-items: start; }
+.library__retry {
+  padding: 9px 20px;
+  border: 1px solid var(--text);
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--stage, #0d0d0c);
+  font: inherit;
+  font-size: 17px;
+  font-weight: 620;
+  cursor: pointer;
+}
+.library__retry:hover { opacity: .88; }
 .library__code { min-height: 300px; font-family: var(--font-mono, ui-monospace, Consolas, monospace); font-size: 17px; line-height: 1.55; resize: vertical; }
 .library__failure { margin: 0; font-size: 19px; font-weight: 620; }
 

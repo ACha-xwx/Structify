@@ -27,6 +27,7 @@ export const messages = {
   "common.optional": { zh: "（可选）", en: "(optional)" },
   "common.failed": { zh: "操作失败", en: "That did not work" },
   "common.loading": { zh: "正在准备页面", en: "Preparing the page" },
+  "common.reload": { zh: "重新加载", en: "Reload" },
 
   /** The entry page. */
   "home.title": { zh: "从哪开始？", en: "Where do you want to start?" },
@@ -76,6 +77,7 @@ export const messages = {
   "compiler.blocked": { zh: "这一段暂时没有可运行示例", en: "No runnable example for this listing" },
   "compiler.noMatch": { zh: "没有匹配的代码", en: "Nothing matches that search" },
   "compiler.loadFailed": { zh: "代码库加载失败", en: "Could not load the code library" },
+  "compiler.loadTimeout": { zh: "请求一直没有响应，网络可能断了一会儿。点「重新加载」再试一次。", en: "The request never answered - the network may have dropped for a moment. Press reload to try again." },
 
   /** The hands-on pane under the slides: run the textbook code for the page on screen. */
   "experiment.show": { zh: "动手实验", en: "Hands-on" },
