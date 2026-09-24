@@ -1,0 +1,508 @@
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import BrandStage from "../../shared/components/BrandStage.vue";
+import NoticeDialog from "../../shared/components/NoticeDialog.vue";
+import ConfirmDialog from "../../shared/components/ConfirmDialog.vue";
+import { useI18n } from "../../shared/i18n/locale";
+import type { Chapter, ChatResponse, ChatSessionSummary, ChatSource } from "../../shared/types";
+import { auth } from "../../app/providers/runtime";
+import { userApi } from "../runtime";
+import { chatErrorKey, deltaOf, doneOf, errorOf, sourcesOf } from "../chat-stream";
+
+/**
+ * Asking the course a question.
+ *
+ * The backend half of this never went away - `/api/v1/chat` still answers from the reviewed textbook
+ * and still names the pages it used - but the page was dropped during the stage refactor, so the only
+ * way to reach the model was through a prepared lesson. This puts the direct question back: type a
+ * question, get an answer streamed from the same evidence the classroom quotes.
+ *
+ * Two things are deliberately absent. The answer is never invented: when retrieval finds nothing the
+ * server refuses with `CHAT_EVIDENCE_UNAVAILABLE`, and that refusal is shown as written rather than
+ * papered over with a plausible paragraph. And nothing here is small print - every line a learner
+ * reads sits at the site's body size.
+ */
+type MessageState = "complete" | "streaming" | "stopped";
+
+interface ConversationMessage {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  sources: ChatSource[];
+  state: MessageState;
+}
+
+const route = useRoute();
+const router = useRouter();
+const { t } = useI18n();
+
+const chapters = ref<Chapter[]>([]);
+const chapterId = ref("");
+const prompt = ref("");
+const messages = ref<ConversationMessage[]>([]);
+const sessions = ref<ChatSessionSummary[]>([]);
+const activeSessionId = ref<string | null>(null);
+const phase = ref<"idle" | "streaming">("idle");
+const alert = ref<{ title: string; message: string } | null>(null);
+const pendingDelete = ref<ChatSessionSummary | null>(null);
+const sessionsFailed = ref(false);
+const threadRef = ref<HTMLElement | null>(null);
+
+const ALL_CHAPTERS = "";
+const MAX_PROMPT = 4000;
+
+let sequence = 0;
+let controller: AbortController | null = null;
+
+const streaming = computed(() => phase.value === "streaming");
+const canSend = computed(() => prompt.value.trim().length > 0 && !streaming.value);
+const tooLong = computed(() => prompt.value.trim().length > MAX_PROMPT);
+const signedIn = computed(() => Boolean(auth.state.user));
+
+function push(role: "user" | "assistant", content: string, state: MessageState = "complete"): number {
+  const id = ++sequence;
+  messages.value = [...messages.value, { id, role, content, sources: [], state }];
+  return id;
+}
+
+function update(id: number, patch: Partial<ConversationMessage>) {
+  messages.value = messages.value.map((item) => (item.id === id ? { ...item, ...patch } : item));
+}
+
+async function scrollToLatest() {
+  await nextTick();
+  const thread = threadRef.value;
+  if (thread) thread.scrollTop = thread.scrollHeight;
+}
+
+function failureMessage(cause: unknown): string {
+  return cause instanceof Error && cause.message ? cause.message : t("common.failed");
+}
+
+function raise(title: string, message: string) {
+  alert.value = { title, message };
+}
+
+async function send() {
+  const question = prompt.value.trim();
+  if (!question || streaming.value || tooLong.value) return;
+
+  const history = messages.value
+    .filter((item) => item.state === "complete" && item.content)
+    .slice(-12)
+    .map((item) => ({ role: item.role, content: item.content }));
+
+  prompt.value = "";
+  push("user", question);
+  const replyId = push("assistant", "", "streaming");
+  phase.value = "streaming";
+  controller = new AbortController();
+  const signal = controller.signal;
+  await scrollToLatest();
+
+  try {
+    const response = await userApi.streamChat(
+      { prompt: question, chapterId: chapterId.value || undefined, sessionId: activeSessionId.value ?? undefined, history },
+      signal,
+    );
+    let answer = "";
+    let sources: ChatSource[] = [];
+    for await (const event of response.events) {
+      // A stop has to land even when the next event is slow to arrive.
+      if (signal.aborted) break;
+      if (event.event === "sources") sources = sourcesOf(event);
+      else if (event.event === "delta") {
+        answer += deltaOf(event);
+        update(replyId, { content: answer, sources });
+        await scrollToLatest();
+      } else if (event.event === "done") {
+        const done = doneOf(event) as ChatResponse | null;
+        answer = done?.answer ?? answer;
+        sources = done?.sources?.length ? done.sources : sources;
+        update(replyId, { content: answer, sources, state: "complete" });
+        if (done?.sessionId) {
+          activeSessionId.value = done.sessionId;
+          await loadSessions();
+        }
+        break;
+      } else if (event.event === "error") {
+        const failure = errorOf(event);
+        messages.value = messages.value.filter((item) => item.id !== replyId);
+        raise(t("common.failed"), failure ? t(chatErrorKey(failure.code)) : t("chat.error.failed"));
+        break;
+      }
+    }
+    const reply = messages.value.find((item) => item.id === replyId);
+    // A stream that was cut short reads as stopped even when it already had text: finishing it here
+    // would present a half-answer as the whole one.
+    if (reply?.state === "streaming") {
+      update(replyId, { state: signal.aborted || !reply.content ? "stopped" : "complete" });
+    }
+  } catch (cause) {
+    const stopped = signal.aborted;
+    if (stopped) {
+      const reply = messages.value.find((item) => item.id === replyId);
+      update(replyId, { state: reply?.content ? "complete" : "stopped" });
+    } else {
+      messages.value = messages.value.filter((item) => item.id !== replyId);
+      raise(t("common.failed"), failureMessage(cause));
+    }
+  } finally {
+    phase.value = "idle";
+    controller = null;
+    await scrollToLatest();
+  }
+}
+
+function stop() {
+  controller?.abort();
+}
+
+function newConversation() {
+  if (streaming.value) return;
+  messages.value = [];
+  activeSessionId.value = null;
+  prompt.value = "";
+}
+
+async function loadSessions() {
+  if (!signedIn.value) return;
+  try {
+    sessions.value = await userApi.listChatSessions();
+    sessionsFailed.value = false;
+  } catch {
+    // A past conversation that cannot be listed is not a reason to block the question box.
+    sessionsFailed.value = true;
+  }
+}
+
+async function openSession(session: ChatSessionSummary) {
+  if (streaming.value) return;
+  try {
+    const detail = await userApi.getChatSession(session.id);
+    activeSessionId.value = detail.id;
+    messages.value = detail.messages.map((item) => ({
+      id: ++sequence,
+      role: item.role,
+      content: item.content,
+      sources: item.sources ?? [],
+      state: "complete" as MessageState,
+    }));
+    await scrollToLatest();
+  } catch (cause) {
+    raise(t("common.failed"), failureMessage(cause));
+  }
+}
+
+async function removeSession() {
+  const session = pendingDelete.value;
+  pendingDelete.value = null;
+  if (!session) return;
+  try {
+    await userApi.deleteChatSession(session.id);
+    if (activeSessionId.value === session.id) newConversation();
+    await loadSessions();
+  } catch (cause) {
+    raise(t("common.failed"), failureMessage(cause));
+  }
+}
+
+onMounted(async () => {
+  try {
+    chapters.value = await userApi.listChapters();
+    const fromQuery = typeof route.query.chapterId === "string" ? route.query.chapterId : "";
+    chapterId.value = chapters.value.some((item) => item.id === fromQuery) ? fromQuery : ALL_CHAPTERS;
+  } catch {
+    // The scope picker is optional: without the chapter list every question just spans the whole book.
+    chapters.value = [];
+  }
+  await loadSessions();
+});
+
+onBeforeUnmount(() => controller?.abort());
+
+function evidenceLabel(source: ChatSource): string {
+  return source.pageLabel ? `${source.title} · ${source.pageLabel}` : source.title;
+}
+
+/**
+ * The model answers in light markdown; the page renders the three shapes it actually uses and nothing
+ * else. Escaping runs first, so every tag below is one this function wrote - the answer's own angle
+ * brackets can never become markup.
+ */
+function renderAnswer(raw: string): string {
+  const escaped = raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return escaped
+    .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/^#{1,4}\s+(.+)$/gm, "<strong>$1</strong>")
+    .replace(/^\s*[-*]\s+/gm, "• ");
+}
+</script>
+
+<template>
+  <BrandStage wide>
+    <div class="chat">
+      <header class="chat__head">
+        <h1 class="chat__title">{{ t("chat.title") }}</h1>
+        <button class="chat__link" type="button" @click="router.push('/')">{{ t("common.backHome") }}</button>
+      </header>
+
+      <div class="chat__grid">
+        <section class="panel" :aria-label="t('chat.sessions')">
+          <button class="button button--primary" type="button" :disabled="streaming" @click="newConversation">
+            {{ t("chat.newChat") }}
+          </button>
+
+          <p v-if="!signedIn" class="panel__note">{{ t("chat.signInToKeep") }}</p>
+          <p v-else-if="sessionsFailed" class="panel__note">{{ t("chat.sessionsFailed") }}</p>
+          <p v-else-if="!sessions.length" class="panel__note">{{ t("chat.noSessions") }}</p>
+
+          <ul v-else class="sessions">
+            <li v-for="session in sessions" :key="session.id" class="session">
+              <button
+                class="session__open"
+                type="button"
+                :class="{ 'session__open--active': session.id === activeSessionId }"
+                @click="openSession(session)"
+              >
+                {{ session.title }}
+              </button>
+              <button class="session__delete" type="button" :aria-label="t('chat.delete')" @click="pendingDelete = session">
+                ×
+              </button>
+            </li>
+          </ul>
+        </section>
+
+        <section class="panel panel--thread" :aria-label="t('chat.title')">
+          <div ref="threadRef" class="thread">
+            <p v-if="!messages.length" class="thread__empty">{{ t("chat.empty") }}</p>
+
+            <article
+              v-for="message in messages"
+              :key="message.id"
+              class="message"
+              :class="`message--${message.role}`"
+            >
+              <p v-if="message.role === 'assistant'" class="message__body" v-html="renderAnswer(message.content)" />
+              <p v-else class="message__body">{{ message.content }}</p>
+              <p v-if="message.state === 'streaming' && !message.content" class="message__note">{{ t("chat.thinking") }}</p>
+              <p v-else-if="message.state === 'stopped'" class="message__note">{{ t("chat.stopped") }}</p>
+
+              <ul v-if="message.sources.length" class="evidence">
+                <li v-for="source in message.sources" :key="source.evidenceHash" class="evidence__item">
+                  {{ evidenceLabel(source) }}
+                </li>
+              </ul>
+            </article>
+          </div>
+
+          <div class="compose">
+            <label class="field">
+              <span class="field__label">{{ t("chat.scope") }}</span>
+              <select v-model="chapterId" class="field__control">
+                <option :value="ALL_CHAPTERS">{{ t("chat.allChapters") }}</option>
+                <option v-for="chapter in chapters" :key="chapter.id" :value="chapter.id">{{ chapter.title }}</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span class="field__label">{{ t("chat.question") }}</span>
+              <textarea
+                v-model="prompt"
+                class="field__control field__control--area"
+                rows="3"
+                :placeholder="t('chat.placeholder')"
+                @keydown.enter.exact.prevent="send"
+              />
+            </label>
+
+            <p v-if="tooLong" class="panel__note">{{ t("chat.error.tooLong") }}</p>
+
+            <div class="compose__actions">
+              <button v-if="streaming" class="button" type="button" @click="stop">{{ t("chat.stop") }}</button>
+              <button v-else class="button button--primary" type="button" :disabled="!canSend || tooLong" @click="send">
+                {{ t("chat.send") }}
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <NoticeDialog
+      :open="alert !== null"
+      :title="alert?.title ?? ''"
+      :message="alert?.message ?? ''"
+      :close-label="t('common.gotIt')"
+      @close="alert = null"
+    />
+
+    <ConfirmDialog
+      :open="pendingDelete !== null"
+      :title="t('chat.deleteTitle')"
+      :message="t('chat.deleteMessage')"
+      :confirm-label="t('chat.delete')"
+      :cancel-label="t('common.cancel')"
+      @confirm="removeSession"
+      @cancel="pendingDelete = null"
+    />
+  </BrandStage>
+</template>
+
+<style scoped>
+/* The same paper and the same quiet card as the animation lab, so a question asked here and a demo
+   opened there are visibly the same product. */
+.chat { display: grid; width: min(1320px, 100%); gap: 22px; margin: 0 auto; color: var(--text); }
+
+.chat__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
+.chat__title { margin: 0; color: var(--text); font-family: var(--font-ui); font-size: clamp(30px, 3.4vw, 46px); font-weight: 400; letter-spacing: 0; line-height: 1.06; }
+
+.chat__link {
+  min-height: 42px;
+  padding: 0 20px;
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 24%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 92%, transparent), 0 5px 12px color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 650;
+  transition: transform 160ms cubic-bezier(.25, 1, .5, 1), border-color 160ms ease, background-color 160ms ease;
+}
+
+.chat__link:hover { border-color: var(--text); background: color-mix(in srgb, var(--surface) 46%, transparent); transform: translateY(-1px); }
+
+.chat__grid { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 20px; align-items: start; }
+
+.panel {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+  padding: 20px;
+  border: 1px double color-mix(in srgb, var(--text) 15%, transparent);
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 92%, transparent), 0 10px 24px color-mix(in srgb, var(--text) 10%, transparent);
+  -webkit-backdrop-filter: blur(7px) saturate(1.08);
+  backdrop-filter: blur(7px) saturate(1.08);
+}
+
+.panel--thread { gap: 16px; }
+
+/* Nothing on this page drops below the body size: a refusal or an evidence line the learner skims is
+   exactly the line that has to be read. */
+.panel__note { margin: 0; color: var(--text); font-size: 19px; font-weight: 620; line-height: 1.55; }
+
+.sessions { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.session { display: flex; align-items: center; gap: 6px; }
+
+.session__open {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 620;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.session__open:hover { border-color: color-mix(in srgb, var(--text) 16%, transparent); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.session__open--active { border-color: var(--text); background: color-mix(in srgb, var(--text) 9%, transparent); }
+
+.session__delete {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.session__delete:hover { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); }
+
+.thread { display: grid; gap: 14px; max-height: min(56vh, 620px); padding-right: 4px; overflow-y: auto; }
+.thread__empty { margin: 0; padding: 24px 0; color: var(--text); font-size: 19px; font-weight: 620; line-height: 1.6; text-align: center; }
+
+.message { display: grid; gap: 8px; max-width: 88%; padding: 14px 18px; border-radius: 20px; }
+.message--user { justify-self: end; border: 1px double color-mix(in srgb, var(--text) 18%, transparent); background: color-mix(in srgb, var(--text) 9%, transparent); }
+.message--assistant { justify-self: start; border: 1px double color-mix(in srgb, var(--text) 15%, transparent); background: color-mix(in srgb, var(--surface) 70%, transparent); }
+
+.message__body { margin: 0; color: var(--text); font-size: 19px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+.message__note { margin: 0; color: var(--text-muted); font-size: 17px; font-weight: 620; }
+
+.evidence { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.evidence__item { color: var(--text); font-size: 17px; font-weight: 620; line-height: 1.5; }
+
+.compose { display: grid; gap: 12px; padding-top: 4px; border-top: 1px solid var(--line); }
+
+.field { display: grid; gap: 6px; }
+.field__label { color: var(--text-muted); font-size: 17px; font-weight: 620; }
+
+.field__control {
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 76%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 17px;
+}
+
+.field__control--area { min-height: 84px; border-radius: 20px; resize: vertical; line-height: 1.6; }
+.field__control:focus-visible { outline: none; border-color: var(--text); box-shadow: var(--focus-ring); }
+
+.compose__actions { display: flex; justify-content: flex-end; }
+
+.button {
+  min-height: 46px;
+  padding: 10px 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 650;
+  transition: border-color .16s ease, background-color .16s ease, transform .16s ease;
+}
+
+.button:hover:not(:disabled) { border-color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.button:disabled { cursor: default; opacity: .42; }
+
+/* The primary action is the one inverted pill the design system uses for "go". */
+.button--primary { border-color: var(--text); background: var(--text); color: var(--surface); }
+.button--primary:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 88%, var(--surface)); }
+
+@media (max-width: 900px) {
+  .chat__grid { grid-template-columns: minmax(0, 1fr); }
+  .thread { max-height: 52vh; }
+}
+
+@media (prefers-reduced-motion: reduce) { .chat * { transition-duration: 1ms !important; } }
+</style>

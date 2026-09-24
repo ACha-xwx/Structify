@@ -79,6 +79,16 @@ onMounted(() => {
           <span class="choice__name">{{ t("home.compiler") }}</span>
           <span class="choice__go" aria-hidden="true"><DirectionalArrowIcon direction="right" /></span>
         </RouterLink>
+
+        <RouterLink class="choice" to="/chat">
+          <span class="choice__symbol" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+              <path d="M20 15.5a2.5 2.5 0 0 1-2.5 2.5H9l-4 3v-3H6.5A2.5 2.5 0 0 1 4 15.5v-8A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5z" />
+            </svg>
+          </span>
+          <span class="choice__name">{{ t("home.chat") }}</span>
+          <span class="choice__go" aria-hidden="true"><DirectionalArrowIcon direction="right" /></span>
+        </RouterLink>
       </nav>
 
       <nav class="entry-links" :aria-label="t('home.account')">

@@ -6,6 +6,7 @@ import ClassroomView from "../classroom/ClassroomView.vue";
 import CoursewareView from "../shared/views/CoursewareView.vue";
 import AnimationLabView from "../animation/AnimationLabView.vue";
 import CodeEditorView from "../compiler/CodeEditorView.vue";
+import ChatView from "../user/views/ChatView.vue";
 import AuthView from "../shared/views/AuthView.vue";
 import ForbiddenView from "../shared/views/ForbiddenView.vue";
 import NotFoundView from "../shared/views/NotFoundView.vue";
@@ -23,6 +24,8 @@ export const routes: RouteRecordRaw[] = [
   { path: "/animation", name: "animation-lab", component: AnimationLabView, meta: { requiresAuth: true, layout: "workbench", module: "动画实验室" } },
   // The original app let guests run C experiments without an account; that stays.
   { path: "/compiler", name: "compiler", component: CodeEditorView, meta: { layout: "workbench", module: "C 编辑器" } },
+  // Asking the course directly. Its backend never left; the page was dropped in the stage refactor.
+  { path: "/chat", name: "chat", component: ChatView, meta: { requiresAuth: true, layout: "workbench", module: "课程问答" } },
   { path: "/login", name: "login", component: AuthView, props: { mode: "login" }, meta: { layout: "auth" } },
   { path: "/register", name: "register", component: AuthView, props: { mode: "register" }, meta: { layout: "auth" } },
   { path: "/reset-password", name: "reset-password", component: AuthView, props: { mode: "reset" }, meta: { layout: "auth" } },

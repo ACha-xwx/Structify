@@ -36,6 +36,7 @@ export const messages = {
   "home.classroom": { zh: "课堂", en: "Classroom" },
   "home.animation": { zh: "动画学习", en: "Animation lab" },
   "home.compiler": { zh: "C 编辑器", en: "C editor" },
+  "home.chat": { zh: "课程问答", en: "Ask the course" },
   "home.resume": { zh: "继续上次课堂", en: "Resume last class" },
 
   /** The C editor restored from the original single-page app. */
@@ -249,6 +250,34 @@ export const messages = {
   "courseware.previous": { zh: "上一页", en: "Previous" },
   "courseware.next": { zh: "下一页", en: "Next" },
   "courseware.pickDeck": { zh: "请选择左侧的课件", en: "Pick a deck on the left" },
+
+  /** Asking the course a question directly - the answer is quoted from the reviewed textbook. */
+  "chat.title": { zh: "课程问答", en: "Ask the course" },
+  "chat.newChat": { zh: "新的对话", en: "New conversation" },
+  "chat.sessions": { zh: "历史对话", en: "Past conversations" },
+  "chat.noSessions": { zh: "还没有保存的对话。", en: "No conversations saved yet." },
+  "chat.sessionsFailed": { zh: "历史对话没能读取，提问不受影响。", en: "Past conversations could not be read. Asking still works." },
+  "chat.signInToKeep": { zh: "登录后才能保存和回看对话。", en: "Sign in to save and revisit conversations." },
+  "chat.delete": { zh: "删除", en: "Delete" },
+  "chat.deleteTitle": { zh: "删除这段对话", en: "Delete this conversation" },
+  "chat.deleteMessage": { zh: "删除后无法恢复。", en: "This cannot be undone." },
+  "chat.empty": { zh: "直接提问。回答只依据已核验的教材，并附上引用的页面。", en: "Ask directly. Answers come from the reviewed textbook and name the pages they use." },
+  "chat.scope": { zh: "范围", en: "Scope" },
+  "chat.allChapters": { zh: "全部章节", en: "All chapters" },
+  "chat.question": { zh: "问题", en: "Question" },
+  "chat.placeholder": { zh: "把你没弄懂的地方写出来", en: "Write what you do not understand yet" },
+  "chat.send": { zh: "提问", en: "Ask" },
+  "chat.stop": { zh: "停止", en: "Stop" },
+  "chat.thinking": { zh: "正在查教材", en: "Searching the textbook" },
+  "chat.stopped": { zh: "已停止", en: "Stopped" },
+  "chat.error.rateLimited": { zh: "提问太频繁了，稍等一下再问。", en: "That is too many questions at once. Wait a moment and ask again." },
+  "chat.error.evidence": { zh: "教材里没有这个问题的依据，换个问法试试。", en: "The textbook has no evidence for this question. Try asking it differently." },
+  "chat.error.quota": { zh: "今天的用量已经用完，明天再来。", en: "Today's allowance is used up. Come back tomorrow." },
+  "chat.error.notConfigured": { zh: "服务端还没有配置模型，暂时无法回答。", en: "No model is configured on the server, so this cannot be answered yet." },
+  "chat.error.sessionGone": { zh: "这段对话已经不存在了。", en: "That conversation no longer exists." },
+  "chat.error.tooLong": { zh: "问题太长了，请缩短后再问。", en: "That question is too long. Shorten it and ask again." },
+  "chat.error.empty": { zh: "先写出你要问的问题。", en: "Write the question first." },
+  "chat.error.failed": { zh: "这次回答没能完成，请再试一次。", en: "This answer did not come through. Try again." },
 
   /** The two error screens. */
   "common.backToHome": { zh: "返回首页", en: "Back to home" },
