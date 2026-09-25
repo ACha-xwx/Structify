@@ -235,7 +235,7 @@ function renderAnswer(raw: string): string {
   const escaped = raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return escaped
     .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/^#{1,4}\s+(.+)$/gm, "<strong>$1</strong>")
+    .replace(/^#{1,4}\s+(.+)$/gm, '<strong class="answer__heading">$1</strong>')
     .replace(/^\s*[-*]\s+/gm, "• ");
 }
 </script>
@@ -290,33 +290,31 @@ function renderAnswer(raw: string): string {
               <p v-if="message.state === 'streaming' && !message.content" class="message__note">{{ t("chat.thinking") }}</p>
               <p v-else-if="message.state === 'stopped'" class="message__note">{{ t("chat.stopped") }}</p>
 
-              <ul v-if="message.sources.length" class="evidence">
-                <li v-for="source in message.sources" :key="source.evidenceHash" class="evidence__item">
-                  {{ evidenceLabel(source) }}
-                </li>
-              </ul>
+              <div v-if="message.sources.length" class="evidence">
+                <p class="evidence__title">{{ t("chat.evidence") }}</p>
+                <ul class="evidence__list">
+                  <li v-for="source in message.sources" :key="source.evidenceHash" class="evidence__item">
+                    {{ evidenceLabel(source) }}
+                  </li>
+                </ul>
+              </div>
             </article>
           </div>
 
           <div class="compose">
-            <label class="field">
-              <span class="field__label">{{ t("chat.scope") }}</span>
-              <select v-model="chapterId" class="field__control">
-                <option :value="ALL_CHAPTERS">{{ t("chat.allChapters") }}</option>
-                <option v-for="chapter in chapters" :key="chapter.id" :value="chapter.id">{{ chapter.title }}</option>
-              </select>
-            </label>
+            <select v-model="chapterId" class="field__control" :aria-label="t('chat.scope')">
+              <option :value="ALL_CHAPTERS">{{ t("chat.allChapters") }}</option>
+              <option v-for="chapter in chapters" :key="chapter.id" :value="chapter.id">{{ chapter.title }}</option>
+            </select>
 
-            <label class="field">
-              <span class="field__label">{{ t("chat.question") }}</span>
-              <textarea
-                v-model="prompt"
-                class="field__control field__control--area"
-                rows="3"
-                :placeholder="t('chat.placeholder')"
-                @keydown.enter.exact.prevent="send"
-              />
-            </label>
+            <textarea
+              v-model="prompt"
+              class="field__control field__control--area"
+              rows="3"
+              :placeholder="t('chat.placeholder')"
+              :aria-label="t('chat.question')"
+              @keydown.enter.exact.prevent="send"
+            />
 
             <p v-if="tooLong" class="panel__note">{{ t("chat.error.tooLong") }}</p>
 
@@ -353,7 +351,8 @@ function renderAnswer(raw: string): string {
 
 <style scoped>
 /* The same paper and the same quiet card as the animation lab, so a question asked here and a demo
-   opened there are visibly the same product. */
+   opened there are visibly the same product. The thread panel is the page: it gets the height, the
+   composer just sits at its foot. */
 .chat { display: grid; width: min(1320px, 100%); gap: 22px; margin: 0 auto; color: var(--text); }
 
 .chat__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
@@ -369,7 +368,7 @@ function renderAnswer(raw: string): string {
   color: var(--text);
   cursor: pointer;
   font: inherit;
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 650;
   transition: transform 160ms cubic-bezier(.25, 1, .5, 1), border-color 160ms ease, background-color 160ms ease;
 }
@@ -392,32 +391,30 @@ function renderAnswer(raw: string): string {
   backdrop-filter: blur(7px) saturate(1.08);
 }
 
-.panel--thread { gap: 16px; }
+/* The conversation owns the vertical space: the thread scrolls, the composer stays put. */
+.panel--thread { display: flex; flex-direction: column; gap: 14px; height: clamp(560px, calc(100dvh - 250px), 900px); }
 
 /* Nothing on this page drops below the body size: a refusal or an evidence line the learner skims is
    exactly the line that has to be read. */
 .panel__note { margin: 0; color: var(--text); font-size: 19px; font-weight: 620; line-height: 1.55; }
 
-.sessions { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
-.session { display: flex; align-items: center; gap: 6px; }
+.sessions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.session { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
 
 .session__open {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 42px;
-  padding: 8px 14px;
+  padding: 9px 14px;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: 18px;
   background: transparent;
   color: var(--text);
   cursor: pointer;
   font: inherit;
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 620;
-  overflow: hidden;
+  line-height: 1.35;
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   transition: background-color 160ms ease, border-color 160ms ease;
 }
 
@@ -426,9 +423,9 @@ function renderAnswer(raw: string): string {
 
 .session__delete {
   display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
   place-items: center;
   border: 0;
   border-radius: 50%;
@@ -443,51 +440,64 @@ function renderAnswer(raw: string): string {
 
 .session__delete:hover { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); }
 
-.thread { display: grid; gap: 14px; max-height: min(56vh, 620px); padding-right: 4px; overflow-y: auto; }
+.thread { flex: 1 1 auto; min-height: 0; display: grid; gap: 16px; align-content: start; padding: 4px 8px 4px 2px; overflow-y: auto; }
 .thread__empty { margin: 0; padding: 24px 0; color: var(--text); font-size: 19px; font-weight: 620; line-height: 1.6; text-align: center; }
 
-.message { display: grid; gap: 8px; max-width: 88%; padding: 14px 18px; border-radius: 20px; }
+.message { display: grid; gap: 10px; max-width: min(88%, 820px); padding: 16px 20px; border-radius: 22px; }
 .message--user { justify-self: end; border: 1px double color-mix(in srgb, var(--text) 18%, transparent); background: color-mix(in srgb, var(--text) 9%, transparent); }
-.message--assistant { justify-self: start; border: 1px double color-mix(in srgb, var(--text) 15%, transparent); background: color-mix(in srgb, var(--surface) 70%, transparent); }
+.message--assistant { justify-self: start; border: 1px double color-mix(in srgb, var(--text) 15%, transparent); background: color-mix(in srgb, var(--surface) 72%, transparent); }
 
 .message__body { margin: 0; color: var(--text); font-size: 19px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
-.message__note { margin: 0; color: var(--text-muted); font-size: 17px; font-weight: 620; }
+.message__body :deep(strong) { font-weight: 700; }
+.message__body :deep(.answer__heading) { display: block; margin: 16px 0 6px; font-weight: 700; }
+.message__note { margin: 0; color: var(--text-muted); font-size: 19px; font-weight: 620; }
 
-.evidence { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
-.evidence__item { color: var(--text); font-size: 17px; font-weight: 620; line-height: 1.5; }
+/* Evidence is its own block, not loose lines under the answer: a dashed break, a plain-language
+   heading, then one pill per quoted page. */
+.evidence { margin-top: 2px; padding-top: 12px; border-top: 1px dashed color-mix(in srgb, var(--text) 20%, transparent); display: grid; gap: 10px; }
+.evidence__title { margin: 0; color: var(--text); font-size: 19px; font-weight: 700; }
+.evidence__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.evidence__item {
+  max-width: 100%;
+  padding: 8px 16px;
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 50%, transparent);
+  color: var(--text);
+  font-size: 19px;
+  font-weight: 620;
+  line-height: 1.4;
+}
 
-.compose { display: grid; gap: 12px; padding-top: 4px; border-top: 1px solid var(--line); }
-
-.field { display: grid; gap: 6px; }
-.field__label { color: var(--text-muted); font-size: 17px; font-weight: 620; }
+.compose { flex: 0 0 auto; display: grid; gap: 12px; padding-top: 14px; border-top: 1px solid var(--line); }
 
 .field__control {
   width: 100%;
-  min-height: 44px;
-  padding: 9px 16px;
+  min-height: 46px;
+  padding: 10px 16px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface) 76%, transparent);
   color: var(--text);
   font: inherit;
-  font-size: 17px;
+  font-size: 19px;
 }
 
-.field__control--area { min-height: 84px; border-radius: 20px; resize: vertical; line-height: 1.6; }
+.field__control--area { min-height: 88px; border-radius: 20px; resize: vertical; line-height: 1.6; }
 .field__control:focus-visible { outline: none; border-color: var(--text); box-shadow: var(--focus-ring); }
 
 .compose__actions { display: flex; justify-content: flex-end; }
 
 .button {
-  min-height: 46px;
-  padding: 10px 24px;
+  min-height: 48px;
+  padding: 10px 26px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   background: transparent;
   color: var(--text);
   cursor: pointer;
   font: inherit;
-  font-size: 17px;
+  font-size: 19px;
   font-weight: 650;
   transition: border-color .16s ease, background-color .16s ease, transform .16s ease;
 }
@@ -501,7 +511,7 @@ function renderAnswer(raw: string): string {
 
 @media (max-width: 900px) {
   .chat__grid { grid-template-columns: minmax(0, 1fr); }
-  .thread { max-height: 52vh; }
+  .panel--thread { height: clamp(520px, calc(100dvh - 220px), 900px); }
 }
 
 @media (prefers-reduced-motion: reduce) { .chat * { transition-duration: 1ms !important; } }

@@ -270,6 +270,7 @@ export const messages = {
   "chat.stop": { zh: "停止", en: "Stop" },
   "chat.thinking": { zh: "正在查教材", en: "Searching the textbook" },
   "chat.stopped": { zh: "已停止", en: "Stopped" },
+  "chat.evidence": { zh: "教材依据", en: "Textbook evidence" },
   "chat.error.rateLimited": { zh: "提问太频繁了，稍等一下再问。", en: "That is too many questions at once. Wait a moment and ask again." },
   "chat.error.evidence": { zh: "教材里没有这个问题的依据，换个问法试试。", en: "The textbook has no evidence for this question. Try asking it differently." },
   "chat.error.quota": { zh: "今天的用量已经用完，明天再来。", en: "Today's allowance is used up. Come back tomorrow." },
