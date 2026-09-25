@@ -7,6 +7,8 @@ const streamChat = vi.fn();
 const listChatSessions = vi.fn();
 const getChatSession = vi.fn();
 const deleteChatSession = vi.fn();
+const interpretAnimation = vi.fn();
+const simulateAnimation = vi.fn();
 
 let signedIn = true;
 
@@ -17,6 +19,8 @@ vi.mock("../runtime", () => ({
     listChatSessions: (...args: unknown[]) => listChatSessions(...args),
     getChatSession: (...args: unknown[]) => getChatSession(...args),
     deleteChatSession: (...args: unknown[]) => deleteChatSession(...args),
+    interpretAnimation: (...args: unknown[]) => interpretAnimation(...args),
+    simulateAnimation: (...args: unknown[]) => simulateAnimation(...args),
   },
 }));
 
@@ -71,6 +75,13 @@ beforeEach(() => {
   getChatSession.mockResolvedValue({ id: "s1", chapterId: null, title: "栈", updatedAt: "", messages: [] });
   deleteChatSession.mockResolvedValue(undefined);
   streamChat.mockReset();
+  interpretAnimation.mockReset();
+  simulateAnimation.mockReset();
+  simulateAnimation.mockResolvedValue({
+    animationRecordId: "a1",
+    animationData: { title: "栈的入栈出栈", steps: [{ label: "入栈", note: "压入 5" }] },
+    trace: null,
+  });
   document.body.innerHTML = "";
 });
 
@@ -106,6 +117,74 @@ describe("ChatView", () => {
     expect(view.text()).toContain("栈是受限的线性表。");
     expect(view.text()).not.toContain("栈的定义");
     expect(view.text()).not.toContain("第 41 页");
+    view.unmount();
+  });
+
+  /**
+   * The whole point of the offer: "好的" has to produce the animation, not another paragraph and not a
+   * refusal dialog.
+   */
+  it("turns a yes into the animation the answer offered instead of asking the model again", async () => {
+    const answer = "栈是后进先出的线性表。需要我用动画演示入栈出栈的过程吗？";
+    streamChat.mockImplementation(async () => ({
+      kind: "sse",
+      stream: null,
+      events: stream([{ event: "done", parsed: { answer, sessionId: "s1", sources: [], persisted: true } }])(),
+    }));
+    interpretAnimation.mockResolvedValue({ structure: "stack", operation: "push" });
+
+    const view = mountView();
+    await flushPromises();
+    await ask(view, "什么是栈？");
+    await ask(view, "好的");
+    await flushPromises();
+
+    expect(streamChat).toHaveBeenCalledTimes(1);
+    expect(interpretAnimation).toHaveBeenCalledWith(expect.objectContaining({ prompt: "什么是栈？", chapterId: "ch03" }));
+    expect(view.text()).toContain("入栈");
+    view.unmount();
+  });
+
+  it("builds the animation when the learner presses the button under an answer", async () => {
+    streamChat.mockImplementation(async () => ({
+      kind: "sse",
+      stream: null,
+      events: stream([{ event: "done", parsed: { answer: "栈是后进先出。", sessionId: "s1", sources: [], persisted: true } }])(),
+    }));
+    interpretAnimation.mockResolvedValue({ structure: "stack", operation: "push" });
+
+    const view = mountView();
+    await flushPromises();
+    await ask(view, "什么是栈？");
+
+    const button = view.findAll("button").find((item) => item.text() === "看动画演示");
+    expect(button).toBeTruthy();
+    await button!.trigger("click");
+    await flushPromises();
+
+    expect(interpretAnimation).toHaveBeenCalled();
+    expect(view.text()).toContain("入栈");
+    view.unmount();
+  });
+
+  it("answers an engine refusal in plain language instead of echoing the error code", async () => {
+    streamChat.mockImplementation(async () => ({
+      kind: "sse",
+      stream: null,
+      events: stream([{ event: "done", parsed: { answer: "栈是后进先出。", sessionId: "s1", sources: [], persisted: true } }])(),
+    }));
+    interpretAnimation.mockRejectedValue(new Error("未匹配到可视化能力 ANIMATION_NOT_SUPPORTED"));
+
+    const view = mountView();
+    await flushPromises();
+    await ask(view, "什么是栈？");
+    const button = view.findAll("button").find((item) => item.text() === "看动画演示");
+    await button!.trigger("click");
+    await flushPromises();
+
+    // NoticeDialog teleports to the body, so the dialog is read from there rather than from the view.
+    expect(document.body.textContent).toContain("这个主题还没有动画演示");
+    expect(document.body.textContent).not.toContain("ANIMATION_NOT_SUPPORTED");
     view.unmount();
   });
 

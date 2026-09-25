@@ -5,6 +5,8 @@ import BrandStage from "../../shared/components/BrandStage.vue";
 import NoticeDialog from "../../shared/components/NoticeDialog.vue";
 import ConfirmDialog from "../../shared/components/ConfirmDialog.vue";
 import { useI18n } from "../../shared/i18n/locale";
+import AnimationPlayer from "../../animation/AnimationPlayer.vue";
+import type { DsvpSimulationResponse } from "../../shared/types/animation";
 import type { Chapter, ChatResponse, ChatSessionSummary, ChatSource } from "../../shared/types";
 import { auth } from "../../app/providers/runtime";
 import { userApi } from "../runtime";
@@ -31,6 +33,8 @@ interface ConversationMessage {
   content: string;
   sources: ChatSource[];
   state: MessageState;
+  /** The question this reply answers - what an animation for it is built from. */
+  question?: string;
 }
 
 const route = useRoute();
@@ -48,9 +52,14 @@ const alert = ref<{ title: string; message: string } | null>(null);
 const pendingDelete = ref<ChatSessionSummary | null>(null);
 const sessionsFailed = ref(false);
 const threadRef = ref<HTMLElement | null>(null);
+/** One animation per reply, keyed by the reply it belongs to. */
+const animations = ref<Record<number, DsvpSimulationResponse>>({});
+const animationBusy = ref(false);
 
 const ALL_CHAPTERS = "";
 const MAX_PROMPT = 4000;
+/** Short replies that mean "yes, show me" to an offer the model just made. */
+const YES = /^(好的|好|好啊|要|想要|想看|看看|看一下|看|来一个|来|演示|演示一下|演示一下吧|可以|行|嗯|是的|当然|ok|okay|yes|yeah|yep|sure|go ahead|show me|do it|please)$/i;
 
 let sequence = 0;
 let controller: AbortController | null = null;
@@ -60,9 +69,14 @@ const canSend = computed(() => prompt.value.trim().length > 0 && !streaming.valu
 const tooLong = computed(() => prompt.value.trim().length > MAX_PROMPT);
 const signedIn = computed(() => Boolean(auth.state.user));
 
-function push(role: "user" | "assistant", content: string, state: MessageState = "complete"): number {
+function push(
+  role: "user" | "assistant",
+  content: string,
+  state: MessageState = "complete",
+  question?: string,
+): number {
   const id = ++sequence;
-  messages.value = [...messages.value, { id, role, content, sources: [], state }];
+  messages.value = [...messages.value, { id, role, content, sources: [], state, question }];
   return id;
 }
 
@@ -88,6 +102,16 @@ async function send() {
   const question = prompt.value.trim();
   if (!question || streaming.value || tooLong.value) return;
 
+  // "好的" after an offer is not a new question - it is the learner taking the model up on the demo
+  // it just proposed. Answering it with another paragraph would spend quota and delay the animation.
+  if (isYes(question) && lastReplyOffersAnimation()) {
+    prompt.value = "";
+    push("user", question);
+    const offer = lastOfferingReply();
+    await runAnimation(offer?.question ?? lastRealQuestion() ?? question, offer?.id ?? 0);
+    return;
+  }
+
   const history = messages.value
     .filter((item) => item.state === "complete" && item.content)
     .slice(-12)
@@ -95,7 +119,7 @@ async function send() {
 
   prompt.value = "";
   push("user", question);
-  const replyId = push("assistant", "", "streaming");
+  const replyId = push("assistant", "", "streaming", question);
   phase.value = "streaming";
   controller = new AbortController();
   const signal = controller.signal;
@@ -159,9 +183,80 @@ function stop() {
   controller?.abort();
 }
 
+function isYes(text: string): boolean {
+  return YES.test(text.replace(/[\s，。！？,.!?~～]/g, ""));
+}
+
+/** The reply that ended with an offer to show the animation. */
+function lastOfferingReply(): ConversationMessage | null {
+  for (let index = messages.value.length - 1; index >= 0; index--) {
+    const message = messages.value[index];
+    if (message.role !== "assistant") continue;
+    return /动画|演示|animation/i.test(message.content) ? message : null;
+  }
+  return null;
+}
+
+function lastReplyOffersAnimation(): boolean {
+  return lastOfferingReply() !== null;
+}
+
+/** The last question that was actually a question, so "好的" never becomes the animation prompt. */
+function lastRealQuestion(): string | null {
+  for (let index = messages.value.length - 1; index >= 0; index--) {
+    const message = messages.value[index];
+    if (message.role === "user" && !isYes(message.content)) return message.content;
+  }
+  return null;
+}
+
+/**
+ * Builds the animation this answer offers and plays it under the answer.
+ *
+ * The sentence goes to the same interpret endpoint the animation lab uses, so the model only picks a
+ * capability and the local engine computes the frames - the demo can be the wrong one but never an
+ * invented one.
+ */
+async function runAnimation(question: string, replyId: number) {
+  const chapter = chapterId.value || chapters.value[0]?.id || "";
+  if (!chapter || !question) {
+    raise(t("chat.animationFailedTitle"), t("chat.animationUnavailable"));
+    return;
+  }
+  animationBusy.value = true;
+  try {
+    const request = await userApi.interpretAnimation({ chapterId: chapter, prompt: question });
+    const data = await userApi.simulateAnimation(request);
+    animations.value = { ...animations.value, [replyId]: data };
+    await scrollToLatest();
+  } catch (cause) {
+    raise(t("chat.animationFailedTitle"), animationFailure(cause));
+  } finally {
+    animationBusy.value = false;
+  }
+}
+
+/** The engine refuses in plain Chinese; anything that still reads like machinery gets replaced. */
+function animationFailure(cause: unknown): string {
+  const message = cause instanceof Error ? cause.message : "";
+  if (!message || /未匹配|capability|DSVP|status|ANIMATION_|resolve/i.test(message)) {
+    return t("chat.animationUnavailable");
+  }
+  return message;
+}
+
+function animationOf(id: number): DsvpSimulationResponse | null {
+  return animations.value[id] ?? null;
+}
+
+function definitionOf(id: number) {
+  return animationOf(id)?.animationData ?? null;
+}
+
 function newConversation() {
   if (streaming.value) return;
   messages.value = [];
+  animations.value = {};
   activeSessionId.value = null;
   prompt.value = "";
 }
@@ -182,6 +277,7 @@ async function openSession(session: ChatSessionSummary) {
   try {
     const detail = await userApi.getChatSession(session.id);
     activeSessionId.value = detail.id;
+    animations.value = {};
     messages.value = detail.messages.map((item) => ({
       id: ++sequence,
       role: item.role,
@@ -285,6 +381,26 @@ function renderAnswer(raw: string): string {
               <p v-else class="message__body">{{ message.content }}</p>
               <p v-if="message.state === 'streaming' && !message.content" class="message__note">{{ t("chat.thinking") }}</p>
               <p v-else-if="message.state === 'stopped'" class="message__note">{{ t("chat.stopped") }}</p>
+
+              <template v-if="message.role === 'assistant'">
+                <AnimationPlayer
+                  v-if="animationOf(message.id)"
+                  class="message__animation"
+                  :definition="definitionOf(message.id)"
+                  :trace="animationOf(message.id)?.trace ?? null"
+                  :placeholder="t('chat.animationPlaceholder')"
+                />
+
+                <button
+                  v-if="message.state === 'complete'"
+                  class="message__action"
+                  type="button"
+                  :disabled="animationBusy"
+                  @click="runAnimation(message.question ?? message.content, message.id)"
+                >
+                  {{ animationBusy ? t("chat.animationBusy") : t("chat.watchAnimation") }}
+                </button>
+              </template>
             </article>
           </div>
 
@@ -438,6 +554,34 @@ function renderAnswer(raw: string): string {
 .message__body :deep(strong) { font-weight: 700; }
 .message__body :deep(.answer__heading) { display: block; margin: 16px 0 6px; font-weight: 700; }
 .message__note { margin: 0; color: var(--text-muted); font-size: 19px; font-weight: 620; }
+
+/* The demo the answer just offered, drawn by the same player the animation lab uses. */
+.message__animation {
+  width: 100%;
+  margin-top: 4px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 62%, transparent);
+}
+
+.message__action {
+  justify-self: start;
+  min-height: 44px;
+  padding: 9px 20px;
+  border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 19px;
+  font-weight: 650;
+  transition: border-color .16s ease, background-color .16s ease;
+}
+
+.message__action:hover:not(:disabled) { border-color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.message__action:disabled { cursor: default; opacity: .5; }
 
 .compose { flex: 0 0 auto; display: grid; gap: 12px; padding-top: 14px; border-top: 1px solid var(--line); }
 

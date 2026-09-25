@@ -1,6 +1,7 @@
 package com.feng.dsagent.chat;
 
 import com.feng.dsagent.aiquota.AiQuotaExecution;
+import com.feng.dsagent.animation.DsvpLocalEngine;
 import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.knowledge.KnowledgeProperties;
 import com.feng.dsagent.knowledge.KnowledgeAudience;
@@ -13,8 +14,12 @@ import com.feng.dsagent.model.ModelRequest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -22,8 +27,22 @@ import org.springframework.stereotype.Service;
 @Service
 public class ChatService {
 
+    private static final Logger log = LoggerFactory.getLogger(ChatService.class);
+
     private static final int MAX_HISTORY_MESSAGES = 12;
     private static final Set<String> ALLOWED_HISTORY_ROLES = Set.of("user", "assistant");
+    /**
+     * Appended when the local engine answers with its capability list, so the offer at the end of an
+     * answer is one the animation page can actually keep. Without it the model happily promises a
+     * demo the engine has no capability for, and the learner meets a refusal instead of an animation.
+     */
+    private static final String ANIMATION_PROMPT = """
+        下面是现在真的能做动画演示的主题（格式「能力名[必需参数]：说明」）：
+        %s
+        只有这次回答讲到的东西在清单里，才可以在结尾邀请学生看动画演示；不在清单里就一个字都不要提动画。
+        邀请写成一句自然语言，不要出现能力名、参数或任何技术细节。
+        """;
+
     private static final String SYSTEM_PROMPT = """
         你是面向高校数据结构课程的学习陪练。请优先依据经过审核的课程资料回答，不要编造教材页码、定义、复杂度或代码结论。
         回答应简洁、清楚，使用短标题和自然段，避免堆叠大量 Markdown 符号。先说明核心结论，再解释步骤、复杂度和常见错误。
@@ -38,6 +57,9 @@ public class ChatService {
     private final KnowledgeSearchService knowledge;
     private final ChatRepository repository;
     private final KnowledgeProperties properties;
+    private final DsvpLocalEngine engine;
+    /** Capability lists are static per chapter; asking the engine on every question is pure latency. */
+    private final Map<String, String> animationCatalogue = new ConcurrentHashMap<>();
 
     ChatService(
         ModelClient model,
@@ -45,7 +67,16 @@ public class ChatService {
         ChatRepository repository,
         KnowledgeProperties properties
     ) {
-        this(AiQuotaExecution.unmetered(model), knowledge, repository, properties);
+        this(AiQuotaExecution.unmetered(model), knowledge, repository, properties, null);
+    }
+
+    ChatService(
+        AiQuotaExecution execution,
+        KnowledgeSearchService knowledge,
+        ChatRepository repository,
+        KnowledgeProperties properties
+    ) {
+        this(execution, knowledge, repository, properties, null);
     }
 
     @Autowired
@@ -53,12 +84,14 @@ public class ChatService {
         AiQuotaExecution execution,
         KnowledgeSearchService knowledge,
         ChatRepository repository,
-        KnowledgeProperties properties
+        KnowledgeProperties properties,
+        DsvpLocalEngine engine
     ) {
         this.execution = execution;
         this.knowledge = knowledge;
         this.repository = repository;
         this.properties = properties;
+        this.engine = engine;
     }
 
     public ChatResponse complete(ChatCommand command, Long userId, KnowledgeAudience audience) {
@@ -134,11 +167,32 @@ public class ChatService {
         if (!results.isEmpty()) {
             messages.add(new ModelMessage("system", context(results)));
         }
+        String catalogue = animationCatalogue(chapterId);
+        if (!catalogue.isBlank()) {
+            messages.add(new ModelMessage("system", ANIMATION_PROMPT.formatted(catalogue)));
+        }
         for (ChatTurn turn : history) {
             messages.add(new ModelMessage(turn.role(), turn.content()));
         }
         messages.add(new ModelMessage("user", prompt));
         return new PreparedChat(new ModelRequest(messages, 0.35, 1800), sources, chapterId);
+    }
+
+    /**
+     * The engine's own capability list for this chapter, or blank when it cannot be reached. A failure
+     * here only costs the guard rail - the answer itself must never depend on it.
+     */
+    private String animationCatalogue(String chapterId) {
+        if (engine == null || !engine.enabled()) return "";
+        String scope = chapterId == null || chapterId.isBlank() ? "" : DsvpLocalEngine.chapterScope(chapterId);
+        return animationCatalogue.computeIfAbsent(scope, key -> {
+            try {
+                return engine.catalogueFor(key);
+            } catch (RuntimeException error) {
+                log.warn("animation catalogue unavailable for scope {}: {}", key, error.getMessage());
+                return "";
+            }
+        });
     }
 
     private List<ChatTurn> history(ChatCommand command, Long userId) {
