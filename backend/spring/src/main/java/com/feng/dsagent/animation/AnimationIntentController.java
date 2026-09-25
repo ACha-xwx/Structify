@@ -167,7 +167,7 @@ public class AnimationIntentController {
             {"needed":true,"confidence":0.0到1.0,"capability":"能力名","purpose":"为什么值得演示","arguments":{}}
             {"needed":false,"confidence":0.0,"capability":"","purpose":"为什么不需要动画","arguments":{}}
             {"unsupported":true,"reason":"说明不在能力表内的原因"}
-            """.formatted(capabilities), context.toString(), 900, json -> {
+            """.formatted(judgement, capabilities), context.toString(), 900, json -> {
             if (json.path("unsupported").asBoolean(false)) {
                 ClassroomModelJson.requireText(json, "reason");
                 return;

@@ -4,6 +4,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSourceResolvable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
@@ -20,6 +22,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 @RestControllerAdvice
 public final class ApiExceptionHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
     @ExceptionHandler(ApiException.class)
     ResponseEntity<ApiError> handleApiException(ApiException error, HttpServletRequest request) {
         return ResponseEntity.status(error.status()).body(new ApiError(
@@ -119,6 +122,8 @@ public final class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiError> handleUnexpected(Exception error, HttpServletRequest request) {
+        // A 500 without a stack trace is undebuggable - this handler is exactly where it must land.
+        log.error("unhandled exception on {} {}", request.getMethod(), request.getRequestURI(), error);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiError(
             "INTERNAL_ERROR",
             "服务器暂时无法处理该请求",
