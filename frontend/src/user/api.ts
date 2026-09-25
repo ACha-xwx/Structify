@@ -81,7 +81,7 @@ export interface UserApi {
   coursewareImageUrl(slideId: string): string;
   generateAnimation(input: { prompt: string; preferredType?: string; chapterId?: string }): Promise<AnimationResponse>;
   simulateAnimation(input: DsvpRequest): Promise<DsvpSimulationResponse>;
-  interpretAnimation(input: {chapterId: string; prompt?: string; currentRequest?: DsvpRequest}): Promise<DsvpRequest>;
+  interpretAnimation(input: {chapterId: string; prompt?: string; currentRequest?: DsvpRequest; confirmed?: boolean}): Promise<DsvpRequest>;
   /**
    * Turns an explicitly chosen capability plus arguments into an executable DSVP request. The local
    * deterministic engine does the work, so this never consumes model quota.

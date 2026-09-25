@@ -60,9 +60,14 @@ public class AnimationIntentController {
         this.engine = engine;
     }
 
-    public record Input(@NotBlank @Size(max = 64) String chapterId, @Size(max = 2000) String prompt, JsonNode currentRequest) {
+    /**
+     * {@code confirmed} marks a request where the learner has already said yes to an offer — the chat
+     * page's "好的". The worth-judging is done: the model's only remaining job is to pick the capability,
+     * and refusing again with "this is a concept, not a process" would break the promise just made.
+     */
+    public record Input(@NotBlank @Size(max = 64) String chapterId, @Size(max = 2000) String prompt, JsonNode currentRequest, boolean confirmed) {
         public Input(String chapterId, String prompt) {
-            this(chapterId, prompt, null);
+            this(chapterId, prompt, null, false);
         }
     }
 
@@ -114,7 +119,7 @@ public class AnimationIntentController {
             : input.prompt();
         JsonNode capabilityList = localCapabilities(input.chapterId());
         if (capabilityList != null) {
-            return interpretThroughLocalEngine(user, input.chapterId(), titles.getFirst(), studentRequest, input.currentRequest(), capabilityList);
+            return interpretThroughLocalEngine(user, input.chapterId(), titles.getFirst(), studentRequest, input.currentRequest(), capabilityList, input.confirmed());
         }
         return interpretWithModelRequest(user, input.chapterId(), titles.getFirst(), studentRequest, input.currentRequest());
     }
@@ -132,7 +137,8 @@ public class AnimationIntentController {
         String chapterTitle,
         String studentRequest,
         JsonNode currentRequest,
-        JsonNode capabilityList
+        JsonNode capabilityList,
+        boolean confirmed
     ) {
         String capabilities = capabilityList.path("prompt").asText("");
         if (capabilities.isBlank()) return interpretWithModelRequest(user, chapterId, chapterTitle, studentRequest, currentRequest);
@@ -142,10 +148,14 @@ public class AnimationIntentController {
         context.put("studentRequest", studentRequest);
         if (currentRequest != null && !currentRequest.isNull()) context.set("currentRequest", currentRequest);
 
+        String judgement = confirmed
+            ? "学生已经明确确认要看动画演示，不要再判断值不值得：只要需求能对应能力表里的某个能力，就选它并给出参数；"
+                + "只有需求完全不在能力表内才返回 unsupported。"
+            : "静态定义、概念辨析、一句话能说清的问题不适合动画，此时把 needed 设为 false。";
         JsonNode intent = model.generateFor(user.userId(), "animation-intent", """
             你是教学设计师。判断学生这次的需求值不值得用动画讲，并且只做两件事：从下面的真实能力表里选一个能力、给出它的参数。
             你绝不生成动画步骤、状态快照或数值序列——逐帧状态由本地确定性模拟器计算，你编出来的帧会被丢弃。
-            静态定义、概念辨析、一句话能说清的问题不适合动画，此时把 needed 设为 false。
+            %s
             真实可用能力（当前教材章，格式为「能力名[必需参数]：说明」）：
             %s
             选择规则：

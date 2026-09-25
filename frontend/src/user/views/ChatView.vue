@@ -230,7 +230,9 @@ async function runAnimation(question: string, replyId: number) {
   }
   animationBusy.value = true;
   try {
-    const request = await userApi.interpretAnimation({ chapterId: chapter, prompt: question });
+    // confirmed: the learner already said yes, so the interpreter must pick a capability rather than
+    // re-judge whether the topic deserves a demo.
+    const request = await userApi.interpretAnimation({ chapterId: chapter, prompt: question, confirmed: true });
     const data = await userApi.simulateAnimation(request);
     animations.value = { ...animations.value, [replyId]: data };
     await scrollToLatest();
