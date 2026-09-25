@@ -140,7 +140,12 @@ describe("ChatView", () => {
     await flushPromises();
 
     expect(streamChat).toHaveBeenCalledTimes(1);
-    expect(interpretAnimation).toHaveBeenCalledWith(expect.objectContaining({ prompt: "什么是栈？", chapterId: "ch03" }));
+    // The demo is requested in the offer's own words, not by the bare question: a concept comparison
+    // ("栈和队列有什么区别？") rightly refuses a frame demo, but the offer names a concrete process.
+    expect(interpretAnimation).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: expect.stringContaining("动画演示入栈出栈"),
+      chapterId: "ch03",
+    }));
     expect(view.text()).toContain("入栈");
     view.unmount();
   });

@@ -108,7 +108,7 @@ async function send() {
     prompt.value = "";
     push("user", question);
     const offer = lastOfferingReply();
-    await runAnimation(offer?.question ?? lastRealQuestion() ?? question, offer?.id ?? 0);
+    await runAnimation(animationPrompt(offer!), offer!.id);
     return;
   }
 
@@ -201,13 +201,18 @@ function lastReplyOffersAnimation(): boolean {
   return lastOfferingReply() !== null;
 }
 
-/** The last question that was actually a question, so "好的" never becomes the animation prompt. */
-function lastRealQuestion(): string | null {
-  for (let index = messages.value.length - 1; index >= 0; index--) {
-    const message = messages.value[index];
-    if (message.role === "user" && !isYes(message.content)) return message.content;
-  }
-  return null;
+/**
+ * What the interpret endpoint should read for this reply's demo.
+ *
+ * The bare question can be a concept comparison ("栈和队列有什么区别？") that rightly refuses a
+ * frame-by-frame demo, while the offer the model just made names the concrete process ("栈的进栈出栈
+ * 过程"). Question plus offer reads as one request, and the engine decides.
+ */
+function animationPrompt(message: ConversationMessage): string {
+  const question = message.question ?? "";
+  const sentences = message.content.split(/(?<=[。！？!?])/).map((item) => item.trim()).filter(Boolean);
+  const offer = [...sentences].reverse().find((item) => /动画|演示/.test(item));
+  return offer ? `${question} ${offer}`.trim() : question || message.content;
 }
 
 /**
@@ -396,7 +401,7 @@ function renderAnswer(raw: string): string {
                   class="message__action"
                   type="button"
                   :disabled="animationBusy"
-                  @click="runAnimation(message.question ?? message.content, message.id)"
+                  @click="runAnimation(animationPrompt(message), message.id)"
                 >
                   {{ animationBusy ? t("chat.animationBusy") : t("chat.watchAnimation") }}
                 </button>
