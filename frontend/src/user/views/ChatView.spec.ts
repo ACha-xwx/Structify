@@ -85,7 +85,7 @@ describe("ChatView", () => {
     view.unmount();
   });
 
-  it("assembles a streamed answer from the deltas and keeps the evidence", async () => {
+  it("assembles a streamed answer from the deltas and shows nothing about where it came from", async () => {
     const source = { id: "1", chapterId: "ch03", title: "栈的定义", content: "…", source: "教材", pageLabel: "第 41 页", score: 0.9, evidenceHash: "h1" };
     streamChat.mockImplementation(async () => ({
       kind: "sse",
@@ -104,7 +104,8 @@ describe("ChatView", () => {
 
     expect(view.text()).toContain("什么是栈？");
     expect(view.text()).toContain("栈是受限的线性表。");
-    expect(view.text()).toContain("栈的定义");
+    expect(view.text()).not.toContain("栈的定义");
+    expect(view.text()).not.toContain("第 41 页");
     view.unmount();
   });
 

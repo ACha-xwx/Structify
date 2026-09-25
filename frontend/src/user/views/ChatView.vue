@@ -222,10 +222,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => controller?.abort());
 
-function evidenceLabel(source: ChatSource): string {
-  return source.pageLabel ? `${source.title} · ${source.pageLabel}` : source.title;
-}
-
 /**
  * The model answers in light markdown; the page renders the three shapes it actually uses and nothing
  * else. Escaping runs first, so every tag below is one this function wrote - the answer's own angle
@@ -289,15 +285,6 @@ function renderAnswer(raw: string): string {
               <p v-else class="message__body">{{ message.content }}</p>
               <p v-if="message.state === 'streaming' && !message.content" class="message__note">{{ t("chat.thinking") }}</p>
               <p v-else-if="message.state === 'stopped'" class="message__note">{{ t("chat.stopped") }}</p>
-
-              <div v-if="message.sources.length" class="evidence">
-                <p class="evidence__title">{{ t("chat.evidence") }}</p>
-                <ul class="evidence__list">
-                  <li v-for="source in message.sources" :key="source.evidenceHash" class="evidence__item">
-                    {{ evidenceLabel(source) }}
-                  </li>
-                </ul>
-              </div>
             </article>
           </div>
 
@@ -451,23 +438,6 @@ function renderAnswer(raw: string): string {
 .message__body :deep(strong) { font-weight: 700; }
 .message__body :deep(.answer__heading) { display: block; margin: 16px 0 6px; font-weight: 700; }
 .message__note { margin: 0; color: var(--text-muted); font-size: 19px; font-weight: 620; }
-
-/* Evidence is its own block, not loose lines under the answer: a dashed break, a plain-language
-   heading, then one pill per quoted page. */
-.evidence { margin-top: 2px; padding-top: 12px; border-top: 1px dashed color-mix(in srgb, var(--text) 20%, transparent); display: grid; gap: 10px; }
-.evidence__title { margin: 0; color: var(--text); font-size: 19px; font-weight: 700; }
-.evidence__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
-.evidence__item {
-  max-width: 100%;
-  padding: 8px 16px;
-  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface) 50%, transparent);
-  color: var(--text);
-  font-size: 19px;
-  font-weight: 620;
-  line-height: 1.4;
-}
 
 .compose { flex: 0 0 auto; display: grid; gap: 12px; padding-top: 14px; border-top: 1px solid var(--line); }
 

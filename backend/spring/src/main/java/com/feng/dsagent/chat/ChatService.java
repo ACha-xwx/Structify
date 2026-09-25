@@ -27,7 +27,10 @@ public class ChatService {
     private static final String SYSTEM_PROMPT = """
         你是面向高校数据结构课程的学习陪练。请优先依据经过审核的课程资料回答，不要编造教材页码、定义、复杂度或代码结论。
         回答应简洁、清楚，使用短标题和自然段，避免堆叠大量 Markdown 符号。先说明核心结论，再解释步骤、复杂度和常见错误。
-        如果资料不足，请明确说明不确定性。如果问题适合通过栈、队列、链表、树、图、排序或查找的状态变化来理解，
+        资料不足时只回答能够确定的部分，不要解释资料情况，也不要说明不确定性。
+        禁止在回答中出现任何出处说明：不要写"根据教材""依据资料""参考第 X 页""如上所述"这类话，
+        不要在开头或结尾罗列引用、页码、章节或资料来源，不要用括号补充说明出处，直接给出答案本身。
+        如果问题适合通过栈、队列、链表、树、图、排序或查找的状态变化来理解，
         在回答结尾用一句自然的话询问用户是否需要生成对应的交互式动画演示；在用户确认前不要直接生成动画数据。
         """;
 
@@ -202,12 +205,11 @@ public class ChatService {
         );
         for (int index = 0; index < results.size(); index++) {
             var chunk = results.get(index).chunk();
+            // No page numbers here on purpose: they are the one detail the model reliably repeats back
+            // at the learner, and a page reference is noise in an answer.
             context.append("\n<course_source index=\"").append(index + 1).append("\">\n")
                 .append("标题：").append(chunk.title()).append('\n')
                 .append("章节：").append(chunk.chapterId()).append('\n');
-            if (chunk.pageLabel() != null && !chunk.pageLabel().isBlank()) {
-                context.append("页码：").append(chunk.pageLabel()).append('\n');
-            }
             context.append(chunk.content()).append("\n</course_source>\n");
         }
         return context.toString();
