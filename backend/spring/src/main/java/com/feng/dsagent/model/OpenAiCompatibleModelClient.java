@@ -123,7 +123,7 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
         String apiKey = requiredApiKey();
         String payload = serialize(request, stream);
         HttpRequest.Builder builder = HttpRequest.newBuilder(endpoint())
-            .timeout(requestTimeout())
+            .timeout(stream ? streamHeadersTimeout() : requestTimeout())
             .header("Content-Type", "application/json")
             .header("Accept", stream ? "text/event-stream" : "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8));
@@ -297,6 +297,19 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
 
     private Duration requestTimeout() {
         return positiveDuration(properties.timeout(), Duration.ofSeconds(45));
+    }
+
+    /**
+     * The request timeout covers the wait for the response headers, and a streamed answer normally
+     * sends them in well under a second; the body has its own idle timeout after that. When the
+     * upstream stalls before its first byte, this bound turns the stall into a failed request inside
+     * the chat page's SSE emitter lifetime - the learner gets an error event instead of a connection
+     * that quietly dies with nothing ever written to it.
+     */
+    private Duration streamHeadersTimeout() {
+        Duration request = requestTimeout();
+        Duration bound = Duration.ofSeconds(20);
+        return request.compareTo(bound) < 0 ? request : bound;
     }
 
     private Duration streamIdleTimeout() {
