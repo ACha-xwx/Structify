@@ -7,12 +7,11 @@ import ConfirmDialog from "../../shared/components/ConfirmDialog.vue";
 import { useI18n } from "../../shared/i18n/locale";
 import AnimationPlayer from "../../animation/AnimationPlayer.vue";
 import type { DsvpSimulationResponse } from "../../shared/types/animation";
-import type { Chapter, ChatResponse, ChatSessionSummary, ChatSource } from "../../shared/types";
+import type { Chapter, ChatResponse, ChatSessionSummary, ChatSource, ChatTurn } from "../../shared/types";
 import { auth } from "../../app/providers/runtime";
 import { userApi } from "../runtime";
 import { ApiClientError } from "../../shared/api/client";
 import { chatErrorKey, deltaOf, doneOf, errorOf, sourcesOf } from "../chat-stream";
-import { isAffirmation } from "../affirmation";
 
 /**
  * Asking the course a question.
@@ -60,7 +59,14 @@ const animationBusy = ref(false);
 
 const ALL_CHAPTERS = "";
 const MAX_PROMPT = 4000;
-/** Short replies that mean "yes, show me" to an offer the model just made. */
+/**
+ * How long a reply may be and still be worth reading as an answer to an offer.
+ *
+ * This is a cost gate, not a verdict: whether the words agree is a question of meaning and the server
+ * asks the model. Nothing a learner can type is compared against a list here, because "包的",
+ * "o而k之" and next month's coinage are all the same yes, and no closed list holds them.
+ */
+const OFFER_REPLY_MAX = 40;
 
 let sequence = 0;
 let controller: AbortController | null = null;
@@ -106,18 +112,14 @@ function raise(title: string, message: string) {
 
 async function send() {
   const question = prompt.value.trim();
-  if (!question || streaming.value || tooLong.value) return;
+  // animationBusy covers the moment the server is reading a reply: sending into it would race it.
+  if (!question || streaming.value || animationBusy.value || tooLong.value) return;
 
-  // "好的" after an offer is not a new question - it is the learner taking the model up on the demo
-  // it just proposed. Answering it with another paragraph would spend quota and delay the animation.
-  if (isYes(question) && lastReplyOffersAnimation()) {
-    prompt.value = "";
-    push("user", question);
-    const offer = lastOfferingReply();
-    await runAnimation(animationPrompt(offer!), offer!.id);
-    return;
-  }
+  // An offer was just made, so this reply may be taking it up. Whether it does is read by the model
+  // on the server; a reply that is not an agreement comes back declined and is answered normally.
+  const offer = lastReplyOffersAnimation() && question.length <= OFFER_REPLY_MAX ? lastOfferingReply() : null;
 
+  // Taken before the question joins the thread, or the question would be sent twice.
   const history = messages.value
     .filter((item) => item.state === "complete" && item.content)
     .slice(-12)
@@ -125,6 +127,13 @@ async function send() {
 
   prompt.value = "";
   push("user", question);
+  await scrollToLatest();
+
+  if (offer && (await runAnimation(animationPrompt(offer), offer.id, question))) return;
+  await ask(question, history);
+}
+
+async function ask(question: string, history: ChatTurn[]) {
   const replyId = push("assistant", "", "streaming", question);
   phase.value = "streaming";
   controller = new AbortController();
@@ -189,10 +198,6 @@ function stop() {
   controller?.abort();
 }
 
-function isYes(text: string): boolean {
-  return isAffirmation(text);
-}
-
 /** The reply that ended with an offer to show the animation. */
 function lastOfferingReply(): ConversationMessage | null {
   for (let index = messages.value.length - 1; index >= 0; index--) {
@@ -227,26 +232,41 @@ function animationPrompt(message: ConversationMessage): string {
  * The sentence goes to the same interpret endpoint the animation lab uses, so the model only picks a
  * capability and the local engine computes the frames - the demo can be the wrong one but never an
  * invented one.
+ *
+ * With `reply` the server also reads the learner's own words: it answers with the demo when they were
+ * taking the offer up, and with ANIMATION_DECLINED when they were not. False means "this was not an
+ * agreement, answer it as the question it is"; true means the turn is spent, one way or the other.
  */
-async function runAnimation(question: string, replyId: number) {
+async function runAnimation(question: string, replyId: number, reply?: string): Promise<boolean> {
   const chapter = chapterId.value || chapters.value[0]?.id || "";
   if (!chapter || !question) {
     raise(t("chat.animationFailedTitle"), t("chat.animationUnavailable"));
-    return;
+    return true;
   }
   animationBusy.value = true;
   try {
-    // confirmed: the learner already said yes, so the interpreter must pick a capability rather than
-    // re-judge whether the topic deserves a demo.
-    const request = await userApi.interpretAnimation({ chapterId: chapter, prompt: question, confirmed: true });
+    // Without a reply the learner pressed the button, so the yes is already given and the interpreter
+    // must pick a capability rather than re-judge whether the topic deserves a demo.
+    const request = await userApi.interpretAnimation(reply
+      ? { chapterId: chapter, prompt: question, reply }
+      : { chapterId: chapter, prompt: question, confirmed: true });
     const data = await userApi.simulateAnimation(request);
     animations.value = { ...animations.value, [replyId]: data };
     await scrollToLatest();
+    return true;
   } catch (cause) {
+    // Not an agreement is the one failure that is not a failure: the words were a question.
+    if (isDeclined(cause)) return false;
     raise(t("chat.animationFailedTitle"), animationFailure(cause));
+    return true;
   } finally {
     animationBusy.value = false;
   }
+}
+
+/** The server read the reply and found no agreement in it. */
+function isDeclined(cause: unknown): boolean {
+  return cause instanceof ApiClientError && cause.code === "ANIMATION_DECLINED";
 }
 
 /** The engine refuses in plain Chinese; anything that still reads like machinery gets replaced. */

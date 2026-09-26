@@ -81,7 +81,12 @@ export interface UserApi {
   coursewareImageUrl(slideId: string): string;
   generateAnimation(input: { prompt: string; preferredType?: string; chapterId?: string }): Promise<AnimationResponse>;
   simulateAnimation(input: DsvpRequest): Promise<DsvpSimulationResponse>;
-  interpretAnimation(input: {chapterId: string; prompt?: string; currentRequest?: DsvpRequest; confirmed?: boolean}): Promise<DsvpRequest>;
+  /**
+   * `reply` is the learner's own answer to an offer the previous reply made. The server reads what it
+   * means — no word list on this side can keep up with "包的" and the next coinage — and answers with
+   * the demo or with ANIMATION_DECLINED.
+   */
+  interpretAnimation(input: {chapterId: string; prompt?: string; currentRequest?: DsvpRequest; confirmed?: boolean; reply?: string}): Promise<DsvpRequest>;
   /**
    * Turns an explicitly chosen capability plus arguments into an executable DSVP request. The local
    * deterministic engine does the work, so this never consumes model quota.

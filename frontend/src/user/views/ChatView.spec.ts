@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
+import { ApiClientError } from "../../shared/api/client";
 import ChatView from "./ChatView.vue";
 
 const listChapters = vi.fn();
@@ -145,34 +146,67 @@ describe("ChatView", () => {
     expect(interpretAnimation).toHaveBeenCalledWith(expect.objectContaining({
       prompt: expect.stringContaining("动画演示入栈出栈"),
       chapterId: "ch03",
+      reply: "好的",
     }));
     expect(view.text()).toContain("入栈");
     view.unmount();
   });
 
   /**
-   * "okok" burned a learner once: the yes-words were matched whole, so the doubled spelling fell
-   * through to a fresh question and its 20s timeout dialog. Repeated yes-words still mean yes.
+   * Agreement is a question of meaning, not of spelling. "okok" burned a learner once when the yes
+   * words were matched whole; "包的" and "o而k之" would burn the next one. None of these are compared
+   * against anything on this side - they go to the server as the learner wrote them.
    */
-  it("reads a doubled yes like okok as taking the offer, not as a new question", async () => {
-    const answer = "单链表查找要从头结点挨个往后找。要不要我帮你生成一个单链表查找过程的交互式动画演示？";
+  it.each(["okok", "包的", "o而k之", "整一个", "why not", "👍", "好嘞好嘞"])(
+    "sends the learner's own words (%s) to be read instead of matching a list here",
+    async (reply) => {
+      const answer = "单链表查找要从头结点挨个往后找。要不要我帮你生成一个单链表查找过程的交互式动画演示？";
+      streamChat.mockImplementation(async () => ({
+        kind: "sse",
+        stream: null,
+        events: stream([{ event: "done", parsed: { answer, sessionId: "s1", sources: [], persisted: true } }])(),
+      }));
+      interpretAnimation.mockResolvedValue({ structure: "singly-linked-list", operation: "search" });
+
+      const view = mountView();
+      await flushPromises();
+      await ask(view, "单链表查找我不会");
+      await ask(view, reply);
+      await flushPromises();
+
+      expect(streamChat).toHaveBeenCalledTimes(1);
+      expect(interpretAnimation).toHaveBeenCalledWith(expect.objectContaining({ reply }));
+      // No fresh question, no failure dialog - the offer simply becomes the demo.
+      expect(document.body.textContent).not.toContain("操作失败");
+      view.unmount();
+    },
+  );
+
+  /**
+   * The other half of reading the reply: "那队列呢？" is a new question wearing the same short shape,
+   * and the server saying declined has to answer it rather than fail.
+   */
+  it("answers the reply as a question when the server reads no agreement in it", async () => {
+    const answer = "栈是后进先出的线性表。需要我用动画演示入栈出栈的过程吗？";
     streamChat.mockImplementation(async () => ({
       kind: "sse",
       stream: null,
       events: stream([{ event: "done", parsed: { answer, sessionId: "s1", sources: [], persisted: true } }])(),
     }));
-    interpretAnimation.mockResolvedValue({ structure: "singly-linked-list", operation: "search" });
+    interpretAnimation.mockRejectedValue(new ApiClientError({
+      status: 400, code: "ANIMATION_DECLINED", message: "学生在问队列，不是答应看演示", requestId: "r1", details: [],
+    }));
 
     const view = mountView();
     await flushPromises();
-    await ask(view, "单链表查找我不会");
-    await ask(view, "okok");
+    await ask(view, "什么是栈？");
+    await ask(view, "那队列呢");
     await flushPromises();
 
-    expect(streamChat).toHaveBeenCalledTimes(1);
-    expect(interpretAnimation).toHaveBeenCalledWith(expect.objectContaining({ confirmed: true }));
-    // No fresh question, no failure dialog - the offer simply becomes the demo.
+    expect(interpretAnimation).toHaveBeenCalledWith(expect.objectContaining({ reply: "那队列呢" }));
+    expect(streamChat).toHaveBeenCalledTimes(2);
     expect(document.body.textContent).not.toContain("操作失败");
+    expect(view.text()).toContain("那队列呢");
     view.unmount();
   });
 
