@@ -61,6 +61,14 @@ public class ChatController {
         rateLimiter.check(userId, servletRequest.getRemoteAddr());
         chat.requireFormalAuthentication(userId);
         SseEmitter emitter = new SseEmitter(70_000L);
+        // Commit the response headers now with an SSE comment (clients ignore ":" lines). Without it
+        // the headers wait for the first real event - retrieval plus the model's first token - and a
+        // slow model day reads to the browser as a network timeout of its own client clock.
+        try {
+            emitter.send(SseEmitter.event().comment("connected"));
+        } catch (IOException neverBeforeAsyncStart) {
+            // Cannot happen before the emitter is returned; nothing to unwind yet.
+        }
         AtomicBoolean closed = new AtomicBoolean();
         AtomicBoolean finished = new AtomicBoolean();
         AtomicReference<Thread> worker = new AtomicReference<>();
