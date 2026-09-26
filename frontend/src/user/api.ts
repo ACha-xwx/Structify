@@ -140,7 +140,7 @@ export function createUserApi(client: { request: UserRequest }): UserApi {
     },
     async chat(input) { return jsonData(await request<ChatResponse>("/chat", { method: "POST", body: input })); },
     async streamChat(input, signal) {
-      const response = await request("/chat/stream", { method: "POST", body: input, signal, responseType: "sse" });
+      const response = await request("/chat/stream", { method: "POST", body: input, signal, responseType: "sse", timeoutMs: 60_000 });
       if (response.kind !== "sse") throw new Error("接口未返回 SSE 数据流");
       return response;
     },
@@ -162,7 +162,8 @@ export function createUserApi(client: { request: UserRequest }): UserApi {
     coursewareImageUrl(slideId) { return `/api/v1/presentation/slides/${encoded(slideId)}/image`; },
     async generateAnimation(input) { return jsonData(await request<AnimationResponse>("/animations/generate", { method: "POST", body: input })); },
     async simulateAnimation(input) { return jsonData(await request<DsvpSimulationResponse>("/animations/simulate", { method: "POST", body: input })); },
-    async interpretAnimation(input) { return jsonData(await request<DsvpRequest>("/animations/interpret", { method: "POST", body: input })); },
+    // The interpreter runs one synchronous model call; the default 20s clock is a bad bet for it.
+    async interpretAnimation(input) { return jsonData(await request<DsvpRequest>("/animations/interpret", { method: "POST", body: input, timeoutMs: 90_000 })); },
     async planAnimation(input) { return jsonData(await request<DsvpResolution>("/animations/plan", { method: "POST", body: input })); },
     async saveObservation(animationId, input) { return jsonData(await request<AnimationObservation>(`/animations/${encoded(animationId)}/observations`, { method: "POST", body: input })); },
     async runCode(input) { return jsonData(await request<CodeRunResponse>("/code/runs", { method: "POST", body: input })); },

@@ -283,6 +283,7 @@ export const messages = {
   "chat.error.tooLong": { zh: "问题太长了，请缩短后再问。", en: "That question is too long. Shorten it and ask again." },
   "chat.error.empty": { zh: "先写出你要问的问题。", en: "Write the question first." },
   "chat.error.failed": { zh: "这次回答没能完成，请再试一次。", en: "This answer did not come through. Try again." },
+  "chat.error.timeout": { zh: "等了一会儿没回应，再试一次。", en: "No answer came back in time. Try again." },
 
   /** The two error screens. */
   "common.backToHome": { zh: "返回首页", en: "Back to home" },

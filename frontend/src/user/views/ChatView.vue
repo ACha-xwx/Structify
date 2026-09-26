@@ -10,7 +10,9 @@ import type { DsvpSimulationResponse } from "../../shared/types/animation";
 import type { Chapter, ChatResponse, ChatSessionSummary, ChatSource } from "../../shared/types";
 import { auth } from "../../app/providers/runtime";
 import { userApi } from "../runtime";
+import { ApiClientError } from "../../shared/api/client";
 import { chatErrorKey, deltaOf, doneOf, errorOf, sourcesOf } from "../chat-stream";
+import { isAffirmation } from "../affirmation";
 
 /**
  * Asking the course a question.
@@ -59,7 +61,6 @@ const animationBusy = ref(false);
 const ALL_CHAPTERS = "";
 const MAX_PROMPT = 4000;
 /** Short replies that mean "yes, show me" to an offer the model just made. */
-const YES = /^(好的|好|好啊|要|想要|想看|看看|看一下|看|来一个|来|演示|演示一下|演示一下吧|可以|行|嗯|是的|当然|ok|okay|yes|yeah|yep|sure|go ahead|show me|do it|please)$/i;
 
 let sequence = 0;
 let controller: AbortController | null = null;
@@ -90,7 +91,12 @@ async function scrollToLatest() {
   if (thread) thread.scrollTop = thread.scrollHeight;
 }
 
+function isTimeout(cause: unknown): boolean {
+  return cause instanceof ApiClientError && cause.code === "NETWORK_TIMEOUT";
+}
+
 function failureMessage(cause: unknown): string {
+  if (isTimeout(cause)) return t("chat.error.timeout");
   return cause instanceof Error && cause.message ? cause.message : t("common.failed");
 }
 
@@ -184,7 +190,7 @@ function stop() {
 }
 
 function isYes(text: string): boolean {
-  return YES.test(text.replace(/[\s，。！？,.!?~～]/g, ""));
+  return isAffirmation(text);
 }
 
 /** The reply that ended with an offer to show the animation. */
@@ -245,8 +251,9 @@ async function runAnimation(question: string, replyId: number) {
 
 /** The engine refuses in plain Chinese; anything that still reads like machinery gets replaced. */
 function animationFailure(cause: unknown): string {
+  if (isTimeout(cause)) return t("chat.error.timeout");
   const message = cause instanceof Error ? cause.message : "";
-  if (!message || /未匹配|capability|DSVP|status|ANIMATION_|resolve/i.test(message)) {
+  if (!message || /未匹配|capability|DSVP|status|ANIMATION_|resolve|No response within/i.test(message)) {
     return t("chat.animationUnavailable");
   }
   return message;

@@ -150,6 +150,32 @@ describe("ChatView", () => {
     view.unmount();
   });
 
+  /**
+   * "okok" burned a learner once: the yes-words were matched whole, so the doubled spelling fell
+   * through to a fresh question and its 20s timeout dialog. Repeated yes-words still mean yes.
+   */
+  it("reads a doubled yes like okok as taking the offer, not as a new question", async () => {
+    const answer = "单链表查找要从头结点挨个往后找。要不要我帮你生成一个单链表查找过程的交互式动画演示？";
+    streamChat.mockImplementation(async () => ({
+      kind: "sse",
+      stream: null,
+      events: stream([{ event: "done", parsed: { answer, sessionId: "s1", sources: [], persisted: true } }])(),
+    }));
+    interpretAnimation.mockResolvedValue({ structure: "singly-linked-list", operation: "search" });
+
+    const view = mountView();
+    await flushPromises();
+    await ask(view, "单链表查找我不会");
+    await ask(view, "okok");
+    await flushPromises();
+
+    expect(streamChat).toHaveBeenCalledTimes(1);
+    expect(interpretAnimation).toHaveBeenCalledWith(expect.objectContaining({ confirmed: true }));
+    // No fresh question, no failure dialog - the offer simply becomes the demo.
+    expect(document.body.textContent).not.toContain("操作失败");
+    view.unmount();
+  });
+
   it("builds the animation when the learner presses the button under an answer", async () => {
     streamChat.mockImplementation(async () => ({
       kind: "sse",
