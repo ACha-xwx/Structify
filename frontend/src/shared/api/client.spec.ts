@@ -67,4 +67,52 @@ describe("API 客户端公共边界", () => {
     await expect(next).resolves.toEqual({ done: true, value: undefined });
     expect(canceled).toBe(true);
   });
+
+  it("把一直不响应的请求报成 NETWORK_TIMEOUT，而不是永远等下去", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    );
+    const client = createApiClient({ fetcher });
+
+    await expect(client.request("/code/library", { timeoutMs: 10 })).rejects.toMatchObject({
+      code: "NETWORK_TIMEOUT",
+      status: 0,
+    });
+  });
+
+  it("响应头到齐后停表：慢的响应体不会被超时掐断", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          setTimeout(
+            () => resolve(new Response('{"ok":true}', { status: 200, headers: { "content-type": "application/json" } })),
+            30,
+          );
+        }),
+    );
+    const client = createApiClient({ fetcher });
+
+    await expect(client.request("/code/samples", { timeoutMs: 10 })).resolves.toMatchObject({
+      kind: "json",
+      status: 200,
+    });
+  });
+
+  it("调用方自己的 abort 仍然按取消处理，不冒充超时", async () => {
+    const controller = new AbortController();
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+        }),
+    );
+    const client = createApiClient({ fetcher });
+    const pending = client.request("/code/library", { signal: controller.signal, timeoutMs: 5000 });
+
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  });
 });

@@ -121,10 +121,14 @@ services:
   spring-api:
     image: ${SPRING_IMAGE:?set immutable SPRING_IMAGE release tag}
     build:
-      context: ../backend/spring
+      # The context is backend/ so the image can carry the DSVP engine that the
+      # API launches as a child process. See backend/.dockerignore.
+      context: ../backend
+      dockerfile: spring/Dockerfile
       args:
         JAVA_BUILD_IMAGE: ${JAVA_BUILD_IMAGE:-eclipse-temurin:21-jdk}
         JAVA_RUNTIME_IMAGE: ${JAVA_RUNTIME_IMAGE:-eclipse-temurin:21-jre}
+        NODE_RUNTIME_IMAGE: ${NODE_BASE_IMAGE:-node:22-bookworm-slim}
     restart: unless-stopped
     init: true
     mem_limit: ${SPRING_MEMORY_LIMIT:-320m}
@@ -142,6 +146,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set a strong JWT_SECRET}
       NODE_COMPAT_ENABLED: ${NODE_COMPAT_ENABLED:-true}
       NODE_COMPAT_JWT_SECRET: ${NODE_COMPAT_JWT_SECRET:?set a strong NODE_COMPAT_JWT_SECRET}
+      # Baked into the image at /dsvp by backend/spring/Dockerfile.
+      DSVP_ENGINE_SCRIPT: /dsvp/dsvp-service.js
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?set CORS_ALLOWED_ORIGINS}
       AUTH_TOKEN_ISSUER: ${AUTH_TOKEN_ISSUER:-structify.cn}
       AUTH_TOKEN_TTL: ${AUTH_TOKEN_TTL:-PT2H}
@@ -168,6 +174,15 @@ services:
       KNOWLEDGE_DIR: /app/private/knowledge
       KNOWLEDGE_AUTO_PUBLISH_LOCAL: "false"
       RESOURCE_DIR: /app/private/course-content
+      # The classroom's slide pane and the deck browser are served by this service, so it mounts the
+      # rendered courseware the same way the compatibility server does. Without this the catalog
+      # reports ready:false and every lesson answers with an empty slide list.
+      PRESENTATION_DIR: /app/private/presentation-materials
+      # Per-page courseware annotations (section/role/terms) built by scripts/build-slide-annotations.mjs.
+      # Without them the spine's textbook evidence degrades to lesson-level matching and model answers are
+      # rejected far more often, which is what used to leave stretches of a lesson narrated by the local
+      # fallback instead of the teacher's voice.
+      APP_PRESENTATION_ANNOTATIONS: /app/annotations/slides.annotations.json
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_CONNECT_HOST: ${SMTP_CONNECT_HOST:-}
       SMTP_TLS_SERVERNAME: ${SMTP_TLS_SERVERNAME:-}
@@ -189,13 +204,23 @@ services:
       EXECUTE_CODE_MAX_LENGTH: ${EXECUTE_CODE_MAX_LENGTH:-20000}
       EXECUTE_INPUT_MAX_LENGTH: ${EXECUTE_INPUT_MAX_LENGTH:-12000}
       EXECUTE_OUTPUT_MAX_LENGTH: ${EXECUTE_OUTPUT_MAX_LENGTH:-6000}
-      EXECUTE_MAX_CONCURRENT: ${EXECUTE_MAX_CONCURRENT:-4}
-      EXECUTE_MAX_CONCURRENT_PER_CLIENT: ${EXECUTE_MAX_CONCURRENT_PER_CLIENT:-1}
+      EXECUTE_MAX_CONCURRENT: ${EXECUTE_MAX_CONCURRENT:-16}
+      EXECUTE_MAX_CONCURRENT_PER_CLIENT: ${EXECUTE_MAX_CONCURRENT_PER_CLIENT:-8}
       EXECUTE_COMPILE_TIMEOUT_MS: ${EXECUTE_COMPILE_TIMEOUT_MS:-10000}
       EXECUTE_RUN_TIMEOUT_MS: ${EXECUTE_RUN_TIMEOUT_MS:-3000}
+      # The interactive console runs learner programs in this container, so it stays off unless the
+      # host has turned it on (and the image ships a compiler).
+      SANDBOX_ENABLED: ${SANDBOX_ENABLED:-false}
+      SANDBOX_WORK_DIRECTORY: ${SANDBOX_WORK_DIRECTORY:-}
+      SANDBOX_MAX_SESSIONS: ${SANDBOX_MAX_SESSIONS:-32}
+      SANDBOX_IDLE_TIMEOUT_SECONDS: ${SANDBOX_IDLE_TIMEOUT_SECONDS:-180}
+      SANDBOX_LIFETIME_SECONDS: ${SANDBOX_LIFETIME_SECONDS:-900}
     volumes:
       - ${KNOWLEDGE_DIR_HOST:?set KNOWLEDGE_DIR_HOST}:/app/private/knowledge:ro
       - ${RESOURCE_DIR_HOST:?set RESOURCE_DIR_HOST}:/app/private/course-content:ro
+      - ${PRESENTATION_DIR_HOST:?set PRESENTATION_DIR_HOST}:/app/private/presentation-materials:ro
+      # Relative to the compose file, so it points into the release tree that ships the file.
+      - ${PRESENTATION_ANNOTATIONS_HOST:-../private/presentation-annotations/slides.annotations.json}:/app/annotations/slides.annotations.json:ro
     ports:
       - 127.0.0.1:${SPRING_HOST_PORT:-18792}:8792
     expose:
@@ -203,6 +228,9 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=128m,mode=1777
+      # The interactive console compiles and runs here. A docker tmpfs is noexec by default, so the
+      # exec option is what makes a compiled program runnable at all.
+      - /app/sandbox-work:size=64m,mode=1777,exec
     cap_drop:
       - ALL
     security_opt:

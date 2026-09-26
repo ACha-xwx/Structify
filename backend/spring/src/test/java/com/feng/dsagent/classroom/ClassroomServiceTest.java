@@ -1,243 +1,233 @@
 package com.feng.dsagent.classroom;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.learning.LearningEventRepository;
-import com.feng.dsagent.learning.LearningEventService;
-import com.feng.dsagent.learning.LearningEventView;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
+@SpringBootTest
+@Transactional
 class ClassroomServiceTest {
-
-    private final FakeClassroomRepository repository = new FakeClassroomRepository();
-    private final FakeLearningEventRepository learningEvents = new FakeLearningEventRepository();
-    private final ClassroomService service = new ClassroomService(
-        repository,
-        new ClassroomStateMachine(),
-        new ClassroomScriptParser(new ObjectMapper()),
-        new ClassroomAnswerEvaluator(),
-        new LearningEventService(learningEvents, new ObjectMapper())
-    );
-
-    @Test
-    void createsSessionFromPublishedScriptAtOpeningStage() {
-        repository.scripts.put("stack-script", script());
-
-        ClassroomSessionView session = service.create(7, "stack-script");
-
-        assertThat(session.userId()).isEqualTo(7);
-        assertThat(session.state()).isEqualTo(ClassroomState.OPENING);
-        assertThat(session.paused()).isFalse();
-        assertThat(session.stage().path("content").asText()).isEqualTo("欢迎进入栈与队列课堂");
-        assertThat(repository.sessions).containsKey(session.id());
-    }
-
-    @Test
-    void recordsStudentAnswerAndMovesWaitingSessionToDiscussion() {
-        repository.scripts.put("stack-script", script());
-        ClassroomSessionView created = service.create(7, "stack-script");
-        repository.sessions.put(created.id(), new ClassroomSessionRecord(
-            created.id(), 7, "stack-script", "03-stack-queue", ClassroomState.WAITING, false, null,
-            script().scriptJson()
-        ));
-
-        ClassroomSessionView updated = service.apply(
-            7,
-            created.id(),
-            ClassroomAction.ANSWER,
-            "栈是后进先出"
-        );
-
-        assertThat(updated.state()).isEqualTo(ClassroomState.DISCUSS);
-        assertThat(updated.answerEvaluation().status()).isEqualTo(ClassroomAnswerStatus.INCORRECT);
-        assertThat(repository.events).singleElement().satisfies(event -> {
-            assertThat(event.content()).isEqualTo("栈是后进先出");
-            assertThat(event.fromState()).isEqualTo(ClassroomState.WAITING);
-            assertThat(event.toState()).isEqualTo(ClassroomState.DISCUSS);
-            assertThat(event.answerEvaluation().status()).isEqualTo(ClassroomAnswerStatus.INCORRECT);
-        });
-        assertThat(learningEvents.saved).singleElement().satisfies(event -> {
-            assertThat(event.eventType()).isEqualTo("CLASSROOM_ANSWER");
-            assertThat(event.chapterId()).isEqualTo("03-stack-queue");
-            assertThat(event.referenceId()).isEqualTo(created.id());
-            assertThat(event.payloadJson()).contains("INCORRECT", "栈是后进先出");
+    @Autowired ClassroomService service;
+    @Autowired JdbcTemplate jdbc;
+    @Autowired ObjectMapper mapper;
+    @MockitoBean ClassroomModelJson model;
+    final long user = 8911L;
+    @BeforeEach void setup() {
+        jdbc.update("INSERT INTO users (id,email,password_hash) VALUES (?, 'timeline-test@example.com','hash')", user);
+        jdbc.update("""
+            INSERT INTO classroom_scripts (id,chapter_id,title,review_status,script_json) VALUES
+            ('timeline-test','03-stack-queue','完整课堂','PUBLISHED',?)
+            """, """
+            {"lessonId":"test","title":"完整课堂","steps":[
+            {"type":"explain","role":"teacher","content":"讲解 A"},
+            {"type":"question","prompt":"第一个问题","expected":["参考答案 A"]},
+            {"type":"explain","role":"teacher","content":"讲解 B"},
+            {"type":"question","prompt":"第二个问题","expected":["参考答案 B"]},
+            {"type":"blackboard","content":"过程演示"},
+            {"type":"summary","content":"完整总结"}]}
+            """);
+        when(model.generate(anyLong(), anyString(), anyString(), anyInt(), any())).thenAnswer(call -> {
+            String system = call.getArgument(1);
+            return mapper.readTree(system.contains("语义判断")
+                ? "{\"status\":\"CORRECT\",\"feedback\":\"同义表达正确\",\"misconception\":null}"
+                : "{\"feedback\":\"先直接回答你的插问\"}");
         });
     }
-
-    @Test
-    void correctAnswerSkipsMisconceptionDiscussionAndMovesToBlackboard() {
-        repository.scripts.put("stack-script", stepScript());
-        ClassroomSessionView created = service.create(7, "stack-script");
-        repository.sessions.put(created.id(), new ClassroomSessionRecord(
-            created.id(), 7, "stack-script", "03-stack-queue", ClassroomState.WAITING, false, null,
-            stepScript().scriptJson()
-        ));
-
-        ClassroomSessionView updated = service.apply(7, created.id(), ClassroomAction.ANSWER, "C");
-
-        assertThat(updated.state()).isEqualTo(ClassroomState.BLACKBOARD);
-        assertThat(updated.answerEvaluation().status()).isEqualTo(ClassroomAnswerStatus.CORRECT);
+    @Test void preservesAllStepsAndBothQuestions() {
+        String id = service.create(user, "timeline-test").id();
+        assertThat(service.get(user,id).state()).isEqualTo(ClassroomState.OPENING);
+        assertThat(service.apply(user,id,ClassroomAction.CONTINUE,null).stage().path("content").asText()).isEqualTo("讲解 A");
+        assertThat(service.apply(user,id,ClassroomAction.CONTINUE,null).stage().path("prompt").asText()).isEqualTo("第一个问题");
+        assertThat(service.get(user,id).stage().has("expected")).isFalse();
+        service.apply(user,id,ClassroomAction.ANSWER,"我用同义表达回答");
+        assertThat(service.get(user,id).answerEvaluation().feedback()).isEqualTo("同义表达正确");
+        assertThat(service.apply(user,id,ClassroomAction.CONTINUE,null).stage().path("content").asText()).isEqualTo("讲解 B");
+        assertThat(service.apply(user,id,ClassroomAction.CONTINUE,null).stage().path("prompt").asText()).isEqualTo("第二个问题");
+        service.apply(user,id,ClassroomAction.ANSWER,"第二个答案");
+        assertThat(service.apply(user,id,ClassroomAction.CONTINUE,null).state()).isEqualTo(ClassroomState.BLACKBOARD);
+        assertThat(service.apply(user,id,ClassroomAction.CONTINUE,null).state()).isEqualTo(ClassroomState.SUMMARY);
+        verify(model,times(2)).generate(eq(user),anyString(),anyString(),anyInt(),any());
     }
-
-    @Test
-    void hidesSessionsOwnedByAnotherUser() {
-        repository.scripts.put("stack-script", script());
-        ClassroomSessionView created = service.create(7, "stack-script");
-
-        assertThatThrownBy(() -> service.get(8, created.id()))
-            .isInstanceOfSatisfying(ApiException.class, error -> {
-                assertThat(error.status()).isEqualTo(HttpStatus.NOT_FOUND);
-                assertThat(error.code()).isEqualTo("CLASSROOM_SESSION_NOT_FOUND");
-            });
+    @Test void questionResponseSurvivesRefreshAndReturnsToSameWaitingQuestion() {
+        String id = service.create(user,"timeline-test").id();
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        ClassroomSessionView response = service.apply(user,id,ClassroomAction.ASK,"请重新解释一下");
+        assertThat(response.stage().path("teacherResponse").path("feedback").asText()).contains("插问");
+        assertThat(service.get(user,id).stage()).isEqualTo(response.stage());
+        ClassroomSessionView resumed = service.apply(user,id,ClassroomAction.CONTINUE,null);
+        assertThat(resumed.state()).isEqualTo(ClassroomState.WAITING);
+        assertThat(resumed.stage().path("stepIndex").asInt()).isEqualTo(1);
+        assertThat(resumed.stage().has("teacherResponse")).isFalse();
+        assertThatThrownBy(() -> service.apply(user,id,ClassroomAction.CONTINUE,null)).isInstanceOf(ApiException.class);
     }
-
-    @Test
-    void mapsIllegalStateTransitionToConflictResponse() {
-        repository.scripts.put("stack-script", script());
-        ClassroomSessionView created = service.create(7, "stack-script");
-
-        assertThatThrownBy(() -> service.apply(7, created.id(), ClassroomAction.ANSWER, "too early"))
-            .isInstanceOfSatisfying(ApiException.class, error -> {
-                assertThat(error.status()).isEqualTo(HttpStatus.CONFLICT);
-                assertThat(error.code()).isEqualTo("CLASSROOM_ACTION_INVALID");
-            });
+    @Test void midLessonSummaryStepDoesNotEndTheLesson() {
+        jdbc.update("""
+            INSERT INTO classroom_scripts (id,chapter_id,title,review_status,script_json) VALUES
+            ('timeline-mid-summary','03-stack-queue','中途小结','PUBLISHED',?)
+            """, """
+            {"lessonId":"test","title":"中途小结","steps":[
+            {"type":"explain","role":"teacher","content":"讲解 A"},
+            {"type":"summary","content":"小结 A"},
+            {"type":"explain","role":"teacher","content":"讲解 B"}]}
+            """);
+        String id = service.create(user, "timeline-mid-summary").id();
+        assertThat(service.apply(user, id, ClassroomAction.CONTINUE, null).stage().path("content").asText()).isEqualTo("讲解 A");
+        // A summary page of the deck reports the summary beat without ending the lesson: the next
+        // sub-lesson still has to be reachable, otherwise the rest of the courseware is stranded.
+        ClassroomSessionView summary = service.apply(user, id, ClassroomAction.CONTINUE, null);
+        assertThat(summary.state()).isEqualTo(ClassroomState.SUMMARY);
+        assertThat(summary.stage().path("stepIndex").asInt()).isEqualTo(1);
+        assertThat(service.apply(user, id, ClassroomAction.CONTINUE, null).stage().path("content").asText()).isEqualTo("讲解 B");
+        // Only running past the last step ends the lesson.
+        ClassroomSessionView done = service.apply(user, id, ClassroomAction.CONTINUE, null);
+        assertThat(done.stage().path("stepIndex").asInt()).isEqualTo(3);
+        assertThatThrownBy(() -> service.apply(user, id, ClassroomAction.CONTINUE, null)).isInstanceOf(ApiException.class);
     }
-
-    private ClassroomScript script() {
-        return new ClassroomScript(
-            "stack-script",
-            "03-stack-queue",
-            "栈与队列互动课堂",
-            "1.0",
-            """
-                {
-                  "stages": {
-                    "OPENING": {"speaker":"teacher","content":"欢迎进入栈与队列课堂"},
-                    "DISCUSS": {"speaker":"classmate","content":"我们来比较这份答案"}
-                  }
-                }
-                """
-        );
+    @Test void aWrongAnswerKeepsTheQuestionUntilItIsAnsweredAgain() {
+        String id = service.create(user, "timeline-test").id();
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        when(model.generate(anyLong(),anyString(),anyString(),anyInt(),any()))
+            .thenReturn(mapper.readTree("{\"status\":\"INCORRECT\",\"feedback\":\"漏掉了右子树，再按中序看一遍\",\"misconception\":\"只考虑了左子树\"}"));
+        ClassroomSessionView wrong = service.apply(user,id,ClassroomAction.ANSWER,"只说了左子树");
+        // The question is not consumed: it stays open on the same step and is reported as unanswered,
+        // which is what stops CONTINUE from walking past it.
+        assertThat(wrong.state()).isEqualTo(ClassroomState.WAITING);
+        assertThat(wrong.answerEvaluation().status()).isEqualTo(ClassroomAnswerStatus.INCORRECT);
+        assertThat(wrong.stage().path("stepIndex").asInt()).isEqualTo(1);
+        assertThat(wrong.stage().path("teacherResponse").path("answered").asBoolean()).isFalse();
+        assertThat(wrong.stage().path("teacherResponse").path("retry").asBoolean()).isTrue();
+        assertThat(wrong.stage().path("teacherResponse").path("attempts").asInt()).isEqualTo(1);
+        assertThat(wrong.stage().path("teacherResponse").path("feedback").asText()).contains("中序");
+        // Answering the same open question again is accepted, and the attempt count follows along.
+        when(model.generate(anyLong(),anyString(),anyString(),anyInt(),any()))
+            .thenReturn(mapper.readTree("{\"status\":\"CORRECT\",\"feedback\":\"这次对了\",\"misconception\":null}"));
+        ClassroomSessionView correct = service.apply(user,id,ClassroomAction.ANSWER,"左子树、根结点、右子树");
+        assertThat(correct.state()).isEqualTo(ClassroomState.DISCUSS);
+        assertThat(correct.stage().path("teacherResponse").path("answered").asBoolean()).isTrue();
+        assertThat(correct.stage().path("teacherResponse").path("attempts").asInt()).isEqualTo(2);
+        // Only a passed question lets the lesson move on.
+        assertThat(service.apply(user,id,ClassroomAction.CONTINUE,null).stage().path("content").asText()).isEqualTo("讲解 B");
     }
-
-    private ClassroomScript stepScript() {
-        return new ClassroomScript(
-            "stack-script",
-            "03-stack-queue",
-            "栈与队列互动课堂",
-            "2.0",
-            """
-                {
-                  "lessonId":"03-stack-queue-01",
-                  "title":"栈的定义与基本操作",
-                  "objectives":["理解后进先出"],
-                  "steps":[
-                    {"type":"explain","role":"teacher","contentRef":"slide-03","animationRef":"stack-push"},
-                    {
-                      "type":"question",
-                      "role":"teacher",
-                      "prompt":"A、B、C 依次入栈后首先出栈的是谁？",
-                      "expected":["C"],
-                      "misconceptions":["A","B"]
-                    }
-                  ]
-                }
-                """
-        );
+    @Test void aHintKeepsTheQuestionOpenAndIsOfferedOnlyOnce() {
+        String id = service.create(user, "timeline-test").id();
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        when(model.generate(anyLong(),anyString(),anyString(),anyInt(),any()))
+            .thenReturn(mapper.readTree("{\"feedback\":\"先看它有没有孩子\"}"));
+        ClassroomSessionView hinted = service.apply(user,id,ClassroomAction.HINT,null);
+        // A hint is not an answer and not a move: the same question stays open on the same step, so the
+        // learner can still answer it, and CONTINUE still cannot walk past it.
+        assertThat(hinted.state()).isEqualTo(ClassroomState.WAITING);
+        assertThat(hinted.stage().path("stepIndex").asInt()).isEqualTo(1);
+        assertThat(hinted.stage().path("teacherResponse").path("hinted").asBoolean()).isTrue();
+        assertThat(hinted.stage().path("teacherResponse").path("answered").asBoolean()).isFalse();
+        assertThat(hinted.stage().path("teacherResponse").path("feedback").asText()).isEqualTo("先看它有没有孩子");
+        assertThat(service.apply(user,id,ClassroomAction.CONTINUE,null).stage().path("stepIndex").asInt()).isEqualTo(1);
+        // A second hint would be the answer in disguise; the way out from here is answering or skipping.
+        assertThatThrownBy(() -> service.apply(user,id,ClassroomAction.HINT,null)).isInstanceOf(ApiException.class);
     }
-
-    private static final class FakeClassroomRepository implements ClassroomRepository {
-        private final Map<String, ClassroomScript> scripts = new LinkedHashMap<>();
-        private final Map<String, ClassroomSessionRecord> sessions = new LinkedHashMap<>();
-        private final List<ClassroomEventRecord> events = new ArrayList<>();
-
-        @Override
-        public List<ClassroomScript> findPublishedScripts(String chapterId) {
-            return scripts.values().stream()
-                .filter(script -> chapterId == null || chapterId.equals(script.chapterId()))
-                .toList();
-        }
-
-        @Override
-        public Optional<ClassroomScript> findPublishedScript(String id) {
-            return Optional.ofNullable(scripts.get(id));
-        }
-
-        @Override
-        public ClassroomSessionRecord createSession(long userId, ClassroomScript script, ClassroomStatus status) {
-            String id = "session-" + (sessions.size() + 1);
-            ClassroomSessionRecord session = new ClassroomSessionRecord(
-                id, userId, script.id(), script.chapterId(), status.state(), status.paused(), null,
-                script.scriptJson()
-            );
-            sessions.put(id, session);
-            return session;
-        }
-
-        @Override
-        public Optional<ClassroomSessionRecord> findSession(String id, long userId) {
-            ClassroomSessionRecord session = sessions.get(id);
-            return session != null && session.userId() == userId ? Optional.of(session) : Optional.empty();
-        }
-
-        @Override
-        public ClassroomSessionRecord updateSession(
-            ClassroomSessionRecord session,
-            ClassroomStatus status,
-            String summary
-        ) {
-            ClassroomSessionRecord updated = new ClassroomSessionRecord(
-                session.id(), session.userId(), session.scriptId(), session.chapterId(), status.state(),
-                status.paused(), summary,
-                session.scriptJson()
-            );
-            sessions.put(session.id(), updated);
-            return updated;
-        }
-
-        @Override
-        public void appendEvent(ClassroomEventRecord event) {
-            events.add(event);
-        }
+    @Test void skippingResolvesTheQuestionWithinTheLessonBudget() {
+        String id = service.create(user, "timeline-test").id();
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        when(model.generate(anyLong(),anyString(),anyString(),anyInt(),any()))
+            .thenReturn(mapper.readTree("{\"feedback\":\"参考答案：根结点先访问，再递归左右子树\"}"));
+        ClassroomSessionView skipped = service.apply(user,id,ClassroomAction.SKIP,null);
+        // The question is resolved without an answer: the explanation stands in for it, the cursor has not
+        // moved (the learner reads it here), and the next step is free to take.
+        assertThat(skipped.state()).isEqualTo(ClassroomState.BLACKBOARD);
+        assertThat(skipped.stage().path("teacherResponse").path("skipped").asBoolean()).isTrue();
+        assertThat(skipped.stage().path("teacherResponse").path("answered").asBoolean()).isTrue();
+        assertThat(skipped.stage().path("teacherResponse").path("feedback").asText()).contains("根结点");
+        assertThat(skipped.stage().path("stepIndex").asInt()).isEqualTo(1);
+        assertThat(skipped.stage().path("skipsUsed").asInt()).isEqualTo(1);
+        assertThat(skipped.stage().path("skipLimit").asInt()).isEqualTo(3);
+        assertThat(service.apply(user,id,ClassroomAction.CONTINUE,null).stage().path("content").asText()).isEqualTo("讲解 B");
+        // Skipping is recorded, so a lesson's evidence can tell "did not know" from "skipped".
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM classroom_events WHERE session_id = ? AND action = 'SKIP'", Integer.class, id)).isEqualTo(1);
     }
-
-    private static final class FakeLearningEventRepository implements LearningEventRepository {
-        private final List<SavedLearningEvent> saved = new ArrayList<>();
-
-        @Override
-        public boolean isPublishedChapter(String chapterId) {
-            return "03-stack-queue".equals(chapterId);
-        }
-
-        @Override
-        public LearningEventView save(
-            long userId,
-            String eventType,
-            String chapterId,
-            String referenceId,
-            String payloadJson,
-            Instant createdAt
-        ) {
-            saved.add(new SavedLearningEvent(eventType, chapterId, referenceId, payloadJson));
-            return new LearningEventView(1L, eventType, chapterId, referenceId, createdAt);
-        }
+    @Test void anUnansweredQuestionCannotBeWalkedPast() {
+        String id = service.create(user, "timeline-test").id();
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        when(model.generate(anyLong(),anyString(),anyString(),anyInt(),any()))
+            .thenReturn(mapper.readTree("{\"status\":\"MISCONCEPTION\",\"feedback\":\"把中序和前序弄反了\",\"misconception\":\"中序/前序混淆\"}"));
+        service.apply(user,id,ClassroomAction.ANSWER,"前序遍历的结果");
+        // CONTINUE only clears the failed attempt and returns to the very same question: it never
+        // advances the cursor, so a wrong answer cannot carry the lesson forward.
+        ClassroomSessionView reopened = service.apply(user,id,ClassroomAction.CONTINUE,null);
+        assertThat(reopened.stage().path("stepIndex").asInt()).isEqualTo(1);
+        assertThat(reopened.state()).isEqualTo(ClassroomState.WAITING);
+        assertThat(reopened.stage().has("teacherResponse")).isFalse();
+        assertThatThrownBy(() -> service.apply(user,id,ClassroomAction.CONTINUE,null)).isInstanceOf(ApiException.class);
     }
-
-    private record SavedLearningEvent(
-        String eventType,
-        String chapterId,
-        String referenceId,
-        String payloadJson
-    ) {
+    @Test void aWrongAnswerOnTheLastStepDoesNotEndTheLesson() {
+        jdbc.update("""
+            INSERT INTO classroom_scripts (id,chapter_id,title,review_status,script_json) VALUES
+            ('timeline-last-question','03-stack-queue','末步提问','PUBLISHED',?)
+            """, """
+            {"lessonId":"test","title":"末步提问","steps":[
+            {"type":"explain","role":"teacher","content":"讲解 A"},
+            {"type":"question","prompt":"最后一个问题","expected":["参考答案"]}]}
+            """);
+        String id = service.create(user, "timeline-last-question").id();
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        when(model.generate(anyLong(),anyString(),anyString(),anyInt(),any()))
+            .thenReturn(mapper.readTree("{\"status\":\"INCORRECT\",\"feedback\":\"再想想\",\"misconception\":null}"));
+        ClassroomSessionView wrong = service.apply(user,id,ClassroomAction.ANSWER,"答错");
+        assertThat(wrong.state()).isEqualTo(ClassroomState.WAITING);
+        // The regression this guards: a wrong answer on the final step used to consume it, so the next
+        // CONTINUE ran the cursor past the end and reported the whole lesson as finished.
+        ClassroomSessionView again = service.apply(user,id,ClassroomAction.CONTINUE,null);
+        assertThat(again.state()).isEqualTo(ClassroomState.WAITING);
+        assertThat(again.stage().path("stepIndex").asInt()).isEqualTo(1);
+        assertThat(again.stage().path("stepCount").asInt()).isEqualTo(2);
+        assertThat(again.stage().path("content").asText()).isNotEqualTo("本课已结束。");
+    }
+    @Test void pausesAndEnforcesOwnership() {
+        String id = service.create(user,"timeline-test").id();
+        assertThatThrownBy(() -> service.get(user+1,id)).isInstanceOf(ApiException.class);
+        service.apply(user,id,ClassroomAction.PAUSE,null);
+        assertThatThrownBy(() -> service.apply(user,id,ClassroomAction.ASK,"问题")).isInstanceOf(ApiException.class);
+        service.apply(user,id,ClassroomAction.RESUME,null);
+        assertThat(service.apply(user,id,ClassroomAction.CONTINUE,null).stage().path("stepIndex").asInt()).isZero();
+    }
+    @Test void modelFailureDoesNotConsumeCurrentStep() {
+        String id = service.create(user,"timeline-test").id();
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        when(model.generate(anyLong(),anyString(),anyString(),anyInt(),any())).thenThrow(new IllegalStateException("model offline"));
+        assertThatThrownBy(() -> service.apply(user,id,ClassroomAction.ASK,"问题")).hasMessage("model offline");
+        assertThat(service.get(user,id).stage().path("stepIndex").asInt()).isZero();
+    }
+    @Test void rejectsReplayedNextWithoutConsumingAnotherStep() {
+        String id = service.create(user,"timeline-test").id();
+        service.apply(user,id,ClassroomAction.CONTINUE,null,0);
+        assertThatThrownBy(() -> service.apply(user,id,ClassroomAction.CONTINUE,null,0)).isInstanceOf(ApiException.class);
+        assertThat(service.get(user,id).stage().path("stepIndex").asInt()).isZero();
+        assertThat(service.get(user,id).stage().path("revision").asInt()).isEqualTo(1);
+    }
+    @Test void modelCannotSetRuntimeStateThroughAnInterruptionResponse() {
+        String id = service.create(user,"timeline-test").id();
+        service.apply(user,id,ClassroomAction.CONTINUE,null);
+        when(model.generate(anyLong(),anyString(),anyString(),anyInt(),any())).thenReturn(mapper.readTree("""
+            {"feedback":"先回答插问","status":"FINISHED","answered":true,"stepIndex":99,"kind":"answer"}
+            """));
+        ClassroomSessionView result = service.apply(user,id,ClassroomAction.ASK,"为什么？");
+        assertThat(result.answerEvaluation()).isNull();
+        assertThat(result.stage().path("teacherResponse").has("status")).isFalse();
+        assertThat(result.stage().path("teacherResponse").path("answered").asBoolean()).isFalse();
+        assertThat(service.apply(user,id,ClassroomAction.CONTINUE,null).stage().path("stepIndex").asInt()).isZero();
     }
 }

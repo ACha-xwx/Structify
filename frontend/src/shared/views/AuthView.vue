@@ -6,12 +6,14 @@ import ThemeToggle from "../design/ThemeToggle.vue";
 import DirectionalArrowIcon from "../components/DirectionalArrowIcon.vue";
 import { ApiClientError } from "../api";
 import { classifyAuthError } from "../auth";
+import { useI18n } from "../i18n/locale";
 import { auth } from "../../app/providers/runtime";
 
 const props = defineProps<{ mode: "login" | "register" | "reset" }>();
 
 type AuthStep = "identity" | "credentials";
 
+const { t } = useI18n();
 const router = useRouter();
 const route = useRoute();
 const localAcceptanceHost = typeof window !== "undefined"
@@ -51,25 +53,25 @@ const loginIdentifier = computed(() => email.value.trim());
 const canRequestCode = computed(() => props.mode !== "login" && emailValid.value && !codePending.value && cooldownSeconds.value === 0);
 const passwordType = computed(() => passwordVisible.value ? "text" : "password");
 const isCredentialsStep = computed(() => authStep.value === "credentials");
-const identityLabel = computed(() => props.mode === "login" ? "邮箱或用户名" : "邮箱");
-const identityPlaceholder = computed(() => props.mode === "login" ? "邮箱或用户名" : "邮箱地址");
+const identityLabel = computed(() => props.mode === "login" ? t("auth.identity.login") : t("auth.identity.email"));
+const identityPlaceholder = computed(() => props.mode === "login" ? t("auth.identity.placeholderLogin") : t("auth.identity.placeholderEmail"));
 
 const title = computed(() => {
   if (authStep.value === "identity") {
-    if (props.mode === "login") return isAdminEntry.value ? "登录管理端" : "开始使用";
-    return props.mode === "register" ? "创建账户" : "重置密码";
+    if (props.mode === "login") return isAdminEntry.value ? t("auth.title.loginAdmin") : t("auth.title.login");
+    return props.mode === "register" ? t("auth.title.register") : t("auth.title.reset");
   }
-  if (props.mode === "login") return "输入密码";
-  return props.mode === "register" ? "验证账户" : "设置新密码";
+  if (props.mode === "login") return t("auth.title.password");
+  return props.mode === "register" ? t("auth.title.verify") : t("auth.title.newPassword");
 });
 
 const subtitle = computed(() => {
   if (authStep.value === "identity") {
-    if (props.mode === "login") return isAdminEntry.value ? "使用管理员账户继续" : "使用 Structify 账户继续";
-    return props.mode === "register" ? "先输入你的邮箱地址" : "先验证你的邮箱地址";
+    if (props.mode === "login") return isAdminEntry.value ? t("auth.subtitle.loginAdmin") : t("auth.subtitle.login");
+    return props.mode === "register" ? t("auth.subtitle.register") : t("auth.subtitle.reset");
   }
-  if (props.mode === "login") return "请输入账户密码";
-  return "验证码和新密码将由服务器安全校验";
+  if (props.mode === "login") return t("auth.subtitle.password");
+  return t("auth.subtitle.verify");
 });
 
 function clearCooldown() {
@@ -90,18 +92,18 @@ function startCooldown(seconds = 60) {
 
 function userFacingError(cause: unknown): string {
   const codeValue = (cause as { code?: string } | null)?.code;
-  if (codeValue === "VERIFICATION_CODE_EXPIRED" || codeValue === "AUTH_CODE_INVALID") return "验证码无效或已过期，请重新发送。";
+  if (codeValue === "VERIFICATION_CODE_EXPIRED" || codeValue === "AUTH_CODE_INVALID") return t("auth.error.codeInvalid");
   const classification = classifyAuthError(cause);
   switch (classification.kind) {
-    case "unauthorized": return "身份凭证无效或已过期，请重新登录或确认验证码。";
-    case "forbidden": return "当前会话没有执行此操作的权限。";
-    case "not-found": return "认证服务接口不存在，请稍后重试。";
-    case "rate-limited": return `请求过于频繁，请在 ${classification.retryAfterSeconds ?? 60} 秒后重试。`;
-    case "unavailable": return "认证服务暂时不可用，请稍后重试。";
-    case "offline": return "网络不可用，请检查连接后重试。";
-    case "timeout": return "请求超时，请重试。";
-    case "server": return "服务器暂时无法处理请求，请重试。";
-    default: return cause instanceof ApiClientError ? cause.message : "请求未完成，请稍后重试。";
+    case "unauthorized": return t("auth.error.unauthorized");
+    case "forbidden": return t("auth.error.forbidden");
+    case "not-found": return t("auth.error.notFound");
+    case "rate-limited": return t("auth.error.rateLimited", { seconds: classification.retryAfterSeconds ?? 60 });
+    case "unavailable": return t("auth.error.unavailable");
+    case "offline": return t("auth.error.offline");
+    case "timeout": return t("auth.error.timeout");
+    case "server": return t("auth.error.server");
+    default: return cause instanceof ApiClientError ? cause.message : t("auth.error.generic");
   }
 }
 
@@ -154,11 +156,11 @@ async function submit() {
     return;
   }
   if (!identityValid.value) {
-    error.value = props.mode === "login" ? "请输入邮箱或用户名。" : "请输入有效的邮箱地址。";
+    error.value = props.mode === "login" ? t("auth.error.identityRequired") : t("auth.error.emailInvalid");
     return;
   }
   if (!credentialsReady.value) {
-    error.value = props.mode === "login" ? "请输入密码。" : "请输入验证码和密码。";
+    error.value = props.mode === "login" ? t("auth.error.passwordRequired") : t("auth.error.credentialsRequired");
     return;
   }
 
@@ -193,7 +195,7 @@ onBeforeUnmount(clearCooldown);
 <template>
   <main class="auth-stage auth-screen" :class="{ 'auth-stage--admin': isAdminEntry, 'auth-screen--admin': isAdminEntry }" aria-labelledby="auth-title">
     <header class="auth-brand">
-      <RouterLink class="auth-brand__link" to="/" aria-label="返回 Structify">
+      <RouterLink class="auth-brand__link" to="/" :aria-label="t('common.brand')">
         <span class="auth-brand__mark" aria-hidden="true">S</span>
         <span class="auth-brand__name">Structify</span>
       </RouterLink>
@@ -229,7 +231,7 @@ onBeforeUnmount(clearCooldown);
             variant="quiet"
             view-mode="icon"
             type="button"
-            aria-label="继续填写密码"
+            :aria-label="t('auth.continueToPassword')"
             :disabled="pending"
             @click="advanceFromIdentity"
           ><DirectionalArrowIcon direction="right" /></LiquidMetalButton>
@@ -238,16 +240,16 @@ onBeforeUnmount(clearCooldown);
         <Transition name="auth-fields">
           <div v-show="isCredentialsStep" class="auth-credentials">
             <label v-if="props.mode !== 'login'" class="auth-field auth-field--credential">
-              <span class="auth-field__floating-label">邮箱验证码</span>
+              <span class="auth-field__floating-label">{{ t("auth.code.label") }}</span>
               <span class="auth-field__symbol auth-field__symbol--code" aria-hidden="true">#</span>
               <input
                 v-model="code"
                 inputmode="numeric"
                 autocomplete="one-time-code"
-                placeholder="输入验证码"
-                aria-label="邮箱验证码"
+                :placeholder="t('auth.code.placeholder')"
+                :aria-label="t('auth.code.label')"
                 required
-              />
+              >
               <button
                 class="auth-code-action"
                 data-testid="send-verification-code"
@@ -255,21 +257,21 @@ onBeforeUnmount(clearCooldown);
                 :disabled="!canRequestCode"
                 @click="sendVerificationCode"
               >
-                <span v-if="codePending">发送中</span>
+                <span v-if="codePending">{{ t("auth.code.sending") }}</span>
                 <span v-else-if="cooldownSeconds > 0" data-testid="verification-countdown">{{ cooldownSeconds }}s</span>
-                <span v-else>发送</span>
+                <span v-else>{{ t("auth.code.send") }}</span>
               </button>
             </label>
 
             <label class="auth-field auth-field--credential">
-              <span class="auth-field__floating-label">密码</span>
+              <span class="auth-field__floating-label">{{ t("auth.password.label") }}</span>
               <button
                 class="auth-field__symbol auth-field__symbol--toggle"
                 data-testid="password-visibility"
                 type="button"
-                :aria-label="passwordVisible ? '隐藏密码' : '显示密码'"
+                :aria-label="passwordVisible ? t('auth.password.hide') : t('auth.password.show')"
                 :aria-pressed="passwordVisible"
-                :title="passwordVisible ? '隐藏密码' : '显示密码'"
+                :title="passwordVisible ? t('auth.password.hide') : t('auth.password.show')"
                 @click="passwordVisible = !passwordVisible"
               >
                 <svg v-if="passwordVisible" class="auth-field__toggle-icon auth-field__toggle-icon--open" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -286,18 +288,18 @@ onBeforeUnmount(clearCooldown);
                 v-model="password"
                 :type="passwordType"
                 :autocomplete="props.mode === 'login' ? 'current-password' : 'new-password'"
-                :placeholder="props.mode === 'login' ? '密码' : '至少 8 位密码'"
-                aria-label="密码"
+                :placeholder="props.mode === 'login' ? t('auth.password.placeholder') : t('auth.password.placeholderNew')"
+                :aria-label="t('auth.password.label')"
                 minlength="8"
                 required
-              />
+              >
               <LiquidMetalButton
                 v-show="credentialsReady"
                 class="auth-step-action"
                 variant="quiet"
                 view-mode="icon"
                 type="submit"
-                :aria-label="props.mode === 'login' ? '登录' : props.mode === 'register' ? '创建账号' : '更新密码'"
+                :aria-label="props.mode === 'login' ? t('auth.submit.login') : props.mode === 'register' ? t('auth.submit.register') : t('auth.submit.reset')"
                 :loading="pending"
                 :disabled="pending || codePending"
               ><DirectionalArrowIcon direction="right" /></LiquidMetalButton>
@@ -308,13 +310,13 @@ onBeforeUnmount(clearCooldown);
         <p v-if="error" class="form-feedback form-feedback--error" role="alert">{{ error }}</p>
         <p v-if="feedback" class="form-feedback" role="status">{{ feedback }}</p>
 
-        <button v-if="isCredentialsStep" class="auth-back" type="button" :disabled="pending" @click="goBack"><DirectionalArrowIcon direction="left" /> 返回</button>
+        <button v-if="isCredentialsStep" class="auth-back" type="button" :disabled="pending" @click="goBack"><DirectionalArrowIcon direction="left" /> {{ t("auth.back") }}</button>
       </form>
 
-      <nav class="auth-links" aria-label="账户操作">
-        <RouterLink v-if="props.mode !== 'login'" to="/login">返回登录</RouterLink>
-        <RouterLink v-else to="/register">创建账号</RouterLink>
-        <RouterLink v-if="props.mode === 'login'" to="/reset-password">忘记密码</RouterLink>
+      <nav class="auth-links" :aria-label="t('auth.links')">
+        <RouterLink v-if="props.mode !== 'login'" to="/login">{{ t("auth.link.signIn") }}</RouterLink>
+        <RouterLink v-else to="/register">{{ t("auth.link.register") }}</RouterLink>
+        <RouterLink v-if="props.mode === 'login'" to="/reset-password">{{ t("auth.link.forgot") }}</RouterLink>
       </nav>
     </section>
   </main>

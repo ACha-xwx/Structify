@@ -159,16 +159,20 @@ async function main() {
     assert.equal(validPdf.response.status, 200);
     const savedPdf = validPdf.body.files?.[0];
     assert.match(savedPdf || "", /^[a-zA-Z0-9._-]+\.pdf$/);
-    const servedPdf = await fetch(`${baseUrl}/pdfs/${encodeURIComponent(savedPdf)}`);
+    // Uploaded material is private: the same URL must fail anonymously and succeed when signed in.
+    const anonymousPdf = await fetch(`${baseUrl}/pdfs/${encodeURIComponent(savedPdf)}`);
+    assert.equal(anonymousPdf.status, 401, "uploaded PDFs must not be readable without an account");
+    const pdfHeaders = { authorization: `Bearer ${teacherToken}` };
+    const servedPdf = await fetch(`${baseUrl}/pdfs/${encodeURIComponent(savedPdf)}`, { headers: pdfHeaders });
     assert.equal(servedPdf.status, 200);
     assert.equal((await servedPdf.arrayBuffer()).byteLength, 14);
-    assert.equal((await fetch(`${baseUrl}/pdfs/..%2Ftest.db`)).status, 404);
+    assert.equal((await fetch(`${baseUrl}/pdfs/..%2Ftest.db`, { headers: pdfHeaders })).status, 404);
     const escapedPdf = path.join(tempDir, "outside.pdf");
     const linkedPdf = path.join(tempDir, "pdfs", "escape.pdf");
     fs.writeFileSync(escapedPdf, "%PDF-1.4\noutside");
     try {
       fs.symlinkSync(escapedPdf, linkedPdf, "file");
-      assert.equal((await fetch(`${baseUrl}/pdfs/escape.pdf`)).status, 404, "PDF symlinks must not escape storage");
+      assert.equal((await fetch(`${baseUrl}/pdfs/escape.pdf`, { headers: pdfHeaders })).status, 404, "PDF symlinks must not escape storage");
     } catch (error) {
       if (!error || !["EPERM", "EACCES"].includes(error.code)) throw error;
     }

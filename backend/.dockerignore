@@ -1,0 +1,16 @@
+# Build context for backend/spring/Dockerfile (context root = backend/).
+# The Spring image needs spring/ sources and dsvp/; everything else only slows
+# the context upload down or risks leaking runtime data into the builder.
+spring/target
+spring/.idea
+spring/.vscode
+spring/*.iml
+spring/*.log
+node
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+.env
+.env.*

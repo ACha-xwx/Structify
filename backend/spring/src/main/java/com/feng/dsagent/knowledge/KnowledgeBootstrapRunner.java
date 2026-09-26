@@ -35,15 +35,28 @@ final class KnowledgeBootstrapRunner implements ApplicationRunner {
             LOGGER.info("Knowledge indexing is disabled");
             return;
         }
-        if (corpus.stats().available() && properties.autoPublishLocal()) {
-            repository.replaceTextbook(corpus.chunks());
-            search.replace(corpus.chunks());
-            LOGGER.info(
-                "Loaded {} textbook lessons into {} knowledge chunks",
-                corpus.stats().lessonFiles(),
-                corpus.stats().chunkCount()
+        for (KnowledgeImportManifest.Rejection rejection : corpus.stats().rejections()) {
+            LOGGER.warn("Textbook lesson kept unpublished: {} -> {}", rejection.fileName(), rejection.reason());
+        }
+        if (properties.autoPublishLocal()) {
+            if (corpus.stats().available()) {
+                int before = repository.findPublished().size();
+                repository.replaceTextbook(corpus.chunks());
+                search.replace(corpus.chunks());
+                LOGGER.info(
+                    "Loaded {} manifest-approved textbook lessons into {} knowledge chunks; "
+                        + "published chunk count {} -> {}",
+                    corpus.stats().lessonFiles(),
+                    corpus.stats().chunkCount(),
+                    before,
+                    corpus.stats().chunkCount()
+                );
+                return;
+            }
+            LOGGER.warn(
+                "Local textbook loading is enabled but no lesson passed the import manifest; "
+                    + "existing reviewed chunks are preserved"
             );
-            return;
         }
         List<KnowledgeChunk> persisted = repository.findPublished();
         search.replace(persisted);
@@ -52,13 +65,8 @@ final class KnowledgeBootstrapRunner implements ApplicationRunner {
                 "Local textbook loading is disabled; loaded {} reviewed chunks from the database",
                 persisted.size()
             );
-        } else if (corpus.stats().available()) {
-            LOGGER.info("Loaded {} reviewed chunks from the database", persisted.size());
         } else {
-            LOGGER.warn(
-                "Private textbook directory is unavailable; loaded {} published chunks from the database",
-                persisted.size()
-            );
+            LOGGER.info("Loaded {} reviewed chunks from the database", persisted.size());
         }
     }
 }

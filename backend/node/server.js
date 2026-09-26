@@ -134,13 +134,6 @@ const workspaceFrontendDir = path.join(WORKSPACE_ROOT, "frontend");
 const FRONTEND_DIR = path.resolve(process.env.FRONTEND_DIR || (fs.existsSync(localFrontendDir) ? localFrontendDir : workspaceFrontendDir));
 const INDEX_PATH = path.join(FRONTEND_DIR, "index.html");
 const LOCAL_PROTOTYPE_PATH = path.join(FRONTEND_DIR, "prototype.html");
-const SPA_HISTORY_EXACT_PATHS = new Set([
-  "/login",
-  "/register",
-  "/reset-password",
-  "/403",
-  "/404"
-]);
 const DOMPURIFY_PATH = path.join(path.dirname(require.resolve("dompurify")), "purify.min.js");
 const SECURITY_HEADERS = Object.freeze({
   "content-security-policy": [
@@ -163,12 +156,21 @@ const SECURITY_HEADERS = Object.freeze({
 });
 
 /* ===== Database ===== */
+/**
+ * Every GET that survives the routes above - the compatibility API, presentation
+ * media, hashed assets, PDFs, the health probe - is a navigation the SPA router
+ * owns: /classroom, /animation, /chat, /compiler, and each route added after
+ * them. Serving the shell for all of them means a refresh, a bookmark, or a
+ * shared link can never again land one route behind this server (/chat used to
+ * answer bare "not found" because the exact list here had not heard of it), and
+ * a URL nobody meant ends in the router's own /404 view. A last segment with a
+ * dot still reads as a file, so a missing asset keeps failing as a 404 rather
+ * than returning HTML.
+ */
 function isSpaHistoryPath(pathname) {
-  return SPA_HISTORY_EXACT_PATHS.has(pathname)
-    || pathname === "/user"
-    || pathname.startsWith("/user/")
-    || pathname === "/admin"
-    || pathname.startsWith("/admin/");
+  if (pathname === "/healthz" || pathname === "/api" || pathname.startsWith("/api/")) return false;
+  const lastSegment = pathname.slice(pathname.lastIndexOf("/") + 1);
+  return !lastSegment.includes(".");
 }
 
 let db;
@@ -625,8 +627,55 @@ setInterval(() => {
 }, 300_000);
 
 /* ===== Helpers ===== */
+
+/**
+ * The reason phrases Spring's handler would give a bare status, so a client that parses the
+ * Spring error shape can read this process's errors too. A caller that supplies its own `code`
+ * keeps it - only the missing pieces are filled in.
+ */
+const FALLBACK_ERROR_CODES = {
+  400: "INVALID_REQUEST_BODY",
+  401: "AUTH_REQUIRED",
+  403: "AUTH_FORBIDDEN",
+  404: "RESOURCE_NOT_FOUND",
+  405: "METHOD_NOT_ALLOWED",
+  409: "CONFLICT",
+  413: "PAYLOAD_TOO_LARGE",
+  429: "RATE_LIMITED",
+  500: "INTERNAL_ERROR",
+  503: "SERVICE_UNAVAILABLE",
+  504: "UPSTREAM_TIMEOUT",
+};
+
+/** Same value the Spring filter accepts and echoes, so one trace spans both processes. */
+function requestIdOf(req) {
+  return (req && req.requestId) || "";
+}
+
+/**
+ * Mirrors `ApiError(code, message, requestId, details)`. `error` is kept beside `message`
+ * because the legacy pages read it, but the four contract fields are always present so a
+ * client never has to guess which backend answered.
+ */
+function withContractFields(res, status, body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return body;
+  const payload = { ...body };
+  const requestId = requestIdOf(res.req);
+  if (payload.requestId === undefined) payload.requestId = requestId;
+  const failure = status >= 400 || typeof payload.error === "string";
+  if (!failure) return payload;
+  if (typeof payload.code !== "string") {
+    payload.code = FALLBACK_ERROR_CODES[status] || "INTERNAL_ERROR";
+  }
+  if (typeof payload.message !== "string") {
+    payload.message = typeof payload.error === "string" ? payload.error : "";
+  }
+  if (!Array.isArray(payload.details)) payload.details = [];
+  return payload;
+}
+
 function sendJson(res, status, body) {
-  const payload = JSON.stringify(body);
+  const payload = JSON.stringify(withContractFields(res, status, body));
   res.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
     "cache-control": "no-store",
@@ -2788,14 +2837,16 @@ function handleClassroomPresentationPlan(req, res, lessonId) {
 }
 
 function servePresentationAsset(req, url, res) {
+  // Access before existence: resolving first let an anonymous caller tell a real page apart from a
+  // missing one by the status alone, which is an inventory of the courseware nobody asked for.
+  if (!hasPresentationAssetAccess(req, url)) {
+    sendJson(res, 401, { error: "Authentication is required for presentation assets" });
+    return;
+  }
   const filePath = resolvePresentationAsset(url.pathname);
   if (!filePath) {
     res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
     res.end("not found");
-    return;
-  }
-  if (!hasPresentationAssetAccess(req, url)) {
-    sendJson(res, 401, { error: "Authentication is required for presentation assets" });
     return;
   }
   res.writeHead(200, {
@@ -2933,7 +2984,8 @@ function servePdf(pathname, res) {
   res.writeHead(200, {
     "content-type": "application/pdf",
     "content-disposition": `inline; filename="${filename}"`,
-    "cache-control": "public, max-age=3600"
+    // Credential-scoped: a shared cache must not hand this to the next visitor.
+    "cache-control": "private, max-age=3600"
   });
   fs.createReadStream(filePath).pipe(res);
 }
@@ -3341,6 +3393,14 @@ const VALID_SCENARIOS = new Set(["choose", "stack", "list", "tree", "queue", "he
 
 const server = http.createServer(async (req, res) => {
   try {
+    // One trace id per request, taken from the caller when supplied and otherwise generated, echoed
+    // on the response and stamped on every error body - the same contract the Spring filter keeps, so
+    // a single id follows a request across both backends.
+    const incomingRequestId = String(req.headers["x-request-id"] || "").trim();
+    req.requestId = incomingRequestId && incomingRequestId.length <= 128
+      ? incomingRequestId
+      : crypto.randomUUID();
+    res.setHeader("X-Request-Id", req.requestId);
     for (const [name, value] of Object.entries(SECURITY_HEADERS)) res.setHeader(name, value);
     applyCors(req, res);
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
@@ -3595,8 +3655,11 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Code execution
+    // Code execution. The sandbox is a finite shared resource: while anonymous, anyone could spend its
+    // capacity without an account. The per-IP rate and concurrency guards inside still apply, but they
+    // now sit behind a sign-in check instead of being the only defence.
     if (req.method === "POST" && pathname === "/api/execute") {
+      if (!requireAuthenticated(req, res, "在线运行代码")) return;
       await handleExecute(req, res);
       return;
     }
@@ -3616,8 +3679,12 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Serve PDFs from /pdfs/
+    // Serve PDFs from /pdfs/. An uploaded deck is course material, not a public file: serving it
+    // anonymously let anyone enumerate whatever a teacher had uploaded. Sign-in is now required, and
+    // because the response is credential-scoped it can no longer be marked publicly cacheable; the
+    // filename check inside servePdf still rejects traversal and symlink escapes.
     if (req.method === "GET" && pathname.startsWith("/pdfs/")) {
+      if (!requireAuthenticated(req, res, "教材文件")) return;
       servePdf(pathname, res);
       return;
     }

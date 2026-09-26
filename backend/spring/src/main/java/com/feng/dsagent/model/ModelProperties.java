@@ -11,6 +11,7 @@ public record ModelProperties(
     String name,
     Duration timeout,
     Duration streamIdleTimeout,
-    int maximumResponseBytes
+    int maximumResponseBytes,
+    Boolean disableThinking
 ) {
 }

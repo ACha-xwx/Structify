@@ -30,7 +30,8 @@ class DsvpAnimationAdapterTest {
             DsvpSimulationResponse result = adapter.adapt(objectMapper.readTree(Files.readString(file, StandardCharsets.UTF_8)));
             assertThat(result.protocol()).as(file.toString()).isEqualTo("dsvp/1.0");
             assertThat(result.trace().path("trace_id").asText()).startsWith("dsvp_");
-            assertThat(new AnimationValidator().validate(result.animationData()).valid()).as(file.toString()).isTrue();
+            assertThat(result.trace().path("final_state").isArray()).as(file.toString()).isTrue();
+            assertThat(result.trace().path("steps").size()).isEqualTo(result.animationData().steps().size());
         }
     }
 

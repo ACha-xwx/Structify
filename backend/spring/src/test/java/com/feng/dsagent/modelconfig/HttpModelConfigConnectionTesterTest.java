@@ -77,6 +77,63 @@ class HttpModelConfigConnectionTesterTest {
         assertThat(connections.request()).contains("POST /v1/chat/completions HTTP/1.1\r\n");
     }
 
+    @Test
+    void acceptsAReasoningModelCompletionWhoseVisibleContentIsEmpty() throws Exception {
+        String body = "{\"choices\":[{\"message\":{\"content\":\"\",\"reasoning_content\":\"weighing the request\"},"
+            + "\"finish_reason\":\"length\"}]}";
+        RecordingConnections connections = new RecordingConnections(ok(body));
+        HttpModelConfigConnectionTester tester = new HttpModelConfigConnectionTester(new PinnedHttpsTransport(connections));
+
+        ModelConfigConnectionResult result = tester.test(connection());
+
+        assertThat(result.connected()).isTrue();
+        assertThat(result.code()).isEqualTo("CONNECTION_OK");
+        assertThat(connections.request()).contains("\"max_tokens\":16");
+    }
+
+    @Test
+    void rejectsASuccessfulStatusWhoseBodyIsNotAChatCompletion() throws Exception {
+        RecordingConnections connections = new RecordingConnections(ok("{\"object\":\"error\"}"));
+        HttpModelConfigConnectionTester tester = new HttpModelConfigConnectionTester(new PinnedHttpsTransport(connections));
+
+        ModelConfigConnectionResult result = tester.test(connection());
+
+        assertThat(result.connected()).isFalse();
+        assertThat(result.code()).isEqualTo("CONNECTION_RESPONSE_INVALID");
+    }
+
+    @Test
+    void reportsARejectedCredentialSeparatelyFromAGenericUpstreamFailure() throws Exception {
+        assertThat(probe("HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n"))
+            .isEqualTo("UPSTREAM_AUTHENTICATION_REJECTED");
+        assertThat(probe("HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n"))
+            .isEqualTo("UPSTREAM_AUTHENTICATION_REJECTED");
+    }
+
+    @Test
+    void reportsAnEmptyProviderBalanceSeparatelyFromAThrottledKey() throws Exception {
+        assertThat(probe("HTTP/1.1 402 Payment Required\r\nContent-Length: 0\r\n\r\n"))
+            .isEqualTo("UPSTREAM_PAYMENT_REQUIRED");
+        assertThat(probe("HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\n\r\n"))
+            .isEqualTo("UPSTREAM_RATE_LIMITED");
+        assertThat(probe("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n"))
+            .isEqualTo("UPSTREAM_REJECTED");
+    }
+
+    private String probe(String response) throws Exception {
+        HttpModelConfigConnectionTester tester = new HttpModelConfigConnectionTester(
+            new PinnedHttpsTransport(new RecordingConnections(response))
+        );
+        return tester.test(connection()).code();
+    }
+
+    private String ok(String body) {
+        return "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
+            + body.getBytes(java.nio.charset.StandardCharsets.UTF_8).length
+            + "\r\n\r\n"
+            + body;
+    }
+
     private ModelConfigConnection connection() throws Exception {
         return new ModelConfigConnection(
             "custom",

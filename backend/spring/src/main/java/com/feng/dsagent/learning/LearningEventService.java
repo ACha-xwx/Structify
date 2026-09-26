@@ -19,6 +19,7 @@ public class LearningEventService {
         "ANIMATION_SIMULATION",
         "ANIMATION_OBSERVATION",
         "CLASSROOM_ANSWER",
+        "CLASSROOM_SKIP",
         "CODE_REVIEW",
         "REVIEW_COMPLETED",
         "WEAKNESS_RECORDED"
@@ -27,6 +28,7 @@ public class LearningEventService {
         "ANIMATION_OBSERVATION",
         "ANIMATION_SIMULATION",
         "CLASSROOM_ANSWER",
+        "CLASSROOM_SKIP",
         "CODE_REVIEW"
     );
     private static final int MAX_PAYLOAD_LENGTH = 8_000;

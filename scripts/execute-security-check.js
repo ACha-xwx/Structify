@@ -1,5 +1,8 @@
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
 const http = require("node:http");
+const os = require("node:os");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 
@@ -9,6 +12,30 @@ const APP_PORT = 8891;
 const MOCK_PORT = 18891;
 const APP_BASE = `http://127.0.0.1:${APP_PORT}`;
 const MOCK_BASE = `http://127.0.0.1:${MOCK_PORT}`;
+
+/**
+ * The sandbox is no longer open to anonymous callers, so this harness has to present a token like any
+ * other client. It pins the secret it gives the app and signs with the same HMAC the server verifies,
+ * which keeps the check independent of any real account.
+ */
+const TEST_JWT_SECRET = "execute-security-check-secret-0123456789abcdef";
+
+function signTestToken(userId = 1, email = "student@example.com") {
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({
+    userId,
+    email,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 3600
+  })).toString("base64url");
+  const signature = crypto.createHmac("sha256", TEST_JWT_SECRET)
+    .update(`${header}.${payload}`)
+    .digest("base64url");
+  return `${header}.${payload}.${signature}`;
+}
+
+/** Signed once at startup and attached to every execute request this harness makes. */
+const TEST_TOKEN = signTestToken();
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -97,6 +124,7 @@ async function fetchJson(path, body, extraHeaders = {}, timeoutMs = 5000) {
       method: "POST",
       headers: {
         "content-type": "application/json; charset=utf-8",
+        authorization: `Bearer ${TEST_TOKEN}`,
         ...extraHeaders
       },
       body: JSON.stringify(body),
@@ -133,12 +161,20 @@ async function waitForHealth(child, timeoutMs = 10000) {
 
 async function run() {
   const mock = await startMockExecutor();
+  // Self-contained state. Without this the app writes its JWT secret and SQLite file under
+  // private/state/node, which a production image either does not have or mounts read-only - the
+  // check then dies with EACCES mkdir before it can assert anything.
+  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "execute-security-check-"));
   const child = spawn(process.execPath, ["server.js"], {
     cwd: nodeRoot,
     env: {
       ...process.env,
       HOST: "127.0.0.1",
       PORT: String(APP_PORT),
+      NODE_COMPAT_JWT_SECRET: TEST_JWT_SECRET,
+      NODE_STATE_DIR: path.join(stateDir, "state"),
+      DB_PATH: path.join(stateDir, "data.db"),
+      PDF_DIR: path.join(stateDir, "pdfs"),
       JUDGE0_BASE_URL: MOCK_BASE,
       PISTON_BASE_URL: MOCK_BASE,
       EXECUTE_RATE_WINDOW_MS: "60000",
@@ -164,6 +200,20 @@ async function run() {
     await waitForHealth(child);
 
     const cases = [
+      ["anonymous execute is refused", async () => {
+        // The sandbox used to answer anyone who could reach it. A stranger must now be told to sign in,
+        // and the refusal has to carry the trace id so the attempt can be followed in the logs.
+        const response = await fetch(`${APP_BASE}/api/execute`, {
+          method: "POST",
+          headers: { "content-type": "application/json", "x-forwarded-for": "10.0.0.20" },
+          body: JSON.stringify({ language: "c", code: "int main(void){return 0;}" })
+        });
+        assert.equal(response.status, 401);
+        const body = await response.json();
+        assert.equal(body.code, "AUTH_REQUIRED");
+        assert.ok(body.requestId, "a refusal must carry a request id");
+        assert.equal(response.headers.get("x-request-id"), body.requestId);
+      }],
       ["rate limit on execute", async () => {
         const headers = { "x-forwarded-for": "10.0.0.11" };
         const payload = { language: "c", code: "int main(void){return 0;}" };

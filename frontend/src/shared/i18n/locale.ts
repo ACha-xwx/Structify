@@ -1,4 +1,5 @@
 import { computed, readonly, ref } from "vue";
+import { translate, type MessageKey } from "./messages";
 
 export type Locale = "zh-CN" | "en-US";
 
@@ -68,5 +69,21 @@ export function useLocale() {
     isEnglish: computed(() => locale.value === "en-US"),
     setLocale,
     toggleLocale,
+  };
+}
+
+/**
+ * The same store, plus the copy. `t` reads the locale ref while it runs, so every template or computed
+ * that calls it re-renders when the language switch flips - which is what makes the switch visible.
+ */
+export function useI18n() {
+  initializeLocale();
+
+  return {
+    locale: readonly(locale),
+    isEnglish: computed(() => locale.value === "en-US"),
+    setLocale,
+    toggleLocale,
+    t: (key: MessageKey, params?: Record<string, string | number>) => translate(key, locale.value, params),
   };
 }

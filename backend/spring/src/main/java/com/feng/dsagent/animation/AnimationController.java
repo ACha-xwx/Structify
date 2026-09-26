@@ -65,7 +65,9 @@ public class AnimationController {
         HttpServletRequest servletRequest,
         @RequestBody JsonNode request
     ) {
-        rateLimiter.check("animation-simulate", user.userId(), servletRequest.getRemoteAddr());
+        // 动画模拟是本地确定性计算：不消耗模型配额、毫秒级完成，一节课的正常使用就会调用几十次。
+        // 通用限流（30 次/10 分钟）会在课堂上把它掐死——学生看到的就是"动画根本没成功"（2026-09-24）。
+        // 滥用防护由登录态 + 并发闸（DsvpConcurrencyLimiter）+ 引擎 6 秒超时承担。
         try (DsvpConcurrencyLimiter.Permit ignored = dsvpConcurrency.acquire()) {
             return evidence == null
                 ? dsvp.adapt(request)

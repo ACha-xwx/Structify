@@ -4,13 +4,14 @@ import java.nio.file.Path;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import tools.jackson.databind.ObjectMapper;
 
 @Configuration
 public class KnowledgeConfiguration {
 
     @Bean
-    KnowledgeCorpusLoader knowledgeCorpusLoader() {
-        return new KnowledgeCorpusLoader();
+    KnowledgeCorpusLoader knowledgeCorpusLoader(ObjectMapper mapper) {
+        return new KnowledgeCorpusLoader(mapper);
     }
 
     @Bean

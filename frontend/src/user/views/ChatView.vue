@@ -1,966 +1,816 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { useRoute } from "vue-router";
-import type { SseEvent } from "../../shared/api";
-import type { AiReadiness, ChatResponse, ChatSession, ChatSessionSummary, ChatSource } from "../../shared/types/contracts";
-import { useLocale } from "../../shared/i18n/locale";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import BrandStage from "../../shared/components/BrandStage.vue";
+import NoticeDialog from "../../shared/components/NoticeDialog.vue";
+import ConfirmDialog from "../../shared/components/ConfirmDialog.vue";
+import AnimationDialog from "../components/AnimationDialog.vue";
+import { useI18n } from "../../shared/i18n/locale";
+import type { DsvpSimulationResponse } from "../../shared/types/animation";
+import type { Chapter, ChatResponse, ChatSessionSummary, ChatSource, ChatTurn } from "../../shared/types";
 import { auth } from "../../app/providers/runtime";
-import UserFrame from "../components/UserFrame.vue";
-import UserState from "../components/UserState.vue";
-import { presentUserError, type UserErrorPresentation } from "../errors";
 import { userApi } from "../runtime";
-import { createLoginTarget } from "../login-target";
-import { findCourseItem, flattenCourseGroups, localizedCourseGroups } from "../fixtures/learning-workbench";
-import { previewChapter } from "../fixtures/course-preview";
-import RuntimeSelect, { type RuntimeSelectOption } from "../../shared/components/RuntimeSelect.vue";
+import { ApiClientError } from "../../shared/api/client";
+import { chatErrorKey, deltaOf, doneOf, errorOf, sourcesOf } from "../chat-stream";
 
-type MessageState = "complete" | "streaming" | "stopped" | "error";
+/**
+ * Asking the course a question.
+ *
+ * The backend half of this never went away - `/api/v1/chat` still answers from the reviewed textbook
+ * and still names the pages it used - but the page was dropped during the stage refactor, so the only
+ * way to reach the model was through a prepared lesson. This puts the direct question back: type a
+ * question, get an answer streamed from the same evidence the classroom quotes.
+ *
+ * Two things are deliberately absent. The answer is never invented: when retrieval finds nothing the
+ * server refuses with `CHAT_EVIDENCE_UNAVAILABLE`, and that refusal is shown as written rather than
+ * papered over with a plausible paragraph. And nothing here is small print - every line a learner
+ * reads sits at the site's body size.
+ */
+type MessageState = "complete" | "streaming" | "stopped";
 
 interface ConversationMessage {
-  id: string;
+  id: number;
   role: "user" | "assistant";
   content: string;
   sources: ChatSource[];
   state: MessageState;
-  createdAt?: string;
-  errorCode?: string;
-}
-
-interface ChatAttempt {
-  prompt: string;
-  chapterId?: string;
-  sessionId?: string;
-}
-
-interface ChatError extends UserErrorPresentation {
-  code?: string;
+  /** The question this reply answers - what an animation for it is built from. */
+  question?: string;
 }
 
 const route = useRoute();
-const { isEnglish } = useLocale();
-const loginTarget = computed(() => createLoginTarget(route.fullPath));
+const router = useRouter();
+const { t } = useI18n();
+
+const chapters = ref<Chapter[]>([]);
+const chapterId = ref("");
 const prompt = ref("");
-const chapterId = ref(readQueryString(route.query.chapterId));
 const messages = ref<ConversationMessage[]>([]);
 const sessions = ref<ChatSessionSummary[]>([]);
 const activeSessionId = ref<string | null>(null);
-const readiness = ref<AiReadiness | null>(null);
-const readinessLoading = ref(false);
-const readinessError = ref<UserErrorPresentation | null>(null);
-const sessionsLoading = ref(false);
-const sessionsError = ref<UserErrorPresentation | null>(null);
-const sessionLoading = ref(false);
-const sessionError = ref<UserErrorPresentation | null>(null);
-const chatError = ref<ChatError | null>(null);
-const deletingSessionId = ref<string | null>(null);
-const deleteConfirmationId = ref<string | null>(null);
-const retryAttempt = ref<ChatAttempt | null>(null);
-const sendPhase = ref<"idle" | "checking" | "streaming">("idle");
-const newConversationButton = ref<HTMLButtonElement | null>(null);
-const sessionButtons = new Map<string, HTMLButtonElement>();
+const phase = ref<"idle" | "streaming">("idle");
+const alert = ref<{ title: string; message: string } | null>(null);
+const pendingDelete = ref<ChatSessionSummary | null>(null);
+const sessionsFailed = ref(false);
+const threadRef = ref<HTMLElement | null>(null);
+/** One animation per reply, keyed by the reply it belongs to. */
+const animations = ref<Record<number, DsvpSimulationResponse>>({});
+const animationBusy = ref(false);
+/** The reply whose demo is being built, so only its button says so. */
+const animationPendingFor = ref<number | null>(null);
+/** The demo on screen; null means the dialog is closed. */
+const openAnimationFor = ref<number | null>(null);
+/** On a phone the conversation list is a sheet; on a desktop it is the sidebar and this is ignored. */
+const sessionsOpen = ref(false);
 
-let messageSequence = 0;
-let activeController: AbortController | null = null;
-let sessionLoadVersion = 0;
-let readinessLoadVersion = 0;
+const ALL_CHAPTERS = "";
+const MAX_PROMPT = 4000;
+/**
+ * How long a reply may be and still be worth reading as an answer to an offer.
+ *
+ * This is a cost gate, not a verdict: whether the words agree is a question of meaning and the server
+ * asks the model. Nothing a learner can type is compared against a list here, because "包的",
+ * "o而k之" and next month's coinage are all the same yes, and no closed list holds them.
+ */
+const OFFER_REPLY_MAX = 40;
 
-const isBusy = computed(() => sendPhase.value !== "idle");
-const isStreaming = computed(() => sendPhase.value === "streaming");
-const canSubmit = computed(() => Boolean(prompt.value.trim()) && !isBusy.value);
-const isAuthenticated = computed(() => Boolean(auth.state.user));
-const copy = computed(() => isEnglish.value ? {
-  currentCourse: "Current course",
-  allAuthorizedChapters: "All available chapters",
-  unknownCourseContext: "Current course context",
-  introAuthenticated: "Ask about the current chapter. The system checks course evidence and availability before generating a response.",
-  introGuest: "Use the current chapter to explore concepts and steps. Sign in here when you are ready to ask the model.",
-  readinessGuest: "Sign in to start course Q&A",
-  readinessChecking: "Checking current Q&A conditions",
-  readinessUnavailable: "Q&A conditions have not been loaded",
-  readinessAllowed: "Ready for course Q&A",
-  readinessBlocked: "Course Q&A is not available yet",
-  modelAvailable: "Model available",
-  modelUnavailable: "Model unavailable",
-  evidenceAvailable: "Course evidence available",
-  evidenceUnavailable: "Course evidence unavailable",
-  evidenceNotRequired: "Course evidence is not required",
-  eyebrow: "Course coach",
-  title: "Course Q&A",
-  newConversation: "New conversation",
-  viewAlgorithm: "View chapter algorithm",
-  refresh: "Refresh",
-  readiness: "Generation conditions",
-  signInTitle: "Sign in to start course Q&A",
-  signInMessage: "Courses, resources, and algorithm interactions remain available. Sign in only when you submit a model question.",
-  signInContinue: "Sign in to continue",
-  reload: "Reload",
-  content: "Course Q&A content",
-  loadingSessions: "Loading conversation history",
-  loadingSessionsDetail: "Reading conversations for the current account.",
-  emptyTitle: "Start a course conversation",
-  emptyDetail: "After you enter a question, the current course evidence and model quota will be checked first.",
-  generatingAnswer: "Generating answer...",
-  generating: "Generating",
-  stopped: "Generation stopped",
-  incomplete: "Answer was not completed",
-  sentAt: "Sent",
-  sources: "Course evidence",
-  scope: "Course scope (optional)",
-  question: "Question",
-  questionPlaceholder: "Ask what you want to understand using the course materials",
-  checking: "Checking...",
-  send: "Send question",
-  stop: "Stop",
-  retry: "Retry this question",
-  accountSessions: "Account conversations",
-  historySessions: "Conversation history",
-  guestSessions: "Sign in to save and restore course conversations.",
-  currentSession: "Current conversation",
-  noSessions: "No course conversations have been saved.",
-  delete: "Delete",
-  deleting: "Deleting...",
-  confirm: "Confirm",
-  cancel: "Cancel",
-  currentScope: "Current scope",
-  quotaAvailable: "Quota available",
-  quotaExhausted: "Today's quota is used",
-  quotaLimited: "Processing another request",
-  quotaUnconfigured: "Quota is not configured",
-  evidenceMissingTitle: "No usable course evidence for this question",
-  answerIncompleteTitle: "This answer was not completed",
-  evidenceMissingDetail: "Adjust the question or switch to a chapter with reviewed course materials.",
-  answerIncompleteDetail: "The service ended before returning a complete answer. You can retry this question.",
-  modelUnavailableDetail: "The model service is currently unavailable.",
-  readinessNotMet: "The current Q&A conditions are not met.",
-  permissionTitle: "Sign in to unlock course Q&A",
-  permissionDetail: "You can browse courses and the algorithm stage first. Sign in here when you submit a model question.",
-  readinessUnknownTitle: "Unable to verify Q&A conditions",
-  tryAgain: "Please try again shortly.",
-  formalBlockedTitle: "Course Q&A cannot start yet",
-  continueLearning: "Continue learning",
-  openCurrentCourse: "Open current course",
-  browseMaterials: "Browse course materials",
-  resourceUnavailableTitle: "This learning item is not available",
-  resourceUnavailableDetail: "It may not be published or included in this account's access.",
-  stateChangedTitle: "This page has changed",
-  stateChangedDetail: "Refresh and try again so the latest learning state is kept.",
-  requestLimitedTitle: "Please wait before trying again",
-  requestLimitedDetail: "The service is temporarily limiting requests.",
-  serviceUnavailableTitle: "Learning services are temporarily unavailable",
-  serviceUnavailableDetail: "Your current page is still available. Try again once the service recovers.",
-  timeoutTitle: "The request timed out",
-  timeoutDetail: "The service did not respond in time.",
-  networkTitle: "Network connection is unavailable",
-  networkDetail: "Check the connection and try again. Your current learning context will remain here.",
-  validationTitle: "This question cannot be processed",
-  validationDetail: "Check the question and try again.",
-  unknownTitle: "This action was not completed",
-  unknownDetail: "The service returned an unexpected result. Please try again.",
-} : {
-  currentCourse: "当前课程",
-  allAuthorizedChapters: "全部已授权章节",
-  unknownCourseContext: "当前课程上下文",
-  introAuthenticated: "围绕当前章节提问，系统会先核验课程依据与当前可用条件。",
-  introGuest: "围绕当前章节理解概念与步骤；提交模型问题时，再在当前页面登录。",
-  readinessGuest: "登录后开始模型问答",
-  readinessChecking: "正在核验当前问答条件",
-  readinessUnavailable: "尚未读取当前问答条件",
-  readinessAllowed: "当前可开始正式问答",
-  readinessBlocked: "当前暂不能开始正式问答",
-  modelAvailable: "模型可用",
-  modelUnavailable: "模型不可用",
-  evidenceAvailable: "课程依据可用",
-  evidenceUnavailable: "课程依据不足",
-  evidenceNotRequired: "本操作不要求课程依据",
-  eyebrow: "课程陪练",
-  title: "课程问答",
-  newConversation: "新建对话",
-  viewAlgorithm: "查看本章算法",
-  refresh: "刷新",
-  readiness: "生成条件",
-  signInTitle: "登录后即可开始课程问答",
-  signInMessage: "课程、资料和算法操作保持可用；提交模型问题时才需要登录。",
-  signInContinue: "登录后继续",
-  reload: "重新读取",
-  content: "课程问答内容",
-  loadingSessions: "正在载入历史会话",
-  loadingSessionsDetail: "正在读取属于当前账户的对话记录。",
-  emptyTitle: "开始一段课程问答",
-  emptyDetail: "输入问题后，将先核验当前课程依据和模型配额。",
-  generatingAnswer: "正在生成回答…",
-  generating: "正在生成",
-  stopped: "已停止生成",
-  incomplete: "回答未完成",
-  sentAt: "发送于",
-  sources: "课程依据",
-  scope: "课程范围（可选）",
-  question: "问题",
-  questionPlaceholder: "输入你希望结合课程资料理解的问题",
-  checking: "正在核验…",
-  send: "发送问题",
-  stop: "停止",
-  retry: "重试本次问题",
-  accountSessions: "账户会话",
-  historySessions: "历史会话",
-  guestSessions: "登录后可保存和恢复课程问答会话。",
-  currentSession: "当前会话",
-  noSessions: "暂未保存课程问答会话。",
-  delete: "删除",
-  deleting: "删除中…",
-  confirm: "确认",
-  cancel: "取消",
-  currentScope: "当前范围",
-  quotaAvailable: "配额可用",
-  quotaExhausted: "今日配额已用完",
-  quotaLimited: "并发处理中",
-  quotaUnconfigured: "配额未配置",
-  evidenceMissingTitle: "当前问题缺少可用课程依据",
-  answerIncompleteTitle: "本次回答未完成",
-  evidenceMissingDetail: "请调整问题或切换到已有审核资料的章节后再试。",
-  answerIncompleteDetail: "服务已结束本次回答，请稍后重试。",
-  modelUnavailableDetail: "模型服务当前不可用。",
-  readinessNotMet: "当前问答条件尚未满足。",
-  permissionTitle: "登录后解锁课程问答",
-  permissionDetail: "你可以先浏览课程和算法舞台；提交模型问题时，在当前页面登录即可继续。",
-  readinessUnknownTitle: "无法确认问答条件",
-  tryAgain: "请稍后重试。",
-  formalBlockedTitle: "当前不能开始正式问答",
-  continueLearning: "继续学习",
-  openCurrentCourse: "打开当前课程",
-  browseMaterials: "浏览课程资料",
-  resourceUnavailableTitle: "当前学习内容不可访问",
-  resourceUnavailableDetail: "该内容可能尚未发布，或不在当前账户的访问范围内。",
-  stateChangedTitle: "当前页面状态已变化",
-  stateChangedDetail: "请刷新后重试，以保持最新的学习状态。",
-  requestLimitedTitle: "请稍后再试",
-  requestLimitedDetail: "服务暂时限制了请求。",
-  serviceUnavailableTitle: "学习服务暂不可用",
-  serviceUnavailableDetail: "当前页面位置仍会保留，服务恢复后可以再次尝试。",
-  timeoutTitle: "请求超时",
-  timeoutDetail: "服务未在规定时间内响应。",
-  networkTitle: "网络连接不可用",
-  networkDetail: "请检查网络后重试，当前学习上下文会保留在这里。",
-  validationTitle: "问题暂时无法处理",
-  validationDetail: "请检查问题内容后重试。",
-  unknownTitle: "本次操作未完成",
-  unknownDetail: "服务返回了未预期的结果，请稍后重试。",
-});
-const chapterGroups = computed(() => localizedCourseGroups(isEnglish.value ? "en-US" : "zh-CN").map((group) => ({
-  id: group.id,
-  label: group.label,
-  items: flattenCourseGroups([{ ...group, items: group.items }]),
-})));
-const chapterScopeOptions = computed<RuntimeSelectOption[]>(() => [
-  { value: "", label: copy.value.allAuthorizedChapters },
-  ...(chapterId.value.trim() && !hasKnownChapter.value
-    ? [{ value: chapterId.value, label: copy.value.unknownCourseContext }]
-    : []),
-  ...chapterGroups.value.flatMap((group) => group.items.map((item) => ({
-    value: item.routeId ?? item.id,
-    label: `${group.label} · ${item.label}`,
-  }))),
-]);
-const selectedChapter = computed(() => findCourseItem(chapterId.value) ?? previewChapter(chapterId.value));
-const hasKnownChapter = computed(() => Boolean(selectedChapter.value));
-const chapterScopeLabel = computed(() => {
-  const selected = selectedChapter.value;
-  if (!selected) return chapterId.value.trim() ? copy.value.currentCourse : copy.value.allAuthorizedChapters;
-  if ("label" in selected) return isEnglish.value ? (selected.labelEn ?? selected.label) : selected.label;
-  if (isEnglish.value && selected.id === "sequential-list") return "Insertion in a sequential list";
-  return selected.title;
-});
-const chatIntro = computed(() => isAuthenticated.value
-  ? copy.value.introAuthenticated
-  : copy.value.introGuest);
-const chapterTarget = computed(() => ({
-  path: "/user/chapters",
-  query: { ...(chapterId.value.trim() ? { chapterId: chapterId.value.trim() } : {}), from: "coach" },
-}));
-const knowledgeTarget = computed(() => ({
-  path: "/user/knowledge",
-  query: { ...(chapterId.value.trim() ? { chapterId: chapterId.value.trim() } : {}), from: "coach" },
-}));
-const activeSession = computed(() => sessions.value.find((item) => item.id === activeSessionId.value) ?? null);
-const readinessSummary = computed(() => {
-  if (!isAuthenticated.value) return copy.value.readinessGuest;
-  if (readinessLoading.value) return copy.value.readinessChecking;
-  if (readinessError.value) return readinessError.value.message;
-  if (!readiness.value) return copy.value.readinessUnavailable;
-  return readiness.value.allowFormalGeneration ? copy.value.readinessAllowed : copy.value.readinessBlocked;
-});
-const readinessTone = computed(() => {
-  if (!isAuthenticated.value) return "warning";
-  if (readinessLoading.value) return "neutral";
-  if (readinessError.value || !readiness.value?.allowFormalGeneration) return "warning";
-  return "success";
-});
+let sequence = 0;
+let controller: AbortController | null = null;
 
-watch(
-  () => route.query.chapterId,
-  (value) => {
-    if (isBusy.value) return;
-    const nextChapterId = readQueryString(value);
-    if (nextChapterId === chapterId.value) return;
-    chapterId.value = nextChapterId;
-    activeSessionId.value = null;
-    messages.value = [];
-    sessionError.value = null;
-    chatError.value = null;
-    if (isAuthenticated.value) void refreshReadiness();
-  },
-);
+const streaming = computed(() => phase.value === "streaming");
+const canSend = computed(() => prompt.value.trim().length > 0 && !streaming.value);
+const tooLong = computed(() => prompt.value.trim().length > MAX_PROMPT);
+const signedIn = computed(() => Boolean(auth.state.user));
 
-onMounted(() => {
-  if (isAuthenticated.value) {
-    void refreshReadiness();
-    void loadSessions();
-  }
-});
-
-watch(() => auth.state.user?.id, (userId, previousUserId) => {
-  if (userId && userId !== previousUserId) {
-    void refreshReadiness();
-    void loadSessions();
-  }
-});
-
-onBeforeUnmount(() => {
-  activeController?.abort();
-  activeController = null;
-});
-
-function readQueryString(value: unknown): string {
-  if (typeof value === "string") return value.trim();
-  if (Array.isArray(value) && typeof value[0] === "string") return value[0].trim();
-  return "";
+function push(
+  role: "user" | "assistant",
+  content: string,
+  state: MessageState = "complete",
+  question?: string,
+): number {
+  const id = ++sequence;
+  messages.value = [...messages.value, { id, role, content, sources: [], state, question }];
+  return id;
 }
 
-function nextMessageId(): string {
-  messageSequence += 1;
-  return `chat-message-${messageSequence}`;
+function update(id: number, patch: Partial<ConversationMessage>) {
+  messages.value = messages.value.map((item) => (item.id === id ? { ...item, ...patch } : item));
 }
 
-function makeAttempt(value: string): ChatAttempt {
-  const selectedChapterId = chapterId.value.trim();
-  return {
-    prompt: value,
-    ...(selectedChapterId ? { chapterId: selectedChapterId } : {}),
-    ...(activeSessionId.value ? { sessionId: activeSessionId.value } : {}),
-  };
+async function scrollToLatest() {
+  await nextTick();
+  const thread = threadRef.value;
+  if (thread) thread.scrollTop = thread.scrollHeight;
 }
 
-function updateMessage(id: string, update: Partial<ConversationMessage>): void {
-  const message = messages.value.find((item) => item.id === id);
-  if (message) Object.assign(message, update);
+function isTimeout(cause: unknown): boolean {
+  return cause instanceof ApiClientError && cause.code === "NETWORK_TIMEOUT";
 }
 
-function chatErrorFrom(cause: unknown): ChatError {
-  const error = cause as { code?: unknown } | null;
-  return { ...localizedUserError(presentUserError(cause)), ...(typeof error?.code === "string" ? { code: error.code } : {}) };
+function failureMessage(cause: unknown): string {
+  if (isTimeout(cause)) return t("chat.error.timeout");
+  return cause instanceof Error && cause.message ? cause.message : t("common.failed");
 }
 
-function localizedUserError(error: UserErrorPresentation): UserErrorPresentation {
-  if (!isEnglish.value) return error;
-  const localized = {
-    permission: { title: copy.value.permissionTitle, message: copy.value.permissionDetail },
-    "not-found": { title: copy.value.resourceUnavailableTitle, message: copy.value.resourceUnavailableDetail },
-    conflict: { title: copy.value.stateChangedTitle, message: copy.value.stateChangedDetail },
-    limited: { title: copy.value.requestLimitedTitle, message: copy.value.requestLimitedDetail },
-    timeout: { title: copy.value.timeoutTitle, message: copy.value.timeoutDetail },
-    service: { title: copy.value.serviceUnavailableTitle, message: copy.value.serviceUnavailableDetail },
-    network: { title: copy.value.networkTitle, message: copy.value.networkDetail },
-    validation: { title: copy.value.validationTitle, message: copy.value.validationDetail },
-    unknown: { title: copy.value.unknownTitle, message: copy.value.unknownDetail },
-  }[error.kind];
-  return localized ? { ...error, ...localized } : error;
+function raise(title: string, message: string) {
+  alert.value = { title, message };
 }
 
-function streamErrorFrom(value: unknown): ChatError {
-  const record = asRecord(value);
-  const code = typeof record?.code === "string" ? record.code : "CHAT_STREAM_ERROR";
-  const serverMessage = typeof record?.message === "string" ? record.message.trim() : "";
-  const evidenceUnavailable = code === "CHAT_EVIDENCE_UNAVAILABLE";
-  const modelUnavailable = code === "MODEL_NOT_CONFIGURED";
-  return {
-    kind: evidenceUnavailable ? "validation" : "service",
-    title: evidenceUnavailable ? copy.value.evidenceMissingTitle : copy.value.answerIncompleteTitle,
-    message: isEnglish.value
-      ? (evidenceUnavailable ? copy.value.evidenceMissingDetail : modelUnavailable ? copy.value.modelUnavailableDetail : copy.value.answerIncompleteDetail)
-      : serverMessage || (evidenceUnavailable ? copy.value.evidenceMissingDetail : modelUnavailable ? copy.value.modelUnavailableDetail : copy.value.answerIncompleteDetail),
-    retryable: true,
-    code,
-  };
+async function send() {
+  const question = prompt.value.trim();
+  // animationBusy covers the moment the server is reading a reply: sending into it would race it.
+  if (!question || streaming.value || animationBusy.value || tooLong.value) return;
+
+  // An offer was just made, so this reply may be taking it up. Whether it does is read by the model
+  // on the server; a reply that is not an agreement comes back declined and is answered normally.
+  const offer = lastReplyOffersAnimation() && question.length <= OFFER_REPLY_MAX ? lastOfferingReply() : null;
+
+  // Taken before the question joins the thread, or the question would be sent twice.
+  const history = messages.value
+    .filter((item) => item.state === "complete" && item.content)
+    .slice(-12)
+    .map((item) => ({ role: item.role, content: item.content }));
+
+  prompt.value = "";
+  push("user", question);
+  await scrollToLatest();
+
+  if (offer && (await runAnimation(animationPrompt(offer), offer.id, question))) return;
+  await ask(question, history);
 }
 
-function unfinishedStreamError(): ChatError {
-  return {
-    kind: "service",
-    title: copy.value.answerIncompleteTitle,
-    message: copy.value.answerIncompleteDetail,
-    retryable: true,
-    code: "CHAT_STREAM_INCOMPLETE",
-  };
-}
+async function ask(question: string, history: ChatTurn[]) {
+  const replyId = push("assistant", "", "streaming", question);
+  phase.value = "streaming";
+  controller = new AbortController();
+  const signal = controller.signal;
+  await scrollToLatest();
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
-}
-
-function parsedEventValue(event: SseEvent<unknown>): unknown {
-  if (event.parsed !== undefined) return event.parsed;
   try {
-    return JSON.parse(event.data) as unknown;
-  } catch {
-    return event.data;
-  }
-}
-
-function isChatSource(value: unknown): value is ChatSource {
-  const source = asRecord(value);
-  return Boolean(source
-    && typeof source.id === "string"
-    && typeof source.chapterId === "string"
-    && typeof source.title === "string"
-    && typeof source.content === "string"
-    && typeof source.source === "string"
-    && (typeof source.pageLabel === "string" || source.pageLabel === null)
-    && typeof source.score === "number"
-    && typeof source.evidenceHash === "string");
-}
-
-function sourcesFrom(value: unknown): ChatSource[] {
-  const record = asRecord(value);
-  const candidates = Array.isArray(value) ? value : Array.isArray(record?.sources) ? record.sources : [];
-  return candidates.filter(isChatSource);
-}
-
-function deltaFrom(value: unknown): string {
-  if (typeof value === "string") return value;
-  const record = asRecord(value);
-  if (typeof record?.content === "string") return record.content;
-  if (typeof record?.delta === "string") return record.delta;
-  return "";
-}
-
-function responseFrom(value: unknown): ChatResponse | null {
-  const record = asRecord(value);
-  if (!record || typeof record.answer !== "string") return null;
-  const sessionId = typeof record.sessionId === "string" || record.sessionId === null ? record.sessionId : undefined;
-  return {
-    answer: record.answer,
-    sessionId,
-    sources: sourcesFrom(record.sources),
-    persisted: record.persisted === true,
-  };
-}
-
-function historyMessages(session: ChatSession): ConversationMessage[] {
-  return session.messages.map((message) => ({
-    id: `history-${message.id}`,
-    role: message.role,
-    content: message.content,
-    sources: message.sources,
-    state: "complete",
-    createdAt: message.createdAt,
-  }));
-}
-
-function readinessInput(promptValue = ""): { operation: "CHAT"; chapterId?: string; prompt?: string } {
-  const selectedChapterId = chapterId.value.trim();
-  const selectedPrompt = promptValue.trim();
-  return {
-    operation: "CHAT",
-    ...(selectedChapterId ? { chapterId: selectedChapterId } : {}),
-    ...(selectedPrompt ? { prompt: selectedPrompt } : {}),
-  };
-}
-
-async function refreshReadiness(promptValue = ""): Promise<AiReadiness | null> {
-  const version = ++readinessLoadVersion;
-  if (!isAuthenticated.value) {
-    readinessLoading.value = false;
-    readinessError.value = null;
-    readiness.value = null;
-    return null;
-  }
-  readinessLoading.value = true;
-  readinessError.value = null;
-  try {
-    const value = await userApi.getReadiness(readinessInput(promptValue));
-    if (version !== readinessLoadVersion) return readiness.value;
-    readiness.value = value;
-    return value;
+    const response = await userApi.streamChat(
+      { prompt: question, chapterId: chapterId.value || undefined, sessionId: activeSessionId.value ?? undefined, history },
+      signal,
+    );
+    let answer = "";
+    let sources: ChatSource[] = [];
+    for await (const event of response.events) {
+      // A stop has to land even when the next event is slow to arrive.
+      if (signal.aborted) break;
+      if (event.event === "sources") sources = sourcesOf(event);
+      else if (event.event === "delta") {
+        answer += deltaOf(event);
+        update(replyId, { content: answer, sources });
+        await scrollToLatest();
+      } else if (event.event === "done") {
+        const done = doneOf(event) as ChatResponse | null;
+        answer = done?.answer ?? answer;
+        sources = done?.sources?.length ? done.sources : sources;
+        update(replyId, { content: answer, sources, state: "complete" });
+        if (done?.sessionId) {
+          activeSessionId.value = done.sessionId;
+          await loadSessions();
+        }
+        break;
+      } else if (event.event === "error") {
+        const failure = errorOf(event);
+        messages.value = messages.value.filter((item) => item.id !== replyId);
+        raise(t("common.failed"), failure ? t(chatErrorKey(failure.code)) : t("chat.error.failed"));
+        break;
+      }
+    }
+    const reply = messages.value.find((item) => item.id === replyId);
+    // A stream that was cut short reads as stopped even when it already had text: finishing it here
+    // would present a half-answer as the whole one. One that closed with nothing at all - no done,
+    // no error, the server just went quiet - says so, instead of leaving the learner staring at the
+    // searching note until they give up.
+    if (reply?.state === "streaming") {
+      update(replyId, { state: signal.aborted || !reply.content ? "stopped" : "complete" });
+      if (!signal.aborted && !reply.content) {
+        raise(t("common.failed"), t("chat.error.timeout"));
+      }
+    }
   } catch (cause) {
-    if (version !== readinessLoadVersion) return readiness.value;
-    readinessError.value = localizedUserError(presentUserError(cause));
-    return null;
+    const stopped = signal.aborted;
+    if (stopped) {
+      const reply = messages.value.find((item) => item.id === replyId);
+      update(replyId, { state: reply?.content ? "complete" : "stopped" });
+    } else {
+      messages.value = messages.value.filter((item) => item.id !== replyId);
+      raise(t("common.failed"), failureMessage(cause));
+    }
   } finally {
-    if (version === readinessLoadVersion) readinessLoading.value = false;
+    phase.value = "idle";
+    controller = null;
+    await scrollToLatest();
   }
 }
 
-async function loadSessions(): Promise<void> {
-  if (!isAuthenticated.value) {
-    sessionsLoading.value = false;
-    sessionsError.value = null;
-    sessions.value = [];
-    activeSessionId.value = null;
+function stop() {
+  controller?.abort();
+}
+
+/** The reply that ended with an offer to show the animation. */
+function lastOfferingReply(): ConversationMessage | null {
+  for (let index = messages.value.length - 1; index >= 0; index--) {
+    const message = messages.value[index];
+    if (message.role !== "assistant") continue;
+    return /动画|演示|animation/i.test(message.content) ? message : null;
+  }
+  return null;
+}
+
+function lastReplyOffersAnimation(): boolean {
+  return lastOfferingReply() !== null;
+}
+
+/**
+ * What the interpret endpoint should read for this reply's demo.
+ *
+ * The bare question can be a concept comparison ("栈和队列有什么区别？") that rightly refuses a
+ * frame-by-frame demo, while the offer the model just made names the concrete process ("栈的进栈出栈
+ * 过程"). Question plus offer reads as one request, and the engine decides.
+ */
+function animationPrompt(message: ConversationMessage): string {
+  const question = message.question ?? "";
+  const sentences = message.content.split(/(?<=[。！？!?])/).map((item) => item.trim()).filter(Boolean);
+  const offer = [...sentences].reverse().find((item) => /动画|演示/.test(item));
+  return offer ? `${question} ${offer}`.trim() : question || message.content;
+}
+
+/**
+ * Builds the animation this answer offers, then opens it over the conversation.
+ *
+ * The sentence goes to the same interpret endpoint the animation lab uses, so the model only picks a
+ * capability and the local engine computes the frames - the demo can be the wrong one but never an
+ * invented one.
+ *
+ * With `reply` the server also reads the learner's own words: it answers with the demo when they were
+ * taking the offer up, and with ANIMATION_DECLINED when they were not. False means "this was not an
+ * agreement, answer it as the question it is"; true means the turn is spent, one way or the other.
+ */
+async function runAnimation(question: string, replyId: number, reply?: string): Promise<boolean> {
+  // No chapter selected means the whole textbook, and the request says exactly that. Falling back to the
+  // first chapter used to narrow it silently, and most demos then came back as "not implemented".
+  const chapter = chapterId.value || undefined;
+  if (!question) {
+    raise(t("chat.animationFailedTitle"), t("chat.animationUnavailable"));
+    return true;
+  }
+  animationBusy.value = true;
+  animationPendingFor.value = replyId;
+  try {
+    // Without a reply the learner pressed the button, so the yes is already given and the interpreter
+    // must pick a capability rather than re-judge whether the topic deserves a demo.
+    const request = await userApi.interpretAnimation(reply
+      ? { chapterId: chapter, prompt: question, reply }
+      : { chapterId: chapter, prompt: question, confirmed: true });
+    const data = await userApi.simulateAnimation(request);
+    animations.value = { ...animations.value, [replyId]: data };
+    openAnimationFor.value = replyId;
+    return true;
+  } catch (cause) {
+    // Not an agreement is the one failure that is not a failure: the words were a question.
+    if (isDeclined(cause)) return false;
+    raise(t("chat.animationFailedTitle"), animationFailure(cause));
+    return true;
+  } finally {
+    animationBusy.value = false;
+    animationPendingFor.value = null;
+  }
+}
+
+/**
+ * The answer's own button. A demo already built is shown again without asking the server for it: a second
+ * request would spend quota to re-decide something already decided, and it could even come back different.
+ */
+function showAnimation(message: ConversationMessage) {
+  if (animationOf(message.id)) {
+    openAnimationFor.value = message.id;
     return;
   }
-  sessionsLoading.value = true;
-  sessionsError.value = null;
+  void runAnimation(animationPrompt(message), message.id);
+}
+
+/** The server read the reply and found no agreement in it. */
+function isDeclined(cause: unknown): boolean {
+  return cause instanceof ApiClientError && cause.code === "ANIMATION_DECLINED";
+}
+
+/**
+ * A demo that could not be built is the engine's business, not the learner's. Its explanations name
+ * capabilities and operations - "tree 仅支持 highlight/traverse/visit", "linked_list 仅支持
+ * append/delete/find/insert" - which is machinery, and reads as a broken product rather than a missing
+ * one. Every refusal becomes the same short line; only waiting too long says so in its own words.
+ */
+function animationFailure(cause: unknown): string {
+  return isTimeout(cause) ? t("chat.error.timeout") : t("chat.animationUnavailable");
+}
+
+function animationOf(id: number): DsvpSimulationResponse | null {
+  return animations.value[id] ?? null;
+}
+
+function definitionOf(id: number) {
+  return animationOf(id)?.animationData ?? null;
+}
+
+function newConversation() {
+  if (streaming.value) return;
+  messages.value = [];
+  animations.value = {};
+  openAnimationFor.value = null;
+  activeSessionId.value = null;
+  prompt.value = "";
+  sessionsOpen.value = false;
+}
+
+async function loadSessions() {
+  if (!signedIn.value) return;
   try {
     sessions.value = await userApi.listChatSessions();
-    if (activeSessionId.value && !sessions.value.some((item) => item.id === activeSessionId.value)) {
-      activeSessionId.value = null;
-    }
-  } catch (cause) {
-    sessionsError.value = localizedUserError(presentUserError(cause));
-  } finally {
-    sessionsLoading.value = false;
+    sessionsFailed.value = false;
+  } catch {
+    // A past conversation that cannot be listed is not a reason to block the question box.
+    sessionsFailed.value = true;
   }
 }
 
-async function openSession(sessionId: string): Promise<void> {
-  if (isBusy.value || !isAuthenticated.value) return;
-  const version = ++sessionLoadVersion;
-  activeSessionId.value = sessionId;
-  sessionLoading.value = true;
-  sessionError.value = null;
-  chatError.value = null;
-  retryAttempt.value = null;
+async function openSession(session: ChatSessionSummary) {
+  if (streaming.value) return;
   try {
-    const session = await userApi.getChatSession(sessionId);
-    if (version !== sessionLoadVersion) return;
-    messages.value = historyMessages(session);
-    if (session.chapterId) chapterId.value = session.chapterId;
+    const detail = await userApi.getChatSession(session.id);
+    activeSessionId.value = detail.id;
+    animations.value = {};
+    openAnimationFor.value = null;
+    sessionsOpen.value = false;
+    messages.value = detail.messages.map((item) => ({
+      id: ++sequence,
+      role: item.role,
+      content: item.content,
+      sources: item.sources ?? [],
+      state: "complete" as MessageState,
+    }));
+    await scrollToLatest();
   } catch (cause) {
-    if (version !== sessionLoadVersion) return;
-    sessionError.value = localizedUserError(presentUserError(cause));
-  } finally {
-    if (version === sessionLoadVersion) sessionLoading.value = false;
+    raise(t("common.failed"), failureMessage(cause));
   }
 }
 
-function startNewConversation(): void {
-  if (isBusy.value || !isAuthenticated.value) return;
-  sessionLoadVersion += 1;
-  activeSessionId.value = null;
-  messages.value = [];
-  sessionError.value = null;
-  chatError.value = null;
-  retryAttempt.value = null;
-}
-
-function requestDelete(sessionId: string): void {
-  deleteConfirmationId.value = sessionId;
-}
-
-function cancelDelete(): void {
-  deleteConfirmationId.value = null;
-}
-
-function setSessionButton(id: string, element: Element | null): void {
-  if (element instanceof HTMLButtonElement) sessionButtons.set(id, element);
-  else sessionButtons.delete(id);
-}
-
-async function deleteSession(sessionId: string): Promise<void> {
-  if (isBusy.value || deletingSessionId.value || !isAuthenticated.value) return;
-  deletingSessionId.value = sessionId;
-  sessionsError.value = null;
+async function removeSession() {
+  const session = pendingDelete.value;
+  pendingDelete.value = null;
+  if (!session) return;
   try {
-    await userApi.deleteChatSession(sessionId);
-    const deletedIndex = sessions.value.findIndex((item) => item.id === sessionId);
-    sessions.value = sessions.value.filter((item) => item.id !== sessionId);
-    if (activeSessionId.value === sessionId) startNewConversation();
-    deleteConfirmationId.value = null;
-    await nextTick();
-    const nextSession = sessions.value[deletedIndex] ?? sessions.value[deletedIndex - 1];
-    if (nextSession) sessionButtons.get(nextSession.id)?.focus();
-    else newConversationButton.value?.focus();
+    await userApi.deleteChatSession(session.id);
+    if (activeSessionId.value === session.id) newConversation();
+    await loadSessions();
   } catch (cause) {
-    sessionsError.value = localizedUserError(presentUserError(cause));
-  } finally {
-    deletingSessionId.value = null;
+    raise(t("common.failed"), failureMessage(cause));
   }
 }
 
-function readinessBlockedMessage(value: AiReadiness): string {
-  const reasons = [...new Set(value.blockingReasons.map(readinessReasonMessage))].filter(Boolean);
-  if (reasons.length) return reasons.join(isEnglish.value ? "; " : "；");
-  if (!value.modelAvailable) return copy.value.modelUnavailableDetail;
-  if (value.evidenceRequired && !value.evidenceAvailable) return copy.value.evidenceMissingDetail;
-  return copy.value.readinessNotMet;
-}
-
-function readinessReasonMessage(reason: string): string {
-  switch (reason) {
-    case "QUESTION_EVIDENCE_UNAVAILABLE":
-    case "CONTEXT_EVIDENCE_UNAVAILABLE":
-      return copy.value.evidenceMissingDetail;
-    case "AI_QUOTA_EXHAUSTED":
-      return copy.value.quotaExhausted;
-    case "AI_QUOTA_CONCURRENCY_LIMITED":
-      return copy.value.quotaLimited;
-    case "AI_QUOTA_NOT_CONFIGURED":
-    case "PERSISTED_QUOTA_NOT_CONFIGURED":
-    case "ENVIRONMENT_QUOTA_NOT_CONFIGURED":
-      return copy.value.quotaUnconfigured;
-    case "PERSISTED_CONFIGURATION_DISABLED":
-    case "PERSISTED_CONFIGURATION_UNAVAILABLE":
-    case "ENVIRONMENT_CONFIGURATION_INCOMPLETE":
-    case "MODEL_CONFIG_UNAVAILABLE":
-      return copy.value.modelUnavailableDetail;
-    default:
-      return copy.value.readinessNotMet;
-  }
-}
-
-function appendSessionFromResponse(response: ChatResponse, attempt: ChatAttempt): void {
-  const nextSessionId = response.sessionId ?? attempt.sessionId;
-  if (nextSessionId) activeSessionId.value = nextSessionId;
-  void loadSessions();
-}
-
-async function consumeStream(attempt: ChatAttempt, replyId: string, signal: AbortSignal): Promise<void> {
-  const response = await userApi.streamChat(attempt, signal);
-  let completed = false;
-  let streamedError: ChatError | null = null;
-
-  streamEvents: for await (const event of response.events as AsyncGenerator<SseEvent<unknown>>) {
-    const value = parsedEventValue(event);
-    if (event.event === "sources") {
-      updateMessage(replyId, { sources: sourcesFrom(value) });
-      continue;
-    }
-    if (event.event === "delta") {
-      const delta = deltaFrom(value);
-      if (delta) {
-        const current = messages.value.find((item) => item.id === replyId);
-        updateMessage(replyId, { content: `${current?.content ?? ""}${delta}` });
-      }
-      continue;
-    }
-    if (event.event === "done") {
-      const completedResponse = responseFrom(value);
-      if (!completedResponse) {
-        streamedError = unfinishedStreamError();
-      } else {
-        updateMessage(replyId, {
-          content: completedResponse.answer,
-          sources: completedResponse.sources,
-          state: "complete",
-          errorCode: undefined,
-        });
-        appendSessionFromResponse(completedResponse, attempt);
-        completed = true;
-      }
-      break streamEvents;
-    }
-    if (event.event === "error") {
-      streamedError = streamErrorFrom(value);
-      break streamEvents;
-    }
-  }
-
-  if (signal.aborted) {
-    updateMessage(replyId, { state: "stopped" });
-    return;
-  }
-  if (streamedError) {
-    updateMessage(replyId, { state: "error", errorCode: streamedError.code });
-    chatError.value = streamedError;
-    return;
-  }
-  if (!completed) {
-    const incomplete = unfinishedStreamError();
-    updateMessage(replyId, { state: "error", errorCode: incomplete.code });
-    chatError.value = incomplete;
-  }
-}
-
-async function runAttempt(attempt: ChatAttempt): Promise<void> {
-  if (isBusy.value) return;
-  if (!isAuthenticated.value) {
-    chatError.value = {
-      kind: "permission",
-      title: copy.value.permissionTitle,
-      message: copy.value.permissionDetail,
-      retryable: false,
-    };
-    return;
-  }
-  retryAttempt.value = attempt;
-  chatError.value = null;
-  sendPhase.value = "checking";
-
-  const currentReadiness = await refreshReadiness(attempt.prompt);
-  if (!currentReadiness) {
-    chatError.value = readinessError.value ? { ...readinessError.value } : {
-      kind: "unknown",
-      title: copy.value.readinessUnknownTitle,
-      message: copy.value.tryAgain,
-      retryable: true,
-    };
-    sendPhase.value = "idle";
-    return;
-  }
-  if (!currentReadiness.allowFormalGeneration) {
-    chatError.value = {
-      kind: "validation",
-      title: copy.value.formalBlockedTitle,
-      message: readinessBlockedMessage(currentReadiness),
-      retryable: true,
-      code: "AI_READINESS_BLOCKED",
-    };
-    sendPhase.value = "idle";
-    return;
-  }
-
-  const controller = new AbortController();
-  activeController = controller;
-  sendPhase.value = "streaming";
-  const replyId = nextMessageId();
-  messages.value.push({ id: replyId, role: "assistant", content: "", sources: [], state: "streaming" });
-
+onMounted(async () => {
   try {
-    await consumeStream(attempt, replyId, controller.signal);
-  } catch (cause) {
-    if (controller.signal.aborted || (cause as { name?: string } | null)?.name === "AbortError") {
-      updateMessage(replyId, { state: "stopped" });
-    } else {
-      const error = chatErrorFrom(cause);
-      updateMessage(replyId, { state: "error", errorCode: error.code });
-      chatError.value = error;
-    }
-  } finally {
-    if (activeController === controller) activeController = null;
-    sendPhase.value = "idle";
+    chapters.value = await userApi.listChapters();
+    const fromQuery = typeof route.query.chapterId === "string" ? route.query.chapterId : "";
+    chapterId.value = chapters.value.some((item) => item.id === fromQuery) ? fromQuery : ALL_CHAPTERS;
+  } catch {
+    // The scope picker is optional: without the chapter list every question just spans the whole book.
+    chapters.value = [];
   }
-}
+  await loadSessions();
+});
 
-async function submitPrompt(): Promise<void> {
-  const value = prompt.value.trim();
-  if (!value || isBusy.value) return;
-  if (!isAuthenticated.value) {
-    chatError.value = {
-      kind: "permission",
-      title: copy.value.permissionTitle,
-      message: copy.value.permissionDetail,
-      retryable: false,
-    };
-    return;
-  }
-  const attempt = makeAttempt(value);
-  messages.value.push({ id: nextMessageId(), role: "user", content: value, sources: [], state: "complete" });
-  prompt.value = "";
-  await runAttempt(attempt);
-}
+onBeforeUnmount(() => controller?.abort());
 
-async function retryLastAttempt(): Promise<void> {
-  if (!retryAttempt.value || isBusy.value) return;
-  await runAttempt(retryAttempt.value);
-}
-
-function stopGeneration(): void {
-  activeController?.abort();
-}
-
-function formatSessionTime(value: string): string {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString(isEnglish.value ? "en-US" : "zh-CN", { dateStyle: "short", timeStyle: "short" });
-}
-
-function quotaLabel(value: AiReadiness["quotaStatus"]): string {
-  return {
-    AVAILABLE: copy.value.quotaAvailable,
-    EXHAUSTED: copy.value.quotaExhausted,
-    CONCURRENCY_LIMITED: copy.value.quotaLimited,
-    NOT_CONFIGURED: copy.value.quotaUnconfigured,
-  }[value];
-}
-
-function messageCountLabel(value: number): string {
-  if (!isEnglish.value) return `${value} 条消息`;
-  return `${value} ${value === 1 ? "message" : "messages"}`;
+/**
+ * The model answers in light markdown; the page renders the three shapes it actually uses and nothing
+ * else. Escaping runs first, so every tag below is one this function wrote - the answer's own angle
+ * brackets can never become markup.
+ */
+function renderAnswer(raw: string): string {
+  const escaped = raw.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return escaped
+    .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/^#{1,4}\s+(.+)$/gm, '<strong class="answer__heading">$1</strong>')
+    .replace(/^\s*[-*]\s+/gm, "• ");
 }
 </script>
 
 <template>
-  <UserFrame shell="course">
-    <section class="user-page" aria-labelledby="chat-title">
-      <header class="user-page__heading">
-        <div>
-          <p class="user-page__eyebrow">{{ copy.eyebrow }}</p>
-          <h1 id="chat-title">{{ copy.title }}</h1>
-          <p class="user-page__intro">{{ chatIntro }}</p>
-        </div>
-        <div class="user-page__actions">
-          <button v-if="isAuthenticated" ref="newConversationButton" class="user-action" data-testid="chat-new-conversation" type="button" :disabled="isBusy" @click="startNewConversation">{{ copy.newConversation }}</button>
-          <RouterLink v-if="chapterId.trim()" class="user-action" data-testid="chat-animation" :to="{ path: '/user/animation', query: { chapterId: chapterId.trim(), from: 'coach' } }">{{ copy.viewAlgorithm }}</RouterLink>
-          <button v-if="isAuthenticated" class="user-action" data-testid="chat-refresh-readiness" type="button" :disabled="readinessLoading || isBusy" @click="refreshReadiness()">{{ copy.refresh }}</button>
+  <BrandStage wide>
+    <div class="chat">
+      <header class="chat__head">
+        <h1 class="chat__title">{{ t("chat.title") }}</h1>
+        <div class="chat__head-actions">
+          <!-- Phones reach the past conversations through this; on a desktop the sidebar is always there. -->
+          <button class="chat__link chat__link--history" type="button" @click="sessionsOpen = true">
+            {{ t("chat.sessions") }}
+          </button>
+          <button class="chat__link" type="button" @click="router.push('/')">{{ t("common.backHome") }}</button>
         </div>
       </header>
 
-      <section class="user-chat__readiness" aria-live="polite" data-testid="chat-readiness">
-        <div v-if="isAuthenticated" class="user-panel">
-          <div>
-            <p class="user-page__eyebrow">{{ copy.readiness }}</p>
-            <h2>{{ readinessSummary }}</h2>
-          </div>
-          <div v-if="readiness" class="user-chat__readiness-grid">
-            <span :data-state="readinessTone">{{ readiness.modelAvailable ? copy.modelAvailable : copy.modelUnavailable }}</span>
-            <span :data-state="readinessTone">{{ readiness.evidenceRequired ? (readiness.evidenceAvailable ? copy.evidenceAvailable : copy.evidenceUnavailable) : copy.evidenceNotRequired }}</span>
-            <span :data-state="readinessTone">{{ quotaLabel(readiness.quotaStatus) }}</span>
-          </div>
-          <p v-if="readiness && !readiness.allowFormalGeneration" class="inline-notice inline-notice--warning">{{ readinessBlockedMessage(readiness) }}</p>
-        </div>
-        <UserState
-          v-if="!isAuthenticated"
-          mode="permission"
-          :title="copy.signInTitle"
-          :message="copy.signInMessage"
+      <div class="chat__grid">
+        <div v-if="sessionsOpen" class="sessions-scrim" @click="sessionsOpen = false" />
+
+        <section
+          class="panel panel--sessions"
+          :class="{ 'panel--sessions-open': sessionsOpen }"
+          :aria-label="t('chat.sessions')"
         >
-          <RouterLink class="user-action user-action--primary" :to="loginTarget">{{ copy.signInContinue }}</RouterLink>
-        </UserState>
-        <section v-if="!isAuthenticated" class="user-chat__guest-actions" :aria-label="copy.continueLearning">
-          <div>
-            <p class="user-page__eyebrow">{{ copy.currentScope }}</p>
-            <h2>{{ chapterScopeLabel }}</h2>
+          <header class="sessions__head">
+            <h2 class="sessions__title">{{ t("chat.sessions") }}</h2>
+            <button class="sessions__close" type="button" :aria-label="t('common.close')" @click="sessionsOpen = false">×</button>
+          </header>
+
+          <button class="button button--primary" type="button" :disabled="streaming" @click="newConversation">
+            {{ t("chat.newChat") }}
+          </button>
+
+          <p v-if="!signedIn" class="panel__note">{{ t("chat.signInToKeep") }}</p>
+          <p v-else-if="sessionsFailed" class="panel__note">{{ t("chat.sessionsFailed") }}</p>
+          <p v-else-if="!sessions.length" class="panel__note">{{ t("chat.noSessions") }}</p>
+
+          <ul v-else class="sessions">
+            <li v-for="session in sessions" :key="session.id" class="session">
+              <button
+                class="session__open"
+                type="button"
+                :class="{ 'session__open--active': session.id === activeSessionId }"
+                @click="openSession(session)"
+              >
+                {{ session.title }}
+              </button>
+              <button class="session__delete" type="button" :aria-label="t('chat.delete')" @click="pendingDelete = session">
+                ×
+              </button>
+            </li>
+          </ul>
+        </section>
+
+        <section class="panel panel--thread" :aria-label="t('chat.title')">
+          <div ref="threadRef" class="thread">
+            <p v-if="!messages.length" class="thread__empty">{{ t("chat.empty") }}</p>
+
+            <article
+              v-for="message in messages"
+              :key="message.id"
+              class="message"
+              :class="`message--${message.role}`"
+            >
+              <p v-if="message.role === 'assistant'" class="message__body" v-html="renderAnswer(message.content)" />
+              <p v-else class="message__body">{{ message.content }}</p>
+              <p v-if="message.state === 'streaming' && !message.content" class="message__note">{{ t("chat.thinking") }}</p>
+              <p v-else-if="message.state === 'stopped'" class="message__note">{{ t("chat.stopped") }}</p>
+
+              <template v-if="message.role === 'assistant'">
+                <button
+                  v-if="message.state === 'complete'"
+                  class="message__action"
+                  type="button"
+                  :disabled="animationBusy"
+                  @click="showAnimation(message)"
+                >
+                  {{ animationPendingFor === message.id ? t("chat.animationBusy") : t("chat.watchAnimation") }}
+                </button>
+              </template>
+            </article>
           </div>
-          <div class="user-page__actions">
-            <RouterLink class="user-action" data-testid="chat-course" :to="chapterTarget">{{ copy.openCurrentCourse }}</RouterLink>
-            <RouterLink class="user-action" data-testid="chat-knowledge" :to="knowledgeTarget">{{ copy.browseMaterials }}</RouterLink>
+
+          <div class="compose">
+            <select v-model="chapterId" class="field__control" :aria-label="t('chat.scope')">
+              <option :value="ALL_CHAPTERS">{{ t("chat.allChapters") }}</option>
+              <option v-for="chapter in chapters" :key="chapter.id" :value="chapter.id">{{ chapter.title }}</option>
+            </select>
+
+            <textarea
+              v-model="prompt"
+              class="field__control field__control--area"
+              rows="3"
+              :placeholder="t('chat.placeholder')"
+              :aria-label="t('chat.question')"
+              @keydown.enter.exact.prevent="send"
+            />
+
+            <p v-if="tooLong" class="panel__note">{{ t("chat.error.tooLong") }}</p>
+
+            <div class="compose__actions">
+              <button v-if="streaming" class="button" type="button" @click="stop">{{ t("chat.stop") }}</button>
+              <button v-else class="button button--primary" type="button" :disabled="!canSend || tooLong" @click="send">
+                {{ t("chat.send") }}
+              </button>
+            </div>
           </div>
         </section>
-        <UserState
-          v-else-if="readinessError"
-          :mode="readinessError.kind === 'permission' ? 'permission' : 'error'"
-          :title="readinessError.title"
-          :message="readinessError.message"
-          :retry-label="readinessError.retryable ? copy.reload : undefined"
-          @retry="refreshReadiness()"
-        />
-      </section>
-
-      <section v-if="isAuthenticated" class="user-chat" :aria-label="copy.content">
-        <UserState v-if="sessionLoading" mode="loading" :title="copy.loadingSessions" :message="copy.loadingSessionsDetail" />
-        <UserState
-          v-else-if="sessionError"
-          :mode="sessionError.kind === 'permission' ? 'permission' : 'error'"
-          :title="sessionError.title"
-          :message="sessionError.message"
-          :retry-label="sessionError.retryable ? copy.reload : undefined"
-          @retry="activeSessionId && openSession(activeSessionId)"
-        />
-        <UserState v-else-if="!messages.length" mode="empty" :title="copy.emptyTitle" :message="copy.emptyDetail" />
-        <div v-else class="user-chat__messages" aria-live="polite" aria-relevant="additions text">
-          <article v-for="message in messages" :key="message.id" class="user-chat__message" :data-role="message.role" :data-state="message.state">
-            <p>{{ message.content || (message.state === 'streaming' ? copy.generatingAnswer : '') }}</p>
-            <small v-if="message.role === 'assistant' && message.state === 'streaming'">{{ copy.generating }}</small>
-            <small v-else-if="message.role === 'assistant' && message.state === 'stopped'">{{ copy.stopped }}</small>
-            <small v-else-if="message.role === 'assistant' && message.state === 'error'">{{ copy.incomplete }}</small>
-            <time v-if="message.createdAt" class="user-chat__message-time" :datetime="message.createdAt">{{ copy.sentAt }} {{ formatSessionTime(message.createdAt) }}</time>
-            <div v-if="message.sources.length" class="user-source-list" :aria-label="copy.sources">
-              <details v-for="source in message.sources" :key="`${source.id}-${source.evidenceHash}`">
-                <summary>{{ source.title }}<span v-if="source.pageLabel"> · {{ source.pageLabel }}</span></summary>
-                <p>{{ source.content }}</p>
-                <p>{{ source.source }}</p>
-              </details>
-            </div>
-          </article>
-        </div>
-
-        <form class="user-form user-chat__form" @submit.prevent="submitPrompt">
-          <label>
-            {{ copy.scope }}
-            <RuntimeSelect v-model="chapterId" :options="chapterScopeOptions" :ariaLabel="copy.scope" :disabled="isBusy" test-id="chat-chapter-scope" />
-          </label>
-          <label>
-            {{ copy.question }}
-            <textarea v-model="prompt" data-testid="chat-prompt" name="prompt" maxlength="4000" :disabled="isBusy" :placeholder="copy.questionPlaceholder" required />
-          </label>
-          <div class="user-page__actions">
-            <button class="user-action user-action--primary" data-testid="chat-send" type="submit" :disabled="!canSubmit">{{ sendPhase === 'checking' ? copy.checking : copy.send }}</button>
-            <button v-if="isStreaming" class="user-action" data-testid="chat-stop" type="button" @click="stopGeneration">{{ copy.stop }}</button>
-            <button v-if="chatError?.retryable && retryAttempt" class="user-action" data-testid="chat-retry" type="button" :disabled="isBusy" @click="retryLastAttempt">{{ copy.retry }}</button>
-          </div>
-        </form>
-
-        <UserState
-          v-if="chatError"
-          :mode="chatError.kind === 'permission' ? 'permission' : 'error'"
-          :title="chatError.title"
-          :message="chatError.message"
-          :retry-label="chatError.retryable && retryAttempt ? copy.retry : undefined"
-          @retry="retryLastAttempt"
-        />
-      </section>
-    </section>
-
-    <template #rail>
-      <div class="user-rail-list">
-        <div class="user-chat__rail-heading"><strong>{{ isAuthenticated ? copy.historySessions : copy.accountSessions }}</strong><button v-if="isAuthenticated" class="user-chat__quiet-action" type="button" :disabled="sessionsLoading || isBusy" @click="loadSessions">{{ copy.refresh }}</button></div>
-        <p v-if="!isAuthenticated" class="user-list__meta user-list__meta--left">{{ copy.guestSessions }}</p>
-        <p v-if="activeSession">{{ copy.currentSession }}: {{ activeSession.title }}</p>
-        <UserState v-if="sessionsLoading" mode="loading" :title="copy.loadingSessions" message="" />
-        <UserState
-          v-else-if="sessionsError"
-          :mode="sessionsError.kind === 'permission' ? 'permission' : 'error'"
-          :title="sessionsError.title"
-          :message="sessionsError.message"
-          :retry-label="sessionsError.retryable ? copy.reload : undefined"
-          @retry="loadSessions"
-        />
-        <p v-else-if="isAuthenticated && !sessions.length">{{ copy.noSessions }}</p>
-        <div v-else class="user-chat__sessions">
-          <article v-for="session in sessions" :key="session.id" class="user-chat__session" :data-active="session.id === activeSessionId">
-            <button :ref="(element) => setSessionButton(session.id, element as Element | null)" class="user-chat__session-open" data-testid="chat-session" type="button" :disabled="isBusy || deletingSessionId === session.id" @click="openSession(session.id)">
-              <strong>{{ session.title }}</strong>
-              <span>{{ messageCountLabel(session.messageCount) }} · {{ formatSessionTime(session.updatedAt) }}</span>
-            </button>
-            <div class="user-chat__session-actions">
-              <button v-if="deleteConfirmationId !== session.id" class="user-chat__quiet-action" data-testid="chat-request-delete" type="button" :disabled="isBusy || deletingSessionId === session.id" @click="requestDelete(session.id)">{{ copy.delete }}</button>
-              <template v-else>
-                <button class="user-chat__quiet-action user-chat__quiet-action--danger" data-testid="chat-confirm-delete" type="button" :disabled="deletingSessionId === session.id" @click="deleteSession(session.id)">{{ deletingSessionId === session.id ? copy.deleting : copy.confirm }}</button>
-                <button class="user-chat__quiet-action" type="button" :disabled="deletingSessionId === session.id" @click="cancelDelete">{{ copy.cancel }}</button>
-              </template>
-            </div>
-          </article>
-        </div>
-        <strong>{{ copy.currentScope }}</strong>
-        <p>{{ chapterScopeLabel }}</p>
       </div>
-    </template>
-  </UserFrame>
+    </div>
+
+    <AnimationDialog
+      :open="openAnimationFor !== null"
+      :title="openAnimationFor === null ? '' : (definitionOf(openAnimationFor)?.title ?? t('chat.watchAnimation'))"
+      :definition="openAnimationFor === null ? null : definitionOf(openAnimationFor)"
+      :trace="openAnimationFor === null ? null : (animationOf(openAnimationFor)?.trace ?? null)"
+      :placeholder="t('chat.animationPlaceholder')"
+      :close-label="t('common.close')"
+      @close="openAnimationFor = null"
+    />
+
+    <NoticeDialog
+      :open="alert !== null"
+      :title="alert?.title ?? ''"
+      :message="alert?.message ?? ''"
+      :close-label="t('common.gotIt')"
+      @close="alert = null"
+    />
+
+    <ConfirmDialog
+      :open="pendingDelete !== null"
+      :title="t('chat.deleteTitle')"
+      :message="t('chat.deleteMessage')"
+      :confirm-label="t('chat.delete')"
+      :cancel-label="t('common.cancel')"
+      @confirm="removeSession"
+      @cancel="pendingDelete = null"
+    />
+  </BrandStage>
 </template>
 
 <style scoped>
-.user-chat__readiness { display: grid; gap: .75rem; }
-.user-chat__readiness h2 { margin: 0; font-size: 1rem; }
-.user-chat__readiness-grid { display: flex; flex-wrap: wrap; gap: .45rem; }
-.user-chat__readiness-grid span { padding: .3rem .45rem; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--text-muted); font-family: var(--font-mono); font-size: .74rem; }
-.user-chat__readiness-grid span[data-state="success"] { border-color: color-mix(in srgb, var(--accent) 58%, var(--line)); color: var(--accent-strong); }
-.user-chat__readiness-grid span[data-state="warning"] { border-color: color-mix(in srgb, var(--warning) 58%, var(--line)); color: var(--warning); }
-.user-chat__form { border-top: 1px solid var(--line); padding-top: 1rem; }
-.user-chat__guest-actions { display: flex; align-items: end; justify-content: space-between; gap: 1rem; padding: 1rem 0; border-bottom: 1px solid var(--line); }
-.user-chat__guest-actions h2 { margin: 0; font-size: 1.1rem; }
-.user-chat__message[data-state="error"] { border-color: color-mix(in srgb, var(--danger) 48%, var(--line)); }
-.user-chat__message[data-state="stopped"] { border-style: dashed; }
-.user-chat__message-time { color: var(--text-muted); font-size: .72rem; }
-.user-chat__rail-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
-.user-chat__quiet-action { min-height: 2rem; padding: .25rem .45rem; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; font-size: .75rem; }
-.user-chat__quiet-action:hover { color: var(--text); text-decoration: underline; }
-.user-chat__quiet-action:disabled { cursor: not-allowed; opacity: .55; text-decoration: none; }
-.user-chat__quiet-action--danger { color: var(--danger); }
-.user-chat__sessions { display: grid; border-top: 1px solid var(--line); }
-.user-chat__session { display: grid; gap: .35rem; padding: .55rem 0; border-bottom: 1px solid var(--line); }
-.user-chat__session[data-active="true"] { border-left: 2px solid var(--accent); padding-left: .45rem; }
-.user-chat__session-open { display: grid; gap: .2rem; padding: 0; border: 0; background: transparent; color: var(--text); cursor: pointer; text-align: left; }
-.user-chat__session-open:disabled { cursor: not-allowed; opacity: .55; }
-.user-chat__session-open strong { font-size: .82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.user-chat__session-open span { color: var(--text-muted); font-size: .72rem; }
-.user-chat__session-actions { display: flex; gap: .2rem; }
-@media (max-width: 760px) { .user-chat__readiness-grid { display: grid; grid-template-columns: 1fr; } .user-chat__guest-actions { display: grid; align-items: start; } }
+/* The same paper and the same quiet card as the animation lab, so a question asked here and a demo
+   opened there are visibly the same product. The thread panel is the page: it gets the height, the
+   composer just sits at its foot. */
+.chat { display: grid; width: min(1320px, 100%); gap: 22px; margin: 0 auto; color: var(--text); }
+
+.chat__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
+.chat__title { margin: 0; color: var(--text); font-family: var(--font-ui); font-size: clamp(30px, 3.4vw, 46px); font-weight: 400; letter-spacing: 0; line-height: 1.06; }
+.chat__head-actions { display: flex; align-items: center; gap: 10px; }
+.chat__link--history { display: none; }
+
+.chat__link {
+  min-height: 42px;
+  padding: 0 20px;
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 24%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 92%, transparent), 0 5px 12px color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 19px;
+  font-weight: 650;
+  transition: transform 160ms cubic-bezier(.25, 1, .5, 1), border-color 160ms ease, background-color 160ms ease;
+}
+
+.chat__link:hover { border-color: var(--text); background: color-mix(in srgb, var(--surface) 46%, transparent); transform: translateY(-1px); }
+
+.chat__grid { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 20px; align-items: start; }
+
+.panel {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-width: 0;
+  padding: 20px;
+  border: 1px double color-mix(in srgb, var(--text) 15%, transparent);
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 92%, transparent), 0 10px 24px color-mix(in srgb, var(--text) 10%, transparent);
+  -webkit-backdrop-filter: blur(7px) saturate(1.08);
+  backdrop-filter: blur(7px) saturate(1.08);
+}
+
+/* The conversation owns the vertical space: the thread scrolls, the composer stays put. */
+.panel--thread { display: flex; flex-direction: column; gap: 14px; height: clamp(560px, calc(100dvh - 250px), 900px); }
+
+/* Nothing on this page drops below the body size: a refusal or an evidence line the learner skims is
+   exactly the line that has to be read. */
+.panel__note { margin: 0; color: var(--text); font-size: 19px; font-weight: 620; line-height: 1.55; }
+
+.sessions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin: 0; padding: 0; list-style: none; min-width: 0; }
+.session { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+
+/* The conversation list is a sidebar on a desktop and a sheet on a phone, so the sheet-only parts stay
+   out of the desktop layout entirely. */
+.sessions__head { display: none; }
+.sessions-scrim { display: none; }
+
+.session__open {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 9px 14px;
+  border: 1px solid transparent;
+  border-radius: 18px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 19px;
+  font-weight: 620;
+  line-height: 1.35;
+  text-align: left;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.session__open:hover { border-color: color-mix(in srgb, var(--text) 16%, transparent); background: color-mix(in srgb, var(--text) 6%, transparent); }
+.session__open--active { border-color: var(--text); background: color-mix(in srgb, var(--text) 9%, transparent); }
+
+.session__delete {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.session__delete:hover { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); }
+
+.thread { flex: 1 1 auto; min-height: 0; display: grid; gap: 16px; align-content: start; padding: 4px 8px 4px 2px; overflow-y: auto; }
+.thread__empty { margin: 0; padding: 24px 0; color: var(--text); font-size: 19px; font-weight: 620; line-height: 1.6; text-align: center; }
+
+/* The answer is not boxed: a bubble inside a bordered panel inside a page border is three frames around
+   one paragraph, and on a phone it leaves a column too narrow to read. The answer is text on the page,
+   the question is the only bubble - the shape every chat the learner already uses has. */
+.message { display: grid; gap: 10px; min-width: 0; max-width: 100%; }
+.message--user {
+  justify-self: end;
+  max-width: min(86%, 640px);
+  padding: 12px 18px;
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+}
+.message--assistant { justify-self: start; padding: 0; }
+
+.message__body { margin: 0; color: var(--text); font-size: 19px; line-height: 1.75; white-space: pre-wrap; word-break: break-word; }
+.message__body :deep(strong) { font-weight: 700; }
+.message__body :deep(.answer__heading) { display: block; margin: 16px 0 6px; font-weight: 700; }
+.message__note { margin: 0; color: var(--text-muted); font-size: 19px; font-weight: 620; }
+
+.message__action {
+  justify-self: start;
+  min-height: 44px;
+  padding: 9px 20px;
+  border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 19px;
+  font-weight: 650;
+  transition: border-color .16s ease, background-color .16s ease;
+}
+
+.message__action:hover:not(:disabled) { border-color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.message__action:disabled { cursor: default; opacity: .5; }
+
+.compose { flex: 0 0 auto; display: grid; gap: 12px; padding-top: 14px; border-top: 1px solid var(--line); }
+
+.field__control {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 76%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 19px;
+}
+
+.field__control--area { min-height: 88px; border-radius: 20px; resize: vertical; line-height: 1.6; }
+.field__control:focus-visible { outline: none; border-color: var(--text); box-shadow: var(--focus-ring); }
+
+.compose__actions { display: flex; justify-content: flex-end; }
+
+.button {
+  min-height: 48px;
+  padding: 10px 26px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 19px;
+  font-weight: 650;
+  transition: border-color .16s ease, background-color .16s ease, transform .16s ease;
+}
+
+.button:hover:not(:disabled) { border-color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.button:disabled { cursor: default; opacity: .42; }
+
+/* The primary action is the one inverted pill the design system uses for "go". */
+.button--primary { border-color: var(--text); background: var(--text); color: var(--surface); }
+.button--primary:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 88%, var(--surface)); }
+
+@media (max-width: 900px) {
+  .chat__grid { grid-template-columns: minmax(0, 1fr); }
+  .panel--thread { height: clamp(520px, calc(100dvh - 220px), 900px); }
+}
+
+/* ---------------------------------------------------------------- phones
+   Two things change shape here rather than shrink. The conversation gets the page to itself - the past
+   conversations move into a sheet behind one button - and the composer stops being the foot of a fixed
+   height panel and becomes a bar pinned to the bottom of the viewport, which is the only place a thumb
+   expects it. Desktop keeps the sidebar and the inner scroll: neither layout is the other one stretched. */
+@media (max-width: 720px) {
+  .chat { gap: 12px; }
+  .chat__head { gap: 10px; }
+  .chat__title { font-size: 24px; line-height: 1.2; }
+  .chat__link { min-height: 38px; padding: 0 14px; font-size: 17px; }
+  .chat__link--history { display: inline-flex; align-items: center; }
+
+  .chat__grid { gap: 12px; }
+
+  /* The list: out of the flow, over the conversation, dismissed by the scrim or the × . */
+  .sessions-scrim { display: block; position: fixed; inset: 0; z-index: 55; background: rgba(20, 28, 28, .38); }
+
+  .panel--sessions {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 56;
+    max-height: 76dvh;
+    padding: 8px 16px calc(18px + env(safe-area-inset-bottom));
+    border-width: 1px 0 0;
+    border-radius: 22px 22px 0 0;
+    overflow-y: auto;
+    transform: translateY(102%);
+    visibility: hidden;
+    transition: transform 220ms cubic-bezier(.25, 1, .5, 1), visibility 220ms;
+  }
+
+  .panel--sessions-open { transform: translateY(0); visibility: visible; }
+
+  .sessions__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .sessions__title { margin: 0; font: inherit; font-size: 19px; font-weight: 650; }
+
+  .sessions__close {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    font: inherit;
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  /* The conversation scrolls with the page; the composer rides at the bottom of the viewport. */
+  .panel--thread {
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .thread { overflow: visible; gap: 18px; padding: 2px 2px 8px; }
+
+  .message--user { max-width: 88%; padding: 10px 16px; }
+
+  .compose {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    gap: 10px;
+    margin-top: 4px;
+    padding: 12px 0 calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    background: linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--bg) 78%, transparent),
+      var(--bg) 42%
+    );
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+
+  .field__control { min-height: 44px; font-size: 18px; }
+  .field__control--area { min-height: 76px; }
+  .button { min-height: 46px; padding: 10px 22px; }
+  .compose__actions .button { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) { .chat * { transition-duration: 1ms !important; } }
 </style>

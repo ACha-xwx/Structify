@@ -2,7 +2,67 @@ import type { JsonRecord } from "./api";
 
 export type AnimationType = "stack" | "list" | "tree" | "queue" | "heap" | "hash" | "array";
 
+/**
+ * A panel of one engine frame. `role` says what the panel means (`array`, `tree`, `graph`, `table`,
+ * `probe`, `meta`, ...); `values` is the payload. A tree or graph panel carries `nodes`/`edges` instead.
+ * Any other key is frame metadata the header renders as a chip (front/rear/top/index/pivot/depth...).
+ * Two keys are read by the renderer itself: `focusIndex` marks one slot of this panel (a step of the
+ * packed-array mapping points at slot k, which the shared pointer pool cannot express) and `focusCell`
+ * marks one `[row, column]` of a grid.
+ */
+export interface DsvpPanel {
+  role: string;
+  values?: unknown;
+  nodes?: DsvpNode[];
+  edges?: unknown[];
+  focusIndex?: number | null;
+  focusCell?: [number, number] | null;
+  [key: string]: unknown;
+}
+
+export interface DsvpNode {
+  id: string | number;
+  label?: string;
+  keys?: unknown[];
+  depth?: number;
+  weight?: number;
+  index?: number;
+  [key: string]: unknown;
+}
+
+export interface DsvpHighlights {
+  nodes?: unknown[];
+  edges?: unknown[];
+  cells?: unknown[];
+  pointers?: unknown[];
+}
+
+export interface DsvpAction {
+  type?: string;
+  description?: string;
+  target?: unknown;
+  from?: unknown;
+  to?: unknown;
+  value?: unknown;
+  [key: string]: unknown;
+}
+
+/**
+ * One authoritative frame computed by the local engine. `kind` names the structure family (38 of them
+ * across the reviewed textbook); the two legacy shapes (`stack`, `queue`, `sequential_list`,
+ * `sequential_list_merge`) carry their fields at the top level instead of inside `view`, which is exactly
+ * what the frame normalizer in `animation/frame.ts` reconciles.
+ */
+export interface DsvpState {
+  kind?: string;
+  view?: DsvpPanel[];
+  meta?: JsonRecord;
+  [key: string]: unknown;
+}
+
 export interface AnimationStep {
+  /** Flat value list kept for the legacy linear renderer; `dsvpState` is the authoritative frame. */
+  state?: unknown[] | null;
   op: string;
   label: string;
   note: string;
@@ -13,6 +73,12 @@ export interface AnimationStep {
   j?: number | null;
   key?: string | null;
   val?: string | null;
+  /** Teaching phase reported by the engine, e.g. `new-links` while a double list rewires pointers. */
+  phase?: string | null;
+  /** Engine frame: the tree, graph, table or array to draw for this step. */
+  dsvpState?: DsvpState | null;
+  dsvpHighlights?: DsvpHighlights | null;
+  dsvpActions?: DsvpAction[] | null;
 }
 
 export interface AnimationDefinition {
@@ -36,6 +102,10 @@ export interface GenerateAnimationRequest {
   chapterId?: string;
 }
 
+/**
+ * The nine values frozen in DSVP 1.0 plus the reviewed textbook structures the local engine serves.
+ * Only the frozen nine can be executed by the in-process fallback.
+ */
 export type DsvpStructure =
   | "stack"
   | "queue"
@@ -45,7 +115,35 @@ export type DsvpStructure =
   | "graph"
   | "heap"
   | "hash"
-  | "array";
+  | "array"
+  | "circular_linked_list"
+  | "static_linked_list"
+  | "doubly_linked_list"
+  | "polynomial"
+  | "double_stack"
+  | "linked_stack"
+  | "stack_app"
+  | "recursion"
+  | "linked_queue"
+  | "circular_queue"
+  | "queue_app"
+  | "circular_buffer"
+  | "string"
+  | "heap_string"
+  | "special_matrix"
+  | "sparse_matrix"
+  | "generalized_list"
+  | "forest"
+  | "huffman"
+  | "union_find"
+  | "search"
+  | "bst"
+  | "avl"
+  | "btree"
+  | "hash_table"
+  | "hash_function"
+  | "sort"
+  | "external_sort";
 
 export type DsvpSourceType = "API" | "CLASSROOM" | "PPT";
 
@@ -111,4 +209,85 @@ export interface AnimationObservationRequest {
 export interface AnimationObservation {
   recordId: string;
   observation: string;
+}
+
+/* ---------------------------------------------------------------------------------------------------
+ * The model-facing half of the animation labour split.
+ *
+ * The large model never emits a DSVP request and never emits a frame. It answers one question - should
+ * this step be animated, which capability, with which arguments - and the local engine does the rest.
+ * --------------------------------------------------------------------------------------------------- */
+
+export type DsvpIntentStatus =
+  | "ready"
+  | "not-needed"
+  | "low-confidence"
+  | "missing-arguments"
+  | "invalid-arguments"
+  | "unsupported";
+
+/** What the model is allowed to decide. `arguments` is passed through to the engine untouched. */
+export interface DsvpIntent {
+  needed: boolean;
+  confidence: number;
+  capability: string;
+  purpose?: string;
+  arguments: JsonRecord;
+  sourceChunkIds?: string[];
+}
+
+export interface DsvpResolution {
+  status: DsvpIntentStatus;
+  /** The engine's registry entry for the chosen capability, when it recognised it. */
+  capability: DsvpCapabilityArgument | null;
+  missingArguments: string[];
+  error?: string | null;
+  /** Present only when `status` is `ready`: the engine-built, executable request. */
+  toolRequest: {
+    kind: "animation";
+    protocol: string;
+    capability: string;
+    purpose: string;
+    confidence: number;
+    sourceChunkIds: string[];
+    /** True when required arguments were missing and the engine filled in its canonical teaching example. */
+    demoFallback: boolean;
+    request: DsvpRequest;
+  } | null;
+}
+
+export interface DsvpCapabilityArgument {
+  capability: string;
+  operation: string;
+  label: string;
+  description: string;
+  requiredArguments: string[];
+  optionalArguments: string[];
+  demoArguments: JsonRecord | null;
+  textbook: string;
+}
+
+export interface DsvpCapability {
+  capability: string;
+  operation: string;
+  label: string;
+  description: string;
+  requiredArguments: string[];
+  optionalArguments: string[];
+  textbook: string;
+  hasCanonicalDemo: boolean;
+}
+
+/** One structure entry of the local capability catalog (generated by scripts/build-animation-catalog.mjs). */
+export interface AnimationCatalogStructure {
+  structure: DsvpStructure;
+  label: string;
+  chapter: number;
+  capabilities: DsvpCapabilityArgument[];
+}
+
+export interface AnimationCatalog {
+  generatedFrom: string;
+  total: number;
+  structures: AnimationCatalogStructure[];
 }

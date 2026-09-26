@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/feng129685/data-structure-agent/contracts/classroom-script.schema.json",
+  "$id": "https://github.com/ACha-xwx/Structify/contracts/classroom-script.schema.json",
   "title": "Data Structure Classroom Script",
   "description": "Reviewed, script-driven classroom content. The script is stored with chapter and review metadata in the classroom_scripts table.",
   "oneOf": [
@@ -15,6 +15,7 @@
       "properties": {
         "lessonId": {"type": "string", "minLength": 1, "maxLength": 64},
         "title": {"type": "string", "minLength": 1, "maxLength": 200},
+        "textbookSources": {"type": "array", "items": {"type": "object"}},
         "objectives": {
           "type": "array",
           "maxItems": 12,
@@ -23,7 +24,7 @@
         "steps": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 40,
+          "maxItems": 80,
           "items": {"$ref": "#/$defs/step"}
         }
       }
@@ -35,11 +36,16 @@
       "properties": {
         "type": {"type": "string", "enum": ["explain", "question", "discussion", "blackboard", "summary"]},
         "role": {"type": "string", "enum": ["teacher", "assistant", "student"]},
+        "keywords": {"type": "array", "maxItems": 4, "items": {"type": "string", "maxLength": 16}},
+        "sourceChunkIds": {"type": "array", "items": {"type": "string"}},
+        "sourcePages": {"type": "array", "items": {"type": "string"}},
+        "evidence": {"type": "string"},
         "title": {"type": "string", "maxLength": 200},
         "content": {"type": "string", "maxLength": 4000},
         "contentRef": {"type": "string", "minLength": 1, "maxLength": 160},
         "animationRef": {
           "oneOf": [
+            {"type": "null"},
             {"type": "string", "minLength": 1, "maxLength": 64},
             {
               "type": "object",
@@ -58,6 +64,30 @@
           ]
         },
         "codeRef": {"type": "string", "minLength": 1, "maxLength": 64},
+        "textbookMatch": {
+          "description": "How precisely the reviewed textbook backs this step: exact section, parent section, whole lesson, an extension page, or none.",
+          "type": "string",
+          "enum": ["exact", "parent", "chapter", "extension", "none"]
+        },
+        "slideTitle": {"type": "string", "minLength": 1, "maxLength": 200},
+        "slidePage": {"type": "integer", "minimum": 1},
+        "slideScope": {
+          "description": "The part of the lesson deck this step belongs to. Derived by the server from the page the step shows (the sub-lesson the deck filed that page under and the scene the page itself reads as), so it is never supplied by a model - a hand-copied range used to cost a whole lesson its preparation.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["subLessonId", "scene"],
+          "properties": {
+            "subLessonId": {"type": "string", "minLength": 1, "maxLength": 64},
+            "scene": {"type": "string", "minLength": 1, "maxLength": 64}
+          }
+        },
+        "slideRefs": {
+          "description": "Courseware page this step shows. In a courseware-driven lesson the page is dictated by the step's position in the lesson (the nth teaching step teaches the nth page, a question repeats the page already on screen, and a step after the last page carries no page at all), so the server rewrites this to the single page the step must teach. Absent means the step teaches over the page already on screen.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {"type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Za-z0-9._-]+$"}
+        },
         "prompt": {"type": "string", "minLength": 1, "maxLength": 1000},
         "expected": {
           "type": "array",

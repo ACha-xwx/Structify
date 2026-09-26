@@ -17,6 +17,11 @@ export interface ApiRequestInit extends Omit<RequestInit, "body" | "headers" | "
   query?: QueryParams;
   requestId?: string;
   responseType?: ResponseType;
+  /**
+   * Milliseconds to wait for the response to start. Zero disables the wait. Once the response
+   * headers arrive the clock stops, so a slow body (a stream, a large download) is never cut off.
+   */
+  timeoutMs?: number;
 }
 
 export interface ResponseOptions {
@@ -32,6 +37,8 @@ export interface ApiClientOptions {
   requestIdFactory?: () => string;
   /** Optional in-memory Bearer token provider; never persisted by the client. */
   tokenProvider?: () => string | null | undefined;
+  /** Default time to wait for a response to start, across every request. */
+  timeoutMs?: number;
 }
 
 export interface ApiResponseMeta {
@@ -425,7 +432,6 @@ export function createApiClient(options: ApiClientOptions = {}) {
   const defaultCredentials = options.credentials ?? "include";
   const requestIdFactory = options.requestIdFactory ?? createRequestId;
   const tokenProvider = options.tokenProvider;
-
   const request = (async <T = unknown>(
     path: string,
     init: ApiRequestInit = {},
@@ -446,7 +452,7 @@ export function createApiClient(options: ApiClientOptions = {}) {
     }
 
     const body = serializeBody(init.body, headers);
-    const { query, requestId: _requestId, responseType: _responseType, body: _body, headers: _headers, ...rest } = init;
+    const { query, requestId: _requestId, responseType: _responseType, body: _body, headers: _headers, timeoutMs: _timeoutMs, ...rest } = init;
     const outgoingHeaders: Record<string, string> = {};
     headers.forEach((value, key) => {
       outgoingHeaders[key === "x-request-id" ? "X-Request-Id" : key] = value;
@@ -456,15 +462,43 @@ export function createApiClient(options: ApiClientOptions = {}) {
     const outgoingRequestId = headers.get("X-Request-Id");
     if (outgoingRequestId) outgoingHeaders["X-Request-Id"] = outgoingRequestId;
 
+    const timeoutMs = init.timeoutMs ?? options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const timeoutController = timeoutMs > 0 ? new AbortController() : null;
+    const timer = timeoutController
+      ? setTimeout(() => timeoutController.abort(), timeoutMs)
+      : undefined;
+    const signal = combineSignals(init.signal ?? null, timeoutController?.signal ?? null);
+
     const fetchInit: RequestInit = {
       ...rest,
       ...(init.method === undefined ? {} : { method: init.method }),
       headers: outgoingHeaders,
       credentials: init.credentials ?? defaultCredentials,
+      ...(signal === undefined ? {} : { signal }),
       ...(body === undefined ? {} : { body }),
     };
 
-    const response = await fetcher(buildUrl(baseUrl, path, query), fetchInit);
+    let response: Response;
+    try {
+      response = await fetcher(buildUrl(baseUrl, path, query), fetchInit);
+    } catch (cause) {
+      if (timer !== undefined) clearTimeout(timer);
+      // Our own clock, not a caller's abort: a request that never answered should read as a
+      // timeout, not as a cancellation the caller never made.
+      if (timeoutController?.signal.aborted) {
+        throw new ApiClientError({
+          status: 0,
+          code: "NETWORK_TIMEOUT",
+          message: `No response within ${timeoutMs} ms`,
+          requestId,
+          details: [],
+          cause,
+        });
+      }
+      throw cause;
+    }
+    // Headers are in: the body may legitimately take as long as it needs (streams, big files).
+    if (timer !== undefined) clearTimeout(timer);
     const responseHeaders = new Headers(response.headers);
     if (!response.ok) {
       const errorBody = await readErrorBody(response);
@@ -558,6 +592,27 @@ export function createApiClient(options: ApiClientOptions = {}) {
 }
 
 export type ApiClient = ReturnType<typeof createApiClient>;
+
+/** How long a request may sit unanswered before it is abandoned: hung is worse than failed. */
+const DEFAULT_TIMEOUT_MS = 20000;
+
+/** One signal from two: either side aborting must abort the request. */
+function combineSignals(
+  caller: AbortSignal | null,
+  timeout: AbortSignal | null,
+): AbortSignal | undefined {
+  if (!caller && !timeout) return undefined;
+  if (caller && timeout) {
+    if (typeof AbortSignal.any === "function") return AbortSignal.any([caller, timeout]);
+    const combined = new AbortController();
+    const forward = (source: AbortSignal) => () => combined.abort(source.reason);
+    if (caller.aborted || timeout.aborted) combined.abort();
+    caller.addEventListener("abort", forward(caller), { once: true });
+    timeout.addEventListener("abort", forward(timeout), { once: true });
+    return combined.signal;
+  }
+  return caller ?? timeout ?? undefined;
+}
 
 function buildUrl(baseUrl: string, path: string, query?: QueryParams): string {
   const target = path.trim();

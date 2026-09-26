@@ -34,8 +34,28 @@ describe("用户端 API 边界", () => {
     expect(request).toHaveBeenNthCalledWith(3, "/learning/events", expect.objectContaining({ method: "POST" }));
   });
 
-  it("读取认证学习台投影而不是拼接多次进度请求", async () => {
-    const request = vi.fn().mockResolvedValue({
+  it("取教材片段库", async () => {
+    const request = vi.fn().mockResolvedValue({ kind: "json", data: { chapters: [], fragmentCount: 99 } });
+    const api = createUserApi({ request } as never);
+
+    await expect(api.getCodeLibrary()).resolves.toMatchObject({ fragmentCount: 99 });
+    expect(request).toHaveBeenCalledWith("/code/library");
+  });
+
+  it("按课时取课堂代码样本，也支持取全部", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({ kind: "json", data: { lessons: [{ coursewareKey: "03-01", lessonTitle: "栈", chapterId: "03", samples: [] }], sampleCount: 4 } })
+      .mockResolvedValueOnce({ kind: "json", data: { lessons: [], sampleCount: 0 } });
+    const api = createUserApi({ request } as never);
+
+    await expect(api.listCodeSamples("03-01")).resolves.toMatchObject({ sampleCount: 4 });
+    await api.listCodeSamples();
+
+    expect(request).toHaveBeenNthCalledWith(1, "/code/samples?coursewareKey=03-01");
+    expect(request).toHaveBeenNthCalledWith(2, "/code/samples");
+  });
+
+  it("读取认证学习台投影而不是拼接多次进度请求", async () => {    const request = vi.fn().mockResolvedValue({
       kind: "json",
       data: {
         currentChapterId: "sequential-list",

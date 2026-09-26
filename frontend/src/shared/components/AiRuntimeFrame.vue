@@ -29,6 +29,8 @@ const props = withDefaults(defineProps<{
   videoPoster?: string;
   videoLabel?: string;
   showBackground?: boolean;
+  showChrome?: boolean;
+  showHeader?: boolean;
 }>(), {
   mode: "landing",
   menuItems: () => [],
@@ -40,6 +42,8 @@ const props = withDefaults(defineProps<{
   videoSrc: RUNTIME_VIDEO_URL,
   videoPoster: "",
   showBackground: true,
+  showChrome: true,
+  showHeader: true,
 });
 
 const emit = defineEmits<{
@@ -292,8 +296,8 @@ onBeforeUnmount(() => {
     </div>
     <div class="ai-runtime-frame__scrim" aria-hidden="true"></div>
 
-    <div class="ai-runtime-frame__page">
-      <header class="ai-runtime-frame__header">
+    <div v-if="showChrome" class="ai-runtime-frame__page">
+      <header v-if="showHeader" class="ai-runtime-frame__header">
         <slot name="brand">
           <a class="ai-runtime-frame__mark" :href="brandHref" :aria-label="brandLabel">
             <img class="ai-runtime-frame__mark-image" :src="runtimeLogo" alt="" width="52" height="52" />
@@ -340,6 +344,7 @@ onBeforeUnmount(() => {
       <footer v-if="$slots.footer" class="ai-runtime-frame__footer"><slot name="footer" /></footer>
 
     <div
+      v-if="showHeader"
       :id="menuId"
       class="ai-runtime-frame__mobile-layer"
       :hidden="!isMenuOpen"

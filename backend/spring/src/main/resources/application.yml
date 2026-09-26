@@ -72,10 +72,13 @@ app:
     provider: ${MODEL_PROVIDER:}
     api-key: ${MODEL_API_KEY:}
     base-url: ${MODEL_BASE_URL:}
-    name: ${MODEL_NAME:}
+    name: ${MODEL_NAME:deepseek-v4-pro}
     timeout: ${MODEL_TIMEOUT:PT45S}
     stream-idle-timeout: ${MODEL_STREAM_IDLE_TIMEOUT:PT30S}
     maximum-response-bytes: ${MODEL_MAX_RESPONSE_BYTES:1048576}
+    # true: never ask the provider to spend tokens on hidden reasoning (DeepSeek "thinking").
+    # Retrieval supplies the facts, so reasoning tokens are pure cost here.
+    disable-thinking: ${MODEL_DISABLE_THINKING:true}
   ai-quota:
     daily-token-quota: ${AI_DAILY_TOKEN_QUOTA:0}
     maximum-concurrent-requests: ${AI_MAX_CONCURRENT_REQUESTS:1}
@@ -89,18 +92,53 @@ app:
     chunk-size: ${KNOWLEDGE_CHUNK_SIZE:1100}
   resources:
     directory: ${RESOURCE_DIR:../../private/course-content}
+  classroom:
+    # model: the model narrates each courseware page from the reviewed textbook.
+    # deterministic: the spine is assembled locally, for inspecting the classroom without a model call.
+    slide-narration: ${CLASSROOM_SLIDE_NARRATION:model}
+  presentation:
+    enabled: ${PRESENTATION_ENABLED:true}
+    directory: ${PRESENTATION_DIR:../../../../presentation-materials}
+    image-directory: ${PRESENTATION_IMAGE_DIR:}
+    annotations: ${PRESENTATION_ANNOTATIONS:../../private/presentation-annotations/slides.annotations.json}
+    # Signs the urls courseware pages are served from. The url is a capability - anyone holding it can read
+    # that one page - so the key has to be a real secret. It also has to be stable: the url is cached for as
+    # long as the page exists, and rotating this value is what invalidates every url at once.
+    asset-secret: ${PRESENTATION_ASSET_SECRET:${JWT_SECRET:local-development-only-asset-secret}}
   animation:
     maximum-concurrent-simulations: ${ANIMATION_MAX_CONCURRENT:4}
+  dsvp:
+    engine:
+      # The local deterministic engine (backend/dsvp) computes every animation frame. It is asked first;
+      # without it the frozen nine-structure in-process simulator still serves the contract.
+      enabled: ${DSVP_ENGINE_ENABLED:true}
+      command: ${DSVP_ENGINE_COMMAND:node}
+      script: ${DSVP_ENGINE_SCRIPT:../dsvp/dsvp-service.js}
+      timeout-ms: ${DSVP_ENGINE_TIMEOUT_MS:6000}
   compiler:
     piston-base-url: ${PISTON_BASE_URL:}
     timeout: ${EXECUTE_TIMEOUT:PT15S}
     maximum-code-length: ${EXECUTE_CODE_MAX_LENGTH:20000}
     maximum-input-length: ${EXECUTE_INPUT_MAX_LENGTH:12000}
     maximum-output-length: ${EXECUTE_OUTPUT_MAX_LENGTH:6000}
-    maximum-concurrent-executions: ${EXECUTE_MAX_CONCURRENT:4}
-    maximum-concurrent-executions-per-client: ${EXECUTE_MAX_CONCURRENT_PER_CLIENT:1}
+    maximum-concurrent-executions: ${EXECUTE_MAX_CONCURRENT:16}
+    maximum-concurrent-executions-per-client: ${EXECUTE_MAX_CONCURRENT_PER_CLIENT:8}
     compile-timeout-millis: ${EXECUTE_COMPILE_TIMEOUT_MS:10000}
     run-timeout-millis: ${EXECUTE_RUN_TIMEOUT_MS:3000}
+  # Interactive console: the program stays alive between keystrokes instead of being handed its
+  # whole input up front. Off until the host actually ships a compiler.
+  sandbox:
+    enabled: ${SANDBOX_ENABLED:false}
+    gcc-command: ${SANDBOX_GCC_COMMAND:gcc}
+    python-command: ${SANDBOX_PYTHON_COMMAND:python3}
+    maximum-sessions: ${SANDBOX_MAX_SESSIONS:32}
+    session-idle-timeout-seconds: ${SANDBOX_IDLE_TIMEOUT_SECONDS:180}
+    session-maximum-lifetime-seconds: ${SANDBOX_LIFETIME_SECONDS:900}
+    compile-timeout-millis: ${SANDBOX_COMPILE_TIMEOUT_MS:20000}
+    maximum-output-length: ${SANDBOX_MAX_OUTPUT_LENGTH:60000}
+    # Empty means the system temporary directory. A host whose tmpfs is mounted noexec must point
+    # this at a writable volume that allows execution, or no compiled program can run.
+    work-directory: ${SANDBOX_WORK_DIRECTORY:}
 
 logging:
   level:

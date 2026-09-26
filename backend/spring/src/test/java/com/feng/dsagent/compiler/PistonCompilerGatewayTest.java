@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -78,8 +79,8 @@ class PistonCompilerGatewayTest {
           try {
             capturedRequest.set(objectMapper.readTree(exchange.getRequestBody()));
             respond(exchange, 200, """
-                {"status":{"id":3,"description":"Accepted"},"stdout":"ok\\n","stderr":null,"compile_output":null}
-                """);
+                {"status":{"id":3,"description":"Accepted"},"stdout":"%s","stderr":null,"compile_output":null}
+                """.formatted(base64("ok\n")));
           } catch (Exception error) {
             exchange.close();
           }
@@ -99,9 +100,70 @@ class PistonCompilerGatewayTest {
         CompilerExecution execution = gateway.execute(SupportedLanguage.C, "int main(void){}", "");
 
         assertThat(capturedRequest.get().get("language_id").asInt()).isEqualTo(50);
-        assertThat(capturedRequest.get().get("source_code").asText()).contains("main");
+        assertThat(decodeBase64(capturedRequest.get().get("source_code").asText())).contains("main");
         assertThat(execution.status()).isEqualTo("success");
         assertThat(execution.stdout()).isEqualTo("ok\n");
+    }
+
+    @Test
+    void speaksTheJudge0Base64ContractSoChineseCommentsSurvive() throws Exception {
+        AtomicReference<JsonNode> capturedRequest = new AtomicReference<>();
+        AtomicReference<String> capturedQuery = new AtomicReference<>();
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/submissions", exchange -> {
+            try {
+                capturedRequest.set(objectMapper.readTree(exchange.getRequestBody()));
+                capturedQuery.set(exchange.getRequestURI().getQuery());
+                respond(exchange, 200, """
+                    {"status":{"id":3,"description":"Accepted"},"stdout":"%s","stderr":null,"compile_output":null}
+                    """.formatted(base64("入栈元素个数: 5\n依次出栈: edcba\n")));
+            } catch (Exception error) {
+                exchange.close();
+            }
+        });
+        server.start();
+        CompilerProperties properties = properties(Duration.ofSeconds(2));
+        PistonCompilerGateway gateway = new PistonCompilerGateway(
+            properties,
+            objectMapper,
+            new SandboxConfigRuntimeSettingsSource(new SandboxRuntimeSettings(
+                SandboxProvider.JUDGE0,
+                "http://127.0.0.1:" + server.getAddress().getPort(),
+                true
+            ))
+        );
+
+        String code = "/* 顺序栈：教材配套源码 */\nint main(void){return 0;}";
+        CompilerExecution execution = gateway.execute(SupportedLanguage.C, code, "abcde\n");
+
+        assertThat(capturedQuery.get()).contains("base64_encoded=true");
+        assertThat(decodeBase64(capturedRequest.get().get("source_code").asText())).isEqualTo(code);
+        assertThat(decodeBase64(capturedRequest.get().get("stdin").asText())).isEqualTo("abcde\n");
+        assertThat(execution.status()).isEqualTo("success");
+        assertThat(execution.stdout()).isEqualTo("入栈元素个数: 5\n依次出栈: edcba\n");
+    }
+
+    @Test
+    void reportsSandboxThrottlingAsBusyRatherThanBroken() throws Exception {
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/submissions", exchange -> respond(exchange, 429, "{\"error\":\"rate limit\"}"));
+        server.start();
+        PistonCompilerGateway gateway = new PistonCompilerGateway(
+            properties(Duration.ofSeconds(2)),
+            objectMapper,
+            new SandboxConfigRuntimeSettingsSource(new SandboxRuntimeSettings(
+                SandboxProvider.JUDGE0,
+                "http://127.0.0.1:" + server.getAddress().getPort(),
+                true
+            ))
+        );
+
+        assertThatThrownBy(() -> gateway.execute(SupportedLanguage.C, "int main(void){}", ""))
+            .isInstanceOfSatisfying(ApiException.class, error -> {
+                assertThat(error.status()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+                assertThat(error.code()).isEqualTo("COMPILER_UPSTREAM_BUSY");
+                assertThat(error.getMessage()).contains("过几秒");
+            });
     }
 
     @Test
@@ -200,8 +262,8 @@ class PistonCompilerGatewayTest {
         startServer(exchange -> {
             capturedRequest.set(objectMapper.readTree(exchange.getRequestBody()));
             respond(exchange, 200, """
-                {"status":{"id":3,"description":"Accepted"},"stdout":"sandbox-ok\\n","stderr":null,"compile_output":null}
-                """);
+                {"status":{"id":3,"description":"Accepted"},"stdout":"%s","stderr":null,"compile_output":null}
+                """.formatted(base64("sandbox-ok\n")));
         });
         SandboxRuntimeSettings settings = new SandboxRuntimeSettings(
             SandboxProvider.JUDGE0,
@@ -218,7 +280,7 @@ class PistonCompilerGatewayTest {
         CompilerExecution execution = gateway.execute(SupportedLanguage.C, "int main(void) { return 0; }", "");
 
         assertThat(capturedRequest.get().get("language_id").asInt()).isEqualTo(50);
-        assertThat(capturedRequest.get().get("source_code").asText()).contains("main");
+        assertThat(decodeBase64(capturedRequest.get().get("source_code").asText())).contains("main");
         assertThat(execution.status()).isEqualTo("success");
         assertThat(execution.stdout()).isEqualTo("sandbox-ok\n");
     }
@@ -288,6 +350,14 @@ class PistonCompilerGatewayTest {
         exchange.sendResponseHeaders(status, bytes.length);
         exchange.getResponseBody().write(bytes);
         exchange.close();
+    }
+
+    private static String base64(String value) {
+        return Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String decodeBase64(String value) {
+        return new String(Base64.getMimeDecoder().decode(value), StandardCharsets.UTF_8);
     }
 
     @FunctionalInterface

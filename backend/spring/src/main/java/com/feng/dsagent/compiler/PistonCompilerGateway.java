@@ -9,8 +9,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -20,8 +23,19 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 final class PistonCompilerGateway implements CompilerGateway {
 
+    /**
+     * The sandbox is somebody else's computer on the other side of the world. Every refusal used to
+     * reach the learner as the same "服务暂时不可用", which made an upstream rate limit, a rejected
+     * body and a dead instance look identical from here. The status and the first line of the body go
+     * to the log so the next refusal can be read instead of guessed at.
+     */
+    private static final Logger log = LoggerFactory.getLogger(PistonCompilerGateway.class);
+    private static final int PREVIEW_LIMIT = 512;
+
     private static final int MINIMUM_RESPONSE_LIMIT = 65_536;
     private static final int MAXIMUM_RESPONSE_LIMIT = 10_000_000;
+    private static final Base64.Encoder BASE64_ENCODER = Base64.getEncoder();
+    private static final Base64.Decoder BASE64_DECODER = Base64.getMimeDecoder();
 
     private final CompilerProperties properties;
     private final ObjectMapper objectMapper;
@@ -89,6 +103,9 @@ final class PistonCompilerGateway implements CompilerGateway {
             HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
             try (InputStream body = response.body()) {
                 if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    // Judge0 is the only provider still reachable, so this branch is mostly history;
+                    // it still logs, so a revived provider never fails silently.
+                    log.warn("沙箱拒绝：Piston 返回 {}，响应体 {}", response.statusCode(), preview(body));
                     throw upstreamUnavailable();
                 }
                 return parse(readLimited(body));
@@ -119,12 +136,16 @@ final class PistonCompilerGateway implements CompilerGateway {
         String code,
         String stdin
     ) {
+        // Judge0 CE rejects request bodies that carry raw non-ASCII text with
+        // "some attributes for this submission cannot be converted to UTF-8".
+        // Textbook samples are full of Chinese comments, so this path always
+        // speaks base64 both ways.
         String requestBody = serialize(new Judge0Request(
-            code,
+            encodeBase64(code),
             language == SupportedLanguage.C ? 50 : 71,
-            stdin
+            encodeBase64(stdin)
         ));
-        URI endpoint = executeUri(settings.baseUrl(), "/submissions?base64_encoded=false&wait=true");
+        URI endpoint = executeUri(settings.baseUrl(), "/submissions?base64_encoded=true&wait=true");
         HttpRequest request = HttpRequest.newBuilder(endpoint)
             .timeout(properties.timeout())
             .header("Accept", "application/json")
@@ -134,7 +155,15 @@ final class PistonCompilerGateway implements CompilerGateway {
         try {
             HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
             try (InputStream body = response.body()) {
+                if (isBusy(response.statusCode())) {
+                    // The public sandbox throttles by IP; that is congestion, not a broken service.
+                    log.warn("沙箱限流：Judge0 返回 {}", response.statusCode());
+                    throw upstreamBusy();
+                }
                 if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    // Without this line a refusal is indistinguishable from a dead sandbox: the log is
+                    // the only place the upstream's own words ever appear.
+                    log.warn("沙箱拒绝：Judge0 返回 {}，响应体 {}", response.statusCode(), preview(body));
                     throw upstreamUnavailable();
                 }
                 return parseJudge0(readLimited(body));
@@ -228,10 +257,10 @@ final class PistonCompilerGateway implements CompilerGateway {
             if (statusId < 0) {
                 throw invalidResponse();
             }
-            String stdout = output(root, "stdout");
+            String stdout = judge0Output(root, "stdout");
             String stderr = joinOutput(
-                output(root, "compile_output"),
-                joinOutput(output(root, "stderr"), output(root, "message"))
+                judge0Output(root, "compile_output"),
+                joinOutput(judge0Output(root, "stderr"), judge0Output(root, "message"))
             );
             if (statusId == 1 || statusId == 2) {
                 // wait=true should return a terminal result. Treat a still-pending
@@ -260,6 +289,16 @@ final class PistonCompilerGateway implements CompilerGateway {
         return URI.create(baseUrl.strip().replaceAll("/+$", "") + suffix);
     }
 
+    /** The first line of a refusal, flattened: enough to tell a rate limit from a rejected body. */
+    private static String preview(InputStream body) {
+        try {
+            byte[] head = body.readNBytes(PREVIEW_LIMIT);
+            return new String(head, StandardCharsets.UTF_8).replaceAll("\\s+", " ").trim();
+        } catch (IOException error) {
+            return "(响应体不可读：" + error.getMessage() + ")";
+        }
+    }
+
     private static int exitCode(JsonNode phase) {
         JsonNode code = phase.path("code");
         return code.isNumber() ? code.asInt() : -1;
@@ -278,6 +317,35 @@ final class PistonCompilerGateway implements CompilerGateway {
         return combined.isTextual() ? combined.asText() : "";
     }
 
+    /**
+     * Judge0 answers with base64 encoded text fields. A blank value stays blank; a value that is
+     * not valid base64 is returned verbatim so a misbehaving upstream never costs the learner the
+     * output it did produce.
+     */
+    private static String judge0Output(JsonNode phase, String field) {
+        JsonNode value = phase.path(field);
+        if (value.isTextual()) {
+            return decodeBase64(value.asText());
+        }
+        JsonNode combined = phase.path("output");
+        return combined.isTextual() ? decodeBase64(combined.asText()) : "";
+    }
+
+    private static String encodeBase64(String value) {
+        return BASE64_ENCODER.encodeToString((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String decodeBase64(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        try {
+            return new String(BASE64_DECODER.decode(value), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException error) {
+            return value;
+        }
+    }
+
     private static String joinOutput(String first, String second) {
         if (first.isBlank()) {
             return second;
@@ -293,6 +361,19 @@ final class PistonCompilerGateway implements CompilerGateway {
             HttpStatus.BAD_GATEWAY,
             "COMPILER_UPSTREAM_UNAVAILABLE",
             "代码执行服务暂时不可用，请稍后重试"
+        );
+    }
+
+    /** 429/503 from the sandbox means "come back in a moment", which deserves its own message. */
+    private static boolean isBusy(int statusCode) {
+        return statusCode == 429 || statusCode == 503;
+    }
+
+    private static ApiException upstreamBusy() {
+        return new ApiException(
+            HttpStatus.TOO_MANY_REQUESTS,
+            "COMPILER_UPSTREAM_BUSY",
+            "此刻同时运行的人较多，请过几秒再试"
         );
     }
 

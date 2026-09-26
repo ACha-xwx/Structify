@@ -17,8 +17,4 @@ public class ClassroomConfiguration {
         return new ClassroomScriptParser(objectMapper);
     }
 
-    @Bean
-    ClassroomAnswerEvaluator classroomAnswerEvaluator() {
-        return new ClassroomAnswerEvaluator();
-    }
 }

@@ -3,12 +3,12 @@ import { computed, onMounted, ref, watchEffect } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AppShell from "./app-shell/AppShell.vue";
 import MorphingSquareLoader from "../shared/components/MorphingSquareLoader.vue";
-import { useLocale } from "../shared/i18n/locale";
+import { useI18n } from "../shared/i18n/locale";
 import { documentTitleForRoute } from "./document-title";
 
 const route = useRoute();
 const router = useRouter();
-const { locale } = useLocale();
+const { locale, t } = useI18n();
 const routerReady = ref(false);
 const shellLayout = computed(() => route.meta.layout !== "auth" && route.meta.layout !== "minimal");
 
@@ -25,7 +25,7 @@ onMounted(() => {
 
 <template>
   <main v-if="!routerReady" class="app-bootstrap" aria-busy="true">
-    <MorphingSquareLoader message="正在准备页面" />
+    <MorphingSquareLoader :message="t('common.loading')" />
   </main>
   <RouterView v-else v-slot="{ Component }">
     <AppShell v-if="shellLayout"><component :is="Component" /></AppShell>

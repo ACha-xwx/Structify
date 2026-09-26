@@ -123,7 +123,7 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
         String apiKey = requiredApiKey();
         String payload = serialize(request, stream);
         HttpRequest.Builder builder = HttpRequest.newBuilder(endpoint())
-            .timeout(requestTimeout())
+            .timeout(stream ? streamHeadersTimeout() : requestTimeout())
             .header("Content-Type", "application/json")
             .header("Accept", stream ? "text/event-stream" : "application/json")
             .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8));
@@ -156,6 +156,8 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", requiredModelName());
         payload.put("messages", messages);
+        if (request.jsonObject()) payload.put("response_format", Map.of("type", "json_object"));
+        if (disablesThinking(request) && "deepseek".equalsIgnoreCase(properties.provider())) payload.put("thinking", Map.of("type", "disabled"));
         if (request.temperature() != null) {
             payload.put("temperature", request.temperature());
         }
@@ -280,6 +282,11 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
         return apiKey.strip();
     }
 
+    /** The deployment switch turns thinking off for every feature; a call site may also opt in. */
+    private boolean disablesThinking(ModelRequest request) {
+        return request.disableThinking() || Boolean.TRUE.equals(properties.disableThinking());
+    }
+
     private String requiredModelName() {
         String modelName = properties.name();
         if (modelName == null || modelName.isBlank()) {
@@ -290,6 +297,19 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
 
     private Duration requestTimeout() {
         return positiveDuration(properties.timeout(), Duration.ofSeconds(45));
+    }
+
+    /**
+     * The request timeout covers the wait for the response headers, and a streamed answer normally
+     * sends them in well under a second; the body has its own idle timeout after that. When the
+     * upstream stalls before its first byte, this bound turns the stall into a failed request inside
+     * the chat page's SSE emitter lifetime - the learner gets an error event instead of a connection
+     * that quietly dies with nothing ever written to it.
+     */
+    private Duration streamHeadersTimeout() {
+        Duration request = requestTimeout();
+        Duration bound = Duration.ofSeconds(20);
+        return request.compareTo(bound) < 0 ? request : bound;
     }
 
     private Duration streamIdleTimeout() {

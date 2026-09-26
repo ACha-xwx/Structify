@@ -10,6 +10,13 @@ class AnimationValidatorTest {
     private final AnimationValidator validator = new AnimationValidator();
 
     @Test
+    void rejectsModelSuppliedStateSnapshots() {
+        var animation = new AnimationDefinition("stack", "入栈", List.of(
+            new AnimationStep("push", "入栈", "本地计算才可信", 3, null, null, null, null, null, null, List.of(99))));
+        assertThat(validator.validate(animation).errors()).extracting(AnimationValidationError::code).contains("SERVER_ONLY");
+    }
+
+    @Test
     void acceptsAValidStackAnimation() {
         AnimationDefinition animation = new AnimationDefinition(
                 "stack",

@@ -99,4 +99,33 @@ class ClassroomStateMachineTest {
                 .hasMessageContaining("SUMMARY")
                 .hasMessageContaining("finished");
     }
+
+    @Test
+    void aHintLeavesTheQuestionExactlyWhereItWas() {
+        ClassroomStatus waiting = new ClassroomStatus(ClassroomState.WAITING, false);
+
+        assertThat(stateMachine.transition(waiting, ClassroomAction.HINT)).isEqualTo(waiting);
+    }
+
+    @Test
+    void skippingResolvesTheQuestionWithoutAnAnswer() {
+        ClassroomStatus waiting = new ClassroomStatus(ClassroomState.WAITING, false);
+
+        assertThat(stateMachine.transition(waiting, ClassroomAction.SKIP))
+                .isEqualTo(new ClassroomStatus(ClassroomState.BLACKBOARD, false));
+    }
+
+    @Test
+    void hintAndSkipBelongOnlyToAWaitingQuestion() {
+        ClassroomStatus explaining = new ClassroomStatus(ClassroomState.EXPLAIN, false);
+
+        assertThatThrownBy(() -> stateMachine.transition(explaining, ClassroomAction.HINT))
+                .isInstanceOf(IllegalClassroomTransitionException.class)
+                .hasMessageContaining("HINT")
+                .hasMessageContaining("waiting");
+        assertThatThrownBy(() -> stateMachine.transition(explaining, ClassroomAction.SKIP))
+                .isInstanceOf(IllegalClassroomTransitionException.class)
+                .hasMessageContaining("SKIP")
+                .hasMessageContaining("waiting");
+    }
 }
