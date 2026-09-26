@@ -56,7 +56,13 @@ public final class DsvpLocalEngine {
 
     private final AtomicLong sequence = new AtomicLong();
     private final Map<Long, CompletableFuture<JsonNode>> pending = new ConcurrentHashMap<>();
-    private final Object lifecycle = new Object();
+    /**
+     * Guards the child process's writer. A {@code ReentrantLock} rather than a monitor on purpose: a
+     * virtual thread that blocks on a monitor is pinned to its carrier, and this JVM runs one carrier
+     * per core - a wedged write here would take the whole virtual-thread scheduler down with it, so
+     * the lock is also only ever acquired with a bound.
+     */
+    private final java.util.concurrent.locks.ReentrantLock lifecycle = new java.util.concurrent.locks.ReentrantLock();
     private volatile Process process;
     private volatile BufferedWriter writer;
 
@@ -144,15 +150,27 @@ public final class DsvpLocalEngine {
         }
         CompletableFuture<JsonNode> future = new CompletableFuture<>();
         pending.put(id, future);
+        long startedAt = System.nanoTime();
         try {
             BufferedWriter out = writer;
             if (out == null) return Optional.empty();
-            synchronized (lifecycle) {
+            if (!lifecycle.tryLock(2, TimeUnit.SECONDS)) {
+                pending.remove(id);
+                log.warn("DSVP 本地引擎写入通道被占用超过 2 秒，本次调用放弃：{}", operation);
+                return Optional.empty();
+            }
+            try {
                 out.write(line);
                 out.newLine();
                 out.flush();
+            } finally {
+                lifecycle.unlock();
             }
             JsonNode reply = future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            long elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000;
+            if (elapsedMillis > 1000) {
+                log.warn("DSVP 本地引擎响应较慢：{} 用时 {} ms", operation, elapsedMillis);
+            }
             if (reply.path("ok").asBoolean(false)) return Optional.of(reply);
             throw engineFailure(reply.path("error"));
         } catch (TimeoutException error) {
@@ -183,7 +201,8 @@ public final class DsvpLocalEngine {
 
     private boolean start() {
         if (process != null && process.isAlive()) return true;
-        synchronized (lifecycle) {
+        lifecycle.lock();
+        try {
             if (process != null && process.isAlive()) return true;
             if (!Files.isRegularFile(script)) {
                 log.warn("DSVP 本地引擎脚本不存在：{}", script);
@@ -206,6 +225,8 @@ public final class DsvpLocalEngine {
                 this.writer = null;
                 return false;
             }
+        } finally {
+            lifecycle.unlock();
         }
     }
 
@@ -250,12 +271,15 @@ public final class DsvpLocalEngine {
 
     /** Stops the child process; the next call starts a fresh one. */
     public void shutdown() {
-        synchronized (lifecycle) {
+        lifecycle.lock();
+        try {
             failPending();
             Process current = process;
             process = null;
             writer = null;
             if (current != null && current.isAlive()) current.destroy();
+        } finally {
+            lifecycle.unlock();
         }
     }
 

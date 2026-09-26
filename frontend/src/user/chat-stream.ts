@@ -91,6 +91,7 @@ export function chatErrorKey(code: string): MessageKey {
       return "chat.error.sessionGone";
     case "MODEL_REQUEST_TIMEOUT":
     case "MODEL_STREAM_IDLE_TIMEOUT":
+    case "CHAT_STREAM_STALLED":
       return "chat.error.timeout";
     case "CHAT_PROMPT_TOO_LONG":
       return "chat.error.tooLong";

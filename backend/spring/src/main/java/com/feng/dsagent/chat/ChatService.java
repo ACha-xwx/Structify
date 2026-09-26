@@ -150,9 +150,12 @@ public class ChatService {
     private PreparedChat prepare(ChatCommand command, Long userId, KnowledgeAudience audience) {
         String prompt = normalizePrompt(command.prompt());
         String chapterId = normalizeChapterId(command.chapterId());
+        long startedAt = System.nanoTime();
         List<ChatTurn> history = history(command, userId);
+        long afterHistory = System.nanoTime();
         int searchLimit = Math.max(1, Math.min(properties.searchLimit(), 6));
         List<KnowledgeSearchResult> results = knowledge.search(prompt, chapterId, searchLimit, audience);
+        long afterSearch = System.nanoTime();
         if (results.isEmpty()) {
             throw new ApiException(
                 HttpStatus.CONFLICT,
@@ -175,24 +178,47 @@ public class ChatService {
             messages.add(new ModelMessage(turn.role(), turn.content()));
         }
         messages.add(new ModelMessage("user", prompt));
+        log.info(
+            "chat prepare: user={} history={} in {} ms, search={} hits in {} ms, catalogue {} chars in {} ms, total {} ms",
+            userId,
+            history.size(),
+            millis(afterHistory - startedAt),
+            results.size(),
+            millis(afterSearch - afterHistory),
+            catalogue.length(),
+            millis(System.nanoTime() - afterSearch),
+            millis(System.nanoTime() - startedAt)
+        );
         return new PreparedChat(new ModelRequest(messages, 0.35, 1800), sources, chapterId);
+    }
+
+    private static long millis(long nanos) {
+        return nanos / 1_000_000;
     }
 
     /**
      * The engine's own capability list for this chapter, or blank when it cannot be reached. A failure
      * here only costs the guard rail - the answer itself must never depend on it.
+     *
+     * <p>The cache is read and written without holding a lock across the engine call. {@code
+     * computeIfAbsent} would pin every other thread asking for the same scope behind one in-flight
+     * engine round trip, on a monitor, with no bound - and a virtual thread pinned on a monitor stops
+     * its carrier, which this small box cannot spare.
      */
     private String animationCatalogue(String chapterId) {
         if (engine == null || !engine.enabled()) return "";
         String scope = chapterId == null || chapterId.isBlank() ? "" : DsvpLocalEngine.chapterScope(chapterId);
-        return animationCatalogue.computeIfAbsent(scope, key -> {
-            try {
-                return engine.catalogueFor(key);
-            } catch (RuntimeException error) {
-                log.warn("animation catalogue unavailable for scope {}: {}", key, error.getMessage());
-                return "";
-            }
-        });
+        String cached = animationCatalogue.get(scope);
+        if (cached != null) return cached;
+        String loaded;
+        try {
+            loaded = engine.catalogueFor(scope);
+        } catch (RuntimeException error) {
+            log.warn("animation catalogue unavailable for scope {}: {}", scope, error.getMessage());
+            return "";
+        }
+        animationCatalogue.put(scope, loaded);
+        return loaded;
     }
 
     private List<ChatTurn> history(ChatCommand command, Long userId) {

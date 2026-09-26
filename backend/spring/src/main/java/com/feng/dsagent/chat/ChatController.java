@@ -10,10 +10,18 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -29,6 +37,22 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RestController
 @RequestMapping("/api/v1/chat")
 public class ChatController {
+
+    private static final Logger log = LoggerFactory.getLogger(ChatController.class);
+
+    /**
+     * A platform-thread scheduler, deliberately not virtual: its whole job is to speak up when the
+     * answer stops arriving, and a virtual thread cannot do that if the scheduler itself is the thing
+     * that is stuck.
+     */
+    private static final ScheduledExecutorService WATCHDOG = Executors.newSingleThreadScheduledExecutor(task -> {
+        Thread thread = new Thread(task, "chat-stream-watchdog");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    /** How long a stream may go without writing anything before the learner is told. */
+    private static final Duration SILENCE_LIMIT = Duration.ofSeconds(45);
 
     private final ChatService chat;
     private final ChatHistoryService history;
@@ -71,7 +95,9 @@ public class ChatController {
         }
         AtomicBoolean closed = new AtomicBoolean();
         AtomicBoolean finished = new AtomicBoolean();
+        AtomicLong lastWrite = new AtomicLong(System.currentTimeMillis());
         AtomicReference<Thread> worker = new AtomicReference<>();
+        long startedAt = System.nanoTime();
         Runnable abort = () -> {
             closed.set(true);
             if (!finished.get()) {
@@ -93,17 +119,39 @@ public class ChatController {
         });
         emitter.onError(error -> abort.run());
         emitter.onTimeout(() -> {
+            log.warn("chat stream: emitter timed out after {} ms without the worker finishing", millis(startedAt));
             abort.run();
         });
+        ScheduledFuture<?> watchdog = WATCHDOG.scheduleAtFixedRate(() -> {
+            if (finished.get() || closed.get()) return;
+            long silentMillis = System.currentTimeMillis() - lastWrite.get();
+            if (silentMillis < SILENCE_LIMIT.toMillis()) return;
+            log.warn("chat stream: nothing written for {} ms, closing with an error", silentMillis);
+            if (finished.compareAndSet(false, true)) {
+                try {
+                    emitter.send(SseEmitter.event().name("error")
+                        .data(Map.of("code", "CHAT_STREAM_STALLED", "message", "模型迟迟没有回应")));
+                } catch (IOException | IllegalStateException ignored) {
+                    // The stream is already gone; the client sees the close either way.
+                }
+                emitter.complete();
+            }
+        }, SILENCE_LIMIT.toMillis(), 5_000L, TimeUnit.MILLISECONDS);
         KnowledgeAudience audience = KnowledgeAudience.from(user);
-        Thread streamThread = Thread.ofVirtual().name("chat-stream-").start(() -> runStream(
+        // A platform thread on purpose. This box fits two carriers, and the worker writes to the
+        // servlet response - a path that takes internal monitors - so keeping it off the virtual-thread
+        // scheduler removes a way for one slow answer to hold up every other virtual thread on the box.
+        Thread streamThread = Thread.ofPlatform().daemon().name("chat-stream-", 1).start(() -> runStream(
             emitter,
             request.command(),
             userId,
             audience,
             AiQuotaRequestId.from(servletRequest),
             closed,
-            finished
+            finished,
+            lastWrite,
+            startedAt,
+            watchdog
         ));
         worker.set(streamThread);
         if (closed.get() && !finished.get()) {
@@ -119,40 +167,67 @@ public class ChatController {
         KnowledgeAudience audience,
         String requestId,
         AtomicBoolean closed,
-        AtomicBoolean finished
+        AtomicBoolean finished,
+        AtomicLong lastWrite,
+        long startedAt,
+        ScheduledFuture<?> watchdog
     ) {
+        AtomicBoolean firstDelta = new AtomicBoolean();
         try {
+            log.info("chat stream: start user={} promptChars={}", userId,
+                command.prompt() == null ? 0 : command.prompt().length());
             ChatResponse response = chat.stream(
                 command,
                 userId,
                 audience,
                 requestId,
-                sources -> send(emitter, "sources", sources, closed),
-                content -> send(emitter, "delta", Map.of("content", content), closed)
+                sources -> {
+                    log.info("chat stream: sources={} after {} ms", sources.size(), millis(startedAt));
+                    send(emitter, "sources", sources, closed, lastWrite);
+                },
+                content -> {
+                    if (firstDelta.compareAndSet(false, true)) {
+                        log.info("chat stream: first token after {} ms", millis(startedAt));
+                    }
+                    send(emitter, "delta", Map.of("content", content), closed, lastWrite);
+                }
             );
-            send(emitter, "done", response, closed);
+            log.info("chat stream: done after {} ms answerChars={}", millis(startedAt),
+                response.answer() == null ? 0 : response.answer().length());
+            send(emitter, "done", response, closed, lastWrite);
             finished.set(true);
             emitter.complete();
         } catch (AiStreamAbortedException ignored) {
+            log.info("chat stream: aborted after {} ms", millis(startedAt));
             finished.set(true);
             emitter.complete();
         } catch (ApiException error) {
-            send(emitter, "error", Map.of("code", error.code(), "message", error.getMessage()), closed);
+            log.warn("chat stream: refused after {} ms code={} message={}", millis(startedAt), error.code(),
+                error.getMessage());
+            send(emitter, "error", Map.of("code", error.code(), "message", error.getMessage()), closed, lastWrite);
             finished.set(true);
             emitter.complete();
         } catch (RuntimeException error) {
-            send(emitter, "error", Map.of("code", "CHAT_STREAM_FAILED", "message", "流式回答中断"), closed);
+            log.warn("chat stream: failed after {} ms", millis(startedAt), error);
+            send(emitter, "error", Map.of("code", "CHAT_STREAM_FAILED", "message", "流式回答中断"), closed, lastWrite);
             finished.set(true);
             emitter.complete();
+        } finally {
+            watchdog.cancel(false);
         }
     }
 
-    private void send(SseEmitter emitter, String name, Object data, AtomicBoolean closed) {
+    private static long millis(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000;
+    }
+
+    private void send(SseEmitter emitter, String name, Object data, AtomicBoolean closed, AtomicLong lastWrite) {
         if (closed.get()) {
             throw new AiStreamAbortedException();
         }
         try {
             emitter.send(SseEmitter.event().name(name).data(data));
+            lastWrite.set(System.currentTimeMillis());
         } catch (IOException error) {
             throw new AiStreamAbortedException(error);
         }
