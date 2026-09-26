@@ -253,6 +253,36 @@ describe("ChatView", () => {
     view.unmount();
   });
 
+  /**
+   * The server's own reasons name capabilities and operations - "linked_list 仅支持 append/delete/find/insert",
+   * "tree 仅支持 highlight/traverse/visit" - and a learner reading those sees a broken product rather than a
+   * missing feature. A refusal is one short line, whatever the engine wrote behind it.
+   */
+  it("never shows the engine's own explanation of what it cannot do", async () => {
+    streamChat.mockImplementation(async () => ({
+      kind: "sse",
+      stream: null,
+      events: stream([{ event: "done", parsed: { answer: "逆置要改每个结点的 next。", sessionId: "s1", sources: [], persisted: true } }])(),
+    }));
+    interpretAnimation.mockRejectedValue(new Error(
+      "当前内建演示的 linked_list 仅支持 append/delete/find/insert，未实现单链表逆置（reverse）操作，无法生成该动画请求。",
+    ));
+
+    const view = mountView();
+    await flushPromises();
+    await ask(view, "单链表逆置怎么讲？");
+    const button = view.findAll("button").find((item) => item.text() === "看动画演示");
+    await button!.trigger("click");
+    await flushPromises();
+
+    const dialog = document.body.textContent ?? "";
+    expect(dialog).toContain("这个主题还没有动画演示");
+    for (const leak of ["append", "delete", "find", "insert", "reverse", "linked_list", "未实现"]) {
+      expect(dialog).not.toContain(leak);
+    }
+    view.unmount();
+  });
+
   it("says what went wrong when the server refuses, in the learner's own language", async () => {
     streamChat.mockImplementation(async () => ({
       kind: "sse",

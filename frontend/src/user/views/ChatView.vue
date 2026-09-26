@@ -274,14 +274,14 @@ function isDeclined(cause: unknown): boolean {
   return cause instanceof ApiClientError && cause.code === "ANIMATION_DECLINED";
 }
 
-/** The engine refuses in plain Chinese; anything that still reads like machinery gets replaced. */
+/**
+ * A demo that could not be built is the engine's business, not the learner's. Its explanations name
+ * capabilities and operations - "tree 仅支持 highlight/traverse/visit", "linked_list 仅支持
+ * append/delete/find/insert" - which is machinery, and reads as a broken product rather than a missing
+ * one. Every refusal becomes the same short line; only waiting too long says so in its own words.
+ */
 function animationFailure(cause: unknown): string {
-  if (isTimeout(cause)) return t("chat.error.timeout");
-  const message = cause instanceof Error ? cause.message : "";
-  if (!message || /未匹配|capability|DSVP|status|ANIMATION_|resolve|No response within/i.test(message)) {
-    return t("chat.animationUnavailable");
-  }
-  return message;
+  return isTimeout(cause) ? t("chat.error.timeout") : t("chat.animationUnavailable");
 }
 
 function animationOf(id: number): DsvpSimulationResponse | null {

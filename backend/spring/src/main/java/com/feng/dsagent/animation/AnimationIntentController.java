@@ -7,7 +7,11 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -33,6 +37,8 @@ import tools.jackson.databind.node.ObjectNode;
 public class AnimationIntentController {
 
     private static final String DEMO_SOURCE_REF = "系统标准教学示例（非教材原例）";
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(AnimationIntentController.class);
 
     private final ClassroomModelJson model;
     private final DsvpAnimationAdapter simulator;
@@ -203,32 +209,32 @@ public class AnimationIntentController {
             2. 参数优先从学生需求和当前教材内容里提取；没有依据的数字、序列、规模一律留空，不要编造数字。留空是允许的：服务端会回填该能力注册的标准教学示例，并明确标注它不是教材原例。
             3. 不要用一次交换冒充排序、用读取一个元素冒充查找、用访问结点冒充旋转。
             4. purpose 一句话说明这里为什么值得看动态过程。
+            5. 判断只能以上面的能力表为唯一事实依据。表里有对应条目就必须选它，绝不能以「未实现」「这个结构只支持某某操作」为由拒绝。
+            6. 不要凭印象描述某个结构支持或不支持哪些操作——印象可能过时或缺漏，能力表才是事实。返回 unsupported 之前，必须逐条扫一遍能力表，确认真的没有可用条目。
             只返回下列形状之一：
             {"needed":true,"confidence":0.0到1.0,"capability":"能力名","purpose":"为什么值得演示","arguments":{}}
             {"needed":false,"confidence":0.0,"capability":"","purpose":"为什么不需要动画","arguments":{}}
             {"unsupported":true,"reason":"说明不在能力表内的原因"}
-            %s""".formatted(judgement, capabilities, declinedShape), context.toString(), 900, json -> {
-            if (json.path("declined").asBoolean(false)) {
-                ClassroomModelJson.requireText(json, "reason");
-                return;
-            }
-            if (json.path("unsupported").asBoolean(false)) {
-                ClassroomModelJson.requireText(json, "reason");
-                return;
-            }
-            if (json.path("needed").asBoolean(false)) ClassroomModelJson.requireText(json, "capability");
-            if (json.has("arguments") && !json.path("arguments").isObject()) {
-                throw new IllegalArgumentException("$.arguments 必须是对象，键为参数名");
-            }
-        });
+            %s""".formatted(judgement, capabilities, declinedShape), context.toString(), 900, this::validateIntent);
 
         if (intent.path("declined").asBoolean(false)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_DECLINED",
                 intent.path("reason").asText("这不是答应看演示"));
         }
         if (intent.path("unsupported").asBoolean(false)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_NOT_SUPPORTED",
-                intent.path("reason").asText("这个演示暂未实现"));
+            String reason = intent.path("reason").asText("这个演示暂未实现");
+            // A refusal has to be checked, not trusted. The engine really can build a binary search tree
+            // insert and a linked-list reversal, and the model has refused both while claiming the
+            // operations do not exist - a learner then gets told a demo is missing when it is right
+            // there. So the closest entries are put back in front of it and it decides once more.
+            JsonNode recheck = recheckRefusal(user, chapterTitle, studentRequest, reply, capabilityList, reason);
+            if (recheck != null && recheck.path("needed").asBoolean(false)) {
+                LOGGER.info("animation intent: first answer refused ({}), the check found {} instead",
+                    reason, recheck.path("capability").asText(""));
+                intent = recheck;
+            } else {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_NOT_SUPPORTED", reason);
+            }
         }
 
         ObjectNode options = mapper.createObjectNode();
@@ -259,6 +265,105 @@ public class AnimationIntentController {
         }
         throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_NOT_SUPPORTED",
             "能力表里没有 " + intent.path("capability").asText("这个演示"));
+    }
+
+    /**
+     * Asks once more before telling a learner that a demo does not exist, with the closest entries from
+     * the engine's own table in front of the model. The table is the only evidence, and the model has
+     * been seen to deny entries that were sitting in it.
+     */
+    private JsonNode recheckRefusal(
+        AuthenticatedUser user,
+        String chapterTitle,
+        String studentRequest,
+        String reply,
+        JsonNode capabilityList,
+        String reason
+    ) {
+        List<JsonNode> candidates = candidateCapabilities(
+            (studentRequest == null ? "" : studentRequest) + " " + (reply == null ? "" : reply),
+            capabilityList,
+            8
+        );
+        if (candidates.isEmpty()) return null;
+        StringBuilder listing = new StringBuilder();
+        for (JsonNode node : candidates) {
+            listing.append(node.path("capability").asText(""))
+                .append('[').append(String.join("|", textList(node.path("requiredArguments")))).append("]：")
+                .append(node.path("label").asText("")).append('（')
+                .append(node.path("description").asText("")).append("）\n");
+        }
+        ObjectNode context = mapper.createObjectNode();
+        context.put("chapter", chapterTitle);
+        context.put("studentRequest", studentRequest == null ? "" : studentRequest);
+        if (reply != null && !reply.isBlank()) context.put("studentReply", reply);
+        return model.generateFor(user.userId(), "animation-intent", """
+            复核一次。上一次的判断是「这次需求在能力表里没有对应条目」，理由写的是：
+            %s
+            但当前教材章的能力表里确实存在下面这些条目（能力名[必需参数]：说明）：
+            %s
+            请重新判断这一次：上面这些条目里，有没有哪一条就是学生要看的那个演示？
+            - 有：返回 {"needed":true,"confidence":0.0到1.0,"capability":"能力名","purpose":"为什么值得演示","arguments":{}}
+            - 都没有：再返回 {"unsupported":true,"reason":"说明上面这些条目为什么不合适"}
+            这次不用判断值不值得动画，也不用找别的条目，只看上面列出的这些。只输出这两种形状之一。
+            """.formatted(reason, listing.toString()), context.toString(), 500, this::validateIntent);
+    }
+
+    /**
+     * The entries most likely to be what the learner asked for, ranked by shared character pairs. It is
+     * only ever a shortlist for the model to judge - never a decision of its own.
+     */
+    private List<JsonNode> candidateCapabilities(String request, JsonNode capabilityList, int limit) {
+        Set<String> query = characterPairs(request);
+        if (query.isEmpty()) return List.of();
+        List<JsonNode> ranked = new ArrayList<>();
+        List<Integer> scores = new ArrayList<>();
+        for (JsonNode node : capabilityList.path("capabilities")) {
+            String text = node.path("label").asText("") + " " + node.path("description").asText("") + " "
+                + node.path("capability").asText("") + " " + node.path("operation").asText("") + " "
+                + node.path("textbook").asText("");
+            int score = 0;
+            for (String pair : characterPairs(text)) {
+                if (query.contains(pair)) score++;
+            }
+            if (score == 0) continue;
+            int at = 0;
+            while (at < scores.size() && scores.get(at) >= score) at++;
+            scores.add(at, score);
+            ranked.add(at, node);
+            if (ranked.size() > limit) {
+                ranked.remove(ranked.size() - 1);
+                scores.remove(scores.size() - 1);
+            }
+        }
+        return ranked;
+    }
+
+    /** Character pairs stand in for words: Chinese is not spaced, so there is nothing to split on. */
+    private static Set<String> characterPairs(String text) {
+        String normalized = (text == null ? "" : text).toLowerCase(java.util.Locale.ROOT)
+            .replaceAll("[\\s，。！？、,.!?：:；;（）()\\[\\]{}\"'“”‘’~～]+", "");
+        Set<String> pairs = new LinkedHashSet<>();
+        for (int index = 0; index + 2 <= normalized.length(); index++) {
+            pairs.add(normalized.substring(index, index + 2));
+        }
+        return pairs;
+    }
+
+    /** The model's own return shape, checked the same way on the first answer and on the recheck. */
+    private void validateIntent(JsonNode json) {
+        if (json.path("declined").asBoolean(false)) {
+            ClassroomModelJson.requireText(json, "reason");
+            return;
+        }
+        if (json.path("unsupported").asBoolean(false)) {
+            ClassroomModelJson.requireText(json, "reason");
+            return;
+        }
+        if (json.path("needed").asBoolean(false)) ClassroomModelJson.requireText(json, "capability");
+        if (json.has("arguments") && !json.path("arguments").isObject()) {
+            throw new IllegalArgumentException("$.arguments 必须是对象，键为参数名");
+        }
     }
 
     /** Fallback path: no engine, so the model returns a whole DSVP request and the in-process simulator judges it. */
