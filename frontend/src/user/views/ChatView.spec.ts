@@ -143,9 +143,10 @@ describe("ChatView", () => {
     expect(streamChat).toHaveBeenCalledTimes(1);
     // The demo is requested in the offer's own words, not by the bare question: a concept comparison
     // ("栈和队列有什么区别？") rightly refuses a frame demo, but the offer names a concrete process.
+    // No chapter is chosen here, so none is sent: the request has to stay as wide as the learner left it.
     expect(interpretAnimation).toHaveBeenCalledWith(expect.objectContaining({
       prompt: expect.stringContaining("动画演示入栈出栈"),
-      chapterId: "ch03",
+      chapterId: undefined,
       reply: "好的",
     }));
     expect(view.text()).toContain("入栈");

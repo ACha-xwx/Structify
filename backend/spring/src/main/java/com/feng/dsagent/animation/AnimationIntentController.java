@@ -79,8 +79,14 @@ public class AnimationIntentController {
      * up with the next coinage — so the model reads them, and answers with the demo or with
      * {@code declined}. Doing both in one call keeps a refused offer from costing two round trips.
      */
+    /**
+     * {@code chapterId} is optional on purpose. A learner who left the chapter selector on "全部章节" has
+     * asked for the whole textbook, and narrowing that request to one chapter silently takes most demos
+     * off the table - the chat page used to fall back to the first chapter, and a linked-list reversal
+     * then came back as "linked_list 仅支持 append/delete/find/insert".
+     */
     public record Input(
-        @NotBlank @Size(max = 64) String chapterId,
+        @Size(max = 64) String chapterId,
         @Size(max = 2000) String prompt,
         JsonNode currentRequest,
         Boolean confirmed,
@@ -140,17 +146,25 @@ public class AnimationIntentController {
 
     @PostMapping("/interpret")
     public JsonNode interpret(@AuthenticationPrincipal AuthenticatedUser user, @Valid @RequestBody Input input) {
-        var titles = jdbc.queryForList("SELECT title FROM chapters WHERE id=? AND status='PUBLISHED'", String.class, input.chapterId());
-        if (titles.isEmpty()) throw new ApiException(HttpStatus.NOT_FOUND, "CHAPTER_NOT_FOUND", "章节未发布或不存在");
+        String requestedChapter = input.chapterId() == null ? "" : input.chapterId().trim();
+        String chapterTitle;
+        if (requestedChapter.isEmpty()) {
+            // No chapter chosen: the whole textbook is the scope, which is what "全部章节" means.
+            chapterTitle = "全部章节";
+        } else {
+            var titles = jdbc.queryForList("SELECT title FROM chapters WHERE id=? AND status='PUBLISHED'", String.class, requestedChapter);
+            if (titles.isEmpty()) throw new ApiException(HttpStatus.NOT_FOUND, "CHAPTER_NOT_FOUND", "章节未发布或不存在");
+            chapterTitle = titles.getFirst();
+        }
 
         String studentRequest = input.prompt() == null || input.prompt().isBlank()
             ? "选择一个本章适合观察过程的小例子"
             : input.prompt();
-        JsonNode capabilityList = localCapabilities(input.chapterId());
+        JsonNode capabilityList = localCapabilities(requestedChapter);
         if (capabilityList != null) {
-            return interpretThroughLocalEngine(user, input.chapterId(), titles.getFirst(), studentRequest, input.currentRequest(), capabilityList, Boolean.TRUE.equals(input.confirmed()), input.reply());
+            return interpretThroughLocalEngine(user, requestedChapter, chapterTitle, studentRequest, input.currentRequest(), capabilityList, Boolean.TRUE.equals(input.confirmed()), input.reply());
         }
-        return interpretWithModelRequest(user, input.chapterId(), titles.getFirst(), studentRequest, input.currentRequest(), input.reply());
+        return interpretWithModelRequest(user, requestedChapter, chapterTitle, studentRequest, input.currentRequest(), input.reply());
     }
 
     /** Chapter ids in this codebase start with the textbook chapter number ("06-tree"), which is how the engine scopes. */
@@ -300,11 +314,13 @@ public class AnimationIntentController {
         return model.generateFor(user.userId(), "animation-intent", """
             复核一次。上一次的判断是「这次需求在能力表里没有对应条目」，理由写的是：
             %s
-            但当前教材章的能力表里确实存在下面这些条目（能力名[必需参数]：说明）：
+            下面这些是能力表里和这次需求文字最接近的条目（能力名[必需参数]：说明）：
             %s
-            请重新判断这一次：上面这些条目里，有没有哪一条就是学生要看的那个演示？
+            只看上面这些条目，判断有没有哪一条演示的过程**正是学生要看的那个过程**：
             - 有：返回 {"needed":true,"confidence":0.0到1.0,"capability":"能力名","purpose":"为什么值得演示","arguments":{}}
-            - 都没有：再返回 {"unsupported":true,"reason":"说明上面这些条目为什么不合适"}
+            - 没有：返回 {"unsupported":true,"reason":"说明这些条目为什么都不合适"}
+            判断标准要严：同一种数据结构上的**不同操作不算「正是」**。学生要「插入」，条目里只有「遍历」或「访问」就必须继续返回 unsupported；
+            要「查找」而条目只有「插入」也一样。绝不能为了让这次请求有结果就挑一个相近的操作顶替。
             这次不用判断值不值得动画，也不用找别的条目，只看上面列出的这些。只输出这两种形状之一。
             """.formatted(reason, listing.toString()), context.toString(), 500, this::validateIntent);
     }

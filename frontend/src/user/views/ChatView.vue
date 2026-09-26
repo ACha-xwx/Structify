@@ -243,8 +243,10 @@ function animationPrompt(message: ConversationMessage): string {
  * agreement, answer it as the question it is"; true means the turn is spent, one way or the other.
  */
 async function runAnimation(question: string, replyId: number, reply?: string): Promise<boolean> {
-  const chapter = chapterId.value || chapters.value[0]?.id || "";
-  if (!chapter || !question) {
+  // No chapter selected means the whole textbook, and the request says exactly that. Falling back to the
+  // first chapter used to narrow it silently, and most demos then came back as "not implemented".
+  const chapter = chapterId.value || undefined;
+  if (!question) {
     raise(t("chat.animationFailedTitle"), t("chat.animationUnavailable"));
     return true;
   }

@@ -119,8 +119,41 @@ class AnimationIntentControllerTest {
         assertThat(calls.get()).isEqualTo(2);
     }
 
-    /** When the table offers nothing close, the refusal stands and costs no second call. */
-    @Test void aRefusalWithNothingCloseStandsWithoutASecondCall() {
+    /**
+     * No chapter means the whole textbook. The chat page used to send the first chapter instead, which
+     * silently cut the capability table down to the introduction - and a linked-list reversal was then
+     * refused as "linked_list 仅支持 append/delete/find/insert" while the entry sat in the full table.
+     */
+    @Test void aRequestWithoutAChapterSearchesTheWholeTextbook() {
+        var engine = mock(DsvpLocalEngine.class);
+        when(engine.enabled()).thenReturn(true);
+        ObjectNode capabilities = (ObjectNode) mapper.readTree("""
+            {"prompt":"linked_list.reverse[initialData]：单链表逆置","capabilities":[
+              {"capability":"linked_list.reverse","label":"单链表逆置","description":"逐结点反转 next 指针"}
+            ]}
+            """);
+        when(engine.capabilities(anyString())).thenReturn(java.util.Optional.of(capabilities));
+        ObjectNode resolution = (ObjectNode) mapper.readTree("""
+            {"status":"ready","toolRequest":{"request":
+              {"version":"1.0","structure":"linked_list","operation":"reverse","params":{},"initial_state":{}}}}
+            """);
+        when(engine.resolve(any(),any())).thenReturn(java.util.Optional.of(resolution));
+
+        var model = new ClassroomModelJson((id,feature,key,request) -> {
+            assertThat(request.messages().getLast().content()).contains("全部章节");
+            return new ModelResponse("{\"needed\":true,\"confidence\":0.9,\"capability\":\"linked_list.reverse\",\"purpose\":\"看指针怎么反过来\",\"arguments\":{}}");
+        },mapper);
+        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),jdbc,mapper,engine);
+
+        var result = controller.interpret(user,new AnimationIntentController.Input(null,"单链表逆置"));
+
+        assertThat(result.path("operation").asText()).isEqualTo("reverse");
+        // The empty scope is the whole registry, and no chapter row is read on the way there.
+        verify(engine).capabilities("");
+        verifyNoMoreInteractions(jdbc);
+    }
+
+    /** When the table offers nothing close, the refusal stands and costs no second call. */    @Test void aRefusalWithNothingCloseStandsWithoutASecondCall() {
         when(jdbc.queryForList(anyString(),eq(String.class),eq("06-tree"))).thenReturn(List.of("树与二叉树"));
         var engine = mock(DsvpLocalEngine.class);
         when(engine.enabled()).thenReturn(true);
