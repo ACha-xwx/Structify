@@ -174,9 +174,14 @@ async function ask(question: string, history: ChatTurn[]) {
     }
     const reply = messages.value.find((item) => item.id === replyId);
     // A stream that was cut short reads as stopped even when it already had text: finishing it here
-    // would present a half-answer as the whole one.
+    // would present a half-answer as the whole one. One that closed with nothing at all - no done,
+    // no error, the server just went quiet - says so, instead of leaving the learner staring at the
+    // searching note until they give up.
     if (reply?.state === "streaming") {
       update(replyId, { state: signal.aborted || !reply.content ? "stopped" : "complete" });
+      if (!signal.aborted && !reply.content) {
+        raise(t("common.failed"), t("chat.error.timeout"));
+      }
     }
   } catch (cause) {
     const stopped = signal.aborted;

@@ -294,6 +294,28 @@ describe("ChatView", () => {
     view.unmount();
   });
 
+  /**
+   * A stalled upstream used to close the connection with neither done nor error, and the page kept
+   * the searching note up until the learner gave up. A stream that ends with nothing now says the
+   * answer did not come back in time.
+   */
+  it("says the answer never came when the stream closes without done or error", async () => {
+    streamChat.mockImplementation(async () => ({
+      kind: "sse",
+      stream: null,
+      events: stream([{ event: "sources", parsed: [{ id: "s1", title: "线性表-单链表" }] }])(),
+    }));
+
+    const view = mountView();
+    await flushPromises();
+    await ask(view, "单链表我不会");
+    await flushPromises();
+
+    expect(document.body.textContent).toContain("等了一会儿没回应");
+    expect(view.text()).not.toContain("正在查教材");
+    view.unmount();
+  });
+
   it("refuses to send a question longer than the server accepts", async () => {
     const view = mountView();
     await flushPromises();
