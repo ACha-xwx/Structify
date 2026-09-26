@@ -52,7 +52,18 @@ public class ClassroomPreparation {
      */
     private final String narration;
     private final ConcurrentHashMap<String, Job> jobs = new ConcurrentHashMap<>();
-    private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+    /**
+     * Platform threads, one per preparation job. Virtual threads would be the natural fit, but this box
+     * has one carrier per core and a preparation job is a long chain of blocking model calls that also
+     * writes to the database and to the engine's pipes; sharing the virtual-thread scheduler with the
+     * chat page's work means one wedged job can stop everything else from being scheduled at all.
+     */
+    private final java.util.concurrent.atomic.AtomicInteger preparationThreads = new java.util.concurrent.atomic.AtomicInteger();
+    private final ExecutorService executor = Executors.newCachedThreadPool(task -> {
+        Thread thread = new Thread(task, "classroom-prep-" + preparationThreads.incrementAndGet());
+        thread.setDaemon(true);
+        return thread;
+    });
     public ClassroomPreparation(JdbcTemplate jdbc, ClassroomModelJson model, ObjectMapper mapper, ClassroomScriptParser parser,
             ClassroomRepository repository, ClassroomTimeline timeline, com.feng.dsagent.presentation.PresentationService presentations,
             com.feng.dsagent.animation.DsvpAnimationAdapter animations,
