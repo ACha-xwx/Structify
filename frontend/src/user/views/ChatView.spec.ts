@@ -229,7 +229,44 @@ describe("ChatView", () => {
     await flushPromises();
 
     expect(interpretAnimation).toHaveBeenCalled();
-    expect(view.text()).toContain("入栈");
+    // The demo is a dialog over the conversation (it teleports to the body), not a block inside the reply.
+    expect(document.body.textContent).toContain("入栈");
+    view.unmount();
+  });
+
+  /**
+   * A demo that already exists is shown again, not rebuilt: pressing the button twice used to spend a
+   * second interpreter call, which could even answer differently the second time and contradict the demo
+   * already on screen.
+   */
+  it("reopens a demo it already has instead of asking the server for it again", async () => {
+    streamChat.mockImplementation(async () => ({
+      kind: "sse",
+      stream: null,
+      events: stream([{ event: "done", parsed: { answer: "栈是后进先出。", sessionId: "s1", sources: [], persisted: true } }])(),
+    }));
+    interpretAnimation.mockResolvedValue({ structure: "stack", operation: "push" });
+
+    const view = mountView();
+    await flushPromises();
+    await ask(view, "什么是栈？");
+
+    const button = view.findAll("button").find((item) => item.text() === "看动画演示");
+    await button!.trigger("click");
+    await flushPromises();
+    expect(interpretAnimation).toHaveBeenCalledTimes(1);
+
+    // Close it, then ask for it again from the answer's own button.
+    const close = [...document.body.querySelectorAll("button")].find((item) => item.textContent?.trim() === "关闭");
+    expect(close).toBeTruthy();
+    close!.click();
+    await flushPromises();
+    expect(document.body.textContent).not.toContain("入栈");
+
+    await button!.trigger("click");
+    await flushPromises();
+    expect(interpretAnimation).toHaveBeenCalledTimes(1);
+    expect(document.body.textContent).toContain("入栈");
     view.unmount();
   });
 

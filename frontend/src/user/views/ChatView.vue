@@ -4,8 +4,8 @@ import { useRoute, useRouter } from "vue-router";
 import BrandStage from "../../shared/components/BrandStage.vue";
 import NoticeDialog from "../../shared/components/NoticeDialog.vue";
 import ConfirmDialog from "../../shared/components/ConfirmDialog.vue";
+import AnimationDialog from "../components/AnimationDialog.vue";
 import { useI18n } from "../../shared/i18n/locale";
-import AnimationPlayer from "../../animation/AnimationPlayer.vue";
 import type { DsvpSimulationResponse } from "../../shared/types/animation";
 import type { Chapter, ChatResponse, ChatSessionSummary, ChatSource, ChatTurn } from "../../shared/types";
 import { auth } from "../../app/providers/runtime";
@@ -56,6 +56,12 @@ const threadRef = ref<HTMLElement | null>(null);
 /** One animation per reply, keyed by the reply it belongs to. */
 const animations = ref<Record<number, DsvpSimulationResponse>>({});
 const animationBusy = ref(false);
+/** The reply whose demo is being built, so only its button says so. */
+const animationPendingFor = ref<number | null>(null);
+/** The demo on screen; null means the dialog is closed. */
+const openAnimationFor = ref<number | null>(null);
+/** On a phone the conversation list is a sheet; on a desktop it is the sidebar and this is ignored. */
+const sessionsOpen = ref(false);
 
 const ALL_CHAPTERS = "";
 const MAX_PROMPT = 4000;
@@ -232,7 +238,7 @@ function animationPrompt(message: ConversationMessage): string {
 }
 
 /**
- * Builds the animation this answer offers and plays it under the answer.
+ * Builds the animation this answer offers, then opens it over the conversation.
  *
  * The sentence goes to the same interpret endpoint the animation lab uses, so the model only picks a
  * capability and the local engine computes the frames - the demo can be the wrong one but never an
@@ -251,6 +257,7 @@ async function runAnimation(question: string, replyId: number, reply?: string): 
     return true;
   }
   animationBusy.value = true;
+  animationPendingFor.value = replyId;
   try {
     // Without a reply the learner pressed the button, so the yes is already given and the interpreter
     // must pick a capability rather than re-judge whether the topic deserves a demo.
@@ -259,7 +266,7 @@ async function runAnimation(question: string, replyId: number, reply?: string): 
       : { chapterId: chapter, prompt: question, confirmed: true });
     const data = await userApi.simulateAnimation(request);
     animations.value = { ...animations.value, [replyId]: data };
-    await scrollToLatest();
+    openAnimationFor.value = replyId;
     return true;
   } catch (cause) {
     // Not an agreement is the one failure that is not a failure: the words were a question.
@@ -268,7 +275,20 @@ async function runAnimation(question: string, replyId: number, reply?: string): 
     return true;
   } finally {
     animationBusy.value = false;
+    animationPendingFor.value = null;
   }
+}
+
+/**
+ * The answer's own button. A demo already built is shown again without asking the server for it: a second
+ * request would spend quota to re-decide something already decided, and it could even come back different.
+ */
+function showAnimation(message: ConversationMessage) {
+  if (animationOf(message.id)) {
+    openAnimationFor.value = message.id;
+    return;
+  }
+  void runAnimation(animationPrompt(message), message.id);
 }
 
 /** The server read the reply and found no agreement in it. */
@@ -298,8 +318,10 @@ function newConversation() {
   if (streaming.value) return;
   messages.value = [];
   animations.value = {};
+  openAnimationFor.value = null;
   activeSessionId.value = null;
   prompt.value = "";
+  sessionsOpen.value = false;
 }
 
 async function loadSessions() {
@@ -319,6 +341,8 @@ async function openSession(session: ChatSessionSummary) {
     const detail = await userApi.getChatSession(session.id);
     activeSessionId.value = detail.id;
     animations.value = {};
+    openAnimationFor.value = null;
+    sessionsOpen.value = false;
     messages.value = detail.messages.map((item) => ({
       id: ++sequence,
       role: item.role,
@@ -378,11 +402,28 @@ function renderAnswer(raw: string): string {
     <div class="chat">
       <header class="chat__head">
         <h1 class="chat__title">{{ t("chat.title") }}</h1>
-        <button class="chat__link" type="button" @click="router.push('/')">{{ t("common.backHome") }}</button>
+        <div class="chat__head-actions">
+          <!-- Phones reach the past conversations through this; on a desktop the sidebar is always there. -->
+          <button class="chat__link chat__link--history" type="button" @click="sessionsOpen = true">
+            {{ t("chat.sessions") }}
+          </button>
+          <button class="chat__link" type="button" @click="router.push('/')">{{ t("common.backHome") }}</button>
+        </div>
       </header>
 
       <div class="chat__grid">
-        <section class="panel" :aria-label="t('chat.sessions')">
+        <div v-if="sessionsOpen" class="sessions-scrim" @click="sessionsOpen = false" />
+
+        <section
+          class="panel panel--sessions"
+          :class="{ 'panel--sessions-open': sessionsOpen }"
+          :aria-label="t('chat.sessions')"
+        >
+          <header class="sessions__head">
+            <h2 class="sessions__title">{{ t("chat.sessions") }}</h2>
+            <button class="sessions__close" type="button" :aria-label="t('common.close')" @click="sessionsOpen = false">×</button>
+          </header>
+
           <button class="button button--primary" type="button" :disabled="streaming" @click="newConversation">
             {{ t("chat.newChat") }}
           </button>
@@ -424,22 +465,14 @@ function renderAnswer(raw: string): string {
               <p v-else-if="message.state === 'stopped'" class="message__note">{{ t("chat.stopped") }}</p>
 
               <template v-if="message.role === 'assistant'">
-                <AnimationPlayer
-                  v-if="animationOf(message.id)"
-                  class="message__animation"
-                  :definition="definitionOf(message.id)"
-                  :trace="animationOf(message.id)?.trace ?? null"
-                  :placeholder="t('chat.animationPlaceholder')"
-                />
-
                 <button
                   v-if="message.state === 'complete'"
                   class="message__action"
                   type="button"
                   :disabled="animationBusy"
-                  @click="runAnimation(animationPrompt(message), message.id)"
+                  @click="showAnimation(message)"
                 >
-                  {{ animationBusy ? t("chat.animationBusy") : t("chat.watchAnimation") }}
+                  {{ animationPendingFor === message.id ? t("chat.animationBusy") : t("chat.watchAnimation") }}
                 </button>
               </template>
             </article>
@@ -473,6 +506,16 @@ function renderAnswer(raw: string): string {
       </div>
     </div>
 
+    <AnimationDialog
+      :open="openAnimationFor !== null"
+      :title="openAnimationFor === null ? '' : (definitionOf(openAnimationFor)?.title ?? t('chat.watchAnimation'))"
+      :definition="openAnimationFor === null ? null : definitionOf(openAnimationFor)"
+      :trace="openAnimationFor === null ? null : (animationOf(openAnimationFor)?.trace ?? null)"
+      :placeholder="t('chat.animationPlaceholder')"
+      :close-label="t('common.close')"
+      @close="openAnimationFor = null"
+    />
+
     <NoticeDialog
       :open="alert !== null"
       :title="alert?.title ?? ''"
@@ -501,6 +544,8 @@ function renderAnswer(raw: string): string {
 
 .chat__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
 .chat__title { margin: 0; color: var(--text); font-family: var(--font-ui); font-size: clamp(30px, 3.4vw, 46px); font-weight: 400; letter-spacing: 0; line-height: 1.06; }
+.chat__head-actions { display: flex; align-items: center; gap: 10px; }
+.chat__link--history { display: none; }
 
 .chat__link {
   min-height: 42px;
@@ -545,6 +590,11 @@ function renderAnswer(raw: string): string {
 .sessions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin: 0; padding: 0; list-style: none; min-width: 0; }
 .session { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
 
+/* The conversation list is a sidebar on a desktop and a sheet on a phone, so the sheet-only parts stay
+   out of the desktop layout entirely. */
+.sessions__head { display: none; }
+.sessions-scrim { display: none; }
+
 .session__open {
   flex: 1 1 auto;
   min-width: 0;
@@ -587,24 +637,24 @@ function renderAnswer(raw: string): string {
 .thread { flex: 1 1 auto; min-height: 0; display: grid; gap: 16px; align-content: start; padding: 4px 8px 4px 2px; overflow-y: auto; }
 .thread__empty { margin: 0; padding: 24px 0; color: var(--text); font-size: 19px; font-weight: 620; line-height: 1.6; text-align: center; }
 
-.message { display: grid; gap: 10px; max-width: min(88%, 820px); padding: 16px 20px; border-radius: 22px; }
-.message--user { justify-self: end; border: 1px double color-mix(in srgb, var(--text) 18%, transparent); background: color-mix(in srgb, var(--text) 9%, transparent); }
-.message--assistant { justify-self: start; border: 1px double color-mix(in srgb, var(--text) 15%, transparent); background: color-mix(in srgb, var(--surface) 72%, transparent); }
+/* The answer is not boxed: a bubble inside a bordered panel inside a page border is three frames around
+   one paragraph, and on a phone it leaves a column too narrow to read. The answer is text on the page,
+   the question is the only bubble - the shape every chat the learner already uses has. */
+.message { display: grid; gap: 10px; min-width: 0; max-width: 100%; }
+.message--user {
+  justify-self: end;
+  max-width: min(86%, 640px);
+  padding: 12px 18px;
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--text) 9%, transparent);
+}
+.message--assistant { justify-self: start; padding: 0; }
 
-.message__body { margin: 0; color: var(--text); font-size: 19px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+.message__body { margin: 0; color: var(--text); font-size: 19px; line-height: 1.75; white-space: pre-wrap; word-break: break-word; }
 .message__body :deep(strong) { font-weight: 700; }
 .message__body :deep(.answer__heading) { display: block; margin: 16px 0 6px; font-weight: 700; }
 .message__note { margin: 0; color: var(--text-muted); font-size: 19px; font-weight: 620; }
-
-/* The demo the answer just offered, drawn by the same player the animation lab uses. */
-.message__animation {
-  width: 100%;
-  margin-top: 4px;
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--surface) 62%, transparent);
-}
 
 .message__action {
   justify-self: start;
@@ -667,6 +717,99 @@ function renderAnswer(raw: string): string {
 @media (max-width: 900px) {
   .chat__grid { grid-template-columns: minmax(0, 1fr); }
   .panel--thread { height: clamp(520px, calc(100dvh - 220px), 900px); }
+}
+
+/* ---------------------------------------------------------------- phones
+   Two things change shape here rather than shrink. The conversation gets the page to itself - the past
+   conversations move into a sheet behind one button - and the composer stops being the foot of a fixed
+   height panel and becomes a bar pinned to the bottom of the viewport, which is the only place a thumb
+   expects it. Desktop keeps the sidebar and the inner scroll: neither layout is the other one stretched. */
+@media (max-width: 720px) {
+  .chat { gap: 12px; }
+  .chat__head { gap: 10px; }
+  .chat__title { font-size: 24px; line-height: 1.2; }
+  .chat__link { min-height: 38px; padding: 0 14px; font-size: 17px; }
+  .chat__link--history { display: inline-flex; align-items: center; }
+
+  .chat__grid { gap: 12px; }
+
+  /* The list: out of the flow, over the conversation, dismissed by the scrim or the × . */
+  .sessions-scrim { display: block; position: fixed; inset: 0; z-index: 55; background: rgba(20, 28, 28, .38); }
+
+  .panel--sessions {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 56;
+    max-height: 76dvh;
+    padding: 8px 16px calc(18px + env(safe-area-inset-bottom));
+    border-width: 1px 0 0;
+    border-radius: 22px 22px 0 0;
+    overflow-y: auto;
+    transform: translateY(102%);
+    visibility: hidden;
+    transition: transform 220ms cubic-bezier(.25, 1, .5, 1), visibility 220ms;
+  }
+
+  .panel--sessions-open { transform: translateY(0); visibility: visible; }
+
+  .sessions__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .sessions__title { margin: 0; font: inherit; font-size: 19px; font-weight: 650; }
+
+  .sessions__close {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    font: inherit;
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  /* The conversation scrolls with the page; the composer rides at the bottom of the viewport. */
+  .panel--thread {
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .thread { overflow: visible; gap: 18px; padding: 2px 2px 8px; }
+
+  .message--user { max-width: 88%; padding: 10px 16px; }
+
+  .compose {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    gap: 10px;
+    margin-top: 4px;
+    padding: 12px 0 calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    background: linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--bg) 78%, transparent),
+      var(--bg) 42%
+    );
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+
+  .field__control { min-height: 44px; font-size: 18px; }
+  .field__control--area { min-height: 76px; }
+  .button { min-height: 46px; padding: 10px 22px; }
+  .compose__actions .button { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) { .chat * { transition-duration: 1ms !important; } }

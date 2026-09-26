@@ -22,6 +22,7 @@ export const messages = {
   "common.signOut": { zh: "退出登录", en: "Sign out" },
   "common.confirm": { zh: "确定", en: "Confirm" },
   "common.cancel": { zh: "取消", en: "Cancel" },
+  "common.close": { zh: "关闭", en: "Close" },
   "common.gotIt": { zh: "知道了", en: "Got it" },
   "common.listSeparator": { zh: "、", en: ", " },
   "common.optional": { zh: "（可选）", en: "(optional)" },
