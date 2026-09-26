@@ -45,6 +45,17 @@ class AnimationIntentControllerTest {
     }
 
     /**
+     * A request carrying only a reply must still bind: `confirmed` is absent from it, and a primitive
+     * boolean would map the missing field to null and reject the whole body as unreadable JSON.
+     */
+    @Test void aReplyWithoutConfirmedStillBinds() {
+        AnimationIntentController.Input input = mapper.readValue(
+            "{\"chapterId\":\"06-tree\",\"prompt\":\"讲先序遍历\",\"reply\":\"包的\"}", AnimationIntentController.Input.class);
+        assertThat(input.reply()).isEqualTo("包的");
+        assertThat(input.confirmed()).isFalse();
+    }
+
+    /**
      * Whether a reply takes up an offer is read, not matched: the learner's own words go to the model
      * and a reply that means something else must come back as a decline instead of a demo nobody
      * asked for. "包的" and "o而k之" are the same yes as "好的", and no word list holds them all.

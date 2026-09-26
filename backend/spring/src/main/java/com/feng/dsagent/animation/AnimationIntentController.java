@@ -65,6 +65,9 @@ public class AnimationIntentController {
      * page's "好的". The worth-judging is done: the model's only remaining job is to pick the capability,
      * and refusing again with "this is a concept, not a process" would break the promise just made.
      *
+     * <p>{@code confirmed} is a {@link Boolean} rather than a primitive because a reply-only request
+     * omits it, and Jackson maps the missing primitive to null - which would fail the whole body.
+     *
      * <p>{@code reply} carries the learner's own words after such an offer. Reading them is a question of
      * meaning — "包的", "o而k之", "okok", "整一个", "why not", "👍" all mean yes and no word list can keep
      * up with the next coinage — so the model reads them, and answers with the demo or with
@@ -74,15 +77,20 @@ public class AnimationIntentController {
         @NotBlank @Size(max = 64) String chapterId,
         @Size(max = 2000) String prompt,
         JsonNode currentRequest,
-        boolean confirmed,
+        Boolean confirmed,
         @Size(max = 200) String reply
     ) {
+        /** Absent means not confirmed, so the rest of the class never has to ask about null. */
+        public Input {
+            confirmed = confirmed != null && confirmed;
+        }
+
         public Input(String chapterId, String prompt) {
             this(chapterId, prompt, null, false, null);
         }
 
         public Input(String chapterId, String prompt, JsonNode currentRequest, boolean confirmed) {
-            this(chapterId, prompt, currentRequest, confirmed, null);
+            this(chapterId, prompt, currentRequest, Boolean.valueOf(confirmed), null);
         }
     }
 
@@ -134,7 +142,7 @@ public class AnimationIntentController {
             : input.prompt();
         JsonNode capabilityList = localCapabilities(input.chapterId());
         if (capabilityList != null) {
-            return interpretThroughLocalEngine(user, input.chapterId(), titles.getFirst(), studentRequest, input.currentRequest(), capabilityList, input.confirmed(), input.reply());
+            return interpretThroughLocalEngine(user, input.chapterId(), titles.getFirst(), studentRequest, input.currentRequest(), capabilityList, Boolean.TRUE.equals(input.confirmed()), input.reply());
         }
         return interpretWithModelRequest(user, input.chapterId(), titles.getFirst(), studentRequest, input.currentRequest(), input.reply());
     }
