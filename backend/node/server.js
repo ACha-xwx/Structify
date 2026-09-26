@@ -134,19 +134,6 @@ const workspaceFrontendDir = path.join(WORKSPACE_ROOT, "frontend");
 const FRONTEND_DIR = path.resolve(process.env.FRONTEND_DIR || (fs.existsSync(localFrontendDir) ? localFrontendDir : workspaceFrontendDir));
 const INDEX_PATH = path.join(FRONTEND_DIR, "index.html");
 const LOCAL_PROTOTYPE_PATH = path.join(FRONTEND_DIR, "prototype.html");
-const SPA_HISTORY_EXACT_PATHS = new Set([
-  "/login",
-  "/register",
-  "/reset-password",
-  "/403",
-  "/404",
-  // The entry page hands the classroom and the animation lab their own paths,
-  // so a refresh, a bookmark, or a shared resume link must still return the
-  // SPA shell instead of a bare 404 from this compatibility server.
-  "/classroom",
-  "/courseware",
-  "/animation"
-]);
 const DOMPURIFY_PATH = path.join(path.dirname(require.resolve("dompurify")), "purify.min.js");
 const SECURITY_HEADERS = Object.freeze({
   "content-security-policy": [
@@ -169,12 +156,21 @@ const SECURITY_HEADERS = Object.freeze({
 });
 
 /* ===== Database ===== */
+/**
+ * Every GET that survives the routes above - the compatibility API, presentation
+ * media, hashed assets, PDFs, the health probe - is a navigation the SPA router
+ * owns: /classroom, /animation, /chat, /compiler, and each route added after
+ * them. Serving the shell for all of them means a refresh, a bookmark, or a
+ * shared link can never again land one route behind this server (/chat used to
+ * answer bare "not found" because the exact list here had not heard of it), and
+ * a URL nobody meant ends in the router's own /404 view. A last segment with a
+ * dot still reads as a file, so a missing asset keeps failing as a 404 rather
+ * than returning HTML.
+ */
 function isSpaHistoryPath(pathname) {
-  return SPA_HISTORY_EXACT_PATHS.has(pathname)
-    || pathname === "/user"
-    || pathname.startsWith("/user/")
-    || pathname === "/admin"
-    || pathname.startsWith("/admin/");
+  if (pathname === "/healthz" || pathname === "/api" || pathname.startsWith("/api/")) return false;
+  const lastSegment = pathname.slice(pathname.lastIndexOf("/") + 1);
+  return !lastSegment.includes(".");
 }
 
 let db;
