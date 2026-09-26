@@ -189,8 +189,13 @@ expectExcludes("deployment/Dockerfile.node.dockerignore", "!server.js");
 expectExcludes("deployment/Dockerfile.node.dockerignore", "!lib/**");
 
 expectIncludes("deployment/docker-compose.production.yml", "dockerfile: deployment/Dockerfile.node");
-expectIncludes("deployment/docker-compose.production.yml", "context: ../backend/spring");
-expectIncludes("deployment/docker-compose.spring.yml", "context: ../backend/spring");
+// The Spring image builds from the whole backend directory: backend/spring/Dockerfile copies spring/...
+// paths and also pulls in the DSVP engine plus a node runtime, so a context of backend/spring alone
+// cannot build it.
+expectIncludes("deployment/docker-compose.production.yml", "context: ../backend");
+expectIncludes("deployment/docker-compose.production.yml", "dockerfile: spring/Dockerfile");
+expectIncludes("deployment/docker-compose.spring.yml", "context: ../backend");
+expectIncludes("deployment/docker-compose.spring.yml", "dockerfile: spring/Dockerfile");
 for (const relativePath of [
   "deployment/Dockerfile.node",
   "deployment/Dockerfile.node.dockerignore",

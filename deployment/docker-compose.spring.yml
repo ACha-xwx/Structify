@@ -25,7 +25,11 @@ services:
 
   spring-api:
     build:
-      context: ../backend/spring
+      # The image carries the DSVP engine and a node runtime, so the context is the whole backend
+      # directory and the Dockerfile is addressed inside it; backend/spring/Dockerfile copies
+      # spring/... paths and needs both.
+      context: ../backend
+      dockerfile: spring/Dockerfile
     restart: unless-stopped
     depends_on:
       mysql:

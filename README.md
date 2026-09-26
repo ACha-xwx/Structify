@@ -103,7 +103,7 @@ npm run dev      # Vite，默认 5173，/api/v1 代理到 127.0.0.1:8792
 
 ### 配置
 
-本地运行配置在 `private/local-test/runtime.properties`（不发布）。生产不要在仓库内编辑 env：把 [`deployment/.env.spring.example`](deployment/.env.spring.example) 复制到 `/etc/structify/structify.env`，通过 secret manager 填入模型、SMTP、MySQL 和 JWT 值，并设置 `CORS_ALLOWED_ORIGINS=https://structify.cn,https://admin.structify.cn`、安全 Cookie、关闭调试/验证码捕获和静态管理员提升。
+本地运行配置在 `private/local-test/runtime.properties`（不发布）。遗留的 Node 兼容服务仍在拓扑里监听 8791，它读仓库根目录的 `.env` 模板：`cp .env.example backend/node/.env`。生产不要在仓库内编辑 env：把 [`deployment/.env.spring.example`](deployment/.env.spring.example) 复制到 `/etc/structify/structify.env`，通过 secret manager 填入模型、SMTP、MySQL 和 JWT 值，并设置 `CORS_ALLOWED_ORIGINS=https://structify.cn,https://admin.structify.cn`、安全 Cookie、关闭调试/验证码捕获和静态管理员提升。
 
 ### 导入私有教材知识库
 
