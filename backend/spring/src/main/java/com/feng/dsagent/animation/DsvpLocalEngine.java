@@ -63,6 +63,17 @@ public final class DsvpLocalEngine {
      * the lock is also only ever acquired with a bound.
      */
     private final java.util.concurrent.locks.ReentrantLock lifecycle = new java.util.concurrent.locks.ReentrantLock();
+    /**
+     * Writes go through one dedicated platform thread so a wedged child process - which stops reading
+     * its stdin and lets the pipe fill - can never block the caller. The caller waits on the write with
+     * the same bound it uses for the reply, and restarts the process when that runs out.
+     */
+    private final java.util.concurrent.ExecutorService engineWriter =
+        java.util.concurrent.Executors.newSingleThreadExecutor(task -> {
+            Thread thread = new Thread(task, "dsvp-engine-writer");
+            thread.setDaemon(true);
+            return thread;
+        });
     private volatile Process process;
     private volatile BufferedWriter writer;
 
@@ -152,17 +163,40 @@ public final class DsvpLocalEngine {
         pending.put(id, future);
         long startedAt = System.nanoTime();
         try {
-            BufferedWriter out = writer;
-            if (out == null) return Optional.empty();
             if (!lifecycle.tryLock(2, TimeUnit.SECONDS)) {
                 pending.remove(id);
                 log.warn("DSVP 本地引擎写入通道被占用超过 2 秒，本次调用放弃：{}", operation);
                 return Optional.empty();
             }
             try {
-                out.write(line);
-                out.newLine();
-                out.flush();
+                BufferedWriter out = writer;
+                if (out == null) {
+                    pending.remove(id);
+                    return Optional.empty();
+                }
+                java.util.concurrent.Future<?> write = engineWriter.submit(() -> {
+                    try {
+                        out.write(line);
+                        out.newLine();
+                        out.flush();
+                    } catch (IOException error) {
+                        throw new java.io.UncheckedIOException(error);
+                    }
+                });
+                try {
+                    write.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+                } catch (TimeoutException error) {
+                    write.cancel(true);
+                    pending.remove(id);
+                    log.warn("DSVP 本地引擎写入超时（{}），重启子进程", operation);
+                    shutdown();
+                    return Optional.empty();
+                } catch (ExecutionException error) {
+                    pending.remove(id);
+                    log.warn("DSVP 本地引擎写入失败：{}", String.valueOf(error.getCause()));
+                    shutdown();
+                    return Optional.empty();
+                }
             } finally {
                 lifecycle.unlock();
             }
@@ -184,11 +218,6 @@ public final class DsvpLocalEngine {
             return Optional.empty();
         } catch (ExecutionException error) {
             log.warn("DSVP 本地引擎调用失败：{}", error.getCause() == null ? error.getMessage() : error.getCause().getMessage());
-            return Optional.empty();
-        } catch (IOException error) {
-            pending.remove(id);
-            log.warn("DSVP 本地引擎写入失败：{}", error.getMessage());
-            shutdown();
             return Optional.empty();
         }
     }
