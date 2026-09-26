@@ -64,10 +64,25 @@ public class AnimationIntentController {
      * {@code confirmed} marks a request where the learner has already said yes to an offer — the chat
      * page's "好的". The worth-judging is done: the model's only remaining job is to pick the capability,
      * and refusing again with "this is a concept, not a process" would break the promise just made.
+     *
+     * <p>{@code reply} carries the learner's own words after such an offer. Reading them is a question of
+     * meaning — "包的", "o而k之", "okok", "整一个", "why not", "👍" all mean yes and no word list can keep
+     * up with the next coinage — so the model reads them, and answers with the demo or with
+     * {@code declined}. Doing both in one call keeps a refused offer from costing two round trips.
      */
-    public record Input(@NotBlank @Size(max = 64) String chapterId, @Size(max = 2000) String prompt, JsonNode currentRequest, boolean confirmed) {
+    public record Input(
+        @NotBlank @Size(max = 64) String chapterId,
+        @Size(max = 2000) String prompt,
+        JsonNode currentRequest,
+        boolean confirmed,
+        @Size(max = 200) String reply
+    ) {
         public Input(String chapterId, String prompt) {
-            this(chapterId, prompt, null, false);
+            this(chapterId, prompt, null, false, null);
+        }
+
+        public Input(String chapterId, String prompt, JsonNode currentRequest, boolean confirmed) {
+            this(chapterId, prompt, currentRequest, confirmed, null);
         }
     }
 
@@ -119,9 +134,9 @@ public class AnimationIntentController {
             : input.prompt();
         JsonNode capabilityList = localCapabilities(input.chapterId());
         if (capabilityList != null) {
-            return interpretThroughLocalEngine(user, input.chapterId(), titles.getFirst(), studentRequest, input.currentRequest(), capabilityList, input.confirmed());
+            return interpretThroughLocalEngine(user, input.chapterId(), titles.getFirst(), studentRequest, input.currentRequest(), capabilityList, input.confirmed(), input.reply());
         }
-        return interpretWithModelRequest(user, input.chapterId(), titles.getFirst(), studentRequest, input.currentRequest());
+        return interpretWithModelRequest(user, input.chapterId(), titles.getFirst(), studentRequest, input.currentRequest(), input.reply());
     }
 
     /** Chapter ids in this codebase start with the textbook chapter number ("06-tree"), which is how the engine scopes. */
@@ -138,20 +153,37 @@ public class AnimationIntentController {
         String studentRequest,
         JsonNode currentRequest,
         JsonNode capabilityList,
-        boolean confirmed
+        boolean confirmed,
+        String reply
     ) {
         String capabilities = capabilityList.path("prompt").asText("");
-        if (capabilities.isBlank()) return interpretWithModelRequest(user, chapterId, chapterTitle, studentRequest, currentRequest);
+        if (capabilities.isBlank()) return interpretWithModelRequest(user, chapterId, chapterTitle, studentRequest, currentRequest, reply);
 
+        boolean readingReply = reply != null && !reply.isBlank();
         ObjectNode context = mapper.createObjectNode();
         context.put("chapter", chapterTitle);
         context.put("studentRequest", studentRequest);
+        if (readingReply) context.put("studentReply", reply);
         if (currentRequest != null && !currentRequest.isNull()) context.set("currentRequest", currentRequest);
 
-        String judgement = confirmed
-            ? "学生已经明确确认要看动画演示，不要再判断值不值得：只要需求能对应能力表里的某个能力，就选它并给出参数；"
-                + "只有需求完全不在能力表内才返回 unsupported。"
-            : "静态定义、概念辨析、一句话能说清的问题不适合动画，此时把 needed 设为 false。";
+        String judgement;
+        if (confirmed) {
+            judgement = "学生已经明确确认要看动画演示，不要再判断值不值得：只要需求能对应能力表里的某个能力，就选它并给出参数；"
+                + "只有需求完全不在能力表内才返回 unsupported。";
+        } else if (readingReply) {
+            judgement = """
+                上面的 studentRequest 里有一句邀请学生看动画演示的话，学生针对这句邀请的回复是 studentReply。
+                先读懂这句回复是不是答应看这个演示。答应的说法没有固定形式：方言、网络流行语、谐音、缩写、叠词、表情符号、外语、
+                倒装都可能是答应（例如「包的」「o而k之」「okok」「好嘞」「整一个」「why not」「👍」都算答应）。
+                - 是答应：不要再判断值不值得，直接按下面的规则选能力并给参数。
+                - 不是答应（明确拒绝、提出了新的问题、或者要的是别的东西）：不要选能力，直接返回 declined 形状。
+                """;
+        } else {
+            judgement = "静态定义、概念辨析、一句话能说清的问题不适合动画，此时把 needed 设为 false。";
+        }
+        String declinedShape = readingReply
+            ? "{\"declined\":true,\"reason\":\"一句话说明为什么这句回复不是答应看演示\"}\n            "
+            : "";
         JsonNode intent = model.generateFor(user.userId(), "animation-intent", """
             你是教学设计师。判断学生这次的需求值不值得用动画讲，并且只做两件事：从下面的真实能力表里选一个能力、给出它的参数。
             你绝不生成动画步骤、状态快照或数值序列——逐帧状态由本地确定性模拟器计算，你编出来的帧会被丢弃。
@@ -163,11 +195,15 @@ public class AnimationIntentController {
             2. 参数优先从学生需求和当前教材内容里提取；没有依据的数字、序列、规模一律留空，不要编造数字。留空是允许的：服务端会回填该能力注册的标准教学示例，并明确标注它不是教材原例。
             3. 不要用一次交换冒充排序、用读取一个元素冒充查找、用访问结点冒充旋转。
             4. purpose 一句话说明这里为什么值得看动态过程。
-            只返回下面三种形状之一：
+            只返回下列形状之一：
             {"needed":true,"confidence":0.0到1.0,"capability":"能力名","purpose":"为什么值得演示","arguments":{}}
             {"needed":false,"confidence":0.0,"capability":"","purpose":"为什么不需要动画","arguments":{}}
             {"unsupported":true,"reason":"说明不在能力表内的原因"}
-            """.formatted(judgement, capabilities), context.toString(), 900, json -> {
+            %s""".formatted(judgement, capabilities, declinedShape), context.toString(), 900, json -> {
+            if (json.path("declined").asBoolean(false)) {
+                ClassroomModelJson.requireText(json, "reason");
+                return;
+            }
             if (json.path("unsupported").asBoolean(false)) {
                 ClassroomModelJson.requireText(json, "reason");
                 return;
@@ -178,6 +214,10 @@ public class AnimationIntentController {
             }
         });
 
+        if (intent.path("declined").asBoolean(false)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_DECLINED",
+                intent.path("reason").asText("这不是答应看演示"));
+        }
         if (intent.path("unsupported").asBoolean(false)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_NOT_SUPPORTED",
                 intent.path("reason").asText("这个演示暂未实现"));
@@ -214,24 +254,37 @@ public class AnimationIntentController {
     }
 
     /** Fallback path: no engine, so the model returns a whole DSVP request and the in-process simulator judges it. */
-    private JsonNode interpretWithModelRequest(AuthenticatedUser user, String chapterId, String chapterTitle, String studentRequest, JsonNode currentRequest) {
+    private JsonNode interpretWithModelRequest(AuthenticatedUser user, String chapterId, String chapterTitle, String studentRequest, JsonNode currentRequest, String reply) {
         var context = mapper.createObjectNode();
         context.put("chapter", chapterTitle);
         context.put("studentRequest", studentRequest);
+        if (reply != null && !reply.isBlank()) context.put("studentReply", reply);
         if (currentRequest != null && !currentRequest.isNull()) {
             simulator.adapt(currentRequest);
             context.set("currentRequest", currentRequest);
         }
+        // The engine is down, so the model returns the whole request; reading the reply still happens
+        // here, and a reply that is not an agreement must not be spent on a demo nobody asked for.
+        String readingReply = reply == null || reply.isBlank() ? "" : """
+            上面的 studentRequest 里有邀请学生看动画演示的话，studentReply 是学生针对邀请的回复。
+            先判断这句回复是不是答应看演示（说法没有固定形式：「包的」「o而k之」「okok」「好嘞」「整一个」「why not」「👍」都算答应）。
+            是答应就返回 DSVP 请求；不是答应就返回 {"declined":true,"reason":"一句话说明为什么这不是答应看演示"}。
+            """;
         JsonNode request = model.generateFor(user.userId(), "animation-intent", """
             理解数据结构学习主题和学生要求，返回一个可执行 DSVP JSON 请求；不要生成动画帧。
             这是程序构造的教学小例子，不得冒称教材原例。只输出 version, structure, operation, params, initial_state 五个字段。
             格式 {"version":"1.0","structure":"stack","operation":"push","params":{"value":3,"capacity":12},"initial_state":{"data":[1,2]}}。容量取16，元素不超过8个。
             %s
             不能用一次交换冒充排序、用读取一个元素冒充查找算法或用访问结点冒充旋转。若目标算法不支持，返回 {"unsupported":true,"reason":"说明未实现范围"}。
-            """.formatted(simulator.animationRules(chapterId)) + DsvpModelContract.INSTRUCTIONS, context.toString(), 1200, json -> {
+            %s""".formatted(simulator.animationRules(chapterId), readingReply) + DsvpModelContract.INSTRUCTIONS, context.toString(), 1200, json -> {
+            if (json.path("declined").asBoolean(false)) return;
             if (json.path("unsupported").asBoolean(false)) ClassroomModelJson.requireText(json, "reason");
             else simulator.adapt(json);
         });
+        if (request.path("declined").asBoolean(false)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_DECLINED",
+                request.path("reason").asText("这不是答应看演示"));
+        }
         if (request.path("unsupported").asBoolean(false)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_NOT_SUPPORTED", request.path("reason").asText());
         }
