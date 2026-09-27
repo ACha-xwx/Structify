@@ -3,7 +3,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.join(__dirname, "..", "frontend");
-const files = ["index.html", "prototype.html"];
+// The legacy page only: frontend/index.html is the built Vue application now, not a copy of this page.
+const files = ["prototype.html"];
 
 const required = [
   ["<main class=\"mainline-view\" id=\"mainlineView\"", "mainline view container"],
@@ -53,9 +54,5 @@ for (const file of files) {
   assert.match(html, /class="[^"]*presentation[^"]*"[^>]*>[\s\S]*?上一页/, `${file} must provide readable presentation navigation copy`);
   assert.match(html, /class="[^"]*knowledge[^"]*"[^>]*>[\s\S]*?审核/, `${file} must provide readable knowledge review copy`);
 }
-
-const index = fs.readFileSync(path.join(root, "index.html"), "utf8");
-const prototype = fs.readFileSync(path.join(root, "prototype.html"), "utf8");
-assert.equal(prototype, index, "prototype.html must remain the canonical entry mirror");
 
 console.log(`four-core-ui-static-ok files=${files.length} markers=${required.length}`);

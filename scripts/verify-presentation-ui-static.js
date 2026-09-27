@@ -3,7 +3,10 @@ const path = require('node:path');
 const assert = require('node:assert');
 const vm = require('node:vm');
 const root = path.join(__dirname, '..');
-const html = fs.readFileSync(path.join(root,'frontend','index.html'),'utf8');
+// The classroom presentation UI lives in the legacy page now: frontend/index.html is the built Vue
+// application, and prototype.html is what /prototype.html still serves. Newlines are normalised because
+// that page is stored with CRLF line endings and the checks below match source blocks with \n.
+const html = fs.readFileSync(path.join(root,'frontend','prototype.html'),'utf8').replace(/\r\n/g, '\n');
 const server = fs.readFileSync(path.join(root,'backend','node','server.js'),'utf8');
 const plansPath = path.join(root, 'private', 'presentation-materials', 'lesson-presentation-plans.json');
 const plansDocument = fs.existsSync(plansPath)

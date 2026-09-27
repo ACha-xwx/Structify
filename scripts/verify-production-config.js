@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
 const os = require("node:os");
@@ -12,6 +13,26 @@ const adminOrigin = "https://admin.structify.cn";
 const productionCorsOrigins = `${publicOrigin},${adminOrigin}`;
 const fixtureModelConfigMasterKey = Buffer.alloc(32, 1).toString("base64");
 const fixtureMailConfigMasterKey = Buffer.alloc(32, 2).toString("base64");
+/** Pinned secret for the fixture server, so this harness can sign the token it presents. */
+const compatibilityJwtSecret = "n".repeat(64);
+
+/**
+ * The same HMAC the compatibility server verifies, signed here so the check can read what a signed-in
+ * learner sees without needing an account in the fixture database.
+ */
+function signCompatibilityToken(userId = 1, email = "student@example.test") {
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({
+    userId,
+    email,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 3600
+  })).toString("base64url");
+  const signature = crypto.createHmac("sha256", compatibilityJwtSecret)
+    .update(`${header}.${payload}`)
+    .digest("base64url");
+  return `${header}.${payload}.${signature}`;
+}
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -50,7 +71,7 @@ async function verifyOptionalServicesDoNotBlockStartup() {
       NODE_ENV: "production",
       HOST: "127.0.0.1",
       PORT: String(port),
-      NODE_COMPAT_JWT_SECRET: "n".repeat(64),
+      NODE_COMPAT_JWT_SECRET: compatibilityJwtSecret,
       CORS_ALLOWED_ORIGINS: productionCorsOrigins,
       MODEL_API_KEY: "",
       SMTP_HOST: "",
@@ -77,9 +98,22 @@ async function verifyOptionalServicesDoNotBlockStartup() {
     });
     assert.equal(mailResponse.status, 503);
     assert.equal((await mailResponse.json()).code, "SMTP_NOT_CONFIGURED");
-    const executionResponse = await fetch(`http://127.0.0.1:${port}/api/execute`, {
+    // The sandbox is not spendable without an account, so an anonymous call is refused before the
+    // configuration is even consulted. Both rules matter: the refusal, and the state a signed-in
+    // learner is told about.
+    const anonymousExecution = await fetch(`http://127.0.0.1:${port}/api/execute`, {
       method: "POST",
       headers: { "content-type": "application/json" },
+      body: JSON.stringify({ language: "c", code: "int main(void) { return 0; }" })
+    });
+    assert.equal(anonymousExecution.status, 401);
+    assert.equal((await anonymousExecution.json()).code, "AUTH_REQUIRED");
+    const executionResponse = await fetch(`http://127.0.0.1:${port}/api/execute`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${signCompatibilityToken()}`
+      },
       body: JSON.stringify({ language: "c", code: "int main(void) { return 0; }" })
     });
     assert.equal(executionResponse.status, 503);

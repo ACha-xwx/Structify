@@ -3,7 +3,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.join(__dirname, "..", "frontend");
-const entries = ["index.html", "prototype.html"];
+// Only the legacy page is checked here. frontend/index.html stopped being a mirror of it when the entry
+// page was split out for the Vue build - it is now the built application, which has its own navigation
+// covered by the frontend test job - while prototype.html is still served at /prototype.html and still
+// needs the legacy four-module navigation.
+const entries = ["prototype.html"];
 const expectedViews = ["home", "coach", "mainline", "presentation", "knowledge"];
 
 for (const entry of entries) {
@@ -26,8 +30,4 @@ for (const entry of entries) {
   assert.match(html, /if \(view === "materials"[^\n]*return "mainline";/, `${entry} must retain the legacy materials route as a mainline alias`);
 }
 
-const index = fs.readFileSync(path.join(root, "index.html"), "utf8");
-const prototype = fs.readFileSync(path.join(root, "prototype.html"), "utf8");
-assert.equal(prototype, index, "prototype.html must share the canonical entry instead of keeping an independent old flow");
-
-console.log("four-core-navigation-static-ok entries=2 modules=4");
+console.log("four-core-navigation-static-ok entries=1 modules=4");

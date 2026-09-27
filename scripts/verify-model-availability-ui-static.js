@@ -3,14 +3,15 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.join(__dirname, "..", "frontend");
-const files = ["index.html", "prototype.html"];
+// The legacy page only: frontend/index.html is the built Vue application, so the two are no longer
+// byte-identical and only the page that is still served needs its states checked.
+const files = ["prototype.html"];
 const contents = files.map((file) => fs.readFileSync(path.join(root, file), "utf8"));
 
 function expectMatch(html, pattern, message) {
   assert.ok(pattern.test(html), message);
 }
 
-assert.equal(contents[0], contents[1], "the canonical and isolated legacy entries must stay byte-identical");
 for (const [index, html] of contents.entries()) {
   const file = files[index];
   expectMatch(html, /id="homeAgentStatus"[^>]*aria-live="polite"/, `${file} should expose an announced model status`);
@@ -22,4 +23,4 @@ for (const [index, html] of contents.entries()) {
   expectMatch(html, /setHomeModelAvailability\("模型未配置", "需配置模型服务", "unconfigured"\)/, `${file} should expose an unconfigured state for styling`);
 }
 
-console.log("model-availability-ui-static-ok entries=2 states=3 health=live");
+console.log("model-availability-ui-static-ok entries=1 states=3 health=live");
