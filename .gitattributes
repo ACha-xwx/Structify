@@ -1,1 +1,7 @@
 *.pptx filter=lfs diff=lfs merge=lfs -text
+
+# Reviewed pages are pinned by a content hash in import-manifest.json. A Windows checkout used to
+# hand the loader CRLF while a Linux build read LF, so the same lesson hashed differently and the
+# manifest rejected it on the build machine - the fixture passed locally and failed in CI for that
+# reason alone. These files are always LF in the working tree, so the hash means the content.
+backend/spring/src/test/resources/knowledge-fixture/** text eol=lf

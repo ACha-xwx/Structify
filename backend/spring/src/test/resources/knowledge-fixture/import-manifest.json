@@ -5,7 +5,7 @@
     {
       "source": "02-03-线性表-单链表.md",
       "target": "lessons/02-03-线性表-单链表.md",
-      "targetSha256": "6c22978500510610caf160d1fe0217e5107a2b54733252b54af8463930544005",
+      "targetSha256": "6c6b70ad2628e47efd8010352f4efda05469fd4c01a1ee697469f96be41cca73",
       "pageRange": "第 35–36 页",
       "pages": [
         {
@@ -21,7 +21,7 @@
     {
       "source": "06-03-树与二叉树-遍历.md",
       "target": "lessons/06-03-树与二叉树-遍历.md",
-      "targetSha256": "81e68a980a6fcdc976eb7af0fed5bfe0558ed751d0d4f6015646892c87ff8a3f",
+      "targetSha256": "f429c35248da47f22523b70b50f74154ad27a5c58e44cfbb68934705c8e9a2ee",
       "pageRange": "第 168–169 页",
       "pages": [
         {
