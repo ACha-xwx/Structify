@@ -72,7 +72,11 @@ app:
     provider: ${MODEL_PROVIDER:}
     api-key: ${MODEL_API_KEY:}
     base-url: ${MODEL_BASE_URL:}
-    name: ${MODEL_NAME:deepseek-v4-pro}
+    # No vendor model is named here on purpose. A model id baked into the repository goes stale the
+    # day the provider retires it, and the failure then looks like a bug in the application rather
+    # than a missing setting - which is exactly what happened once already. Production and the local
+    # stack both set MODEL_NAME explicitly, and an unset name reports the model as unconfigured.
+    name: ${MODEL_NAME:}
     timeout: ${MODEL_TIMEOUT:PT45S}
     stream-idle-timeout: ${MODEL_STREAM_IDLE_TIMEOUT:PT30S}
     maximum-response-bytes: ${MODEL_MAX_RESPONSE_BYTES:1048576}
