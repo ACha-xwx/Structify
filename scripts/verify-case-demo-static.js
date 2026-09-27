@@ -3,7 +3,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.join(__dirname, "..", "frontend");
-const files = ["index.html", "prototype.html"];
+// The legacy page only: frontend/index.html became the built Vue application when the entry page was
+// split out, so the two are no longer copies of each other.
+const files = ["prototype.html"];
 const requiredMarkers = [
   'id="caseDemoGuide"',
   'data-case-action="question"',
@@ -76,9 +78,5 @@ for (const file of files) {
     `${file} must show every case step without horizontal clipping on phones`
   );
 }
-
-const index = fs.readFileSync(path.join(root, "index.html"), "utf8");
-const prototype = fs.readFileSync(path.join(root, "prototype.html"), "utf8");
-assert.equal(index, prototype, "index.html and prototype.html must remain synchronized");
 
 console.log(`case-demo-static-ok files=${files.length} markers=${requiredMarkers.length}`);

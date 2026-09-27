@@ -191,10 +191,27 @@ async function main() {
     const prototypeResponse = await fetch(`${baseUrl}/prototype.html`);
     assert.equal(prototypeResponse.status, 200, "/prototype.html must preserve the legacy entry during migration");
     assert.equal(await prototypeResponse.text(), legacyPrototype, "/prototype.html must serve frontend/prototype.html");
-    for (const pathname of ["/api/not-a-route", "/presentation/not-found.png", "/pdfs/not-found.pdf", "/vendor/not-found.js", "/unrelated-path"]) {
+    // A path that is not a navigation must keep failing as itself: answering with the shell would
+    // hand HTML to an <img>, a <script> or a fetch that asked for a file. The two course-material
+    // routes are credential-scoped and answer the sign-in prompt before they say whether the file
+    // exists, so that a missing page and a real one are not told apart by a stranger.
+    for (const [pathname, expected] of [
+      ["/api/not-a-route", 404],
+      ["/presentation/not-found.png", 401],
+      ["/pdfs/not-found.pdf", 401],
+      ["/vendor/not-found.js", 404]
+    ]) {
       const response = await fetch(`${baseUrl}${pathname}`);
-      assert.equal(response.status, 404, `${pathname} must not be swallowed by the SPA fallback`);
+      assert.equal(response.status, expected, `${pathname} must not be swallowed by the SPA fallback`);
     }
+    // A path with no extension is a navigation the router owns, so an unknown one reaches the
+    // router's own not-found view instead of a bare 404 from this process. That distinction is the
+    // point: the chat page answered "not found" to a refresh precisely because it was not on the
+    // hand-written list, and a list cannot keep up with the router.
+    const unknownNavigation = await fetch(`${baseUrl}/unrelated-path`);
+    assert.equal(unknownNavigation.status, 200, "an unknown navigation must reach the SPA shell");
+    assert.match(unknownNavigation.headers.get("content-type") || "", /^text\/html/);
+    assert.equal(await unknownNavigation.text(), frontend, "an unknown navigation must serve the canonical frontend");
     const nonNavigationResponse = await fetch(`${baseUrl}/user/chapters`, { method: "POST" });
     assert.equal(nonNavigationResponse.status, 404, "POST requests must not be treated as SPA navigation");
   } finally {
