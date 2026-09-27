@@ -178,8 +178,12 @@ class DsvpEvidenceServiceIntegrationTest {
         assertThat(jdbc.queryForObject(
             "SELECT COUNT(*) FROM animation_records WHERE user_id = ?", Integer.class, USER_ID
         )).isEqualTo(1);
+        // The retry must not write a second snapshot for the same request. Scoped to this request's own
+        // source_ref: counting the whole table made the result depend on which class ran first, and the
+        // evidence a previous test left behind read as a duplicate of this one.
         assertThat(jdbc.queryForObject(
-            "SELECT COUNT(*) FROM dsvp_request_snapshots", Integer.class
+            "SELECT COUNT(*) FROM dsvp_request_snapshots WHERE source_ref = 'retry/evidence'",
+            Integer.class
         )).isEqualTo(1);
         assertThat(jdbc.queryForObject(
             "SELECT COUNT(*) FROM learning_records WHERE user_id = ? AND event_type = 'ANIMATION_SIMULATION'",

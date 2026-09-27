@@ -219,8 +219,11 @@ class DsvpAnimationApiIntegrationTest {
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("DSVP_UNEXPECTED_FIELD"));
 
+        // Nothing was recorded for the rejected request. Scoped to this class's own snapshot - the ref
+        // this request carries - because a whole-table count turned red as soon as another test had
+        // written API evidence of its own, whatever order the suite ran in.
         org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
-            "SELECT COUNT(*) FROM dsvp_request_snapshots WHERE source_type = 'API'",
+            "SELECT COUNT(*) FROM dsvp_request_snapshots WHERE source_type = 'API' AND source_ref = 'test/stack'",
             Integer.class
         )).isZero();
         org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
