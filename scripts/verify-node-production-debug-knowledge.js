@@ -84,7 +84,12 @@ async function main() {
       404,
       "production must not expose the knowledge debug endpoint when KNOWLEDGE_DEBUG_API=true"
     );
-    assert.deepEqual(await response.json(), { error: "not found" });
+    // The compatibility layer now answers with the same contract fields Spring does, and the request id
+    // is generated per request, so the body is read field by field instead of compared whole.
+    const body = await response.json();
+    assert.equal(body.code, "RESOURCE_NOT_FOUND");
+    assert.equal(body.error, "not found");
+    assert.equal(body.message, "not found");
     console.log("node-production-debug-knowledge-ok endpoint=disabled");
   } finally {
     await stop(child);
