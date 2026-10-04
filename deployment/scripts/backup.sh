@@ -17,7 +17,8 @@ Usage: backup.sh [--env-file FILE] [--backup-root DIR] [--private-root DIR]
 
 Default mode prints the exact backup plan and does not contact Docker. The
 execute mode creates a 0700 directory containing a MySQL dump, a consistent
-Node SQLite backup, optional private course media, image metadata, and hashes.
+Node SQLite backup, private chat uploads, optional course media, image metadata,
+and hashes.
 Secrets are never printed or copied into the repository.
 EOF
 }
@@ -45,6 +46,7 @@ if [[ "$EXECUTE" != "1" ]]; then
   print_command mkdir -m 700 -p "$DEST"
   print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T mysql mysqldump --single-transaction --routines --events
   print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T node node -e "SQLite online backup to stdout"
+  print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm --no-deps -T --entrypoint /bin/sh spring-api -c 'tar -czf - -C /app/chat-attachments .'
   [[ -n "$PRIVATE_ROOT" ]] && print_command tar -C "$PRIVATE_ROOT" -czf "$DEST/private.tar.gz" .
   log "retention: keep the newest $((10#$RETAIN)) completed backup directories"
   log "re-run with --execute --confirm BACKUP-structify.cn after checking paths"
@@ -73,6 +75,11 @@ db.backup(target).then(() => {
 }).catch((error) => { try { db.close(); } catch {} process.stderr.write(error.stack || String(error)); process.exit(1); });
 ' > "$DEST/node.sqlite"
 compose exec -T node tar -czf - -C /app/pdfs . > "$DEST/node-pdfs.tar.gz"
+
+# This works during release bootstrap too, before the Spring API is running.
+# The helper uses the same non-root image user and private persistent volume.
+compose run --rm --no-deps -T --entrypoint /bin/sh spring-api \
+  -c 'tar -czf - -C /app/chat-attachments .' > "$DEST/chat-attachments.tar.gz"
 
 if [[ -n "$PRIVATE_ROOT" ]]; then
   [[ -d "$PRIVATE_ROOT" ]] || die "private root is not a directory: $PRIVATE_ROOT"

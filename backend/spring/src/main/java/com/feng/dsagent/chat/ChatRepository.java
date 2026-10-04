@@ -38,6 +38,12 @@ interface ChatRepository {
         throw new IllegalStateException("Chat retry is not supported by this repository");
     }
 
+    /** Replaces an exchange with the edited learner command after the model succeeds. */
+    default String replaceExchange(long userId, ChatRetry retry, ChatCommand command, String answer,
+                                   List<ChatSource> sources, String reasoning) {
+        return replaceExchange(userId, retry, answer, sources, reasoning);
+    }
+
     /** Stores the learner's turn before any model request starts. */
     default PendingChat savePending(long userId, ChatCommand command, ChatRetry retry) {
         return new PendingChat(command.sessionId(), -1L, command, retry);
@@ -59,7 +65,7 @@ interface ChatRepository {
     default String completePending(long userId, PendingChat pending, String answer,
                                    List<ChatSource> sources, String reasoning) {
         if (pending.retry() != null) {
-            return replaceExchange(userId, pending.retry(), answer, sources, reasoning);
+            return replaceExchange(userId, pending.retry(), pending.command(), answer, sources, reasoning);
         }
         return saveExchange(userId, pending.command(), answer, sources, reasoning);
     }

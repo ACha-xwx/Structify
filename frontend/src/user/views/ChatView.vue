@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Check, Copy, MoreHorizontal, Pencil, Pin, PinOff, RefreshCcw, Search, PanelLeftClose, PanelLeftOpen, X } from "@lucide/vue";
+import { Check, Copy, FileText, MoreHorizontal, Pencil, Pin, PinOff, RefreshCcw, Search, PanelLeftClose, PanelLeftOpen, X } from "@lucide/vue";
 import BrandStage from "../../shared/components/BrandStage.vue";
 import NoticeDialog from "../../shared/components/NoticeDialog.vue";
 import ConfirmDialog from "../../shared/components/ConfirmDialog.vue";
@@ -11,6 +11,7 @@ import ChatComposer from "../components/ChatComposer.vue";
 import ChatReasoning from "../components/ChatReasoning.vue";
 import ChatAnswer from "../components/ChatAnswer.vue";
 import homeIcon from "../../assets/classroom/home.svg";
+import chatAddIcon from "../../assets/chat/chat-add.svg";
 import { attachmentPayload, type ComposerAttachment } from "../chat-attachments";
 import { useI18n } from "../../shared/i18n/locale";
 import type { MessageKey } from "../../shared/i18n/messages";
@@ -20,6 +21,8 @@ import { auth } from "../../app/providers/runtime";
 import { userApi } from "../runtime";
 import { ApiClientError } from "../../shared/api/client";
 import { chatErrorKey, deltaOf, doneOf, errorOf, pendingOf, sourcesOf, type ChatWireEvent } from "../chat-stream";
+
+const chatAddIconStyle = { "--chat-add-icon": `url("${chatAddIcon}")` };
 
 /**
  * Asking the course a question.
@@ -76,10 +79,16 @@ const thinkingEnabled = ref(false);
 const reasoningEffort = ref<ChatReasoningEffort>("high");
 const attachments = ref<ComposerAttachment[]>([]);
 const attachmentsReading = ref(false);
+const editingMessageId = ref<number | null>(null);
+const editingPrompt = ref("");
+const editingAttachments = ref<ComposerAttachment[]>([]);
+const editingAttachmentsReading = ref(false);
+const editingSnapshot = ref<{ content: string; attachments?: ChatAttachment[]; request?: QuestionRequest } | null>(null);
 const composerContext = ref(0);
 const messages = ref<ConversationMessage[]>([]);
 const sessions = ref<ChatSessionSummary[]>([]);
 const activeSessionId = ref<string | null>(null);
+const sessionLoading = ref(false);
 const phase = ref<"idle" | "streaming">("idle");
 const preparingRetry = ref(false);
 const alert = ref<{ title: string; message: string } | null>(null);
@@ -118,6 +127,26 @@ const OFFER_REPLY_MAX = 40;
 
 let sequence = 0;
 let controller: AbortController | null = null;
+let sessionController: AbortController | null = null;
+let sessionRequest = 0;
+let sessionListRevision = 0;
+let sessionListRequest = 0;
+const deletedSessionIds = new Set<string>();
+// Keep a small, page-local cache; never persist private conversations in browser storage.
+const sessionCache = new Map<string, { updatedAt: string; loadedAt: number; messages: ConversationMessage[] }>();
+
+function cacheSession(id: string, updatedAt: string, items: ConversationMessage[]) {
+  sessionCache.delete(id);
+  sessionCache.set(id, { updatedAt, loadedAt: Date.now(), messages: items });
+  if (sessionCache.size > 8) sessionCache.delete(sessionCache.keys().next().value!);
+}
+
+function cancelSessionLoad() {
+  sessionRequest++;
+  sessionController?.abort();
+  sessionController = null;
+  sessionLoading.value = false;
+}
 
 const streaming = computed(() => phase.value === "streaming" || preparingRetry.value);
 const tooLong = computed(() => prompt.value.trim().length > MAX_PROMPT);
@@ -168,6 +197,42 @@ function formatMessageTime(value?: string): string {
   return messageTimeFormatter.value.format(date);
 }
 
+function attachmentByteSize(item: ChatAttachment): number {
+  if (typeof item.byteSize === "number" && Number.isFinite(item.byteSize) && item.byteSize > 0) return item.byteSize;
+  if (item.rawBase64) {
+    const padding = item.rawBase64.endsWith("==") ? 2 : item.rawBase64.endsWith("=") ? 1 : 0;
+    return Math.max(0, Math.floor(item.rawBase64.length * 3 / 4) - padding);
+  }
+  if (item.content && item.type === "file") return new TextEncoder().encode(item.content).byteLength;
+  return 0;
+}
+
+function formatAttachmentSize(bytes: number): string {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes}B`;
+  const units = ["KB", "MB", "GB"];
+  let value = bytes;
+  let unit = -1;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  const precision = value >= 100 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(precision).replace(/\.0+$|(?<=\.\d)0+$/, "")} ${units[unit]}`.replace(" ", "");
+}
+
+function attachmentKind(item: ChatAttachment): string {
+  const extension = item.name.match(/\.([a-z0-9]+)$/i)?.[1];
+  if (extension) return extension.toUpperCase();
+  if (item.type === "image") return item.mimeType.split("/")[1]?.toUpperCase() || "IMAGE";
+  return "FILE";
+}
+
+function attachmentMeta(item: ChatAttachment): string {
+  const size = formatAttachmentSize(attachmentByteSize(item));
+  return [attachmentKind(item), size].filter(Boolean).join(" ");
+}
+
 function push(
   role: "user" | "assistant",
   content: string,
@@ -210,7 +275,7 @@ function isLocalDemo(question: string): boolean {
 async function send() {
   const question = prompt.value.trim();
   // animationBusy covers the moment the server is reading a reply: sending into it would race it.
-  if (!question || streaming.value || animationBusy.value || attachmentsReading.value || tooLong.value) return;
+  if (!question || streaming.value || sessionLoading.value || animationBusy.value || attachmentsReading.value || tooLong.value) return;
   const uploads = attachmentPayload(attachments.value);
   const thinking = thinkingEnabled.value;
   const effort = reasoningEffort.value;
@@ -237,6 +302,7 @@ async function send() {
 }
 
 async function ask(request: QuestionRequest, history: ChatTurn[], questionId: number, retryMessageId?: number): Promise<boolean> {
+  if (activeSessionId.value) sessionCache.delete(activeSessionId.value);
   const { question, uploads, thinking, effort } = request;
   const replyId = push("assistant", "", "streaming", question);
   update(replyId, { questionId, request, reasoning: "" });
@@ -274,7 +340,13 @@ async function ask(request: QuestionRequest, history: ChatTurn[], questionId: nu
         if (pending) {
           activeSessionId.value = pending.sessionId;
           update(questionId, { storedId: pending.messageId, persisted: true });
-          void loadSessions();
+          sessionListRevision++;
+          sessionCache.delete(pending.sessionId);
+          const existing = sessions.value.find((item) => item.id === pending.sessionId);
+          const summary: ChatSessionSummary = { id: pending.sessionId, chapterId: request.chapterId || null,
+            title: existing?.title ?? question.slice(0, 120), updatedAt: new Date().toISOString(),
+            messageCount: messages.value.length, pinned: existing?.pinned ?? false };
+          sessions.value = [summary, ...sessions.value.filter((item) => item.id !== pending.sessionId)];
         }
       } else if (event.event === "sources") {
         sources = sourcesOf(event);
@@ -303,8 +375,7 @@ async function ask(request: QuestionRequest, history: ChatTurn[], questionId: nu
         completed = true;
         if (done?.sessionId) {
           activeSessionId.value = done.sessionId;
-          await syncStoredIds();
-          await loadSessions();
+          void syncStoredIds();
         }
         break;
       } else if (event.event === "error") {
@@ -337,6 +408,7 @@ async function ask(request: QuestionRequest, history: ChatTurn[], questionId: nu
     clearInterval(clock);
     phase.value = "idle";
     controller = null;
+    if (activeSessionId.value && !request.localDemo) void loadSessions();
     await scrollToLatest();
   }
   return completed;
@@ -344,8 +416,12 @@ async function ask(request: QuestionRequest, history: ChatTurn[], questionId: nu
 
 async function syncStoredIds() {
   if (!activeSessionId.value) return;
+  const id = activeSessionId.value;
+  const request = sessionRequest;
+  const localIds = messages.value.map((item) => item.id).join(",");
   try {
-    const detail = await userApi.getChatSession(activeSessionId.value);
+    const detail = await userApi.getChatSession(id);
+    if (activeSessionId.value !== id || request !== sessionRequest || localIds !== messages.value.map((item) => item.id).join(",")) return;
     let cursor = detail.messages.length - 1;
     // Align from the end so repeated identical questions receive their own database IDs.
     for (let index = messages.value.length - 1; index >= 0 && cursor >= 0; index--) {
@@ -356,6 +432,7 @@ async function syncStoredIds() {
         cursor--;
       }
     }
+    cacheSession(id, detail.updatedAt, messages.value);
   } catch {
     // Saving already succeeded; a failed history refresh must not turn the answer into an error.
   }
@@ -389,6 +466,65 @@ async function retry(message: ConversationMessage) {
   } finally {
     preparingRetry.value = false;
   }
+}
+
+function composerAttachment(item: ChatAttachment, index: number): ComposerAttachment {
+  return {
+    ...item,
+    id: item.attachmentId || `stored-${item.attachmentId || index}-${item.name}`,
+    size: item.byteSize ?? 0,
+  };
+}
+
+function beginEdit(message: ConversationMessage) {
+  if (streaming.value || animationBusy.value || !message.persisted || !message.storedId) return;
+  editingMessageId.value = message.id;
+  editingPrompt.value = message.content;
+  editingAttachments.value = (message.attachments ?? []).map(composerAttachment);
+  editingSnapshot.value = { content: message.content, attachments: message.attachments, request: message.request };
+  composerContext.value++;
+}
+
+function cancelEdit() {
+  editingMessageId.value = null;
+  editingPrompt.value = "";
+  editingAttachments.value = [];
+  editingSnapshot.value = null;
+  composerContext.value++;
+}
+
+async function submitEdit(message: ConversationMessage) {
+  if (editingMessageId.value !== message.id || !editingPrompt.value.trim() || editingAttachmentsReading.value) return;
+  const index = messages.value.findIndex((item) => item.id === message.id);
+  if (index < 0 || !message.storedId) return;
+  const originalMessages = messages.value;
+  const originalAnimations = animations.value;
+  const original = editingSnapshot.value;
+  const request: QuestionRequest = {
+    question: editingPrompt.value.trim(),
+    chapterId: message.request?.chapterId ?? chapterId.value,
+    uploads: attachmentPayload(editingAttachments.value),
+    thinking: message.request?.thinking ?? false,
+    effort: message.request?.effort ?? "high",
+  };
+  const history = messages.value.slice(0, index).filter((item) => item.state === "complete" && item.content && !item.request?.localDemo)
+    .slice(-12).map((item) => ({ role: item.role, content: item.content.slice(0, 4000), attachments: item.attachments }));
+  update(message.id, { content: request.question, attachments: request.uploads, request, createdAt: new Date().toISOString() });
+  editingMessageId.value = null;
+  editingPrompt.value = "";
+  editingAttachments.value = [];
+  editingSnapshot.value = null;
+  messages.value = messages.value.slice(0, index + 1);
+  animations.value = Object.fromEntries(Object.entries(originalAnimations).filter(([id]) => messages.value.some((item) => item.id === Number(id))));
+  openAnimationFor.value = null;
+  preparingRetry.value = true;
+  await scrollToLatest();
+  if (!await ask(request, activeSessionId.value ? [] : history, message.id, message.storedId)) {
+    messages.value = originalMessages;
+    animations.value = originalAnimations;
+    if (original) update(message.id, original);
+  }
+  preparingRetry.value = false;
 }
 
 async function copyMessage(message: ConversationMessage) {
@@ -520,6 +656,7 @@ function definitionOf(id: number) {
 
 function newConversation() {
   if (streaming.value) return;
+  cancelSessionLoad();
   messages.value = [];
   animations.value = {};
   openAnimationFor.value = null;
@@ -530,6 +667,7 @@ function newConversation() {
   sessionsOpen.value = false;
   sessionMenuId.value = null;
   editingSessionId.value = null;
+  cancelEdit();
 }
 
 function toggleSessionMenu(sessionId: string) {
@@ -600,26 +738,46 @@ function handleKeydown(event: KeyboardEvent) {
 
 async function loadSessions() {
   if (!signedIn.value) return;
+  const request = ++sessionListRequest;
+  const revision = sessionListRevision;
   try {
-    sessions.value = await userApi.listChatSessions();
+    const listed = await userApi.listChatSessions();
+    if (request !== sessionListRequest || revision !== sessionListRevision) return;
+    sessions.value = listed.filter((item) => !deletedSessionIds.has(item.id));
     sessionsFailed.value = false;
   } catch {
+    if (request !== sessionListRequest || revision !== sessionListRevision) return;
     // A past conversation that cannot be listed is not a reason to block the question box.
     sessionsFailed.value = true;
   }
 }
 
 async function openSession(session: ChatSessionSummary) {
-  if (streaming.value) return;
+  if (streaming.value || animationBusy.value || deletedSessionIds.has(session.id)) return;
+  if (activeSessionId.value === session.id) { sessionsOpen.value = false; return; }
+  cancelSessionLoad();
+  const request = sessionRequest;
+  cancelEdit();
+  activeSessionId.value = session.id;
+  prompt.value = "";
+  attachments.value = [];
+  composerContext.value++;
+  animations.value = {};
+  openAnimationFor.value = null;
+  sessionsOpen.value = false;
+  sessionMenuId.value = null;
+  const cached = sessionCache.get(session.id);
+  if (cached && cached.updatedAt === session.updatedAt && Date.now() - cached.loadedAt < 60_000) {
+    messages.value = cached.messages;
+    await scrollToLatest();
+    return;
+  }
+  messages.value = [];
+  sessionLoading.value = true;
+  sessionController = new AbortController();
   try {
-    const detail = await userApi.getChatSession(session.id);
-    activeSessionId.value = detail.id;
-    prompt.value = "";
-    attachments.value = [];
-    composerContext.value++;
-    animations.value = {};
-    openAnimationFor.value = null;
-    sessionsOpen.value = false;
+    const detail = await userApi.getChatSession(session.id, sessionController.signal);
+    if (request !== sessionRequest || deletedSessionIds.has(session.id)) return;
     let lastQuestion: ConversationMessage | undefined;
     messages.value = detail.messages.map((item) => {
       const message: ConversationMessage = {
@@ -647,9 +805,17 @@ async function openSession(session: ChatSessionSummary) {
       }
       return message;
     });
+    cacheSession(session.id, detail.updatedAt, messages.value);
     await scrollToLatest();
   } catch (cause) {
+    if (request !== sessionRequest) return;
+    activeSessionId.value = null;
     raise(t("common.failed"), failureMessage(cause));
+  } finally {
+    if (request === sessionRequest) {
+      sessionLoading.value = false;
+      sessionController = null;
+    }
   }
 }
 
@@ -657,17 +823,45 @@ async function removeSession() {
   const session = pendingDelete.value;
   pendingDelete.value = null;
   if (!session) return;
+  const index = sessions.value.findIndex((item) => item.id === session.id);
+  const previous = { messages: messages.value, animations: animations.value,
+    prompt: prompt.value, attachments: attachments.value, loading: sessionLoading.value };
+  const wasActive = activeSessionId.value === session.id;
+  deletedSessionIds.add(session.id);
+  sessionListRevision++;
+  sessions.value = sessions.value.filter((item) => item.id !== session.id);
+  sessionCache.delete(session.id);
+  if (wasActive) newConversation();
+  const request = sessionRequest;
   try {
     await userApi.deleteChatSession(session.id);
-    if (activeSessionId.value === session.id) newConversation();
-    await loadSessions();
   } catch (cause) {
+    deletedSessionIds.delete(session.id);
+    sessionListRevision++;
+    if (!sessions.value.some((item) => item.id === session.id)) {
+      const restored = [...sessions.value];
+      restored.splice(Math.max(0, index), 0, session);
+      sessions.value = restored;
+    }
+    if (wasActive && request === sessionRequest && !activeSessionId.value && !messages.value.length && !prompt.value && !attachments.value.length) {
+      if (previous.loading) {
+        // The aborted detail request had not produced a snapshot to restore.
+        void openSession(session);
+      } else {
+        activeSessionId.value = session.id;
+        messages.value = previous.messages;
+        animations.value = previous.animations;
+        prompt.value = previous.prompt;
+        attachments.value = previous.attachments;
+      }
+    }
     raise(t("common.failed"), failureMessage(cause));
   }
 }
 
 onMounted(async () => {
   window.addEventListener("keydown", handleKeydown);
+  void loadSessions();
   try {
     chapters.value = await userApi.listChapters();
     const fromQuery = typeof route.query.chapterId === "string" ? route.query.chapterId : "";
@@ -676,12 +870,14 @@ onMounted(async () => {
     // The scope picker is optional: without the chapter list every question just spans the whole book.
     chapters.value = [];
   }
-  await loadSessions();
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleKeydown);
   controller?.abort();
+  cancelSessionLoad();
+  sessionListRequest++;
+  sessionCache.clear();
   if (copyTimer !== undefined) clearTimeout(copyTimer);
 });
 </script>
@@ -717,6 +913,14 @@ onBeforeUnmount(() => {
             :aria-label="t('chat.expandSidebar')"
             @click="sidebarCollapsed = false"
           ><PanelLeftOpen :size="19" aria-hidden="true" /></button>
+          <button
+            class="sidebar-collapsed-new"
+            type="button"
+            :title="t('chat.newChat')"
+            :aria-label="t('chat.newChat')"
+            :disabled="streaming"
+            @click="newConversation"
+          ><span class="chat-add-icon" :style="chatAddIconStyle" aria-hidden="true" /></button>
           <header class="sessions__head">
             <div class="sessions__heading">
               <span class="sessions__mark" aria-hidden="true">S</span>
@@ -737,7 +941,7 @@ onBeforeUnmount(() => {
               :disabled="streaming"
               @click="newConversation"
             >
-              <span class="sessions__new-icon" aria-hidden="true">+</span>
+              <span class="sessions__new-icon chat-add-icon" :style="chatAddIconStyle" aria-hidden="true" />
               <span class="sessions__new-label">{{ t("chat.newChat") }}</span>
             </LiquidMetalButton>
             <button class="sidebar-icon sessions__collapse" type="button" :title="t('chat.collapseSidebar')" :aria-label="t('chat.collapseSidebar')" @click="sidebarCollapsed = true"><PanelLeftClose :size="18" aria-hidden="true" /></button>
@@ -799,8 +1003,9 @@ onBeforeUnmount(() => {
         </section>
 
         <section class="panel panel--thread" :aria-label="t('chat.title')">
-          <div ref="threadRef" class="thread" :class="{ 'thread--empty': !messages.length }">
-            <p v-if="!messages.length" class="thread__empty">{{ t("chat.empty") }}</p>
+          <div ref="threadRef" class="thread" :class="{ 'thread--empty': !messages.length }" :aria-busy="sessionLoading">
+            <p v-if="sessionLoading" class="thread__loading" role="status">{{ t("chat.loadingSession") }}</p>
+            <p v-else-if="!messages.length" class="thread__empty">{{ t("chat.empty") }}</p>
 
             <article
               v-for="message in messages"
@@ -808,7 +1013,49 @@ onBeforeUnmount(() => {
               class="message"
               :class="`message--${message.role}`"
             >
-              <div class="message__content" :class="{ 'message__bubble': message.role === 'user' }">
+              <div
+                v-if="message.role === 'user' && message.attachments?.length && editingMessageId !== message.id"
+                class="message__attachments"
+                :aria-label="locale === 'zh-CN' ? '附件' : 'Attachments'"
+              >
+                <a
+                  v-for="(item, index) in message.attachments"
+                  :key="index"
+                  class="message__attachment"
+                  :class="{ 'message__attachment--link': item.downloadUrl }"
+                  :href="item.downloadUrl || undefined"
+                  :download="item.downloadUrl ? '' : undefined"
+                  :aria-label="item.name"
+                >
+                  <span class="message__attachment-icon" :class="{ 'message__attachment-icon--image': item.type === 'image' }" aria-hidden="true">
+                    <img v-if="item.type === 'image' && (item.content || item.downloadUrl)" :src="item.content || item.downloadUrl" alt="" />
+                    <FileText v-else :size="31" stroke-width="1.8" />
+                  </span>
+                  <span class="message__attachment-info">
+                    <strong class="message__attachment-name" :title="item.name">{{ item.name }}</strong>
+                    <span class="message__attachment-meta">{{ attachmentMeta(item) }}</span>
+                  </span>
+                </a>
+              </div>
+              <ChatComposer
+                v-if="message.role === 'user' && editingMessageId === message.id"
+                v-model="editingPrompt"
+                v-model:chapter-id="chapterId"
+                :chapter-options="[{ value: ALL_CHAPTERS, label: t('chat.allChapters') }, ...chapters.map(chapter => ({ value: chapter.id, label: chapter.title }))]"
+                :thinking-enabled="message.request?.thinking ?? false"
+                :reasoning-effort="message.request?.effort ?? 'high'"
+                :attachments="editingAttachments"
+                :streaming="false"
+                :editing="true"
+                :context-key="composerContext"
+                @update:thinking-enabled="(value) => { if (message.request) message.request.thinking = value; }"
+                @update:reasoning-effort="(value) => { if (message.request) message.request.effort = value; }"
+                @update:attachments="editingAttachments = $event"
+                @reading="editingAttachmentsReading = $event"
+                @send="submitEdit(message)"
+                @cancel="cancelEdit"
+              />
+              <div v-else class="message__content" :class="{ 'message__bubble': message.role === 'user' }">
                 <ChatReasoning
                   v-if="message.role === 'assistant' && (message.state === 'streaming' || message.retrieved || message.reasoning)"
                   :reasoning="message.reasoning ?? ''"
@@ -822,18 +1069,20 @@ onBeforeUnmount(() => {
                 />
                 <ChatAnswer v-if="message.role === 'assistant' && message.content" class="message__body message__body--answer" :text="message.content" />
                 <p v-else class="message__body">{{ message.content }}</p>
-                <div v-if="message.attachments?.length" class="message__attachments">
-                  <div v-for="(item, index) in message.attachments" :key="index" class="message__attachment">
-                    <img v-if="item.type === 'image'" :src="item.content || item.downloadUrl" :alt="item.name" />
-                    <a v-if="item.downloadUrl" :href="item.downloadUrl" download class="message__attachment-link">{{ item.name }}</a>
-                    <span v-else>{{ item.name }}</span>
-                  </div>
-                </div>
                 <p v-if="message.state === 'stopped'" class="message__note">{{ t("chat.stopped") }}</p>
               </div>
 
-              <div v-if="message.content && message.state !== 'streaming'" class="message__tools">
+              <div v-if="message.content && message.state !== 'streaming' && editingMessageId !== message.id" class="message__tools">
                 <time v-if="message.role === 'user' && formatMessageTime(message.createdAt)" class="message__timestamp" :datetime="message.createdAt">{{ formatMessageTime(message.createdAt) }}</time>
+                <button
+                  v-if="message.role === 'user' && message.persisted && message.storedId"
+                  class="message__tool message__edit"
+                  type="button"
+                  :disabled="streaming || animationBusy"
+                  :title="locale === 'zh-CN' ? '编辑消息' : 'Edit message'"
+                  :aria-label="locale === 'zh-CN' ? '编辑消息' : 'Edit message'"
+                  @click="beginEdit(message)"
+                ><Pencil :size="17" aria-hidden="true" /></button>
                 <button
                   v-if="message.role === 'assistant' && message.questionId"
                   class="message__tool message__retry"
@@ -879,7 +1128,7 @@ onBeforeUnmount(() => {
               v-model:reasoning-effort="reasoningEffort"
               v-model:attachments="attachments"
               :streaming="streaming"
-              :disabled="animationBusy"
+              :disabled="animationBusy || sessionLoading"
               :context-key="composerContext"
               @reading="attachmentsReading = $event"
               @send="send"
@@ -999,8 +1248,9 @@ onBeforeUnmount(() => {
 .sessions__head-actions { display: flex; align-items: center; gap: 6px; }
 .sessions__mark { display: grid; width: 28px; height: 28px; flex: none; place-items: center; border: 1px solid color-mix(in srgb, var(--text) 14%, transparent); border-radius: 9px; background: color-mix(in srgb, var(--text) 7%, transparent); font-size: 14px; font-weight: 750; }
 .sessions__toolbar { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.sessions__new { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-width: 0; flex: 1 1 auto; min-height: 42px; padding: 8px 14px; font-size: 17px; }
-.sessions__new-icon { font-size: 22px; font-weight: 400; line-height: 1; }
+.sessions__new { --liquid-height: 54px; display: inline-flex; align-items: center; justify-content: center; min-width: 0; flex: 1 1 auto; padding: 0; }
+.sessions__new :deep(.liquid-metal-button__content-layer) { gap: 9px; font-size: 19px; font-weight: 500; }
+.chat-add-icon { display: block; width: 24px; height: 24px; flex: none; background: currentColor; mask: var(--chat-add-icon) center / contain no-repeat; }
 .sidebar-icon, .sessions__search-clear, .session__more, .session__save { display: grid; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 50%; background: transparent; color: var(--text-muted); cursor: pointer; transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease; }
 .sidebar-icon:hover, .sessions__search-clear:hover, .session__more:hover, .session__save:hover { border-color: color-mix(in srgb, var(--text) 16%, transparent); background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); transform: translateY(-1px); }
 .sidebar-icon:focus-visible, .sessions__search-clear:focus-visible, .session__more:focus-visible, .session__save:focus-visible, .session__open:focus-visible, .session__edit:focus-visible, .session__menu button:focus-visible { outline: none; box-shadow: var(--focus-ring); }
@@ -1018,7 +1268,7 @@ onBeforeUnmount(() => {
    out of the desktop layout entirely. */
 .sessions-scrim { display: none; }
 
-.sidebar-collapsed-toggle { display: none; }
+.sidebar-collapsed-toggle, .sidebar-collapsed-new { display: none; }
 
 .session__open {
   flex: 1 1 auto;
@@ -1071,13 +1321,17 @@ onBeforeUnmount(() => {
 .session__delete:hover { background: color-mix(in srgb, var(--text) 10%, transparent); color: var(--text); }
 
 .chat__grid--sidebar-collapsed .panel--sessions { align-items: center; padding: 10px 8px; overflow: hidden; }
-.chat__grid--sidebar-collapsed .panel--sessions > :not(.sidebar-collapsed-toggle) { display: none; }
-.chat__grid--sidebar-collapsed .sidebar-collapsed-toggle { display: grid; width: 40px; height: 40px; flex: 0 0 40px; place-items: center; padding: 0; border: 1px solid color-mix(in srgb, var(--text) 14%, transparent); border-radius: 50%; background: color-mix(in srgb, var(--surface) 34%, transparent); color: var(--text); cursor: pointer; box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 90%, transparent), 0 5px 12px color-mix(in srgb, var(--text) 10%, transparent); }
-.chat__grid--sidebar-collapsed .sidebar-collapsed-toggle:hover { transform: translateY(-1px); }
+.chat__grid--sidebar-collapsed .panel--sessions > :not(.sidebar-collapsed-toggle):not(.sidebar-collapsed-new) { display: none; }
+.chat__grid--sidebar-collapsed .sidebar-collapsed-toggle,
+.chat__grid--sidebar-collapsed .sidebar-collapsed-new { display: grid; width: 40px; height: 40px; flex: 0 0 40px; place-items: center; padding: 0; border: 1px solid color-mix(in srgb, var(--text) 14%, transparent); border-radius: 50%; background: color-mix(in srgb, var(--surface) 34%, transparent); color: var(--text); cursor: pointer; box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 90%, transparent), 0 5px 12px color-mix(in srgb, var(--text) 10%, transparent); }
+.sidebar-collapsed-toggle:hover, .sidebar-collapsed-new:hover:not(:disabled) { transform: translateY(-1px); }
+.sidebar-collapsed-toggle:focus-visible, .sidebar-collapsed-new:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.sidebar-collapsed-new:disabled { opacity: .42; cursor: default; }
 
 .thread { flex: 1 1 auto; min-height: 0; display: grid; gap: 16px; align-content: start; padding: 4px 8px 4px 2px; overflow-y: auto; }
 .thread--empty { place-content: center; }
 .thread__empty { margin: 0; padding: 24px 0; color: var(--text); font-size: 32px; font-weight: 600; line-height: 1.4; text-align: center; overflow-wrap: anywhere; }
+.thread__loading { margin: 0; color: var(--text-muted); font-size: 17px; text-align: center; }
 
 /* The answer is not boxed: a bubble inside a bordered panel inside a page border is three frames around
    one paragraph, and on a phone it leaves a column too narrow to read. The answer is text on the page,
@@ -1103,7 +1357,11 @@ onBeforeUnmount(() => {
 .message__body--answer :deep(p) { margin: 0 0 12px; }
 .message__body--answer :deep(:last-child) { margin-bottom: 0; }
 .message__body--answer :deep(h1), .message__body--answer :deep(h2), .message__body--answer :deep(h3),
-.message__body--answer :deep(h4), .message__body--answer :deep(h5), .message__body--answer :deep(h6) { margin: 18px 0 8px; font-size: 20px; font-weight: 700; line-height: 1.4; }
+.message__body--answer :deep(h4), .message__body--answer :deep(h5), .message__body--answer :deep(h6) { margin: 22px 0 10px; font-size: 20px; font-weight: 700; line-height: 1.4; }
+.message__body--answer :deep(h1) { font-size: 30px; }
+.message__body--answer :deep(h2) { font-size: 26px; }
+.message__body--answer :deep(h3) { font-size: 23px; }
+.message__body--answer :deep(h4) { font-size: 21px; }
 .message__body--answer :deep(ul), .message__body--answer :deep(ol) { margin: 10px 0; padding-left: 26px; }
 .message__body--answer :deep(li) { margin: 4px 0; }
 .message__body--answer :deep(:not(pre) > code) { padding: 2px 5px; border-radius: 4px; background: color-mix(in srgb, var(--text) 7%, transparent); font-family: var(--font-mono, monospace); font-size: 15px; }
@@ -1162,10 +1420,16 @@ onBeforeUnmount(() => {
 
 .compose { flex: 0 0 auto; display: grid; gap: 10px; }
 .compose > select { width: min(340px, 100%); min-height: 36px; padding: 6px 14px; font-size: 14px; }
-.message__attachments { display: flex; flex-wrap: wrap; gap: 8px; }
-.message__attachment { display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--line-strong); border-radius: 10px; max-width: 180px; font-size: 13px; overflow-wrap: anywhere; }
-.message__attachment img { max-width: 160px; max-height: 120px; object-fit: contain; border-radius: 6px; }
-.message__attachment-link { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.message__attachments { display: grid; justify-items: end; gap: 8px; width: min(480px, 100%); max-width: 100%; }
+.message__attachment { display: flex; align-items: center; gap: 14px; width: min(480px, 100%); min-height: 92px; padding: 15px 20px; border: 2px solid color-mix(in srgb, var(--text) 22%, transparent); border-radius: 28px; background: color-mix(in srgb, var(--surface) 82%, var(--text) 18%); color: var(--text); text-decoration: none; overflow: hidden; }
+.message__attachment--link { cursor: pointer; transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease; }
+.message__attachment--link:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--text) 38%, transparent); background: color-mix(in srgb, var(--surface) 74%, var(--text) 26%); }
+.message__attachment-icon { display: grid; place-items: center; width: 56px; height: 56px; flex: 0 0 56px; overflow: hidden; border-radius: 11px; background: #568bf4; color: #fff; }
+.message__attachment-icon--image { background: color-mix(in srgb, var(--text) 12%, var(--surface)); }
+.message__attachment-icon img { width: 100%; height: 100%; object-fit: cover; }
+.message__attachment-info { display: grid; gap: 4px; min-width: 0; }
+.message__attachment-name { overflow: hidden; color: var(--text); font-size: 21px; font-weight: 600; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.message__attachment-meta { color: var(--text-muted); font-size: 17px; line-height: 1.25; }
 
 .field__control {
   width: 100%;

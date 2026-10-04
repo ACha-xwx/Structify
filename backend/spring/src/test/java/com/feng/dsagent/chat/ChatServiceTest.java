@@ -75,6 +75,7 @@ class ChatServiceTest {
         assertThat(response.sources().getFirst().evidenceHash()).matches("[a-f0-9]{64}");
         assertThat(model.lastRequest.messages().getFirst().content())
             .contains("经过审核的课程资料")
+            .contains("# 标题", "## 标题", "### 标题", "井号后必须有空格")
             .contains("动画演示");
         assertThat(model.lastRequest.messages())
             .anySatisfy(message -> assertThat(message.content()).contains("栈是后进先出"));
@@ -204,7 +205,7 @@ class ChatServiceTest {
     }
 
     @Test
-    void retryUsesStoredSettingsAndOnlyPrecedingHistory() {
+    void retryUsesEditedPromptSettingsAndOnlyPrecedingHistory() {
         ChatAttachment file = new ChatAttachment("stack.c", "file", "text/plain", "int top = -1;");
         ChatCommand original = new ChatCommand("解释栈", "03-stack-queue", "session-1", List.of(), true, "max", List.of(file));
         repository.retry = new ChatRetry(11, 14, original, List.of(
@@ -212,17 +213,21 @@ class ChatServiceTest {
         model.response = "New answer";
 
         ChatResponse response = service.complete(
-            new ChatCommand("altered question", null, "session-1", List.of(new ChatTurn("user", "later question")),
+            new ChatCommand("请改为解释栈的入栈操作", null, "session-1", List.of(new ChatTurn("user", "later question")),
                 false, "low", List.of(), 11L), 7L, KnowledgeAudience.STUDENT);
 
         assertThat(model.lastRequest.messages()).extracting(ModelMessage::content)
             .containsSubsequence("earlier question", "earlier answer")
-            .noneMatch(content -> content.contains("altered question") || content.contains("later question"));
-        assertThat(model.lastRequest.messages().getLast().content()).contains("解释栈", "stack.c", "int top = -1;");
-        assertThat(model.lastRequest.thinkingEnabled()).isTrue();
-        assertThat(model.lastRequest.maxTokens()).isEqualTo(65_536);
-        assertThat(model.lastRequest.reasoningEffort()).isEqualTo("max");
-        assertThat(repository.replaced).isSameAs(repository.retry);
+            .noneMatch(content -> content.contains("later question"));
+        assertThat(model.lastRequest.messages().getLast().content()).contains("请改为解释栈的入栈操作");
+        assertThat(model.lastRequest.messages().getLast().content()).doesNotContain("stack.c");
+        assertThat(model.lastRequest.thinkingEnabled()).isFalse();
+        assertThat(model.lastRequest.maxTokens()).isEqualTo(8_192);
+        assertThat(model.lastRequest.reasoningEffort()).isNull();
+        assertThat(repository.replaced.messageId()).isEqualTo(repository.retry.messageId());
+        assertThat(repository.replaced.lastMessageId()).isEqualTo(repository.retry.lastMessageId());
+        assertThat(repository.replaced.command().prompt()).isEqualTo("请改为解释栈的入栈操作");
+        assertThat(repository.replaced.command().reasoningEffort()).isEqualTo("low");
         assertThat(repository.saved).isEmpty();
         assertThat(response.sessionId()).isEqualTo("session-1");
     }
@@ -284,6 +289,13 @@ class ChatServiceTest {
         public String replaceExchange(long userId, ChatRetry retry, String answer, List<ChatSource> sources, String reasoning) {
             replaced = retry;
             return retry.command().sessionId();
+        }
+
+        @Override
+        public String replaceExchange(long userId, ChatRetry retry, ChatCommand command, String answer,
+                                      List<ChatSource> sources, String reasoning) {
+            replaced = new ChatRetry(retry.messageId(), retry.lastMessageId(), command, retry.history());
+            return command.sessionId();
         }
 
         @Override

@@ -64,7 +64,7 @@ export interface UserApi {
   chat(input: ChatRequest): Promise<ChatResponse>;
   streamChat(input: ChatRequest, signal?: AbortSignal): Promise<SseApiResponse>;
   listChatSessions(): Promise<ChatSessionSummary[]>;
-  getChatSession(sessionId: string): Promise<ChatSession>;
+  getChatSession(sessionId: string, signal?: AbortSignal): Promise<ChatSession>;
   updateChatSession(sessionId: string, input: { title?: string; pinned?: boolean }): Promise<ChatSession>;
   deleteChatSession(sessionId: string): Promise<void>;
   listClassroomScripts(chapterId?: string): Promise<ClassroomScript[]>;
@@ -151,7 +151,7 @@ export function createUserApi(client: { request: UserRequest }): UserApi {
       return response;
     },
     async listChatSessions() { return jsonData(await request<ChatSessionSummary[]>("/chat/sessions")); },
-    async getChatSession(sessionId) { return jsonData(await request<ChatSession>(`/chat/sessions/${encoded(sessionId)}`)); },
+    async getChatSession(sessionId, signal) { return jsonData(await request<ChatSession>(`/chat/sessions/${encoded(sessionId)}`, { signal })); },
     async updateChatSession(sessionId, input) { return jsonData(await request<ChatSession>(`/chat/sessions/${encoded(sessionId)}`, { method: "PATCH", body: input })); },
     async deleteChatSession(sessionId) { await request(`/chat/sessions/${encoded(sessionId)}`, { method: "DELETE" }); },
     async listClassroomScripts(chapterId) { return jsonData(await request<ClassroomScript[]>("/classroom/scripts", { query: { chapterId } })); },

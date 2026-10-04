@@ -333,6 +333,7 @@ export const messages = {
   "chat.deleteTitle": { zh: "删除这段对话", en: "Delete this conversation" },
   "chat.deleteMessage": { zh: "删除后无法恢复。", en: "This cannot be undone." },
   "chat.empty": { zh: "你想学习什么？", en: "What would you like to learn?" },
+  "chat.loadingSession": { zh: "正在加载对话…", en: "Loading conversation…" },
   "chat.working": { zh: "处理中", en: "Working" },
   "chat.worked": { zh: "已完成 · {seconds} 秒", en: "Worked for {seconds}s" },
   "chat.workComplete": { zh: "已完成", en: "Completed" },

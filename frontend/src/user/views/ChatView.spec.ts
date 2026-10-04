@@ -3,7 +3,10 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { ApiClientError } from "../../shared/api/client";
 import ChatView from "./ChatView.vue";
 import ChatReasoning from "../components/ChatReasoning.vue";
+import ConfirmDialog from "../../shared/components/ConfirmDialog.vue";
+import type { ChatSession } from "../../shared/types/chat";
 import { setLocale } from "../../shared/i18n/locale";
+import chatAddIcon from "../../assets/chat/chat-add.svg";
 
 const listChapters = vi.fn();
 const streamChat = vi.fn();
@@ -72,6 +75,27 @@ async function ask(view: ReturnType<typeof mountView>, question: string) {
   await flushPromises();
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
+function savedSession(id: string): ChatSession {
+  return { id, title: id, updatedAt: "2026-10-04T12:00:00Z", messages: [
+    { id: 11, role: "user", content: `question ${id}`, sources: [], createdAt: "" },
+    { id: 12, role: "assistant", content: `answer ${id}`, sources: [], createdAt: "" },
+  ] };
+}
+
+async function confirmDelete(view: ReturnType<typeof mountView>, index = 0) {
+  await view.findAll(".session__more")[index].trigger("click");
+  await view.get(".session__delete").trigger("click");
+  view.getComponent(ConfirmDialog).vm.$emit("confirm");
+  await view.vm.$nextTick();
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   setLocale("zh-CN");
@@ -102,6 +126,152 @@ afterEach(() => {
 });
 
 describe("ChatView", () => {
+  describe("session navigation", () => {
+    beforeEach(() => {
+      listChatSessions.mockResolvedValue(["a", "b"].map((id) => ({
+        id, title: id, updatedAt: savedSession(id).updatedAt, messageCount: 2,
+      })));
+      getChatSession.mockImplementation(async (id: string) => savedSession(id));
+    });
+
+    it("reopens a cached conversation without another detail request", async () => {
+      const view = mountView();
+      await flushPromises();
+      for (const index of [0, 1, 0]) {
+        await view.findAll(".session__open")[index].trigger("click");
+        await flushPromises();
+      }
+      expect(getChatSession).toHaveBeenCalledTimes(2);
+      expect(view.get(".message--assistant").text()).toContain("answer a");
+      view.unmount();
+    });
+
+    it("refreshes an expired cache entry", async () => {
+      const now = vi.spyOn(Date, "now").mockReturnValue(100_000);
+      const view = mountView();
+      await flushPromises();
+      for (const index of [0, 1]) {
+        await view.findAll(".session__open")[index].trigger("click");
+        await flushPromises();
+      }
+      now.mockReturnValue(160_001);
+      await view.findAll(".session__open")[0].trigger("click");
+      await flushPromises();
+      expect(getChatSession).toHaveBeenCalledTimes(3);
+      view.unmount();
+      now.mockRestore();
+    });
+
+    it("aborts a slow request and ignores its late response after switching", async () => {
+      const slow = deferred<ChatSession>();
+      getChatSession.mockImplementation((id: string) => id === "a" ? slow.promise : Promise.resolve(savedSession(id)));
+      const view = mountView();
+      await flushPromises();
+      await view.findAll(".session__open")[0].trigger("click");
+      const signal = getChatSession.mock.calls[0][1] as AbortSignal;
+      expect(view.get(".thread").attributes("aria-busy")).toBe("true");
+      expect(view.get("textarea").attributes()).toHaveProperty("disabled");
+      await view.findAll(".session__open")[1].trigger("click");
+      await flushPromises();
+      expect(signal.aborted).toBe(true);
+      slow.resolve(savedSession("a"));
+      await flushPromises();
+      expect(view.get(".message--assistant").text()).toContain("answer b");
+      expect(view.get(".thread").attributes("aria-busy")).toBe("false");
+      view.unmount();
+    });
+
+    it("starts a new conversation from the collapsed button during loading", async () => {
+      const slow = deferred<ChatSession>();
+      getChatSession.mockReturnValue(slow.promise);
+      const view = mountView();
+      await flushPromises();
+      await view.findAll(".session__open")[0].trigger("click");
+      const signal = getChatSession.mock.calls[0][1] as AbortSignal;
+      await view.get(".sessions__head-actions .sidebar-icon").trigger("click");
+      expect(view.get(".chat__grid").classes()).toContain("chat__grid--sidebar-collapsed");
+      expect(view.get(".sidebar-collapsed-new .chat-add-icon").attributes("style")).toContain(chatAddIcon);
+      await view.get(".sidebar-collapsed-new").trigger("click");
+      slow.resolve(savedSession("a"));
+      await flushPromises();
+      expect(signal.aborted).toBe(true);
+      expect(view.find(".message").exists()).toBe(false);
+      expect(view.get(".thread__empty").text()).toBe("你想学习什么？");
+      view.unmount();
+    });
+
+    it("removes a conversation immediately while deletion is still pending", async () => {
+      const deletion = deferred<void>();
+      deleteChatSession.mockReturnValue(deletion.promise);
+      const view = mountView();
+      await flushPromises();
+      await view.findAll(".session__open")[0].trigger("click");
+      await flushPromises();
+      await confirmDelete(view);
+      expect(deleteChatSession).toHaveBeenCalledWith("a");
+      expect(view.findAll(".session__open").map((item) => item.text())).toEqual(["b"]);
+      expect(view.find(".message").exists()).toBe(false);
+      deletion.resolve();
+      await flushPromises();
+      view.unmount();
+    });
+
+    it("restores the list and active messages when deletion fails", async () => {
+      const deletion = deferred<void>();
+      deleteChatSession.mockReturnValue(deletion.promise);
+      const view = mountView();
+      await flushPromises();
+      await view.findAll(".session__open")[0].trigger("click");
+      await flushPromises();
+      await confirmDelete(view);
+      deletion.reject(new Error("delete failed"));
+      await flushPromises();
+      expect(view.findAll(".session__open").map((item) => item.text())).toEqual(["a", "b"]);
+      expect(view.get(".message--assistant").text()).toContain("answer a");
+      expect(view.get(".session__open--active").text()).toBe("a");
+      view.unmount();
+    });
+
+    it("reloads a conversation when deletion fails during its first load", async () => {
+      const slow = deferred<ChatSession>();
+      getChatSession.mockImplementationOnce(() => slow.promise);
+      const deletion = deferred<void>();
+      deleteChatSession.mockReturnValue(deletion.promise);
+      const view = mountView();
+      await flushPromises();
+      await view.findAll(".session__open")[0].trigger("click");
+      const signal = getChatSession.mock.calls[0][1] as AbortSignal;
+      await confirmDelete(view);
+      expect(signal.aborted).toBe(true);
+      deletion.reject(new Error("delete failed"));
+      await flushPromises();
+      expect(getChatSession).toHaveBeenCalledTimes(2);
+      expect(view.get(".message--assistant").text()).toContain("answer a");
+      slow.resolve(savedSession("a"));
+      await flushPromises();
+      expect(view.findAll(".message--assistant")).toHaveLength(1);
+      view.unmount();
+    });
+
+    it("keeps a newly selected conversation when an earlier deletion fails", async () => {
+      const deletion = deferred<void>();
+      deleteChatSession.mockReturnValue(deletion.promise);
+      const view = mountView();
+      await flushPromises();
+      await view.findAll(".session__open")[0].trigger("click");
+      await flushPromises();
+      await confirmDelete(view);
+      await view.get(".session__open").trigger("click");
+      await flushPromises();
+      deletion.reject(new Error("delete failed"));
+      await flushPromises();
+      expect(view.get(".message--assistant").text()).toContain("answer b");
+      expect(view.get(".session__open--active").text()).toBe("b");
+      expect(view.findAll(".session__open")).toHaveLength(2);
+      view.unmount();
+    });
+  });
+
   describe("local demo", () => {
     beforeEach(async () => {
       await import("../chat-local-demo");
@@ -280,6 +450,34 @@ describe("ChatView", () => {
     await flushPromises();
     expect(writeText.mock.calls).toEqual([['什么是栈？'], ['**后进先出**']]);
     expect(view.get('.message--assistant .message__copy').attributes('aria-label')).toBe('已复制');
+    view.unmount();
+  });
+
+  it("renders uploaded files above the user bubble as message cards", async () => {
+    listChatSessions.mockResolvedValue([{ id: "s1", title: "代码分析", messageCount: 2 }]);
+    getChatSession.mockResolvedValue({ id: "s1", messages: [
+      {
+        id: 1,
+        role: "user",
+        content: "我这个代码怎么样",
+        attachments: [{ name: "HuffmanTree.c", type: "file", mimeType: "text/plain", content: "int main() {}", byteSize: 2478 }],
+        createdAt: "2026-10-04T10:00:00Z",
+      },
+      { id: 2, role: "assistant", content: "代码整体结构清晰。", createdAt: "2026-10-04T10:01:00Z" },
+    ] });
+
+    const view = mountView();
+    await flushPromises();
+    await view.get('.session__open').trigger('click');
+    await flushPromises();
+
+    const user = view.get('.message--user');
+    const card = user.get('.message__attachment');
+    expect(card.get('.message__attachment-name').text()).toBe("HuffmanTree.c");
+    expect(card.get('.message__attachment-meta').text()).toBe("C 2.42KB");
+    expect(card.element.parentElement?.nextElementSibling?.classList.contains("message__content")).toBe(true);
+    expect(user.get('.message__bubble').find('.message__attachments').exists()).toBe(false);
+    expect(card.attributes("href")).toBeUndefined();
     view.unmount();
   });
 

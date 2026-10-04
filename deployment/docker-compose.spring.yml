@@ -58,6 +58,7 @@ services:
       MODEL_BASE_URL: ${MODEL_BASE_URL:-}
       MODEL_NAME: ${MODEL_NAME:-}
       MODEL_MAX_RESPONSE_BYTES: ${MODEL_MAX_RESPONSE_BYTES:-33554432}
+      CHAT_ATTACHMENTS_DIR: /app/chat-attachments
       MODEL_CONFIG_MASTER_KEY: ${MODEL_CONFIG_MASTER_KEY:-}
       MAIL_CONFIG_MASTER_KEY: ${MAIL_CONFIG_MASTER_KEY:-}
       KNOWLEDGE_DIR: /app/knowledge
@@ -94,6 +95,7 @@ services:
       SANDBOX_IDLE_TIMEOUT_SECONDS: ${SANDBOX_IDLE_TIMEOUT_SECONDS:-180}
       SANDBOX_LIFETIME_SECONDS: ${SANDBOX_LIFETIME_SECONDS:-900}
     volumes:
+      - ds-agent-chat-attachments:/app/chat-attachments
       - ../private/knowledge:/app/knowledge:ro
       - ../private/course-content:/app/resources:ro
     ports:
@@ -102,6 +104,7 @@ services:
       - ds-agent
 
 volumes:
+  ds-agent-chat-attachments:
   ds-agent-mysql:
 
 networks:

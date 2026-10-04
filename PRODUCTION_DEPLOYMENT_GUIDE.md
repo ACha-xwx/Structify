@@ -93,6 +93,7 @@ Internet
      / and /pdfs/*   -> Node static/legacy route
 
 Spring -> MySQL 8.4 on the private Compose network
+Spring -> chat-attachments 私有持久卷（/app/chat-attachments）
 Node   -> SQLite volume and read-only private media mounts
 ~~~
 
@@ -127,6 +128,13 @@ previous-release.env。它必须位于 /srv/structify/releases 之外，并使�
 
 不要把 OCR、教师 PPT 原件、授权证据、学生数据、数据库文件、环境文件或凭据
 放进仓库、发布 ZIP 或 Docker build context。
+
+聊天原始附件保存在 Compose 的 `chat-attachments` 命名卷，Spring 内显式设置
+`CHAT_ATTACHMENTS_DIR=/app/chat-attachments`。镜像预先将此目录设置为 appuser
+所有、0700，新卷继承该权限；只有 Spring 挂载它，Node/Caddy 不暴露静态下载。
+容器根文件系统继续只读，附件卷可写且在重建、重启、换版本时保留。不要执行
+`docker compose down -v`。发布后的健康检查之外，还需手动发送一个小文本附件，
+确认历史预览、原字节下载和失败/停止后的重试可用。
 
 ### Caddy 模式
 
@@ -387,7 +395,9 @@ smoke 会检查两个公网根、健康路由、CORS preflight，以及未授权
 ### 备份内容
 
 backup.sh 会生成 MySQL 事务 dump、Node SQLite 在线备份、Node PDF 卷备份、镜像
-元数据和 SHA-256。只有显式传 --private-root 才会打包私有媒体；私有媒体仍建议
+元数据、私有聊天附件卷 `chat-attachments.tar.gz` 和 SHA-256。附件备份通过一次性
+Spring shell 容器读取命名卷，即使 Spring 尚未启动也可执行，不会运行 Java/Flyway。
+只有显式传 --private-root 才会打包私有课程媒体；私有媒体仍建议
 使用独立对象存储或文件系统快照。
 
 backup.sh 完成一套备份后会按时间戳目录倒序清理，仅保留最近两套完整备份；
@@ -410,7 +420,9 @@ sudo bash /srv/structify/releases/<release>/deployment/scripts/restore.sh \
 ~~~
 
 脚本会校验 SHA256SUMS、停止 Node/Spring、恢复 MySQL 和 Node SQLite 卷，然后
-重启服务。私有媒体不会被隐式覆盖，必须从独立快照恢复。
+从 `chat-attachments.tar.gz` 恢复原始聊天附件卷并重启服务。旧备份没有附件归档时
+保留现有附件卷；不要把这类备份视为包含完整附件的灾备。私有课程媒体不会被
+隐式覆盖，必须从独立快照恢复。
 
 ### 应用回滚
 

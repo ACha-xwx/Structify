@@ -21,6 +21,7 @@ const props = defineProps<{
   streaming: boolean;
   disabled?: boolean;
   contextKey: number;
+  editing?: boolean;
 }>();
 const emit = defineEmits<{
   "update:modelValue": [value: string];
@@ -31,6 +32,7 @@ const emit = defineEmits<{
   reading: [value: boolean];
   send: [];
   stop: [];
+  cancel: [];
 }>();
 const { t, isEnglish } = useI18n();
 const root = ref<HTMLElement | null>(null);
@@ -42,6 +44,8 @@ const modelPanel = ref<"info" | "edit">("info");
 const skillOpen = ref(false);
 const reading = ref(false);
 const attachmentError = ref("");
+const dragActive = ref(false);
+let dragDepth = 0;
 let uploadEpoch = 0;
 const canSend = computed(() => !!props.modelValue.trim() && props.modelValue.trim().length <= 4000 && !props.disabled && !reading.value && !props.streaming);
 const locked = computed(() => props.disabled || props.streaming || reading.value);
@@ -87,10 +91,52 @@ function pick(type: "file" | "image") {
   closeMenus();
   (type === "file" ? fileInput : photoInput).value?.click();
 }
-async function upload(event: Event, type: "file" | "image") {
-  const element = event.target as HTMLInputElement;
-  const files = Array.from(element.files ?? []);
-  element.value = "";
+function containsFiles(event: DragEvent) {
+  return Array.from(event.dataTransfer?.types ?? []).includes("Files") || !!event.dataTransfer?.files?.length;
+}
+function dragEnter(event: DragEvent) {
+  if (!containsFiles(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  dragDepth++;
+  if (!locked.value) dragActive.value = true;
+}
+function dragOver(event: DragEvent) {
+  if (!containsFiles(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = locked.value ? "none" : "copy";
+  if (!locked.value) dragActive.value = true;
+}
+function dragLeave(event: DragEvent) {
+  if (!dragDepth && !containsFiles(event)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) dragActive.value = false;
+}
+function dropped(event: DragEvent) {
+  event.preventDefault();
+  event.stopPropagation();
+  dragDepth = 0;
+  dragActive.value = false;
+  if (locked.value) return;
+  const files = Array.from(event.dataTransfer?.files ?? []);
+  if (!files.length) return;
+  void uploadFiles(files);
+}
+function draggedFileType(file: File): "file" | "image" {
+  return file.type.startsWith("image/") || /\.(?:jpe?g|png|gif|webp)$/i.test(file.name) ? "image" : "file";
+}
+function formatAttachmentError(cause: unknown) {
+  const reason = cause instanceof AttachmentError ? cause.reason : "read";
+  return reason === "size"
+    ? (isEnglish.value ? "Up to 6 attachments, 8 MB total; each photo 4 MB, text file 2 MB / 500,000 characters." : "最多 6 个附件、共 8 MB；单张照片不超过 4 MB，文本文件不超过 2 MB / 50 万字。")
+    : reason === "empty" ? (isEnglish.value ? "The selected file is empty." : "选中的文件没有内容。")
+    : reason === "type" ? (isEnglish.value ? "Choose a text/code file, or a JPEG, PNG, GIF or WebP photo. PDF and Office files are not supported." : "请选择文本或代码文件，照片支持 JPEG、PNG、GIF 和 WebP。暂不支持 PDF 和 Office 文件。")
+    : (isEnglish.value ? "Unable to read this file. Please choose it again." : "无法读取该文件，请重新选择。");
+}
+async function uploadFiles(files: File[], type?: "file" | "image") {
   if (!files.length || locked.value) return;
   attachmentError.value = "";
   const epoch = ++uploadEpoch;
@@ -99,20 +145,21 @@ async function upload(event: Event, type: "file" | "image") {
   try {
     if (files.length + props.attachments.length > MAX_ATTACHMENTS) throw new AttachmentError("size");
     if (files.reduce((size, file) => size + file.size, 0) + props.attachments.reduce((size, file) => size + file.size, 0) > MAX_ATTACHMENT_BYTES) throw new AttachmentError("size");
-    const loaded = await Promise.all(files.map(file => readChatAttachment(file, type)));
+    const loaded = await Promise.all(files.map(file => readChatAttachment(file, type ?? draggedFileType(file))));
     if (epoch !== uploadEpoch || props.streaming) return;
     emit("update:attachments", [...props.attachments, ...loaded]);
   } catch (cause) {
     if (epoch !== uploadEpoch) return;
-    const reason = cause instanceof AttachmentError ? cause.reason : "read";
-    attachmentError.value = reason === "size"
-      ? (isEnglish.value ? "Up to 6 attachments, 8 MB total; each photo 4 MB, text file 2 MB / 500,000 characters." : "最多 6 个附件、共 8 MB；单张照片不超过 4 MB，文本文件不超过 2 MB / 50 万字。")
-      : reason === "empty" ? (isEnglish.value ? "The selected file is empty." : "选中的文件没有内容。")
-      : reason === "type" ? (isEnglish.value ? "Choose a text/code file, or a JPEG, PNG, GIF or WebP photo. PDF and Office files are not supported." : "请选择文本或代码文件，照片支持 JPEG、PNG、GIF 和 WebP。暂不支持 PDF 和 Office 文件。")
-      : (isEnglish.value ? "Unable to read this file. Please choose it again." : "无法读取该文件，请重新选择。");
+    attachmentError.value = formatAttachmentError(cause);
   } finally {
     if (epoch === uploadEpoch) { reading.value = false; emit("reading", false); }
   }
+}
+async function upload(event: Event, type: "file" | "image") {
+  const element = event.target as HTMLInputElement;
+  const files = Array.from(element.files ?? []);
+  element.value = "";
+  await uploadFiles(files, type);
 }
 watch(() => props.modelValue, () => nextTick(resize));
 watch(() => props.contextKey, () => {
@@ -124,16 +171,35 @@ watch(() => props.contextKey, () => {
 });
 watch(locked, value => { if (value) closeMenus(); });
 onMounted(() => { document.addEventListener("pointerdown", outside); resize(); });
-onBeforeUnmount(() => { uploadEpoch++; document.removeEventListener("pointerdown", outside); });
+onBeforeUnmount(() => { uploadEpoch++; dragDepth = 0; document.removeEventListener("pointerdown", outside); });
 </script>
 
 <template>
-  <div ref="root" class="ai-composer" @keydown="escape">
+  <div
+    ref="root"
+    class="ai-composer"
+    :class="{ 'ai-composer--dragging': dragActive }"
+    @keydown="escape"
+    @dragenter="dragEnter"
+    @dragover="dragOver"
+    @dragleave="dragLeave"
+    @drop="dropped"
+  >
     <input ref="fileInput" class="composer-file-input" type="file" multiple :accept="CHAT_FILE_ACCEPT" @change="upload($event, 'file')" />
     <input ref="photoInput" class="composer-file-input" type="file" multiple :accept="CHAT_PHOTO_ACCEPT" @change="upload($event, 'image')" />
+    <Transition name="composer-drop">
+      <div v-if="dragActive" class="composer-dropzone" role="status" aria-live="polite" aria-atomic="true">
+        <div class="composer-dropzone__content">
+          <Upload :size="26" aria-hidden="true" />
+          <strong>{{ isEnglish ? "Add anything" : "添加任意内容" }}</strong>
+          <span>{{ isEnglish ? "Release to upload files" : "松开鼠标以上传文件" }}</span>
+          <small>{{ isEnglish ? "Text, code and JPEG, PNG, GIF or WebP photos" : "支持文本、代码，以及 JPEG、PNG、GIF 和 WebP 图片" }}</small>
+        </div>
+      </div>
+    </Transition>
     <div v-if="attachments.length" class="composer-attachments" :aria-label="isEnglish ? 'Attachments' : '附件'">
       <div v-for="item in attachments" :key="item.id" class="composer-attachment" :class="{ 'composer-attachment--image': item.type === 'image' }">
-        <img v-if="item.type === 'image'" :src="item.content" :alt="item.name" />
+        <img v-if="item.type === 'image'" :src="item.content || item.downloadUrl" :alt="item.name" />
         <FileText v-else :size="24" aria-hidden="true" />
         <div class="composer-attachment__name"><strong :title="item.name">{{ item.name }}</strong><span>{{ item.type === 'image' ? (isEnglish ? 'Photo' : '照片') : (isEnglish ? 'Text file' : '文本文件') }}</span></div>
         <button type="button" class="composer-attachment__remove" :disabled="locked" :aria-label="`${isEnglish ? 'Remove' : '移除'} ${item.name}`" @click="emit('update:attachments', attachments.filter(file => file.id !== item.id))"><X :size="14" /></button>
@@ -158,7 +224,11 @@ onBeforeUnmount(() => { uploadEpoch++; document.removeEventListener("pointerdown
           </Transition>
         </div>
         <button class="composer-thinking" type="button" :class="{ 'composer-thinking--on': thinkingEnabled }" :disabled="locked" :aria-pressed="thinkingEnabled" @click="emit('update:thinkingEnabled', !thinkingEnabled)"><span class="composer-brain" aria-hidden="true" v-html="brainSvg" /><span>{{ isEnglish ? 'Deep thinking' : '深度思考' }}</span></button>
-        <button v-if="streaming" class="composer-send composer-send--stop" type="button" :aria-label="t('chat.stop')" :title="t('chat.stop')" @click="emit('stop')"><Square :size="16" fill="currentColor" /><span class="composer-visually-hidden">{{ t('chat.stop') }}</span></button>
+        <template v-if="editing">
+          <button class="composer-edit-action composer-edit-action--cancel" type="button" :disabled="reading" @click="emit('cancel')">{{ isEnglish ? 'Cancel' : '取消' }}</button>
+          <button class="composer-edit-action composer-edit-action--send" type="button" :disabled="!canSend" @click="emit('send')">{{ isEnglish ? 'Send' : '发送' }}</button>
+        </template>
+        <button v-else-if="streaming" class="composer-send composer-send--stop" type="button" :aria-label="t('chat.stop')" :title="t('chat.stop')" @click="emit('stop')"><Square :size="16" fill="currentColor" /><span class="composer-visually-hidden">{{ t('chat.stop') }}</span></button>
         <button v-else class="composer-send" type="button" :disabled="!canSend" :aria-label="t('chat.send')" :title="t('chat.send')" @click="emit('send')"><ArrowUp :size="21" /></button>
       </div>
     </div>
@@ -204,8 +274,15 @@ onBeforeUnmount(() => { uploadEpoch++; document.removeEventListener("pointerdown
 <style scoped>
 .ai-composer { position: relative; flex: 0 0 auto; width: 100%; border: 2px solid var(--line-strong); border-radius: 28px; padding: 16px; background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgb(8 8 8 / .04), 0 8px 24px -12px rgb(8 8 8 / .14); transition: box-shadow .28s cubic-bezier(.2, 0, 0, 1), border-color .2s; }
 .ai-composer:focus-within { box-shadow: 0 2px 8px rgb(8 8 8 / .06), 0 16px 48px -12px rgb(8 8 8 / .22); border-color: color-mix(in srgb, var(--text) 32%, var(--surface)); }
+.ai-composer--dragging { border-color: color-mix(in srgb, var(--text) 56%, var(--surface)); box-shadow: 0 0 0 4px color-mix(in srgb, var(--text) 10%, transparent), 0 16px 48px -12px rgb(8 8 8 / .2); }
 .composer-file-input { display: none; }
 .composer-visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.composer-dropzone { position: absolute; z-index: 40; inset: 0; display: grid; place-items: center; border-radius: 26px; background: color-mix(in srgb, var(--surface) 84%, var(--text) 16%); -webkit-backdrop-filter: blur(10px) saturate(1.12); backdrop-filter: blur(10px) saturate(1.12); pointer-events: none; }
+.composer-dropzone__content { display: grid; justify-items: center; gap: 7px; padding: 18px 24px; color: var(--text); text-align: center; }
+.composer-dropzone__content > svg { margin-bottom: 2px; }
+.composer-dropzone__content strong { font-size: 18px; font-weight: 700; }
+.composer-dropzone__content span { font-size: 15px; font-weight: 600; }
+.composer-dropzone__content small { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
 .composer-textarea { display: block; width: 100%; height: 84px; min-height: 0; max-height: 196px; padding: 0 4px; resize: none; border: 0; border-radius: 0; outline: none; box-shadow: none; background: transparent; color: var(--text); font: inherit; font-size: 18px; line-height: 28px; }
 .composer-textarea::placeholder { color: var(--text-muted); }
 .composer-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
@@ -236,6 +313,11 @@ onBeforeUnmount(() => { uploadEpoch++; document.removeEventListener("pointerdown
 .ai-composer .composer-send { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 38px; border-radius: 50%; background: var(--text); color: var(--surface); transition: opacity .2s, transform .2s, box-shadow .2s; }
 .composer-send:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 10px rgb(0 0 0 / .15); }
 .composer-send:active:not(:disabled) { transform: scale(.94); }
+.composer-edit-action { min-height: 38px; padding: 7px 17px; border: 1px solid color-mix(in srgb, var(--text) 22%, transparent); border-radius: 999px; color: var(--text); font: inherit; font-size: 14px; font-weight: 650; cursor: pointer; -webkit-backdrop-filter: blur(8px) saturate(1.12); backdrop-filter: blur(8px) saturate(1.12); box-shadow: inset 2px -2px 1px -1px color-mix(in srgb, var(--surface) 88%, transparent), inset -2px 2px 1px -1px color-mix(in srgb, var(--surface) 88%, transparent), inset 0 0 2px color-mix(in srgb, var(--text) 26%, transparent), 0 4px 8px color-mix(in srgb, var(--text) 14%, transparent); transition: transform 180ms ease, filter 180ms ease, background-color 180ms ease; }
+.composer-edit-action--cancel { background: color-mix(in srgb, var(--surface) 55%, transparent); }
+.composer-edit-action--send { background: color-mix(in srgb, var(--text) 86%, var(--surface)); color: var(--surface); }
+.composer-edit-action:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.08); }
+.composer-edit-action:disabled { opacity: .45; cursor: default; }
 .composer-menu { position: absolute; z-index: 25; bottom: 70px; left: 16px; transform-origin: bottom left; font-size: 14px; }
 .composer-menu--actions, .composer-model-list, .composer-model-detail, .composer-skill__panel { padding: 6px; border: 2px solid var(--line-strong); border-radius: 16px; background: var(--surface); box-shadow: 0 8px 30px -8px rgb(8 8 8 / .18), 0 2px 8px -2px rgb(8 8 8 / .08); }
 .composer-menu--actions { width: 224px; }
@@ -272,6 +354,8 @@ onBeforeUnmount(() => { uploadEpoch++; document.removeEventListener("pointerdown
 .ai-composer .composer-attachment__remove svg { display: block; }
 .composer-pop-enter-active, .composer-pop-leave-active { transition: opacity .18s cubic-bezier(.2, 0, 0, 1), transform .18s cubic-bezier(.2, 0, 0, 1); }
 .composer-pop-enter-from, .composer-pop-leave-to { opacity: 0; transform: translateY(8px) scale(.97); }
+.composer-drop-enter-active, .composer-drop-leave-active { transition: opacity .16s ease; }
+.composer-drop-enter-from, .composer-drop-leave-to { opacity: 0; }
 @media (max-width: 1100px) { .composer-menu--model { left: 16px; } }
 @media (max-width: 700px) {
   .ai-composer { padding: 14px; }
@@ -282,5 +366,5 @@ onBeforeUnmount(() => { uploadEpoch++; document.removeEventListener("pointerdown
   .composer-skill__panel { width: 128px; }
 }
 @media (max-width: 400px) { .composer-menu--actions { width: 168px; } .composer-model { font-size: 12px !important; padding-inline: 4px; } }
-@media (prefers-reduced-motion: reduce) { .ai-composer *, .composer-pop-enter-active, .composer-pop-leave-active { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .ai-composer *, .composer-pop-enter-active, .composer-pop-leave-active, .composer-drop-enter-active, .composer-drop-leave-active { transition: none !important; } }
 </style>

@@ -182,9 +182,16 @@ class JdbcChatRepository implements ChatRepository, ChatHistoryRepository {
     @Override
     @Transactional
     public String replaceExchange(long userId, ChatRetry retry, String answer, List<ChatSource> sources, String reasoning) {
+        return replaceExchange(userId, retry, retry.command(), answer, sources, reasoning);
+    }
+
+    @Override
+    @Transactional
+    public String replaceExchange(long userId, ChatRetry retry, ChatCommand command,
+                                  String answer, List<ChatSource> sources, String reasoning) {
         String sessionId = retry.command().sessionId();
         Map<String, StoredChatAttachment> preservedAttachments = new java.util.HashMap<>();
-        for (ChatAttachment attachment : retry.command().attachments()) {
+        for (ChatAttachment attachment : command.attachments()) {
             if (attachment.attachmentId() == null || attachment.attachmentId().isBlank()) continue;
             StoredChatAttachment stored = findAttachment(userId, attachment.attachmentId()).orElseThrow(() ->
                 new ApiException(HttpStatus.NOT_FOUND, "CHAT_ATTACHMENT_NOT_FOUND", "对话附件不存在"));
@@ -199,7 +206,7 @@ class JdbcChatRepository implements ChatRepository, ChatHistoryRepository {
             throw new ApiException(HttpStatus.CONFLICT, "CHAT_RETRY_CONFLICT", "对话已更新，请重新打开会话后重试");
         }
         jdbc.update("DELETE FROM chat_messages WHERE session_id = ? AND id >= ?", sessionId, retry.messageId());
-        insertExchange(userId, sessionId, retry.command(), answer, sources, reasoning, preservedAttachments);
+        insertExchange(userId, sessionId, command, answer, sources, reasoning, preservedAttachments);
         return sessionId;
     }
 
@@ -298,7 +305,7 @@ class JdbcChatRepository implements ChatRepository, ChatHistoryRepository {
                 row.getString("content"),
                 sources(row.getString("sources_json")),
                 instant(row.getTimestamp("created_at")),
-                attachmentsForMessage(row.getLong("id"), userId, row.getString("attachments_json")),
+                attachmentsForMessage(row.getLong("id"), userId, row.getString("attachments_json"), true),
                 row.getString("reasoning_content"),
                 row.getString("chapter_id"),
                 (Boolean) row.getObject("thinking_enabled"),
@@ -440,8 +447,17 @@ class JdbcChatRepository implements ChatRepository, ChatHistoryRepository {
     }
 
     private List<ChatAttachment> attachmentsForMessage(long messageId, long userId, String value) {
+        return attachmentsForMessage(messageId, userId, value, false);
+    }
+
+    private List<ChatAttachment> attachmentsForMessage(long messageId, long userId, String value, boolean forDisplay) {
         return attachments(value).stream().map(item -> {
             if (item.attachmentId() == null || item.attachmentId().isBlank()) return item;
+            // History cards need file metadata; model replay still reads the original private bytes.
+            if (forDisplay) {
+                return new ChatAttachment(item.name(), item.type(), item.mimeType(), "", null,
+                    item.encoding(), item.byteSize(), item.attachmentId(), item.downloadUrl());
+            }
             StoredChatAttachment stored = findAttachment(userId, item.attachmentId()).orElseThrow(() ->
                 new ApiException(HttpStatus.NOT_FOUND, "CHAT_ATTACHMENT_NOT_FOUND", "对话附件不存在"));
             if (stored.messageId() != messageId) throw new ApiException(HttpStatus.NOT_FOUND, "CHAT_ATTACHMENT_NOT_FOUND", "对话附件不存在");

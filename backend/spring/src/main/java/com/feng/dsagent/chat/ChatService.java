@@ -53,7 +53,7 @@ public class ChatService {
 
     private static final String SYSTEM_PROMPT = """
         你是面向高校数据结构课程的学习陪练。请优先依据经过审核的课程资料回答，不要编造教材页码、定义、复杂度或代码结论。
-        回答应简洁、清楚，使用短标题和自然段，避免堆叠大量 Markdown 符号。先说明核心结论，再解释步骤、复杂度和常见错误。
+        回答应简洁、清楚，使用短标题和自然段。标题使用标准 Markdown：一级标题用「# 标题」，分节用「## 标题」，子节用「### 标题」，井号后必须有空格；不要把标题写成普通正文或仅用加粗代替标题。先说明核心结论，再解释步骤、复杂度和常见错误。
         资料不足时只回答能够确定的部分，不要解释资料情况，也不要说明不确定性。
         禁止在回答中出现任何出处说明：不要写"根据教材""依据资料""参考第 X 页""如上所述"这类话，
         不要在开头或结尾罗列引用、页码、章节或资料来源，不要用括号补充说明出处，直接给出答案本身。
@@ -212,11 +212,28 @@ public class ChatService {
             }
             retry = repository.prepareRetry(userId, command.sessionId(), command.retryMessageId(), MAX_HISTORY_MESSAGES)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "CHAT_SESSION_NOT_FOUND", "对话消息不存在"));
-            command = retry.command();
+            // A retry reuses the stored prefix and row identity, while the request is allowed to
+            // replace the edited prompt, settings and attachment list. The repository still owns the
+            // session id and later replaces the exchange from the original user-message id onward.
+            ChatCommand stored = retry.command();
+            command = new ChatCommand(
+                command.prompt() == null || command.prompt().isBlank() ? stored.prompt() : command.prompt(),
+                command.chapterId() == null ? stored.chapterId() : command.chapterId(),
+                stored.sessionId(),
+                List.of(),
+                command.thinkingEnabled() == null ? stored.thinkingEnabled() : command.thinkingEnabled(),
+                command.reasoningEffort() == null ? stored.reasoningEffort() : command.reasoningEffort(),
+                command.attachments(),
+                retry.messageId()
+            );
         }
         String prompt = normalizePrompt(command.prompt());
         String chapterId = normalizeChapterId(command.chapterId());
         List<ChatAttachment> attachments = ChatAttachment.validated(command.attachments());
+        if (attachments.stream().anyMatch(item -> item.attachmentId() != null && !item.attachmentId().isBlank())) {
+            if (userId == null) throw new ApiException(HttpStatus.NOT_FOUND, "CHAT_ATTACHMENT_NOT_FOUND", "对话附件不存在");
+            attachments = ChatAttachment.validated(repository.hydrateAttachments(userId, attachments));
+        }
         if (command.reasoningEffort() != null && !Set.of("low", "high", "max").contains(command.reasoningEffort())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "CHAT_REASONING_INVALID", "思考强度无效");
         }

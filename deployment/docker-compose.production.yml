@@ -169,6 +169,8 @@ services:
       MODEL_TIMEOUT: ${MODEL_TIMEOUT:-PT45S}
       MODEL_STREAM_IDLE_TIMEOUT: ${MODEL_STREAM_IDLE_TIMEOUT:-PT30S}
       MODEL_MAX_RESPONSE_BYTES: ${MODEL_MAX_RESPONSE_BYTES:-33554432}
+      # Original uploads need private durable storage outside the read-only image.
+      CHAT_ATTACHMENTS_DIR: /app/chat-attachments
       MODEL_CONFIG_MASTER_KEY: ${MODEL_CONFIG_MASTER_KEY:-}
       MAIL_CONFIG_MASTER_KEY: ${MAIL_CONFIG_MASTER_KEY:-}
       KNOWLEDGE_DIR: /app/private/knowledge
@@ -216,6 +218,7 @@ services:
       SANDBOX_IDLE_TIMEOUT_SECONDS: ${SANDBOX_IDLE_TIMEOUT_SECONDS:-180}
       SANDBOX_LIFETIME_SECONDS: ${SANDBOX_LIFETIME_SECONDS:-900}
     volumes:
+      - chat-attachments:/app/chat-attachments
       - ${KNOWLEDGE_DIR_HOST:?set KNOWLEDGE_DIR_HOST}:/app/private/knowledge:ro
       - ${RESOURCE_DIR_HOST:?set RESOURCE_DIR_HOST}:/app/private/course-content:ro
       - ${PRESENTATION_DIR_HOST:?set PRESENTATION_DIR_HOST}:/app/private/presentation-materials:ro
@@ -298,6 +301,7 @@ services:
       - edge
 
 volumes:
+  chat-attachments:
   mysql-data:
   node-data:
   node-pdfs:
