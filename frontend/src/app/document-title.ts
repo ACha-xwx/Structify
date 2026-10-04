@@ -8,13 +8,13 @@ type RouteLike = {
 
 const titleByName: Record<string, { zh: string; en: string }> = {
   home: { zh: "首页", en: "Home" },
-  classroom: { zh: "课堂", en: "Classroom" },
-  courseware: { zh: "课件", en: "Courseware" },
+  classroom: { zh: "课堂学习", en: "Classroom learning" },
+  courseware: { zh: "全部课件", en: "All courseware" },
   "animation-lab": { zh: "动画实验室", en: "Animation lab" },
   login: { zh: "登录", en: "Sign in" },
   register: { zh: "注册", en: "Register" },
   "reset-password": { zh: "重置密码", en: "Reset password" },
-  "user-home": { zh: "学习台", en: "Workbench" },
+  "user-home": { zh: "个人主页", en: "My profile" },
   "user-chapters": { zh: "章节", en: "Chapters" },
   "user-chapter-detail": { zh: "章节", en: "Chapters" },
   "user-resource": { zh: "资料详情", en: "Resource" },

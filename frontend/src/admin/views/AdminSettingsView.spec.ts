@@ -272,4 +272,24 @@ describe("AdminSettingsView", () => {
     expect(wrapper.text()).toContain("重试次数");
     wrapper.unmount();
   });
+
+  it("saves a 65536 token thinking budget and rejects values above it", async () => {
+    getModelConfig.mockResolvedValue({ available: true, reason: null, configuration: storedConfig });
+    updateModelConfig.mockResolvedValue({ ...storedConfig, maxOutputTokens: 65536 });
+    const { wrapper } = await mountView();
+    await field(wrapper, "最大输出令牌数").setValue("65536");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("配置已保存");
+    expect(updateModelConfig).toHaveBeenCalledWith(expect.objectContaining({ maxOutputTokens: 65536 }));
+    updateModelConfig.mockClear();
+    await field(wrapper, "最大输出令牌数").setValue("65537");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(updateModelConfig).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("VALIDATION_ERROR");
+    wrapper.unmount();
+  });
 });

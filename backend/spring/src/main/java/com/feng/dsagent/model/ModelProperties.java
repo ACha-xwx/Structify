@@ -14,4 +14,6 @@ public record ModelProperties(
     int maximumResponseBytes,
     Boolean disableThinking
 ) {
+    // SSE envelopes consume bytes as well as generated text; 64K reasoning needs headroom for both.
+    public static final int DEFAULT_MAX_RESPONSE_BYTES = 32 * 1_024 * 1_024;
 }

@@ -1,7 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { RouterLinkStub, mount } from "@vue/test-utils";
-import { nextTick } from "vue";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RouterLinkStub, enableAutoUnmount, mount, type VueWrapper } from "@vue/test-utils";
+import { defineComponent, nextTick } from "vue";
 import CodeEditorView from "./CodeEditorView.vue";
+import CCodeEditor from "./CCodeEditor.vue";
+import { setLocale } from "../shared/i18n/locale";
+
+enableAutoUnmount(afterEach);
 
 const runCode = vi.fn();
 const listCodeSamples = vi.fn();
@@ -57,6 +61,7 @@ function openStream() {
 }
 
 beforeEach(() => {
+  setLocale("zh-CN");
   runCode.mockReset();
   listCodeSamples.mockReset();
   getCodeLibrary.mockReset();
@@ -153,47 +158,158 @@ async function flush() {
 async function mountView() {
   listCodeSamples.mockResolvedValue(samples());
   getCodeLibrary.mockResolvedValue(library());
-  const wrapper = mount(CodeEditorView, { global: { stubs: { RouterLink: RouterLinkStub } } });
+  const wrapper = mount(CodeEditorView, { global: { stubs: {
+    RouterLink: RouterLinkStub,
+    Teleport: true,
+    CCodeEditor: defineComponent({
+      name: "CCodeEditor",
+      props: ["modelValue", "documentKey"],
+      emits: ["update:modelValue", "run"],
+      template: '<div></div>',
+    }),
+  } } });
   for (let round = 0; round < 4; round++) {
     await flush();
   }
   return wrapper;
 }
 
+function editorCode(wrapper: VueWrapper): string {
+  return wrapper.getComponent(CCodeEditor).props("modelValue");
+}
+
+async function openStructure(wrapper: VueWrapper, group: string, chapter: string, structure: string) {
+  const region = wrapper.get(`[data-library-group="${group}"]`);
+  await region.get(`[data-chapter="${chapter}"]`).trigger("click");
+  await flush();
+  await region.findAll(".code-menu__item").find((item) => item.get(".code-menu__label").text() === structure)!.trigger("click");
+  await flush();
+  return region;
+}
+
+async function selectSample(wrapper: VueWrapper) {
+  const region = await openStructure(wrapper, "samples", "03", "顺序栈");
+  await region.get('[data-entry-id="03-01-s1"]').trigger("click");
+}
+
 describe("code library page", () => {
-  it("offers the runnable samples, the class listings and the starter examples in one list", async () => {
+  it("offers three independent regions and a separate menu for each chapter", async () => {
     const wrapper = await mountView();
 
     expect(wrapper.text()).toContain("可运行样本");
     expect(wrapper.text()).toContain("示例");
     expect(wrapper.text()).toContain("入门样例");
-    expect(wrapper.findAll(".library__entry").length).toBe(1 + 3 + 5);
-    expect(wrapper.text()).toContain("二叉树遍历"); // the starter examples travel with the library
-    expect(wrapper.text()).toContain("3.1 · 构造一个空栈S");
+    expect(wrapper.get('[data-library-group="samples"]').findAll(".code-menu__trigger")).toHaveLength(9);
+    expect(wrapper.get('[data-library-group="examples"]').findAll(".code-menu__trigger")).toHaveLength(9);
+    expect(wrapper.text()).not.toContain("3.1 · 构造一个空栈S");
+    await wrapper.get('[data-library-group="templates"] .code-menu__trigger').trigger("click");
+    await flush();
+    expect(wrapper.findAll('[data-library-group="templates"] .code-menu__item')).toHaveLength(5);
+    expect(wrapper.text()).toContain("二叉树遍历");
   });
 
-  it("opens on the first runnable sample and runs it", async () => {
-    runCode.mockResolvedValue({ language: "c", status: "success", stdout: "ok\n", stderr: "", durationMs: 5, runId: null });
+  it("opens a blank main.c and does not run an empty document", async () => {
     const wrapper = await mountView();
 
-    expect((wrapper.get(".library__code").element as HTMLTextAreaElement).value).toContain("int main(void)");
-    await wrapper.get(".library__run").trigger("click");
+    expect(editorCode(wrapper)).toBe("");
+    expect(wrapper.get(".library__document-title").text()).toBe("main.c");
+    expect(wrapper.find(".library__origin").exists()).toBe(false);
+    expect((wrapper.get(".console__input").element as HTMLTextAreaElement).value).toBe("");
+    await wrapper.get(".library__run button").trigger("click");
+    await flush();
+    expect(startCodeSession).not.toHaveBeenCalled();
+    expect(runCode).not.toHaveBeenCalled();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+  });
+
+  it("loads a manually selected runnable sample and runs it", async () => {
+    runCode.mockResolvedValue({ language: "c", status: "success", stdout: "ok\n", stderr: "", durationMs: 5, runId: null });
+    const wrapper = await mountView();
+    await selectSample(wrapper);
+
+    expect(editorCode(wrapper)).toContain("int main(void)");
+    await wrapper.get(".library__run button").trigger("click");
     await flush();
 
     expect(runCode).toHaveBeenCalledWith(expect.objectContaining({ language: "c", stdin: "abcde\n" }));
     expect(wrapper.text()).toContain("运行完成");
   });
 
+  it("starts a new blank document without selecting a library entry", async () => {
+    const wrapper = await mountView();
+    await selectSample(wrapper);
+    expect(editorCode(wrapper)).toContain("int main(void)");
+
+    await wrapper.get('[aria-label="新建空白文件"]').trigger("click");
+    expect(editorCode(wrapper)).toBe("");
+    expect(wrapper.get(".library__document-title").text()).toBe("main.c");
+    expect(wrapper.find(".code-menu__item--selected").exists()).toBe(false);
+  });
+
+  it("imports a C source into a blank document and preserves its filename", async () => {
+    const wrapper = await mountView();
+    const source = "#include <stdio.h>\n// 导入的中文注释\nint main(void) { return 0; }\n";
+    const file = { name: "lesson.c", arrayBuffer: async () => new TextEncoder().encode(source).buffer };
+    const input = wrapper.get('input[type="file"]');
+    Object.defineProperty(input.element, "files", { configurable: true, value: [file] });
+    await input.trigger("change");
+    await flush();
+
+    expect(editorCode(wrapper)).toBe(source);
+    expect(wrapper.get(".library__document-title").text()).toBe("lesson.c");
+    expect(wrapper.find(".code-menu__item--selected").exists()).toBe(false);
+  });
+
+  it("exports the current source with its document filename", async () => {
+    const wrapper = await mountView();
+    const source = "int main(void) { return 7; }\n";
+    const editor = wrapper.getComponent(CCodeEditor);
+    editor.vm.$emit("update:modelValue", source);
+    await nextTick();
+    const createObjectURL = vi.fn(() => "blob:structify-test");
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
+    let downloadName = "";
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloadName = this.download;
+    });
+
+    await wrapper.get('[aria-label="导出代码"]').trigger("click");
+    expect(createObjectURL).toHaveBeenCalledOnce();
+    expect(downloadName).toBe("main.c");
+    expect(click).toHaveBeenCalledOnce();
+    click.mockRestore();
+  });
+
+  it("exports a complete catalog program with a C source extension", async () => {
+    const wrapper = await mountView();
+    await selectSample(wrapper);
+    const createObjectURL = vi.fn(() => "blob:structify-test");
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
+    let downloadName = "";
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloadName = this.download;
+    });
+
+    await wrapper.get('[aria-label="导出代码"]').trigger("click");
+    expect(downloadName).toBe("seqstack.c");
+    click.mockRestore();
+  });
+
   /** The console holds both halves: the program's output and the input typed at its prompt. */
   it("keeps the program's output and its input in one console", async () => {
     runCode.mockResolvedValue({ language: "c", status: "success", stdout: "ok\n", stderr: "", durationMs: 5, runId: null });
     const wrapper = await mountView();
+    await selectSample(wrapper);
 
     expect(wrapper.get(".console__screen").text()).toContain("输出会出现在这里");
     expect(wrapper.find(".library__stdin").exists()).toBe(false);
 
     await wrapper.get(".console__input").setValue("42\n");
-    await wrapper.get(".library__run").trigger("click");
+    await wrapper.get(".library__run button").trigger("click");
     await flush();
 
     expect(runCode).toHaveBeenCalledWith(expect.objectContaining({ stdin: "42\n" }));
@@ -204,14 +320,16 @@ describe("code library page", () => {
     runCode.mockResolvedValue({ language: "c", status: "success", stdout: "ok\n", stderr: "", durationMs: 5, runId: null });
     const wrapper = await mountView();
 
-    await wrapper.findAll(".library__entry").find((entry) => entry.text().includes("3.1 · 构造一个空栈S"))!.trigger("click");
+    const region = await openStructure(wrapper, "examples", "03", "顺序栈");
+    await region.get('[data-entry-id="ch03-3.1"]').trigger("click");
     expect(wrapper.text()).toContain("缺类型、缺函数、也缺 main");
 
-    await wrapper.findAll(".library__chip").find((chip) => chip.text() === "补成可运行示例")!.trigger("click");
-    expect((wrapper.get(".library__code").element as HTMLTextAreaElement).value).toContain("printf(\"ok\\n\")");
+    expect(wrapper.get(".library__chip").text()).toBe("补齐代码");
+    await wrapper.get(".library__chip").trigger("click");
+    expect(editorCode(wrapper)).toContain("printf(\"ok\\n\")");
     expect(wrapper.text()).toContain("示例补上了顺序栈的类型定义和一个 main");
 
-    await wrapper.get(".library__run").trigger("click");
+    await wrapper.get(".library__run button").trigger("click");
     await flush();
     expect(wrapper.text()).toContain("输出和示例的预期一致");
   });
@@ -219,21 +337,64 @@ describe("code library page", () => {
   it("says why a listing has no example instead of offering a button that cannot work", async () => {
     const wrapper = await mountView();
 
-    await wrapper.findAll(".library__entry").find((entry) => entry.text().includes("hanoi(3,A,B,C)"))!.trigger("click");
+    const region = await openStructure(wrapper, "examples", "03", "汉诺塔");
+    await region.get('[data-entry-id="ch03-3.15"]').trigger("click");
 
     expect(wrapper.text()).toContain("不是可编译的代码");
-    expect(wrapper.findAll(".library__chip").some((chip) => chip.text() === "补成可运行示例")).toBe(false);
+    expect(wrapper.find(".library__chip").exists()).toBe(false);
   });
 
   it("filters the whole library from one search box", async () => {
     const wrapper = await mountView();
 
     await wrapper.get(".library__search").setValue("seqstack");
+    const region = await openStructure(wrapper, "examples", "03", "顺序栈");
     expect(wrapper.text()).toContain("seqstack · 顺序栈");
     expect(wrapper.text()).not.toContain("入门样例");
+    await region.get('[data-entry-id="ch03-seqstack"]').trigger("click");
+    expect(editorCode(wrapper)).toBe("#define Stack_Size 50\n");
 
     await wrapper.get(".library__search").setValue("不存在的代码");
     expect(wrapper.text()).toContain("没有匹配的代码");
+  });
+
+  it("shows an empty introduction without substituting another chapter's code", async () => {
+    const wrapper = await mountView();
+    const before = editorCode(wrapper);
+    await wrapper.get('[data-library-group="samples"] [data-chapter="01"]').trigger("click");
+    await flush();
+    expect(wrapper.text()).toContain("本章节暂无代码");
+    expect(wrapper.findAll(".code-menu__item")).toHaveLength(0);
+    expect(editorCode(wrapper)).toBe(before);
+  });
+
+  it("keeps the selected program when changing the navigation language", async () => {
+    const wrapper = await mountView();
+    await selectSample(wrapper);
+    const before = editorCode(wrapper);
+    setLocale("en-US");
+    await flush();
+    expect(wrapper.text()).toContain("Stacks and queues");
+    expect(wrapper.text()).toContain("Internal and external sorting");
+    await wrapper.get('[data-library-group="templates"] .code-menu__trigger').trigger("click");
+    await flush();
+    expect(wrapper.text()).toContain("Binary tree traversal");
+    expect(editorCode(wrapper)).toBe(before);
+  });
+
+  it("runs edits emitted by the editor through the existing backend path", async () => {
+    runCode.mockResolvedValue({ language: "c", status: "success", stdout: "", stderr: "", durationMs: 5, runId: null });
+    const wrapper = await mountView();
+    const editor = wrapper.getComponent(CCodeEditor);
+    const edited = "int main(void) { return 42; }";
+    editor.vm.$emit("update:modelValue", edited);
+    await nextTick();
+    editor.vm.$emit("run");
+    await flush();
+    expect(startCodeSession).toHaveBeenCalledWith({ language: "c", code: edited });
+    expect(runCode).toHaveBeenCalledWith(expect.objectContaining({ code: edited, stdin: "" }));
+    // A new blank document has no library entry to restore.
+    expect(wrapper.find(".library__restore").exists()).toBe(false);
   });
 });
 
@@ -245,7 +406,8 @@ describe("console that runs the program live", () => {
     typeInCodeSession.mockResolvedValue(undefined);
     stopCodeSession.mockResolvedValue(undefined);
     const wrapper = await mountView();
-    await wrapper.get(".library__run").trigger("click");
+    await selectSample(wrapper);
+    await wrapper.get(".library__run button").trigger("click");
     await flush();
     return { wrapper, stream };
   }
@@ -277,7 +439,8 @@ describe("console that runs the program live", () => {
     startCodeSession.mockResolvedValue({ sessionId: null, status: "compile_error", output: "error: expected ';'\n" });
     const wrapper = await mountView();
 
-    await wrapper.get(".library__run").trigger("click");
+    await selectSample(wrapper);
+    await wrapper.get(".library__run button").trigger("click");
     await flush();
 
     expect(wrapper.text()).toContain("编译错误");
@@ -289,7 +452,8 @@ describe("console that runs the program live", () => {
     runCode.mockResolvedValue({ language: "c", status: "success", stdout: "ok\n", stderr: "", durationMs: 5, runId: null });
     const wrapper = await mountView();
 
-    await wrapper.get(".library__run").trigger("click");
+    await selectSample(wrapper);
+    await wrapper.get(".library__run button").trigger("click");
     await flush();
 
     expect(startCodeSession).toHaveBeenCalled();
@@ -301,11 +465,11 @@ describe("console that runs the program live", () => {
   it("ends the program when the run button is pressed again", async () => {
     const { wrapper } = await mountLive();
 
-    expect(wrapper.get(".library__run").text()).toBe("结束运行");
-    await wrapper.get(".library__run").trigger("click");
+    expect(wrapper.get(".library__run button").attributes("aria-label")).toBe("结束运行");
+    await wrapper.get(".library__run button").trigger("click");
     await flush();
 
     expect(stopCodeSession).toHaveBeenCalledWith("s1");
-    expect(wrapper.get(".library__run").text()).toBe("运行代码");
+    expect(wrapper.get(".library__run button").attributes("aria-label")).toBe("运行代码");
   });
 });

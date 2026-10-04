@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import BrandStage from "../components/BrandStage.vue";
-import DirectionalArrowIcon from "../components/DirectionalArrowIcon.vue";
+import LiquidMetalButton from "../../admin/components/LiquidMetalButton.vue";
+import rightArrowIcon from "../../assets/classroom/right-arrow.svg";
 import { useI18n } from "../i18n/locale";
 import { auth } from "../../app/providers/runtime";
 
@@ -15,15 +16,11 @@ import { auth } from "../../app/providers/runtime";
  * Visually it is the same stage as the sign-in screen, because that stage is shared (BrandStage), so
  * signing in feels like moving one step forward rather than into another product.
  */
-const LAST_KEY = "structify.classroom.last";
 const { t } = useI18n();
 const router = useRouter();
-const lastSessionId = ref("");
 const leaving = ref(false);
 
 const signedIn = computed(() => Boolean(auth.state.user));
-/** Resuming stays a link, not an implicit restore: only a learner who asks for it goes back in. */
-const resumeTarget = computed(() => ({ path: "/classroom", query: { session: lastSessionId.value } }));
 
 async function signOut() {
   if (leaving.value) return;
@@ -36,9 +33,6 @@ async function signOut() {
   }
 }
 
-onMounted(() => {
-  lastSessionId.value = localStorage.getItem(LAST_KEY) ?? "";
-});
 </script>
 
 <template>
@@ -47,7 +41,8 @@ onMounted(() => {
       <h1 id="entry-title" class="entry__title">{{ t("home.title") }}</h1>
 
       <nav class="entry__choices" :aria-label="t('home.choices')">
-        <RouterLink class="choice" to="/classroom">
+        <div class="choice">
+        <RouterLink class="choice__destination" to="/classroom">
           <span class="choice__symbol" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
               <rect x="3" y="4" width="18" height="12.5" rx="2.2" />
@@ -55,10 +50,14 @@ onMounted(() => {
             </svg>
           </span>
           <span class="choice__name">{{ t("home.classroom") }}</span>
-          <span class="choice__go" aria-hidden="true"><DirectionalArrowIcon direction="right" /></span>
         </RouterLink>
+          <LiquidMetalButton class="choice__go" view-mode="icon" :aria-label="t('home.classroom')" :title="t('home.classroom')" @click="router.push('/classroom')">
+            <template #icon><img class="choice__arrow" :src="rightArrowIcon" alt="" aria-hidden="true"></template>
+          </LiquidMetalButton>
+        </div>
 
-        <RouterLink class="choice" to="/animation">
+        <div class="choice">
+        <RouterLink class="choice__destination" to="/animation">
           <span class="choice__symbol" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
               <circle cx="12" cy="12" r="8.6" />
@@ -66,10 +65,14 @@ onMounted(() => {
             </svg>
           </span>
           <span class="choice__name">{{ t("home.animation") }}</span>
-          <span class="choice__go" aria-hidden="true"><DirectionalArrowIcon direction="right" /></span>
         </RouterLink>
+          <LiquidMetalButton class="choice__go" view-mode="icon" :aria-label="t('home.animation')" :title="t('home.animation')" @click="router.push('/animation')">
+            <template #icon><img class="choice__arrow" :src="rightArrowIcon" alt="" aria-hidden="true"></template>
+          </LiquidMetalButton>
+        </div>
 
-        <RouterLink class="choice" to="/compiler">
+        <div class="choice">
+        <RouterLink class="choice__destination" to="/compiler">
           <span class="choice__symbol" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
               <path d="M8.6 8.2L4.8 12l3.8 3.8" />
@@ -77,22 +80,29 @@ onMounted(() => {
             </svg>
           </span>
           <span class="choice__name">{{ t("home.compiler") }}</span>
-          <span class="choice__go" aria-hidden="true"><DirectionalArrowIcon direction="right" /></span>
         </RouterLink>
+          <LiquidMetalButton class="choice__go" view-mode="icon" :aria-label="t('home.compiler')" :title="t('home.compiler')" @click="router.push('/compiler')">
+            <template #icon><img class="choice__arrow" :src="rightArrowIcon" alt="" aria-hidden="true"></template>
+          </LiquidMetalButton>
+        </div>
 
-        <RouterLink class="choice" to="/chat">
+        <div class="choice">
+        <RouterLink class="choice__destination" to="/chat">
           <span class="choice__symbol" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
               <path d="M20 15.5a2.5 2.5 0 0 1-2.5 2.5H9l-4 3v-3H6.5A2.5 2.5 0 0 1 4 15.5v-8A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5z" />
             </svg>
           </span>
           <span class="choice__name">{{ t("home.chat") }}</span>
-          <span class="choice__go" aria-hidden="true"><DirectionalArrowIcon direction="right" /></span>
         </RouterLink>
+          <LiquidMetalButton class="choice__go" view-mode="icon" :aria-label="t('home.chat')" :title="t('home.chat')" @click="router.push('/chat')">
+            <template #icon><img class="choice__arrow" :src="rightArrowIcon" alt="" aria-hidden="true"></template>
+          </LiquidMetalButton>
+        </div>
       </nav>
 
       <nav class="entry-links" :aria-label="t('home.account')">
-        <RouterLink v-if="lastSessionId" class="entry__resume" :to="resumeTarget">{{ t("home.resume") }}</RouterLink>
+        <RouterLink class="entry__profile" to="/user">{{ t("home.profile") }}</RouterLink>
         <button v-if="signedIn" class="entry__signout" type="button" :disabled="leaving" @click="signOut">{{ t("common.signOut") }}</button>
       </nav>
     </section>
@@ -156,7 +166,7 @@ onMounted(() => {
 }
 
 .choice:hover,
-.choice:focus-visible {
+.choice:focus-within {
   outline: none;
   background: color-mix(in srgb, var(--surface) 28%, transparent);
   box-shadow: inset 2px -2px 1px -1px color-mix(in srgb, var(--surface) 94%, transparent), inset -2px 2px 1px -1px color-mix(in srgb, var(--surface) 94%, transparent), inset 0 0 2px color-mix(in srgb, var(--text) 52%, transparent), 0 10px 17px color-mix(in srgb, var(--text) 16%, transparent);
@@ -164,31 +174,26 @@ onMounted(() => {
 }
 
 .choice:hover::before,
-.choice:focus-visible::before { filter: saturate(1.18) brightness(1.08); opacity: 0.96; }
+.choice:focus-within::before { filter: saturate(1.18) brightness(1.08); opacity: 0.96; }
 .choice:hover::after,
-.choice:focus-visible::after { opacity: 1; transform: translateX(9%); }
+.choice:focus-within::after { opacity: 1; transform: translateX(9%); }
+
+.choice__destination { position: relative; z-index: 4; display: flex; flex: 1 1 auto; min-width: 0; align-items: center; align-self: stretch; gap: 10px; color: inherit; text-decoration: none; }
+.choice__destination:focus-visible { outline: none; }
 
 .choice__symbol { position: relative; z-index: 4; display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; border-radius: 50%; color: var(--text-muted); }
 .choice__symbol svg { display: block; width: 20px; height: 20px; }
 .choice__name { position: relative; z-index: 4; flex: 1 1 auto; min-width: 0; text-align: left; font-size: 16px; font-weight: 650; letter-spacing: 0.01em; line-height: 1.2; }
 
-/* The right-hand chip is the same round affordance the sign-in fields carry. */
 .choice__go {
+  --liquid-width: 44px;
+  --liquid-height: 44px;
   position: relative;
   z-index: 5;
-  display: grid;
-  width: 44px;
-  height: 44px;
   flex: 0 0 44px;
-  place-items: center;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--text) 8%, transparent);
-  color: var(--text);
-  transition: background-color 180ms ease, transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-
-.choice:hover .choice__go,
-.choice:focus-visible .choice__go { background: color-mix(in srgb, var(--text) 14%, transparent); transform: translateX(3px); }
+.choice__arrow { display: block; width: 24px; height: 24px; }
+:global([data-theme="dark"]) .choice__arrow { filter: invert(1); }
 
 .entry-links { display: flex; width: 100%; align-items: center; justify-content: center; gap: 32px; padding-top: 2px; color: var(--text-muted); font-size: 17px; font-weight: 650; text-align: center; }
 

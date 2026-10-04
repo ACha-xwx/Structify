@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import ExperimentPanel from "./ExperimentPanel.vue";
 import { prefetchSlideWindow } from "../shared/courseware/prefetch-slides";
+import { useSlidePaging } from "../shared/courseware/use-slide-paging";
 import { useI18n } from "../shared/i18n/locale";
 import type { ClassroomSlideMatch, LessonCourseware } from "../shared/types/contracts";
+import leftArrowIcon from "../assets/classroom/left-arrow.svg";
+import rightArrowIcon from "../assets/classroom/right-arrow.svg";
+import LiquidMetalButton from "../admin/components/LiquidMetalButton.vue";
 
 const props = defineProps<{
   courseware: LessonCourseware | null;
@@ -11,6 +14,7 @@ const props = defineProps<{
   match: ClassroomSlideMatch | null;
   loading: boolean;
   error: string;
+  fit?: boolean;
 }>();
 const emit = defineEmits<{ (event: "openBrowser"): void }>();
 
@@ -21,7 +25,7 @@ const imageFailed = ref(false);
 /** Deck order is the reading order: sort by page number so 上一页/下一页 always step through the PPT in sequence. */
 const slides = computed(() => (props.courseware?.slides ?? []).slice().sort((a, b) => a.slideNumber - b.slideNumber));
 const current = computed(() => slides.value[index.value] ?? null);
-const position = computed(() => slides.value.length ? `${index.value + 1}/${slides.value.length}` : "0/0");
+const emptyMessage = computed(() => props.courseware?.ready === true ? t("slides.empty") : t("slides.unavailable"));
 /** Only the states that actually need a word on screen get a badge; a directly matched page says nothing. */
 const badge = computed(() => {
   const match = props.match;
@@ -56,22 +60,35 @@ function select(next: number) {
 function previous() { select(index.value - 1); }
 function next() { select(index.value + 1); }
 
+useSlidePaging(
+  () => !props.loading && !props.error && Boolean(current.value),
+  (direction) => select(index.value + direction),
+);
+
 </script>
 
 <template>
-  <aside class="slides" :aria-label="t('slides.pane')">
+  <aside class="slides" :class="{ 'slides--fit': fit }" :aria-label="t('slides.pane')">
     <header class="slides__bar">
       <p class="slides__title" :title="current?.deckTitle || courseware?.title || ''">
         {{ current?.deckTitle || courseware?.title || t("slides.title") }}
       </p>
-      <p class="slides__position" aria-live="polite">{{ position }}</p>
+      <div v-if="$slots.headerActions" class="slides__header-actions">
+        <slot name="headerActions" />
+      </div>
     </header>
 
     <p v-if="badge" class="slides__badge" :class="{ 'slides__badge--gap': match?.kind === 'CONTINUITY' }">{{ badge }}</p>
 
-    <p v-if="loading" class="slides__hint">{{ t("slides.loading") }}</p>
-    <p v-else-if="error" class="slides__hint slides__hint--error" role="alert">{{ error }}</p>
-    <p v-else-if="!slides.length" class="slides__hint">{{ t("slides.empty") }}</p>
+    <div v-if="$slots.controls" class="slides__controls">
+      <slot name="controls" />
+    </div>
+
+    <div v-if="loading || error || !slides.length" class="slides__stage slides__stage--empty">
+      <p v-if="loading" class="slides__hint">{{ t("slides.loading") }}</p>
+      <p v-else-if="error" class="slides__hint slides__hint--error" role="alert">{{ error }}</p>
+      <p v-else class="slides__hint">{{ emptyMessage }}</p>
+    </div>
 
     <template v-else>
       <div class="slides__stage">
@@ -85,19 +102,38 @@ function next() { select(index.value + 1); }
         >
         <p v-else class="slides__hint slides__hint--error">{{ t("slides.imageFailed") }}</p>
       </div>
-
-      <div class="slides__tools">
-        <button class="slides__chip" type="button" :disabled="index <= 0" @click="previous">{{ t("slides.previous") }}</button>
-        <button class="slides__chip" type="button" :disabled="index >= slides.length - 1" @click="next">{{ t("slides.next") }}</button>
-        <button class="slides__chip" type="button" @click="emit('openBrowser')">{{ t("slides.browseAll") }}</button>
-      </div>
     </template>
 
-    <ExperimentPanel
-      v-if="courseware?.coursewareKey"
-      :courseware-key="courseware.coursewareKey"
-      :page-section="current?.section ?? ''"
-    />
+    <footer class="slides__footer">
+      <div class="slides__tools" aria-label="Slide controls">
+        <LiquidMetalButton
+          class="slides__silver-control"
+          view-mode="icon"
+          :disabled="!slides.length || index <= 0"
+          :aria-label="t('slides.previous')"
+          :title="t('slides.previous')"
+          @click="previous"
+        >
+          <template #icon><img class="slides__icon" :src="leftArrowIcon" alt="" aria-hidden="true"></template>
+          <span class="slides__icon-label">{{ t("slides.previous") }}</span>
+        </LiquidMetalButton>
+        <LiquidMetalButton
+          class="slides__silver-control"
+          view-mode="icon"
+          :disabled="!slides.length || index >= slides.length - 1"
+          :aria-label="t('slides.next')"
+          :title="t('slides.next')"
+          @click="next"
+        >
+          <template #icon><img class="slides__icon" :src="rightArrowIcon" alt="" aria-hidden="true"></template>
+          <span class="slides__icon-label">{{ t("slides.next") }}</span>
+        </LiquidMetalButton>
+        <button class="slides__chip slides__chip--glass" type="button" @click="emit('openBrowser')">{{ t("slides.browseAll") }}</button>
+      </div>
+      <div v-if="$slots.footerActions" class="slides__footer-actions">
+        <slot name="footerActions" />
+      </div>
+    </footer>
   </aside>
 </template>
 
@@ -126,8 +162,14 @@ function next() { select(index.value + 1); }
   min-width: 0;
 }
 
+.slides__header-actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
 .slides__title,
-.slides__position,
 .slides__hint,
 .slides__badge {
   margin: 0;
@@ -143,8 +185,6 @@ function next() { select(index.value + 1); }
   white-space: nowrap;
 }
 
-.slides__position { flex: 0 0 auto; color: var(--text-muted); font-size: 19px; font-weight: 620; }
-
 .slides__badge {
   display: inline-block;
   justify-self: start;
@@ -155,6 +195,28 @@ function next() { select(index.value + 1); }
 }
 
 .slides__badge--gap { border-color: color-mix(in srgb, var(--text) 55%, transparent); }
+
+.slides__controls {
+  min-width: 0;
+}
+
+.slides--courseware {
+  min-height: min(80dvh, 860px);
+  padding: clamp(20px, 2.4vw, 34px);
+  gap: 14px;
+}
+
+.slides:not(.slides--courseware) {
+  min-height: min(72dvh, 820px);
+}
+
+.slides--courseware .slides__stage {
+  min-height: min(62dvh, 680px);
+}
+
+.slides--courseware .slides__image {
+  max-height: min(64dvh, 760px);
+}
 
 .slides__hint {
   align-self: center;
@@ -182,35 +244,113 @@ function next() { select(index.value + 1); }
   object-fit: contain;
 }
 
-/* One row of equal chips: paging and browsing read as one control strip instead of stacked rows. */
+.slides__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
+}
+
 .slides__tools {
   display: flex;
+  flex: 1 1 auto;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .slides__chip {
-  border: 1px solid var(--line-strong);
+  min-height: 48px;
+  padding: 11px 22px;
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--surface) 76%, transparent);
-  color: var(--text);
   cursor: pointer;
   font: inherit;
-  font-size: 19px;
+  font-family: var(--font-ui);
+  font-size: 16px;
   font-weight: 620;
+  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, filter 180ms ease;
 }
 
-.slides__chip { padding: 9px 18px; }
+.slides__chip--glass {
+  border-color: color-mix(in srgb, var(--text) 10%, transparent);
+  background: color-mix(in srgb, var(--surface) 38%, transparent);
+  box-shadow: inset 2px -2px 1px -1px color-mix(in srgb, var(--surface) 88%, transparent), inset -2px 2px 1px -1px color-mix(in srgb, var(--surface) 88%, transparent), inset 0 0 2px color-mix(in srgb, var(--text) 32%, transparent), 0 4px 8px color-mix(in srgb, var(--text) 17%, transparent);
+  color: color-mix(in srgb, var(--text) 84%, #000 16%);
+  -webkit-backdrop-filter: blur(7px) saturate(1.14);
+  backdrop-filter: blur(7px) saturate(1.14);
+}
 
-.slides__chip:hover:not(:disabled) { border-color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.slides__icon { width: 24px; height: 24px; display: block; }
+
+.slides__silver-control {
+  --liquid-width: 50px;
+  --liquid-height: 50px;
+  flex: 0 0 50px;
+}
+
+.slides__icon-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.slides__chip:hover:not(:disabled) { transform: translateY(-1px) scale(1.02); filter: brightness(1.06); }
 
 .slides__chip:disabled { cursor: default; opacity: .38; }
 
+.slides__footer-actions { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 14px; margin-left: auto; }
+
+:global([data-theme="dark"]) .slides__icon { filter: invert(1); }
+
 @media (max-width: 1024px) {
   .slides__stage { min-height: 220px; }
+
+  .slides__footer { align-items: stretch; flex-direction: column; }
+
+  .slides__footer-actions { justify-content: flex-end; }
+
+  .slides__header-actions { gap: 6px; }
+
+  .slides--courseware {
+    min-height: auto;
+  }
+
+  .slides--courseware .slides__stage {
+    min-height: min(58dvh, 560px);
+  }
 }
 
 @media (prefers-reduced-transparency: reduce) {
   .slides { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
+.slides.slides--fit {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: 18px;
+  gap: 10px;
+}
+.slides--fit .slides__bar,
+.slides--fit .slides__badge,
+.slides--fit .slides__controls,
+.slides--fit .slides__footer { flex: none; }
+.slides--fit .slides__stage { flex: 1 1 0; min-height: 0; overflow: hidden; }
+.slides--fit .slides__image { width: 100%; height: 100%; min-height: 0; max-height: 100%; object-fit: contain; }
+
+@media (max-width: 640px), (max-height: 640px) {
+  .slides.slides--fit { padding: 10px; gap: 6px; }
+  .slides--fit .slides__footer { gap: 8px; }
 }
 </style>

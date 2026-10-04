@@ -112,6 +112,14 @@ public class AiQuotaExecutionService implements AiQuotaExecution {
                 }
 
                 @Override
+                public void onReasoning(String content) {
+                    if (content != null && !content.isEmpty()) {
+                        progress.receivedContent = true;
+                    }
+                    handler.onReasoning(content);
+                }
+
+                @Override
                 public void onUsage(Long totalTokens) {
                     if (totalTokens != null && totalTokens >= 0) {
                         progress.reportedTokens = totalTokens;

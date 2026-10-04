@@ -65,6 +65,7 @@ export interface UserApi {
   streamChat(input: ChatRequest, signal?: AbortSignal): Promise<SseApiResponse>;
   listChatSessions(): Promise<ChatSessionSummary[]>;
   getChatSession(sessionId: string): Promise<ChatSession>;
+  updateChatSession(sessionId: string, input: { title?: string; pinned?: boolean }): Promise<ChatSession>;
   deleteChatSession(sessionId: string): Promise<void>;
   listClassroomScripts(chapterId?: string): Promise<ClassroomScript[]>;
   listClassroomLessons(chapterId?: string): Promise<ClassroomLesson[]>;
@@ -145,12 +146,13 @@ export function createUserApi(client: { request: UserRequest }): UserApi {
     },
     async chat(input) { return jsonData(await request<ChatResponse>("/chat", { method: "POST", body: input })); },
     async streamChat(input, signal) {
-      const response = await request("/chat/stream", { method: "POST", body: input, signal, responseType: "sse", timeoutMs: 60_000 });
+      const response = await request("/chat/stream", { method: "POST", body: input, signal, responseType: "sse", timeoutMs: input.thinkingEnabled ? 180_000 : 60_000 });
       if (response.kind !== "sse") throw new Error("接口未返回 SSE 数据流");
       return response;
     },
     async listChatSessions() { return jsonData(await request<ChatSessionSummary[]>("/chat/sessions")); },
     async getChatSession(sessionId) { return jsonData(await request<ChatSession>(`/chat/sessions/${encoded(sessionId)}`)); },
+    async updateChatSession(sessionId, input) { return jsonData(await request<ChatSession>(`/chat/sessions/${encoded(sessionId)}`, { method: "PATCH", body: input })); },
     async deleteChatSession(sessionId) { await request(`/chat/sessions/${encoded(sessionId)}`, { method: "DELETE" }); },
     async listClassroomScripts(chapterId) { return jsonData(await request<ClassroomScript[]>("/classroom/scripts", { query: { chapterId } })); },
     async listClassroomLessons(chapterId) { return jsonData(await request<ClassroomLesson[]>("/classroom/lessons", { query: { chapterId } })); },

@@ -43,6 +43,39 @@ describe("ThemeToggle", () => {
     expect(toggle.attributes("aria-checked")).not.toBe(initialState);
   });
 
+  it("keeps the theme transition light effect on the theme thumb only", async () => {
+    setTheme("light");
+    const wrapper = mount(ThemeToggle);
+    const themeControl = wrapper.get("button.theme-toggle__control");
+    const themeThumb = wrapper.get("button.theme-toggle__control .theme-toggle__thumb");
+    const languageThumb = wrapper.get(".theme-toggle__locale-thumb");
+
+    expect(themeThumb.find(".theme-toggle__particles").exists()).toBe(false);
+    expect(languageThumb.find(".theme-toggle__particles").exists()).toBe(false);
+    await themeControl.trigger("click");
+
+    expect(themeThumb.find(".theme-toggle__particles").exists()).toBe(true);
+    expect(languageThumb.find(".theme-toggle__particles").exists()).toBe(false);
+    setTheme("light");
+  });
+
+  it("keeps the language transition light effect on the language thumb only", async () => {
+    setTheme("light");
+    setLocale("zh-CN");
+    const wrapper = mount(ThemeToggle);
+    const themeThumb = wrapper.get("button.theme-toggle__control .theme-toggle__thumb");
+    const languageControl = wrapper.get("button.theme-toggle__locale-toggle");
+    const languageThumb = wrapper.get(".theme-toggle__locale-thumb");
+
+    expect(themeThumb.find(".theme-toggle__particles").exists()).toBe(false);
+    expect(languageThumb.find(".theme-toggle__particles").exists()).toBe(false);
+    await languageControl.trigger("click");
+
+    expect(themeThumb.find(".theme-toggle__particles").exists()).toBe(false);
+    expect(languageThumb.find(".theme-toggle__particles").exists()).toBe(true);
+    setLocale("zh-CN");
+  });
+
   it("applies the selected theme to the document when activated", async () => {
     setTheme("light");
     const wrapper = mount(ThemeToggle);
@@ -114,10 +147,24 @@ describe("ThemeToggle", () => {
     expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe("en-US");
     expect(themeControl.attributes("aria-checked")).toBe("false");
     expect(languageControl.attributes("aria-checked")).toBe("true");
-    expect(languageControl.text()).toBe("EN");
+    expect(languageControl.get(".theme-toggle__locale-label").text()).toBe("EN");
 
     setLocale("zh-CN");
     setTheme("light");
+  });
+
+  it("uses the same material track and sliding thumb for the language switch", () => {
+    const wrapper = mount(ThemeToggle);
+    const languageControl = wrapper.get("button.theme-toggle__locale-toggle");
+    const languageThumb = languageControl.get(".theme-toggle__locale-thumb");
+
+    expect(languageControl.find(".theme-toggle__groove").exists()).toBe(true);
+    expect(languageControl.find(".theme-toggle__gloss").exists()).toBe(true);
+    expect(languageControl.find(".theme-toggle__texture").exists()).toBe(true);
+    expect(languageThumb.classes()).toContain("theme-toggle__thumb");
+    expect(languageThumb.text()).toBe("中");
+    expect(languageControl.find(".theme-toggle__locale-option--zh").text()).toBe("中");
+    expect(languageControl.find(".theme-toggle__locale-option--en").text()).toBe("EN");
   });
 
   it("preserves the selected language when remounted", () => {
@@ -125,7 +172,7 @@ describe("ThemeToggle", () => {
     const wrapper = mount(ThemeToggle);
 
     const languageControl = wrapper.get(".theme-toggle__locale-toggle");
-    expect(languageControl.text()).toBe("EN");
+    expect(languageControl.get(".theme-toggle__locale-label").text()).toBe("EN");
     expect(languageControl.attributes("role")).toBe("switch");
     expect(languageControl.attributes("aria-checked")).toBe("true");
     expect(languageControl.attributes("aria-label")).toContain("English");

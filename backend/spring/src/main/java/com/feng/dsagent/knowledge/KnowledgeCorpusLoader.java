@@ -19,12 +19,13 @@ import java.util.stream.Stream;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Loads locally reviewed textbook lessons into classroom knowledge chunks.
+ * Loads locally reviewed textbook lessons and explicitly reviewed local development seeds into
+ * classroom knowledge chunks.
  *
  * <p>Publication is gated by a machine readable page-level manifest: a lesson file contributes
  * chunks only when it is listed in {@code import-manifest.json}, its bytes match the recorded
- * SHA-256, every page block carries the reviewed label, and the declared textbook/PDF pages match
- * the manifest exactly. Anything else is skipped and reported instead of being published.
+ * SHA-256, every page block carries an approved review label, and the declared textbook/PDF pages
+ * match the manifest exactly. Anything else is skipped and reported instead of being published.
  */
 public final class KnowledgeCorpusLoader {
 
@@ -156,7 +157,7 @@ public final class KnowledgeCorpusLoader {
             List<String> block = lines.subList(index, end);
             String label = block.stream()
                 .map(String::trim)
-                .filter(line -> line.startsWith("> OCR质量："))
+                .filter(KnowledgeCorpusLoader::isApprovedReviewLabel)
                 .findFirst()
                 .orElse("");
             blocks.add(new KnowledgeImportManifest.LessonPageBlock(
@@ -168,6 +169,11 @@ public final class KnowledgeCorpusLoader {
             index = end - 1;
         }
         return blocks;
+    }
+
+    private static boolean isApprovedReviewLabel(String line) {
+        return line.startsWith(KnowledgeImportManifest.REVIEWED_LABEL_PREFIX)
+            || line.startsWith(KnowledgeImportManifest.LOCAL_DEVELOPMENT_LABEL_PREFIX);
     }
 
     private List<String> split(String markdown, int chunkSize) {

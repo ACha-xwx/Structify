@@ -19,6 +19,9 @@ function mountHome() {
       { path: "/", component: { template: "<div />" } },
       { path: "/classroom", component: { template: "<div />" } },
       { path: "/animation", component: { template: "<div />" } },
+      { path: "/compiler", component: { template: "<div />" } },
+      { path: "/chat", component: { template: "<div />" } },
+      { path: "/user", component: { template: "<div />" } },
       { path: "/login", component: { template: "<div />" } },
     ],
   });
@@ -38,28 +41,36 @@ describe("entry page", () => {
     await flushPromises();
 
     expect(wrapper.findAll(".choice__name").map((node) => node.text())).toEqual(["课堂", "动画学习", "C 编辑器", "课程问答"]);
-    expect(wrapper.findAll(".choice").map((node) => node.attributes("href"))).toEqual(["/classroom", "/animation", "/compiler", "/chat"]);
+    expect(wrapper.findAll(".choice__destination").map((node) => node.attributes("href"))).toEqual(["/classroom", "/animation", "/compiler", "/chat"]);
     // Nothing classroom-shaped is mounted here: no lesson picker, and no session was opened for us.
     expect(wrapper.find("select").exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("offers the last lesson only as an explicit choice", async () => {
+  it("offers the profile placeholder instead of a resume link even when a lesson is saved", async () => {
     localStorage.setItem("structify.classroom.last", "session-9");
 
     const { wrapper } = mountHome();
     await flushPromises();
 
-    expect(wrapper.get(".entry__resume").text()).toBe("继续上次课堂");
-    expect(wrapper.get(".entry__resume").attributes("href")).toBe("/classroom?session=session-9");
+    expect(wrapper.get(".entry__profile").text()).toBe("个人主页");
+    expect(wrapper.get(".entry__profile").attributes("href")).toBe("/user");
+    expect(wrapper.find(".entry__resume").exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("hides the resume link when there is no lesson to go back to", async () => {
-    const { wrapper } = mountHome();
+  it("navigates from each silver entry button", async () => {
+    const { router, wrapper } = mountHome();
     await flushPromises();
 
-    expect(wrapper.find(".entry__resume").exists()).toBe(false);
+    const paths = ["/classroom", "/animation", "/compiler", "/chat"];
+    const controls = wrapper.findAll(".choice__go button");
+    expect(controls).toHaveLength(4);
+    for (const [index, path] of paths.entries()) {
+      await controls[index].trigger("click");
+      await flushPromises();
+      expect(router.currentRoute.value.path).toBe(path);
+    }
     wrapper.unmount();
   });
 
@@ -90,7 +101,7 @@ describe("entry page", () => {
 
     expect(wrapper.get(".entry__title").text()).toBe("Where do you want to start?");
     expect(wrapper.findAll(".choice__name").map((node) => node.text())).toEqual(["Classroom", "Animation lab", "C editor", "Ask the course"]);
-    expect(wrapper.get(".entry__resume").text()).toBe("Resume last class");
+    expect(wrapper.get(".entry__profile").text()).toBe("My profile");
     wrapper.unmount();
   });
 });

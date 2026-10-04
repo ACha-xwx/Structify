@@ -1,8 +1,10 @@
 package com.feng.dsagent.chat;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -10,6 +12,7 @@ import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.security.JwtTokenService;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -100,6 +103,32 @@ class ChatHistoryApiIntegrationTest {
     }
 
     @Test
+    void renamesAndPinsOnlyTheOwnedSession() throws Exception {
+        String ownerToken = token(OWNER, "owner-history@example.com");
+        String otherToken = token(OTHER, "other-history@example.com");
+
+        mockMvc.perform(patch("/api/v1/chat/sessions/history-api-owned")
+                .header("Authorization", "Bearer " + ownerToken)
+                .contentType("application/json")
+                .content("{\"title\":\"新的标题\",\"pinned\":true}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.title").value("新的标题"))
+            .andExpect(jsonPath("$.pinned").value(true));
+
+        mockMvc.perform(get("/api/v1/chat/sessions").header("Authorization", "Bearer " + ownerToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].id").value("history-api-owned"))
+            .andExpect(jsonPath("$[0].pinned").value(true));
+
+        mockMvc.perform(patch("/api/v1/chat/sessions/history-api-owned")
+                .header("Authorization", "Bearer " + otherToken)
+                .contentType("application/json")
+                .content("{\"pinned\":false}"))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.code").value("CHAT_SESSION_NOT_FOUND"));
+    }
+
+    @Test
     void returnsOnlyTheLatestTwoHundredMessagesInChronologicalOrder() throws Exception {
         for (int index = 1; index <= 205; index++) {
             jdbc.update(
@@ -141,6 +170,89 @@ class ChatHistoryApiIntegrationTest {
             Integer.class,
             "history-api-foreign"
         )).isZero();
+    }
+
+    @Test
+    void persistsOriginalRequestAndReasoningAndReplacesOnlyTheSelectedRoundAndLaterMessages() throws Exception {
+        String session = "history-api-owned";
+        chats.saveExchange(OWNER, session, null, "earlier question", "earlier answer", List.of());
+        ChatAttachment file = new ChatAttachment("stack.c", "file", "text/plain", "int top = -1;");
+        ChatCommand original = new ChatCommand("retry question", null, session, List.of(), true, "max", List.of(file));
+        chats.saveExchange(OWNER, original, "old answer", List.of(), "old reasoning");
+        chats.saveExchange(OWNER, session, null, "later question", "later answer", List.of());
+        long message = questionId("retry question");
+
+        ChatRetry retry = chats.prepareRetry(OWNER, session, message, 12).orElseThrow();
+        assertRetryCommand(original, retry.command());
+        assertThat(retry.history()).extracting(ChatTurn::content)
+            .containsExactly("什么是入栈？", "earlier question", "earlier answer");
+        assertThat(chats.prepareRetry(OTHER, session, message, 12)).isEmpty();
+        assertThat(chats.prepareRetry(OWNER, session, message + 1, 12)).isEmpty();
+
+        mockMvc.perform(get("/api/v1/chat/sessions/" + session)
+                .header("Authorization", "Bearer " + token(OWNER, "owner-history@example.com")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.messages[3].attachments[0].name").value("stack.c"))
+            .andExpect(jsonPath("$.messages[3].thinkingEnabled").value(true))
+            .andExpect(jsonPath("$.messages[3].reasoningEffort").value("max"))
+            .andExpect(jsonPath("$.messages[4].reasoning").value("old reasoning"));
+
+        chats.replaceExchange(OWNER, retry, "new answer", List.of(), "new reasoning");
+        assertThat(contents()).containsExactly("什么是入栈？", "earlier question", "earlier answer", "retry question", "new answer");
+        assertRetryCommand(original, chats.prepareRetry(OWNER, session, questionId("retry question"), 12).orElseThrow().command());
+        assertThat(jdbc.queryForObject("SELECT reasoning_content FROM chat_messages WHERE session_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1",
+            String.class, session)).isEqualTo("new reasoning");
+    }
+
+    @Test
+    void concurrentAppendAndForeignReplacementPreserveTheExistingConversation() {
+        chats.saveExchange(OWNER, "history-api-owned", null, "retry question", "old answer", List.of());
+        ChatRetry retry = chats.prepareRetry(OWNER, "history-api-owned", questionId("retry question"), 12).orElseThrow();
+        assertThatThrownBy(() -> chats.replaceExchange(OTHER, retry, "foreign answer", List.of(), null))
+            .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.code()).isEqualTo("CHAT_SESSION_NOT_FOUND"));
+        chats.saveExchange(OWNER, "history-api-owned", null, "concurrent question", "concurrent answer", List.of());
+        List<String> before = contents();
+        assertThatThrownBy(() -> chats.replaceExchange(OWNER, retry, "new answer", List.of(), null))
+            .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.code()).isEqualTo("CHAT_RETRY_CONFLICT"));
+        assertThat(contents()).isEqualTo(before);
+    }
+
+    @Test
+    void failedReplacementInsertRollsBackTheDeletionAndPartialInsert() {
+        chats.saveExchange(OWNER, "history-api-owned", null, "retry question", "old answer", List.of());
+        ChatRetry retry = chats.prepareRetry(OWNER, "history-api-owned", questionId("retry question"), 12).orElseThrow();
+        List<String> before = contents();
+        assertThatThrownBy(() -> chats.replaceExchange(OWNER, retry, null, List.of(), null))
+            .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThat(contents()).isEqualTo(before);
+    }
+
+    private void assertRetryCommand(ChatCommand expected, ChatCommand actual) {
+        assertThat(actual.prompt()).isEqualTo(expected.prompt());
+        assertThat(actual.chapterId()).isEqualTo(expected.chapterId());
+        assertThat(actual.sessionId()).isEqualTo(expected.sessionId());
+        assertThat(actual.thinkingEnabled()).isEqualTo(expected.thinkingEnabled());
+        assertThat(actual.reasoningEffort()).isEqualTo(expected.reasoningEffort());
+        assertThat(actual.attachments()).hasSize(1);
+        ChatAttachment expectedAttachment = expected.attachments().get(0);
+        ChatAttachment actualAttachment = actual.attachments().get(0);
+        assertThat(actualAttachment.name()).isEqualTo(expectedAttachment.name());
+        assertThat(actualAttachment.type()).isEqualTo(expectedAttachment.type());
+        assertThat(actualAttachment.mimeType()).isEqualTo(expectedAttachment.mimeType());
+        assertThat(actualAttachment.content()).isEqualTo(expectedAttachment.content());
+        assertThat(actualAttachment.encoding()).isEqualTo(expectedAttachment.encoding());
+        assertThat(actualAttachment.byteSize()).isEqualTo((long) expectedAttachment.content().getBytes(StandardCharsets.UTF_8).length);
+        assertThat(actualAttachment.attachmentId()).isNotBlank();
+        assertThat(actualAttachment.downloadUrl()).isEqualTo("/api/v1/chat/attachments/" + actualAttachment.attachmentId());
+    }
+
+    private long questionId(String content) {
+        return jdbc.queryForObject("SELECT id FROM chat_messages WHERE session_id = 'history-api-owned' AND role = 'user' AND content = ?",
+            Long.class, content);
+    }
+
+    private List<String> contents() {
+        return jdbc.queryForList("SELECT content FROM chat_messages WHERE session_id = 'history-api-owned' ORDER BY id", String.class);
     }
 
     private String token(long userId, String email) {

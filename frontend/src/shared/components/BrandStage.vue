@@ -16,13 +16,14 @@ import { useI18n } from "../i18n/locale";
 const props = withDefaults(defineProps<{
   /** Wide pages (a lesson beside its courseware, the lab grid) fill the stage instead of centring in it. */
   wide?: boolean;
-}>(), { wide: false });
+  fixed?: boolean;
+}>(), { wide: false, fixed: false });
 
 const { t } = useI18n();
 </script>
 
 <template>
-  <div class="stage" :class="{ 'stage--wide': props.wide }">
+  <div class="stage" :class="{ 'stage--wide': props.wide, 'stage--fixed': props.fixed }">
     <div class="stage__brand">
       <RouterLink class="stage__brand-link" to="/" :aria-label="t('common.brand')">
         <span class="stage__mark" aria-hidden="true">S</span>
@@ -37,6 +38,7 @@ const { t } = useI18n();
 <style scoped>
 /* The exact recipe of the sign-in screen: page background, 58px grid, ink from the theme tokens. */
 .stage {
+  --workbench-width: 1320px;
   position: relative;
   display: grid;
   width: 100%;
@@ -98,6 +100,19 @@ const { t } = useI18n();
 
 .stage--wide .stage__body { align-content: stretch; justify-items: stretch; }
 
+.stage--fixed { height: 100dvh; min-height: 0; overflow: hidden; }
+.stage--fixed .stage__body { min-height: 0; margin-block: 0; align-content: stretch; }
+
+.stage :deep(.workbench-title) {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 46px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.06;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .stage__brand-link:hover .stage__mark { transform: translateY(-1px); }
 }
@@ -105,6 +120,7 @@ const { t } = useI18n();
 @media (min-width: 640px) { .stage__brand { left: 50%; transform: translateX(-50%); } }
 
 @media (max-width: 520px) {
+  .stage :deep(.workbench-title) { font-size: 30px; }
   .stage { padding: 76px 14px 22px; }
   .stage__brand { top: 18px; left: 18px; }
   .stage__theme { top: 18px; right: 16px; }

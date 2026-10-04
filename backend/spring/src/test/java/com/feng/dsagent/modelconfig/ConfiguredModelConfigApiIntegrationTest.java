@@ -270,6 +270,34 @@ class ConfiguredModelConfigApiIntegrationTest {
     }
 
     @Test
+    void acceptsTheExpandedThinkingBudgetAndRejectsLargerConfigurationValues() throws Exception {
+        long adminId = seedUser("model-config-thinking-budget@example.com", "ACTIVE", "STUDENT", "ADMIN");
+        String token = bearer(adminId, "STUDENT", "ADMIN");
+        String credentialInput = UUID.randomUUID().toString();
+        String configuration = """
+            {"provider":"deepseek","baseUrl":"https://1.1.1.1/v1","model":"deepseek-flash","apiKey":"%s",
+             "maxOutputTokens":%d,"dailyTokenQuota":1000000,"enabled":true}
+            """;
+
+        mockMvc.perform(put("/api/v1/admin/model-config")
+                .header("Authorization", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(configuration.formatted(credentialInput, 65_536)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.maxOutputTokens").value(65_536))
+            .andExpect(content().string(not(containsString(credentialInput))));
+
+        mockMvc.perform(put("/api/v1/admin/model-config")
+                .header("Authorization", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(configuration.formatted(credentialInput, 65_537)))
+            .andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/v1/admin/model-config").header("Authorization", token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.configuration.maxOutputTokens").value(65_536));
+    }
+
+    @Test
     void administratorCanPersistRuntimeControlsConnectionEvidenceAndAuditableWritesWithoutLeakingTheKey() throws Exception {
         long adminId = seedUser("model-config-controls@example.com", "ACTIVE", "STUDENT", "TEACHER", "ADMIN");
         String credentialInput = UUID.randomUUID().toString();
