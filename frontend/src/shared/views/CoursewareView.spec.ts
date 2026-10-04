@@ -7,24 +7,32 @@ enableAutoUnmount(afterEach);
 const listPresentationDecks = vi.fn();
 const listDeckSlides = vi.fn();
 const navigation = vi.hoisted(() => ({ push: vi.fn() }));
+const catalogSession = vi.hoisted(() => ({ identity: 0 }));
 
 vi.mock("vue-router", () => ({
   useRouter: () => ({ push: navigation.push }),
 }));
 
-vi.mock("../../user/runtime", () => ({
-  userApi: {
+vi.mock("../../user/runtime", async () => {
+  const { createCoursewareCatalog } = await import("../courseware/courseware-catalog");
+  return { coursewareCatalog: createCoursewareCatalog({
     listPresentationDecks: (...args: unknown[]) => listPresentationDecks(...args),
     listDeckSlides: (...args: unknown[]) => listDeckSlides(...args),
-  },
-}));
+  }, () => catalogSession.identity) };
+});
 
 beforeEach(() => {
+  catalogSession.identity += 1;
   localStorage.clear();
   navigation.push.mockReset();
   listPresentationDecks.mockReset();
   listDeckSlides.mockReset();
   listDeckSlides.mockResolvedValue([slide("a", 1), slide("b", 2)]);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 function deck(deckId: string, chapter: string, title: string) {
@@ -63,6 +71,56 @@ async function mountView(availableDecks = [deck("ch03-deck01", "03", "第三章-
 }
 
 describe("courseware browser", () => {
+  it("reuses an opened deck and metadata after leaving and returning", async () => {
+    const first = await mountView();
+    await first.get('[data-deck-id="ch03-deck02"]').trigger("click");
+    await flushPromises();
+    await first.get('[data-deck-id="ch03-deck01"]').trigger("click");
+    await flushPromises();
+    expect(listDeckSlides).toHaveBeenCalledTimes(2);
+    first.unmount();
+    const second = await mountView();
+    expect(listPresentationDecks).toHaveBeenCalledTimes(1);
+    expect(listDeckSlides).toHaveBeenCalledTimes(2);
+    expect(second.get(".courseware__image").attributes("src")).toBe("/api/v1/presentation/slides/a/image");
+  });
+
+  it("deduplicates clicks on a deck while its request is pending", async () => {
+    let resolve!: (slides: ReturnType<typeof slide>[]) => void;
+    listDeckSlides.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    const wrapper = await mountView();
+    await wrapper.get('[data-deck-id="ch03-deck01"]').trigger("click");
+    expect(listDeckSlides).toHaveBeenCalledTimes(1);
+    resolve([slide("latest", 1)]);
+    await flushPromises();
+    expect(wrapper.get(".courseware__image").attributes("src")).toBe("/api/v1/presentation/slides/latest/image");
+  });
+
+  it("loads the visible image first and cancels pending warming when leaving", async () => {
+    const requested: string[] = [];
+    vi.stubGlobal("Image", class { set src(value: string) { requested.push(value); } });
+    const wrapper = await mountView();
+    vi.useFakeTimers();
+    const image = wrapper.get(".courseware__image");
+    expect(image.attributes("fetchpriority")).toBe("high");
+    expect(requested).toEqual([]);
+    await image.trigger("load");
+    expect(requested).toEqual([]);
+    wrapper.unmount();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(requested).toEqual([]);
+  });
+
+  it("does not start a slide request when the directory arrives after leaving", async () => {
+    let resolve!: (decks: ReturnType<typeof deck>[]) => void;
+    listPresentationDecks.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    const wrapper = mount(CoursewareView, { global: { stubs: { RouterLink: RouterLinkStub } } });
+    wrapper.unmount();
+    resolve([deck("ch03-deck01", "03", "第三章-限定性线性表-01")]);
+    await flushPromises();
+    expect(listDeckSlides).not.toHaveBeenCalled();
+  });
+
   it("groups normalized deck names beneath an initially expanded chapter", async () => {
     const wrapper = await mountView();
 
@@ -222,7 +280,7 @@ describe("courseware browser", () => {
     const wrapper = await mountView();
 
     expect(wrapper.text()).toContain("boom");
-    expect(wrapper.find("img").exists()).toBe(false);
+    expect(wrapper.find(".courseware__image").exists()).toBe(false);
   });
 
   it("pages with keyboard arrows using the same boundaries as the buttons", async () => {

@@ -1,5 +1,6 @@
 import type { ClassroomLesson } from "../user/api";
 import type { LessonCourseware, PresentationSlide } from "../shared/types/contracts";
+import { BRAND_NAME } from "../shared/brand";
 import demoSlide01 from "../assets/structify-demo/slide-01.png";
 import demoSlide02 from "../assets/structify-demo/slide-02.png";
 import demoSlide03 from "../assets/structify-demo/slide-03.png";
@@ -11,7 +12,7 @@ export const LOCAL_DEMO_LESSON_ID = "local-demo";
 export const localDemoLesson: ClassroomLesson = {
   id: LOCAL_DEMO_LESSON_ID,
   chapterId: "local-demo",
-  title: "Structify 本地演示课件",
+  title: `${BRAND_NAME} 本地演示课件`,
   source: "local-demo/structify-classroom-demo.pptx",
   pages: "1-4",
 };
@@ -21,7 +22,7 @@ const demoImages = [demoSlide01, demoSlide02, demoSlide03, demoSlide04];
 const demoSlide = (number: number, title: string, section: string): PresentationSlide => ({
   id: `local-demo-slide-${String(number).padStart(2, "0")}`,
   deckId: "local-demo",
-  deckTitle: "Structify 本地演示课件",
+  deckTitle: `${BRAND_NAME} 本地演示课件`,
   slideNumber: number,
   chapter: "local-demo",
   title,
@@ -43,7 +44,7 @@ const demoSlide = (number: number, title: string, section: string): Presentation
 export const localDemoCourseware: LessonCourseware = {
   lessonId: LOCAL_DEMO_LESSON_ID,
   coursewareKey: "local-demo",
-  title: "Structify 本地演示课件",
+  title: `${BRAND_NAME} 本地演示课件`,
   source: localDemoLesson.source,
   ready: true,
   builtAt: "local-development",

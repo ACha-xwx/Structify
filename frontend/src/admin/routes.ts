@@ -1,12 +1,12 @@
 import type { RouteRecordRaw } from "vue-router";
-import AdminHomeView from "./views/AdminHomeView.vue";
-import AdminUsersView from "./views/AdminUsersView.vue";
-import AdminReviewsView from "./views/AdminReviewsView.vue";
-import AdminTasksView from "./views/AdminTasksView.vue";
-import AdminAuditView from "./views/AdminAuditView.vue";
-import AdminSettingsView from "./views/AdminSettingsView.vue";
-import AdminMailConfigView from "./views/AdminMailConfigView.vue";
-import AdminSandboxConfigView from "./views/AdminSandboxConfigView.vue";
+const AdminHomeView = () => import("./views/AdminHomeView.vue");
+const AdminUsersView = () => import("./views/AdminUsersView.vue");
+const AdminReviewsView = () => import("./views/AdminReviewsView.vue");
+const AdminTasksView = () => import("./views/AdminTasksView.vue");
+const AdminAuditView = () => import("./views/AdminAuditView.vue");
+const AdminSettingsView = () => import("./views/AdminSettingsView.vue");
+const AdminMailConfigView = () => import("./views/AdminMailConfigView.vue");
+const AdminSandboxConfigView = () => import("./views/AdminSandboxConfigView.vue");
 
 const adminMeta = { requiresAuth: true, roles: ["ADMIN"], layout: "admin" } as const;
 

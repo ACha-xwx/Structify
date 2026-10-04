@@ -525,7 +525,7 @@ defineExpose({ getView: () => view });
 </script>
 
 <template>
-  <div class="c-editor">
+  <div class="c-editor code-palette">
     <div ref="host" class="c-editor__host" @contextmenu="contextMenu" @keydown.capture="contextKey"
       @pointerdown="pointerDown" @pointermove="pointerMove" @pointerup="clearHold" @pointercancel="clearHold" @pointerleave="clearHold"></div>
     <p v-if="operationError" class="c-editor__error" role="alert">{{ operationError }}</p>
@@ -553,15 +553,7 @@ defineExpose({ getView: () => view });
 .c-editor {
   --font-mono: "JetBrains Mono", "Cascadia Code", "SFMono-Regular", Consolas, "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", "Noto Sans SC", monospace;
   --code-bg: color-mix(in srgb, var(--surface) 94%, var(--bg));
-  --code-keyword: #db1e67; --code-type: #7835d1; --code-function: #bf5200;
-  --code-string: #008746; --code-number: #0875c6; --code-variable: #2355ad;
-  --code-operator: #ca2436; --code-punctuation: #927000; --code-comment: #65766b;
   display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: hidden;
-}
-:global([data-theme="dark"]) .c-editor {
-  --code-keyword: #ff5786; --code-type: #be98ff; --code-function: #ffad45;
-  --code-string: #85e34c; --code-number: #64b9ff; --code-variable: #73dedb;
-  --code-operator: #ff6d61; --code-punctuation: #ffe05c; --code-comment: #9ca98e;
 }
 :global([data-theme="dark"]) .c-editor :deep(.c-search__label img) { filter: invert(1); }
 .c-editor__host { flex: 1; min-width: 0; min-height: 0; overflow: hidden; }

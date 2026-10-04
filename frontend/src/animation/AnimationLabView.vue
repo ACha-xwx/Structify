@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import AnimationPlayer from "./AnimationPlayer.vue";
 import catalog from "./capability-catalog.json";
 import BrandStage from "../shared/components/BrandStage.vue";
+import AiTitle from "../shared/components/AiTitle.vue";
 import RuntimeSelect from "../shared/components/RuntimeSelect.vue";
 import LiquidMetalButton from "../admin/components/LiquidMetalButton.vue";
 import homeIcon from "../assets/classroom/home.svg";
@@ -264,7 +265,7 @@ onMounted(() => void loadChapters());
   <BrandStage wide>
     <div class="lab">
       <header class="lab__head">
-        <h1 class="lab__title workbench-title">{{ t("lab.title") }}</h1>
+        <AiTitle><h1 class="lab__title workbench-title">{{ t("lab.title") }}</h1></AiTitle>
       </header>
 
       <div class="lab__grid" :class="{ 'lab__grid--english': isEnglish }">
@@ -348,7 +349,7 @@ onMounted(() => void loadChapters());
         <section class="panel panel--stage" :aria-label="t('lab.playerTitle')">
           <div class="panel__actions">
             <p v-if="!playerDefinition" class="panel__placeholder">{{ t("lab.placeholder") }}</p>
-            <button class="lab__home" type="button" :aria-label="t('common.backHome')" :title="t('common.backHome')" @click="router.push('/')">
+            <button class="lab__home" type="button" :aria-label="t('common.backHome')" :title="t('common.backHome')" @click="router.push('/begin')">
               <img class="lab__home-icon" :src="homeIcon" alt="" aria-hidden="true">
             </button>
           </div>

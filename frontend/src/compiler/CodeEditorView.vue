@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { FileCode, FilePlus, RotateCcw } from "@lucide/vue";
 import BrandStage from "../shared/components/BrandStage.vue";
+import AiTitle from "../shared/components/AiTitle.vue";
 import LiquidMetalButton from "../admin/components/LiquidMetalButton.vue";
 import homeIcon from "../assets/classroom/home.svg";
 import downloadIcon from "../assets/compiler/download.svg";
@@ -10,6 +11,7 @@ import { userApi } from "../user/runtime";
 import type { CodeRunResponse, TextbookCodeChapter } from "../shared/types/contracts";
 import { runCodeWithBusyRetry } from "../shared/compiler/run-with-retry";
 import { createInteractiveConsole } from "../shared/compiler/interactive-console";
+import { takeChatCode } from "../shared/compiler/chat-code-import";
 import { ApiClientError } from "../shared/api";
 import { compilerTemplates, type CompilerTemplate } from "./templates";
 import CodeLibraryMenu from "./CodeLibraryMenu.vue";
@@ -34,6 +36,7 @@ const MAX_CODE_LENGTH = 20000;
 const { t, locale } = useI18n();
 const entries = ref<LibraryEntry[]>([]);
 const loading = ref(true);
+const openedFromChat = ref(false);
 const loadError = ref("");
 const search = ref("");
 const selectedId = ref("");
@@ -377,17 +380,26 @@ async function load() {
   }
 }
 
-onMounted(load);
+onMounted(() => {
+  const source = takeChatCode();
+  if (source !== undefined) {
+    openedFromChat.value = true;
+    newBlank();
+    importedName.value = "chat.c";
+    code.value = source;
+  }
+  void load();
+});
 </script>
 
 <template>
   <BrandStage wide fixed>
     <section class="library" aria-labelledby="library-title">
-      <h1 id="library-title" class="workbench-title">{{ t("compiler.title") }}</h1>
+      <AiTitle><h1 id="library-title" class="workbench-title">{{ t("compiler.title") }}</h1></AiTitle>
 
       <div class="library__panel">
-        <p v-if="loading" class="library__hint">{{ t("common.loading") }}</p>
-        <div v-else-if="loadError" class="library__failed">
+        <p v-if="loading && !openedFromChat" class="library__hint">{{ t("common.loading") }}</p>
+        <div v-else-if="loadError && !openedFromChat" class="library__failed">
           <p class="library__hint library__hint--error" role="alert">{{ loadError }}</p>
           <button class="library__retry" type="button" @click="load">{{ t("common.reload") }}</button>
         </div>
@@ -403,7 +415,12 @@ onMounted(load);
               :placeholder="t('compiler.search')"
             >
             <div class="library__catalog">
-              <p v-if="!visibleCount" class="library__hint">{{ t("compiler.noMatch") }}</p>
+              <p v-if="loading" class="library__hint">{{ t("common.loading") }}</p>
+              <div v-else-if="loadError" class="library__failed">
+                <p class="library__hint library__hint--error" role="alert">{{ loadError }}</p>
+                <button class="library__retry" type="button" @click="load">{{ t("common.reload") }}</button>
+              </div>
+              <p v-else-if="!visibleCount" class="library__hint">{{ t("compiler.noMatch") }}</p>
               <section v-for="group in groups" :key="group.key" class="library__group" :data-library-group="group.key" :aria-label="group.label">
                 <h2 class="library__group-label">{{ group.label }}</h2>
                 <CodeLibraryMenu
@@ -438,7 +455,7 @@ onMounted(load);
                 <button class="library__new library__glass library__glass--icon" type="button" :aria-label="t('compiler.newFile')" :title="t('compiler.newFile')" @click="newBlank">
                   <FilePlus :size="20" aria-hidden="true" />
                 </button>
-                <RouterLink class="library__home library__glass library__glass--icon" to="/" :aria-label="t('common.backHome')" :title="t('common.backHome')">
+                <RouterLink class="library__home library__glass library__glass--icon" to="/begin" :aria-label="t('common.backHome')" :title="t('common.backHome')">
                   <img :src="homeIcon" alt="" aria-hidden="true">
                 </RouterLink>
               </header>

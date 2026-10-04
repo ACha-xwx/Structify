@@ -18,37 +18,74 @@ const { t } = useI18n();
 const manualOpen = ref<boolean | null>(null);
 const thinkingOpen = ref<boolean | null>(null);
 const sourcesOpen = ref(false);
-const displayReasoning = computed(() => props.reasoning.replace(/\r\n?/g, "\n").replace(/\n(?:[ \t]*\n)+/g, "\n"));
-const shown = ref(props.working ? "" : displayReasoning.value);
+const displayReasoning = ref("");
+const shown = ref("");
 const viewport = ref<HTMLElement | null>(null);
-const catchingUp = computed(() => shown.value.length < displayReasoning.value.length);
+const catchingUp = ref(false);
 const expanded = computed(() => manualOpen.value ?? (props.working || catchingUp.value));
 const thinkingExpanded = computed(() => thinkingOpen.value ?? (props.reasoningActive || catchingUp.value));
 let timer: ReturnType<typeof setInterval> | undefined;
-let target: string[] = Array.from(displayReasoning.value);
-let position = props.working ? 0 : target.length;
+let previousRaw = "";
+let position = 0;
+const LIVE_WINDOW = 12000;
+const REVEAL_INTERVAL = 16;
+const MAX_REVEAL_PER_TICK = 96;
+const renderedReasoning = computed(() => !props.working && manualOpen.value === true && thinkingOpen.value === true
+  ? displayReasoning.value : shown.value);
+
+function normalize(text: string) {
+  return text.replace(/\r\n?/g, "\n").replace(/\n(?:[ \t]*\n)+/g, "\n");
+}
+
+function reveal() {
+  const target = displayReasoning.value;
+  if (!props.working) {
+    position = target.length;
+  } else {
+    // Follow fast reasoning streams with a proportional reveal rate. Small deltas still appear one
+    // character at a time, while a growing backlog drains smoothly instead of jumping to the end.
+    const backlog = Math.max(0, target.length - position);
+    const codePoints = Math.min(MAX_REVEAL_PER_TICK, Math.max(1, Math.ceil(backlog / 6)));
+    let next = position;
+    for (let index = 0; index < codePoints && next < target.length; index++) {
+      next += (target.codePointAt(next) ?? 0) > 0xffff ? 2 : 1;
+    }
+    position = next;
+  }
+  let start = Math.max(0, position - LIVE_WINDOW);
+  if (start && /[\uDC00-\uDFFF]/.test(target[start])) start++;
+  shown.value = target.slice(start, position);
+  catchingUp.value = position < target.length;
+  if (!catchingUp.value) clearTimer();
+  void nextTick(() => {
+    if (viewport.value && props.reasoningActive) viewport.value.scrollTop = viewport.value.scrollHeight;
+    emit("resize");
+  });
+}
 
 function clearTimer() {
   if (timer !== undefined) clearInterval(timer);
   timer = undefined;
 }
 
-watch(displayReasoning, (text) => {
-  target = Array.from(text);
-  if (!text.startsWith(shown.value)) {
+watch([() => props.reasoning, () => props.working], ([text]) => {
+  if (text.startsWith(previousRaw)) {
+    let delta = text.slice(previousRaw.length);
+    if (previousRaw.endsWith("\r") && delta.startsWith("\n")) delta = delta.slice(1);
+    // Re-normalize only the unfinished last line so blank lines split over deltas still collapse.
+    const lastLine = displayReasoning.value.lastIndexOf("\n");
+    const start = lastLine < 0 ? displayReasoning.value.length : lastLine;
+    displayReasoning.value = displayReasoning.value.slice(0, start) + normalize(displayReasoning.value.slice(start) + delta);
+  } else {
+    displayReasoning.value = normalize(text);
     position = 0;
     shown.value = "";
   }
+  previousRaw = text;
+  catchingUp.value = position < displayReasoning.value.length;
+  if (!props.working) { reveal(); return; }
   if (!catchingUp.value || timer !== undefined) return;
-  timer = setInterval(async () => {
-    // Keep live deltas readable without accumulating minutes of delay on a long thought.
-    position = Math.min(target.length, position + Math.max(1, Math.ceil((target.length - position) / 70)));
-    shown.value = target.slice(0, position).join("");
-    await nextTick();
-    if (viewport.value && props.reasoningActive) viewport.value.scrollTop = viewport.value.scrollHeight;
-    emit("resize");
-    if (position >= target.length) clearTimer();
-  }, 18);
+  timer = setInterval(reveal, REVEAL_INTERVAL);
 }, { immediate: true });
 
 onBeforeUnmount(clearTimer);
@@ -90,7 +127,7 @@ onBeforeUnmount(clearTimer);
             <div class="reasoning__channel" :class="{ 'reasoning__channel--open': thinkingExpanded }" :inert="!thinkingExpanded || undefined">
               <div class="reasoning__clip">
                 <div ref="viewport" class="reasoning__text" :class="{ 'reasoning__text--live': reasoningActive }">
-                  {{ shown }}<span v-if="reasoningActive || catchingUp" class="reasoning__cursor" aria-hidden="true" />
+                  {{ renderedReasoning }}<span v-if="reasoningActive || catchingUp" class="reasoning__cursor" aria-hidden="true" />
                 </div>
               </div>
             </div>

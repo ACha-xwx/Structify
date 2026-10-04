@@ -126,6 +126,29 @@ afterEach(() => {
 });
 
 describe("ChatView", () => {
+  it("shows one tracking title mascot and one non-tracking mascot above each assistant message", async () => {
+    listChatSessions.mockResolvedValue([{ id: "mascots", title: "两轮对话", updatedAt: "", messageCount: 4 }]);
+    getChatSession.mockResolvedValue({ ...savedSession("mascots"), messages: [
+      ...savedSession("mascots").messages,
+      { id: 13, role: "user", content: "第二个问题", sources: [], createdAt: "" },
+      { id: 14, role: "assistant", content: "第二个回答", sources: [], createdAt: "" },
+    ] });
+    const view = mountView();
+    await flushPromises();
+    await view.get(".session__open").trigger("click");
+    await flushPromises();
+    expect(view.get(".chat__head .ai-ball").attributes("data-follow-pointer")).toBe("true");
+    expect(view.findAll(".message--user .ai-ball")).toHaveLength(0);
+    const replies = view.findAll(".message--assistant");
+    expect(replies).toHaveLength(2);
+    for (const reply of replies) {
+      expect(reply.findAll(".ai-ball")).toHaveLength(1);
+      expect(reply.get(".ai-ball").attributes("data-follow-pointer")).toBe("false");
+      expect(reply.get(".ai-ball").attributes("data-expressive")).toBe("true");
+      expect(reply.get(".message__content").element.firstElementChild).toBe(reply.get(".ai-ball").element);
+    }
+    view.unmount();
+  });
   describe("session navigation", () => {
     beforeEach(() => {
       listChatSessions.mockResolvedValue(["a", "b"].map((id) => ({
@@ -190,7 +213,10 @@ describe("ChatView", () => {
       const signal = getChatSession.mock.calls[0][1] as AbortSignal;
       await view.get(".sessions__head-actions .sidebar-icon").trigger("click");
       expect(view.get(".chat__grid").classes()).toContain("chat__grid--sidebar-collapsed");
-      expect(view.get(".sidebar-collapsed-new .chat-add-icon").attributes("style")).toContain(chatAddIcon);
+      const collapsedNewIcon = view.get(".sidebar-collapsed-new .chat-add-icon");
+      expect(collapsedNewIcon.attributes("style")).toContain(chatAddIcon);
+      expect(window.getComputedStyle(collapsedNewIcon.element).width).toBe("19px");
+      expect(window.getComputedStyle(collapsedNewIcon.element).height).toBe("19px");
       await view.get(".sidebar-collapsed-new").trigger("click");
       slow.resolve(savedSession("a"));
       await flushPromises();

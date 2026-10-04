@@ -1,4 +1,5 @@
 import type { Locale } from "./locale";
+import { BRAND_NAME } from "../brand";
 
 /**
  * The learner-facing copy, in both languages.
@@ -15,8 +16,10 @@ import type { Locale } from "./locale";
 export type MessageEntry = { zh: string; en: string };
 
 export const messages = {
+  "mascot.lookUp": { zh: "让 AI 小球抬头", en: "Make the AI mascot look up" },
+  "mascot.interact": { zh: "与 AI 小球互动", en: "Interact with the AI mascot" },
   /** Chrome shared by every learner surface. */
-  "common.brand": { zh: "返回 Structify", en: "Back to Structify" },
+  "common.brand": { zh: `返回 ${BRAND_NAME}`, en: `Back to ${BRAND_NAME}` },
   "common.backHome": { zh: "回到首页", en: "Back to home" },
   "common.backToClassroom": { zh: "返回课堂", en: "Back to classroom" },
   "common.signOut": { zh: "退出登录", en: "Sign out" },
@@ -32,7 +35,8 @@ export const messages = {
   "common.reload": { zh: "重新加载", en: "Reload" },
 
   /** The entry page. */
-  "home.title": { zh: "从哪开始？", en: "Where do you want to start?" },
+  "landing.start": { zh: "开始", en: "Start" },
+  "home.title": { zh: "让我们从哪里开始？", en: "Where shall we begin?" },
   "home.choices": { zh: "学习入口", en: "Learning entry" },
   "home.account": { zh: "账户操作", en: "Account" },
   "home.classroom": { zh: "课堂", en: "Classroom" },
@@ -148,11 +152,10 @@ export const messages = {
   "auth.title.verify": { zh: "验证账户", en: "Verify your account" },
   "auth.title.newPassword": { zh: "设置新密码", en: "Set a new password" },
   "auth.subtitle.loginAdmin": { zh: "使用管理员账户继续", en: "Continue with an administrator account" },
-  "auth.subtitle.login": { zh: "使用 Structify 账户继续", en: "Continue with your Structify account" },
+  "auth.subtitle.login": { zh: `使用 ${BRAND_NAME} 账户继续`, en: `Continue with your ${BRAND_NAME} account` },
   "auth.subtitle.register": { zh: "先输入你的邮箱地址", en: "Start with your email address" },
   "auth.subtitle.reset": { zh: "先验证你的邮箱地址", en: "Verify your email address first" },
   "auth.subtitle.password": { zh: "请输入账户密码", en: "Enter the account password" },
-  "auth.subtitle.verify": { zh: "验证码和新密码将由服务器安全校验", en: "The server verifies the code and the new password" },
   "auth.identity.login": { zh: "邮箱或用户名", en: "Email or username" },
   "auth.identity.email": { zh: "邮箱", en: "Email" },
   "auth.identity.placeholderLogin": { zh: "邮箱或用户名", en: "Email or username" },
@@ -162,6 +165,7 @@ export const messages = {
   "auth.code.placeholder": { zh: "输入验证码", en: "Enter the code" },
   "auth.code.send": { zh: "发送", en: "Send" },
   "auth.code.sending": { zh: "发送中", en: "Sending" },
+  "auth.code.sent": { zh: "已发送", en: "Sent" },
   "auth.password.label": { zh: "密码", en: "Password" },
   "auth.password.placeholder": { zh: "密码", en: "Password" },
   "auth.password.placeholderNew": { zh: "至少 8 位密码", en: "At least 8 characters" },
@@ -346,6 +350,8 @@ export const messages = {
   "chat.uploadPhoto": { zh: "上传照片", en: "Upload photo" },
   "chat.skill": { zh: "技能", en: "Skill" },
   "chat.copy": { zh: "复制", en: "Copy" },
+  "chat.downloadCode": { zh: "下载代码", en: "Download code" },
+  "chat.openInCompiler": { zh: "在 C 编译器里打开", en: "Open in C compiler" },
   "chat.copied": { zh: "已复制", en: "Copied" },
   "chat.copyFailed": { zh: "无法复制，请手动选择文本复制", en: "Unable to copy. Select the text and copy it manually." },
   "chat.retry": { zh: "重试", en: "Retry" },

@@ -1,22 +1,9 @@
 import { cppLanguage } from "@codemirror/lang-cpp";
-import { HighlightStyle } from "@codemirror/language";
 import type { Diagnostic } from "@codemirror/lint";
 import type { SyntaxNode } from "@lezer/common";
-import { tags } from "@lezer/highlight";
+export { codeColors } from "../shared/compiler/code-highlight";
 
 export type SyntaxMessage = "compiler.syntaxError" | "compiler.missingSemicolon" | "compiler.chineseSemicolon";
-
-export const codeColors = HighlightStyle.define([
-  { tag: [tags.keyword, tags.controlKeyword], color: "var(--code-keyword)" },
-  { tag: [tags.typeName, tags.className, tags.standard(tags.typeName)], color: "var(--code-type)" },
-  { tag: [tags.function(tags.variableName), tags.function(tags.definition(tags.variableName))], color: "var(--code-function)" },
-  { tag: [tags.string, tags.character, tags.special(tags.string)], color: "var(--code-string)" },
-  { tag: [tags.number, tags.bool, tags.null], color: "var(--code-number)" },
-  { tag: [tags.variableName, tags.propertyName], color: "var(--code-variable)" },
-  { tag: [tags.operator, tags.meta], color: "var(--code-operator)" },
-  { tag: [tags.bracket, tags.punctuation], color: "var(--code-punctuation)" },
-  { tag: tags.comment, color: "var(--code-comment)", fontStyle: "normal" },
-]);
 
 const terminatedStatements = new Set([
   "Declaration", "ExpressionStatement", "ReturnStatement", "BreakStatement", "ContinueStatement", "GotoStatement",

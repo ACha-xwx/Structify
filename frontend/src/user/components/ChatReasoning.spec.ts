@@ -5,6 +5,26 @@ import ChatReasoning from "./ChatReasoning.vue";
 afterEach(() => vi.useRealTimers());
 
 describe("ChatReasoning", () => {
+  it("keeps a long live thought responsive and catches up to its latest text promptly", async () => {
+    vi.useFakeTimers();
+    const view = mount(ChatReasoning, { props: {
+      reasoning: '', working: true, reasoningActive: true, retrieved: true, sources: [],
+    } });
+    const text = '推导当前步骤并检查边界。\n'.repeat(400) + '最新步骤🌳';
+    await view.setProps({ reasoning: text });
+    await vi.advanceTimersByTimeAsync(250);
+    expect(view.get('.reasoning__text').text().length).toBeGreaterThan(1000);
+    expect(view.get('.reasoning__text').text().length).toBeLessThan(16000);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(view.get('.reasoning__text').text().endsWith('最新步骤🌳')).toBe(true);
+    await view.setProps({ working: false, reasoningActive: false });
+    await vi.advanceTimersByTimeAsync(250);
+    expect(view.find('.reasoning__cursor').exists()).toBe(false);
+    await view.get('.reasoning__master').trigger('click');
+    await view.get('.reasoning__thought').trigger('click');
+    expect(view.get('.reasoning__text').text()).toBe(text);
+    view.unmount();
+  });
   it("types live reasoning with a cursor, then collapses when caught up", async () => {
     vi.useFakeTimers();
     const view = mount(ChatReasoning, { props: {
@@ -12,9 +32,9 @@ describe("ChatReasoning", () => {
     } });
     await view.setProps({ reasoning: '树🌳' });
     expect(view.find('.reasoning__cursor').exists()).toBe(true);
-    await vi.advanceTimersByTimeAsync(18);
+    await vi.advanceTimersByTimeAsync(16);
     expect(view.get('.reasoning__text').text()).toBe('树');
-    await vi.advanceTimersByTimeAsync(18);
+    await vi.advanceTimersByTimeAsync(16);
     expect(view.get('.reasoning__text').text()).toBe('树🌳');
     await view.setProps({ working: false, reasoningActive: false, reasoningSeconds: 1.2, seconds: 2 });
     await flushPromises();

@@ -16,6 +16,7 @@ describe("prefetchSlideImages", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -57,6 +58,47 @@ describe("prefetchSlideImages", () => {
     const { prefetchSlideImages } = await import("./prefetch-slides");
 
     expect(() => prefetchSlideImages(["/a.png"])).not.toThrow();
+  });
+
+  it("retries a failed prefetch and marks background images low priority", async () => {
+    const created: { fetchPriority: string; onerror: () => void }[] = [];
+    vi.stubGlobal("Image", class {
+      fetchPriority = "";
+      onerror = () => {};
+      set src(_value: string) { created.push(this); }
+    });
+    const { prefetchSlideImages } = await import("./prefetch-slides");
+    prefetchSlideImages(["/retry.webp"]);
+    expect(created[0].fetchPriority).toBe("low");
+    created[0].onerror();
+    prefetchSlideImages(["/retry.webp"]);
+    expect(created).toHaveLength(2);
+  });
+
+  it("delays neighbours until idle and supports cancelling an obsolete window", async () => {
+    let run!: IdleRequestCallback;
+    const requestIdleCallback = vi.fn((callback: IdleRequestCallback) => { run = callback; return 42; });
+    const cancelIdleCallback = vi.fn();
+    vi.stubGlobal("requestIdleCallback", requestIdleCallback);
+    vi.stubGlobal("cancelIdleCallback", cancelIdleCallback);
+    const { scheduleSlidePrefetch } = await import("./prefetch-slides");
+    const cancel = scheduleSlidePrefetch([{ imageUrl: "/current.webp" }, { imageUrl: "/next.webp" }], 0);
+    expect(requested).toEqual([]);
+    cancel();
+    expect(cancelIdleCallback).toHaveBeenCalledWith(42);
+    scheduleSlidePrefetch([{ imageUrl: "/current.webp" }, { imageUrl: "/next.webp" }], 0);
+    run({ didTimeout: false, timeRemaining: () => 20 });
+    expect(requested).toEqual(["/next.webp"]);
+  });
+
+  it("delays warming in browsers without idle callbacks", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("requestIdleCallback", undefined);
+    const { scheduleSlidePrefetch } = await import("./prefetch-slides");
+    scheduleSlidePrefetch([{ imageUrl: "/current.webp" }, { imageUrl: "/next.webp" }], 0);
+    expect(requested).toEqual([]);
+    await vi.advanceTimersByTimeAsync(120);
+    expect(requested).toEqual(["/next.webp"]);
   });
 });
 

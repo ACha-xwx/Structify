@@ -10,7 +10,7 @@ const { t } = useI18n();
     <section class="profile" aria-labelledby="profile-title">
       <h1 id="profile-title" class="workbench-title">{{ t("home.profile") }}</h1>
       <p class="profile__status">{{ t("profile.pending") }}</p>
-      <RouterLink class="profile__back" to="/">{{ t("common.backHome") }}</RouterLink>
+      <RouterLink class="profile__back" to="/begin">{{ t("common.backHome") }}</RouterLink>
     </section>
   </BrandStage>
 </template>

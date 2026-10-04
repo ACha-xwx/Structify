@@ -1,9 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RouterLinkStub, enableAutoUnmount, mount, type VueWrapper } from "@vue/test-utils";
+import { RouterLinkStub, enableAutoUnmount, flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { defineComponent, nextTick } from "vue";
 import CodeEditorView from "./CodeEditorView.vue";
 import CCodeEditor from "./CCodeEditor.vue";
 import { setLocale } from "../shared/i18n/locale";
+import { createRouter, createWebHistory, RouterView } from "vue-router";
+import ChatCodeBlock from "../user/components/ChatCodeBlock.vue";
+import { CHAT_CODE_STATE_KEY } from "../shared/compiler/chat-code-import";
+
+vi.mock("../user/chat-code", () => ({ highlightChatCode: vi.fn().mockResolvedValue("") }));
 
 enableAutoUnmount(afterEach);
 
@@ -61,6 +66,7 @@ function openStream() {
 }
 
 beforeEach(() => {
+  window.history.replaceState({}, "", "/");
   setLocale("zh-CN");
   runCode.mockReset();
   listCodeSamples.mockReset();
@@ -155,9 +161,17 @@ async function flush() {
   }
 }
 
-async function mountView() {
-  listCodeSamples.mockResolvedValue(samples());
-  getCodeLibrary.mockResolvedValue(library());
+async function mountView(options: { pendingLibrary?: boolean; failedLibrary?: boolean } = {}) {
+  if (options.pendingLibrary) {
+    listCodeSamples.mockReturnValue(new Promise(() => {}));
+    getCodeLibrary.mockReturnValue(new Promise(() => {}));
+  } else if (options.failedLibrary) {
+    listCodeSamples.mockRejectedValue(new Error('library unavailable'));
+    getCodeLibrary.mockRejectedValue(new Error('library unavailable'));
+  } else {
+    listCodeSamples.mockResolvedValue(samples());
+    getCodeLibrary.mockResolvedValue(library());
+  }
   const wrapper = mount(CodeEditorView, { global: { stubs: {
     RouterLink: RouterLinkStub,
     Teleport: true,
@@ -193,6 +207,76 @@ async function selectSample(wrapper: VueWrapper) {
 }
 
 describe("code library page", () => {
+  it("imports a Chat code block through real navigation without running or replaying it", async () => {
+    const code = '\t/* 中文🌳 */\r\nvoid fragment(Node *node) {\r\n\tnode->next = NULL;\r\n}\r\n';
+    listCodeSamples.mockResolvedValue(samples());
+    getCodeLibrary.mockResolvedValue(library());
+    const history = createWebHistory();
+    const router = createRouter({ history, routes: [
+      { path: '/', component: { template: '<div />' } },
+      { path: '/chat', name: 'chat', component: ChatCodeBlock, props: { code, language: 'c' } },
+      { path: '/compiler', name: 'compiler', component: CodeEditorView },
+    ] });
+    let view: VueWrapper | undefined;
+    try {
+      await router.push('/chat');
+      view = mount(RouterView, { global: { plugins: [router], stubs: {
+        Teleport: true,
+        CCodeEditor: defineComponent({ name: 'CCodeEditor', props: ['modelValue', 'documentKey'], template: '<div />' }),
+      } } });
+      await view.get('.code-block__share').trigger('click');
+      await flushPromises();
+      expect(router.currentRoute.value.path).toBe('/compiler');
+      expect(window.location.search).toBe('');
+      const position = window.history.state.position;
+      expect(editorCode(view)).toBe(code);
+      expect(view.get('.library__document-title').text()).toBe('chat.c');
+      expect(startCodeSession).not.toHaveBeenCalled();
+      expect(runCode).not.toHaveBeenCalled();
+      expect(window.history.state).toMatchObject({ current: '/compiler', position, [CHAT_CODE_STATE_KEY]: null });
+
+      // Saving the forward link must not restore the source from Router's cached state.
+      await router.push('/chat');
+      const returned = new Promise<void>((resolve) => {
+        const stop = router.afterEach((to) => { if (to.path === '/compiler') { stop(); resolve(); } });
+      });
+      router.back();
+      await returned;
+      await flushPromises();
+      expect(window.history.state[CHAT_CODE_STATE_KEY]).toBeNull();
+      expect(editorCode(view)).toBe('');
+    } finally {
+      view?.unmount();
+      history.destroy();
+    }
+  });
+
+  it("imports long fragments immediately while the code library is still loading", async () => {
+    const code = '/* comment without main */\n'.repeat(1000);
+    window.history.replaceState({ [CHAT_CODE_STATE_KEY]: code }, '');
+    const wrapper = await mountView({ pendingLibrary: true });
+    expect(editorCode(wrapper)).toBe(code);
+    expect(code.length).toBeGreaterThan(20000);
+    expect(startCodeSession).not.toHaveBeenCalled();
+    expect(runCode).not.toHaveBeenCalled();
+  });
+
+  it("keeps imported code editable when the code library fails and is retried", async () => {
+    const code = 'void partial(';
+    window.history.replaceState({ [CHAT_CODE_STATE_KEY]: code }, '');
+    const wrapper = await mountView({ failedLibrary: true });
+    expect(editorCode(wrapper)).toBe(code);
+    expect(wrapper.get('.library__list [role="alert"]').text()).toContain('library unavailable');
+    listCodeSamples.mockResolvedValue(samples());
+    getCodeLibrary.mockResolvedValue(library());
+    await wrapper.get('.library__retry').trigger('click');
+    await flushPromises();
+    expect(editorCode(wrapper)).toBe(code);
+    expect(wrapper.find('.library__failed').exists()).toBe(false);
+    expect(startCodeSession).not.toHaveBeenCalled();
+    expect(runCode).not.toHaveBeenCalled();
+  });
+
   it("offers three independent regions and a separate menu for each chapter", async () => {
     const wrapper = await mountView();
 

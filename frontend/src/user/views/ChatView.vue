@@ -3,6 +3,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Check, Copy, FileText, MoreHorizontal, Pencil, Pin, PinOff, RefreshCcw, Search, PanelLeftClose, PanelLeftOpen, X } from "@lucide/vue";
 import BrandStage from "../../shared/components/BrandStage.vue";
+import AiTitle from "../../shared/components/AiTitle.vue";
+import AiBall from "../../shared/components/AiBall.vue";
 import NoticeDialog from "../../shared/components/NoticeDialog.vue";
 import ConfirmDialog from "../../shared/components/ConfirmDialog.vue";
 import AnimationDialog from "../components/AnimationDialog.vue";
@@ -10,7 +12,9 @@ import LiquidMetalButton from "../../admin/components/LiquidMetalButton.vue";
 import ChatComposer from "../components/ChatComposer.vue";
 import ChatReasoning from "../components/ChatReasoning.vue";
 import ChatAnswer from "../components/ChatAnswer.vue";
+import SessionTitle from "../components/SessionTitle.vue";
 import homeIcon from "../../assets/classroom/home.svg";
+import brandIcon from "../../favicon.svg";
 import chatAddIcon from "../../assets/chat/chat-add.svg";
 import { attachmentPayload, type ComposerAttachment } from "../chat-attachments";
 import { useI18n } from "../../shared/i18n/locale";
@@ -246,13 +250,21 @@ function push(
 }
 
 function update(id: number, patch: Partial<ConversationMessage>) {
-  messages.value = messages.value.map((item) => (item.id === id ? { ...item, ...patch } : item));
+  const item = messages.value.find((message) => message.id === id);
+  if (item) Object.assign(item, patch);
 }
 
+let scrollFrame: number | undefined;
+let viewDisposed = false;
 async function scrollToLatest() {
   await nextTick();
-  const thread = threadRef.value;
-  if (thread) thread.scrollTop = thread.scrollHeight;
+  if (viewDisposed) return;
+  if (scrollFrame !== undefined) return;
+  scrollFrame = requestAnimationFrame(() => {
+    scrollFrame = undefined;
+    const thread = threadRef.value;
+    if (thread) thread.scrollTop = thread.scrollHeight;
+  });
 }
 
 function isTimeout(cause: unknown): boolean {
@@ -314,6 +326,22 @@ async function ask(request: QuestionRequest, history: ChatTurn[], questionId: nu
   let reasoningStarted: number | undefined;
   let reasoningEnded: number | undefined;
   let completed = false;
+  let streamPatch: Partial<ConversationMessage> = {};
+  let renderTimer: ReturnType<typeof setTimeout> | undefined;
+  let consumedAt = performance.now();
+  let eventsSinceYield = 0;
+  const flushStream = () => {
+    if (renderTimer !== undefined) clearTimeout(renderTimer);
+    renderTimer = undefined;
+    if (!Object.keys(streamPatch).length) return;
+    update(replyId, streamPatch);
+    streamPatch = {};
+    void scrollToLatest();
+  };
+  const queueStream = (patch: Partial<ConversationMessage>) => {
+    Object.assign(streamPatch, patch);
+    renderTimer ??= setTimeout(flushStream, 80);
+  };
   await scrollToLatest();
 
   try {
@@ -333,6 +361,13 @@ async function ask(request: QuestionRequest, history: ChatTurn[], questionId: nu
     let reasoning = "";
     let sources: ChatSource[] = [];
     for await (const event of events) {
+      // Buffered SSE batches must yield to browser input/paint as well as Vue microtasks.
+      eventsSinceYield++;
+      if (!request.localDemo && eventsSinceYield >= 16 && event.event !== "done" && event.event !== "error" && performance.now() - consumedAt > 8) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        consumedAt = performance.now();
+        eventsSinceYield = 0;
+      }
       // A stop has to land even when the next event is slow to arrive.
       if (signal.aborted) break;
       if (event.event === "pending") {
@@ -355,19 +390,18 @@ async function ask(request: QuestionRequest, history: ChatTurn[], questionId: nu
         const text = deltaOf(event);
         if (text) reasoningStarted ??= Date.now();
         reasoning += text;
-        update(replyId, { reasoning });
-        await scrollToLatest();
+        queueStream({ reasoning });
       }
       else if (event.event === "delta") {
         if (reasoningStarted !== undefined) reasoningEnded ??= Date.now();
         answer += deltaOf(event);
-        update(replyId, { content: answer, sources, reasoningSeconds: reasoningStarted === undefined ? undefined : ((reasoningEnded ?? Date.now()) - reasoningStarted) / 1000 });
-        await scrollToLatest();
+        queueStream({ content: answer, sources, reasoningSeconds: reasoningStarted === undefined ? undefined : ((reasoningEnded ?? Date.now()) - reasoningStarted) / 1000 });
       } else if (event.event === "done") {
         const done = doneOf(event) as ChatResponse | null;
         answer = done?.answer ?? answer;
         sources = done?.sources?.length ? done.sources : sources;
         reasoning = done?.reasoning ?? reasoning;
+        flushStream();
         update(replyId, { content: answer, sources, reasoning, state: "complete", persisted: done?.persisted,
           createdAt: new Date().toISOString(),
           retrieved: true, seconds: (Date.now() - started) / 1000,
@@ -385,6 +419,7 @@ async function ask(request: QuestionRequest, history: ChatTurn[], questionId: nu
         break;
       }
     }
+    flushStream();
     const reply = messages.value.find((item) => item.id === replyId);
     // A stream that was cut short reads as stopped even when it already had text: finishing it here
     // would present a half-answer as the whole one. One that closed with nothing at all - no done,
@@ -405,6 +440,7 @@ async function ask(request: QuestionRequest, history: ChatTurn[], questionId: nu
       raise(t("common.failed"), failureMessage(cause));
     }
   } finally {
+    flushStream();
     clearInterval(clock);
     phase.value = "idle";
     controller = null;
@@ -873,12 +909,14 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  viewDisposed = true;
   window.removeEventListener("keydown", handleKeydown);
   controller?.abort();
   cancelSessionLoad();
   sessionListRequest++;
   sessionCache.clear();
   if (copyTimer !== undefined) clearTimeout(copyTimer);
+  if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame);
 });
 </script>
 
@@ -886,13 +924,13 @@ onBeforeUnmount(() => {
   <BrandStage wide fixed>
     <div class="chat">
       <header class="chat__head">
-        <h1 class="chat__title">{{ t("chat.title") }}</h1>
+        <AiTitle><h1 class="chat__title">{{ t("chat.title") }}</h1></AiTitle>
         <div class="chat__head-actions">
           <!-- Phones reach the past conversations through this; on a desktop the sidebar is always there. -->
           <button class="chat__link chat__link--history" type="button" @click="sessionsOpen = true">
             {{ t("chat.sessions") }}
           </button>
-          <button class="chat__home" type="button" :title="t('common.backHome')" :aria-label="t('common.backHome')" @click="router.push('/')">
+          <button class="chat__home" type="button" :title="t('common.backHome')" :aria-label="t('common.backHome')" @click="router.push('/begin')">
             <img class="chat__home-icon" :src="homeIcon" alt="" aria-hidden="true" />
           </button>
         </div>
@@ -923,7 +961,7 @@ onBeforeUnmount(() => {
           ><span class="chat-add-icon" :style="chatAddIconStyle" aria-hidden="true" /></button>
           <header class="sessions__head">
             <div class="sessions__heading">
-              <span class="sessions__mark" aria-hidden="true">S</span>
+              <img class="sessions__mark" :src="brandIcon" width="28" height="28" alt="" aria-hidden="true" />
               <h2 class="sessions__title">{{ t("chat.sessions") }}</h2>
             </div>
             <div class="sessions__head-actions">
@@ -968,7 +1006,7 @@ onBeforeUnmount(() => {
                     <button class="session__save" type="button" :aria-label="t('chat.saveRename')" @click="saveRename(session)"><Check :size="16" aria-hidden="true" /></button>
                   </template>
                   <template v-else>
-                    <button class="session__open" type="button" :class="{ 'session__open--active': session.id === activeSessionId }" @click="openSession(session)">{{ session.title }}</button>
+                    <button class="session__open" type="button" :aria-label="session.title" :class="{ 'session__open--active': session.id === activeSessionId }" @click="openSession(session)"><SessionTitle :title="session.title" /></button>
                     <button class="session__more" type="button" :aria-label="t('chat.moreActions')" @click.stop="toggleSessionMenu(session.id)"><MoreHorizontal :size="18" aria-hidden="true" /></button>
                     <div v-if="sessionMenuId === session.id" class="session__menu">
                       <button type="button" @click="beginRename(session)"><Pencil :size="15" aria-hidden="true" />{{ t("chat.rename") }}</button>
@@ -988,7 +1026,7 @@ onBeforeUnmount(() => {
                     <button class="session__save" type="button" :aria-label="t('chat.saveRename')" @click="saveRename(session)"><Check :size="16" aria-hidden="true" /></button>
                   </template>
                   <template v-else>
-                    <button class="session__open" type="button" :class="{ 'session__open--active': session.id === activeSessionId }" @click="openSession(session)">{{ session.title }}</button>
+                    <button class="session__open" type="button" :aria-label="session.title" :class="{ 'session__open--active': session.id === activeSessionId }" @click="openSession(session)"><SessionTitle :title="session.title" /></button>
                     <button class="session__more" type="button" :aria-label="t('chat.moreActions')" @click.stop="toggleSessionMenu(session.id)"><MoreHorizontal :size="18" aria-hidden="true" /></button>
                     <div v-if="sessionMenuId === session.id" class="session__menu">
                       <button type="button" @click="beginRename(session)"><Pencil :size="15" aria-hidden="true" />{{ t("chat.rename") }}</button>
@@ -1056,6 +1094,7 @@ onBeforeUnmount(() => {
                 @cancel="cancelEdit"
               />
               <div v-else class="message__content" :class="{ 'message__bubble': message.role === 'user' }">
+                <AiBall v-if="message.role === 'assistant'" class="message__mascot" size="message" :follow-pointer="false" expressive />
                 <ChatReasoning
                   v-if="message.role === 'assistant' && (message.state === 'streaming' || message.retrieved || message.reasoning)"
                   :reasoning="message.reasoning ?? ''"
@@ -1067,7 +1106,7 @@ onBeforeUnmount(() => {
                   :reasoning-seconds="message.reasoningSeconds"
                   @resize="scrollToLatest"
                 />
-                <ChatAnswer v-if="message.role === 'assistant' && message.content" class="message__body message__body--answer" :text="message.content" />
+                <ChatAnswer v-if="message.role === 'assistant' && message.content" class="message__body message__body--answer" :text="message.content" :streaming="message.state === 'streaming'" />
                 <p v-else class="message__body">{{ message.content }}</p>
                 <p v-if="message.state === 'stopped'" class="message__note">{{ t("chat.stopped") }}</p>
               </div>
@@ -1246,7 +1285,7 @@ onBeforeUnmount(() => {
 .sessions__head { display: none; }
 .sessions__heading { display: flex; align-items: center; min-width: 0; gap: 10px; }
 .sessions__head-actions { display: flex; align-items: center; gap: 6px; }
-.sessions__mark { display: grid; width: 28px; height: 28px; flex: none; place-items: center; border: 1px solid color-mix(in srgb, var(--text) 14%, transparent); border-radius: 9px; background: color-mix(in srgb, var(--text) 7%, transparent); font-size: 14px; font-weight: 750; }
+.sessions__mark { display: block; width: 28px; height: 28px; flex: none; object-fit: contain; }
 .sessions__toolbar { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .sessions__new { --liquid-height: 54px; display: inline-flex; align-items: center; justify-content: center; min-width: 0; flex: 1 1 auto; padding: 0; }
 .sessions__new :deep(.liquid-metal-button__content-layer) { gap: 9px; font-size: 19px; font-weight: 500; }
@@ -1327,6 +1366,7 @@ onBeforeUnmount(() => {
 .sidebar-collapsed-toggle:hover, .sidebar-collapsed-new:hover:not(:disabled) { transform: translateY(-1px); }
 .sidebar-collapsed-toggle:focus-visible, .sidebar-collapsed-new:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .sidebar-collapsed-new:disabled { opacity: .42; cursor: default; }
+.sidebar-collapsed-new .chat-add-icon { width: 19px; height: 19px; }
 
 .thread { flex: 1 1 auto; min-height: 0; display: grid; gap: 16px; align-content: start; padding: 4px 8px 4px 2px; overflow-y: auto; }
 .thread--empty { place-content: center; }
@@ -1342,6 +1382,7 @@ onBeforeUnmount(() => {
   max-width: min(86%, 640px);
 }
 .message__content { display: grid; gap: 10px; min-width: 0; max-width: 100%; }
+.message__mascot { justify-self: start; margin-bottom: 2px; }
 .message__bubble {
   justify-self: end;
   padding: 12px 18px;

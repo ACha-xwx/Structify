@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import ThemeToggle from "../design/ThemeToggle.vue";
+import BrandName from "./BrandName.vue";
+import brandIcon from "../../favicon.svg";
 import { useI18n } from "../i18n/locale";
 
 /**
  * The one stage every signed-in surface stands on.
  *
- * Sign-in sets the visual language - blueprint grid paper, the S lockup, a theme switch in the corner -
+ * Sign-in sets the visual language - blueprint grid paper, the brand, a theme switch in the corner -
  * and the pages behind it used to each invent their own backdrop (a dark video for the classroom and the
  * courseware browser). This component owns that backdrop once, so a learner moving from sign-in to the
  * entry page to a lesson never sees the product change clothes on the way.
@@ -17,17 +19,18 @@ const props = withDefaults(defineProps<{
   /** Wide pages (a lesson beside its courseware, the lab grid) fill the stage instead of centring in it. */
   wide?: boolean;
   fixed?: boolean;
-}>(), { wide: false, fixed: false });
+  showBrand?: boolean;
+}>(), { wide: false, fixed: false, showBrand: true });
 
 const { t } = useI18n();
 </script>
 
 <template>
   <div class="stage" :class="{ 'stage--wide': props.wide, 'stage--fixed': props.fixed }">
-    <div class="stage__brand">
+    <div v-if="props.showBrand" class="stage__brand">
       <RouterLink class="stage__brand-link" to="/" :aria-label="t('common.brand')">
-        <span class="stage__mark" aria-hidden="true">S</span>
-        <span class="stage__name">Structify</span>
+        <img class="stage__mark" :src="brandIcon" width="32" height="32" alt="" aria-hidden="true" />
+        <BrandName class="stage__name" />
       </RouterLink>
     </div>
     <div class="stage__theme"><ThemeToggle /></div>
@@ -69,18 +72,11 @@ const { t } = useI18n();
 }
 
 .stage__mark {
-  display: grid;
+  display: block;
   width: 32px;
   height: 32px;
-  place-items: center;
-  border: 1px solid var(--text);
-  border-radius: 9px;
-  background: var(--text);
-  box-shadow: inset 1px 1px color-mix(in srgb, var(--surface) 18%, transparent), 0 5px 12px color-mix(in srgb, var(--text) 13%, transparent);
-  color: var(--surface);
-  font-family: var(--font-ui);
-  font-size: 18px;
-  font-weight: 700;
+  flex: none;
+  object-fit: contain;
 }
 
 .stage__name { font-variant-numeric: lining-nums; }

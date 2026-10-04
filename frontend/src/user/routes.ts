@@ -1,5 +1,5 @@
 import type { RouteRecordRaw } from "vue-router";
-import UserHomeView from "./views/UserHomeView.vue";
+const UserHomeView = () => import("./views/UserHomeView.vue");
 
 /**
  * The former learning surfaces are intentionally detached while Structify is

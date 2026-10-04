@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { prefetchSlideWindow } from "../shared/courseware/prefetch-slides";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { scheduleSlidePrefetch } from "../shared/courseware/prefetch-slides";
 import { useSlidePaging } from "../shared/courseware/use-slide-paging";
 import { useI18n } from "../shared/i18n/locale";
 import type { ClassroomSlideMatch, LessonCourseware } from "../shared/types/contracts";
@@ -41,8 +41,15 @@ watch(() => props.courseware, () => {
   imageFailed.value = false;
   applyActive(props.activeSlideId);
 });
-/** Warm the pages around this one, so following the lesson never waits on the network. */
-watch([index, slides], () => prefetchSlideWindow(slides.value, index.value), { immediate: true });
+let cancelPrefetch = () => {};
+watch([index, slides], () => cancelPrefetch(), { flush: "sync" });
+onBeforeUnmount(() => cancelPrefetch());
+
+function onImageLoad(event: Event) {
+  if ((event.target as HTMLImageElement).getAttribute("src") !== current.value?.imageUrl) return;
+  cancelPrefetch();
+  cancelPrefetch = scheduleSlidePrefetch(slides.value, index.value);
+}
 
 /** Jump to the page the lesson asks for, including when the panel mounts mid-lesson. */
 function applyActive(id: string | null) {
@@ -98,6 +105,9 @@ useSlidePaging(
           class="slides__image"
           :src="current.imageUrl"
           :alt="current.title || current.semanticSummary || t('slides.position', { page: current.slideNumber })"
+          fetchpriority="high"
+          decoding="async"
+          @load="onImageLoad"
           @error="imageFailed = true"
         >
         <p v-else class="slides__hint slides__hint--error">{{ t("slides.imageFailed") }}</p>

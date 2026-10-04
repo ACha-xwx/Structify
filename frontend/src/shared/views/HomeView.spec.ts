@@ -17,6 +17,7 @@ function mountHome() {
     history: createMemoryHistory(),
     routes: [
       { path: "/", component: { template: "<div />" } },
+      { path: "/begin", component: HomeView },
       { path: "/classroom", component: { template: "<div />" } },
       { path: "/animation", component: { template: "<div />" } },
       { path: "/compiler", component: { template: "<div />" } },
@@ -94,12 +95,14 @@ describe("entry page", () => {
     const { wrapper } = mountHome();
     await flushPromises();
 
-    expect(wrapper.get(".entry__title").text()).toBe("从哪开始？");
+    expect(wrapper.get(".entry__title").text()).toBe("让我们从哪里开始？");
+    expect(wrapper.get(".entry__title").element.parentElement).toBe(wrapper.get(".entry-flow > .ai-title").element);
+    expect(wrapper.get(".entry-flow > .ai-title .ai-ball").attributes("data-follow-pointer")).toBe("true");
 
     setLocale("en-US");
     await nextTick();
 
-    expect(wrapper.get(".entry__title").text()).toBe("Where do you want to start?");
+    expect(wrapper.get(".entry__title").text()).toBe("Where shall we begin?");
     expect(wrapper.findAll(".choice__name").map((node) => node.text())).toEqual(["Classroom", "Animation lab", "C editor", "Ask the course"]);
     expect(wrapper.get(".entry__profile").text()).toBe("My profile");
     wrapper.unmount();

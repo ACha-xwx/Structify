@@ -73,6 +73,21 @@ beforeEach(() => {
 });
 
 describe("minimal classroom", () => {
+  it("keeps the title mascot both when choosing courseware and after entering a classroom", async () => {
+    const chooser = mountClassroom();
+    await flushPromises();
+    expect(chooser.get(".ai-title .workbench-title").text()).toBe("课堂学习");
+    expect(chooser.get(".ai-title .ai-ball").attributes("data-follow-pointer")).toBe("true");
+    chooser.unmount();
+    openSession("session-1");
+    api.getClassroomSession.mockResolvedValue(opening);
+    const lesson = mountClassroom();
+    await flushPromises();
+    expect(lesson.find(".classroom__topbar").exists()).toBe(true);
+    expect(lesson.findAll(".ai-title .ai-ball")).toHaveLength(1);
+    expect(lesson.get(".ai-title .ai-ball").attributes("data-follow-pointer")).toBe("true");
+    lesson.unmount();
+  });
   it("shows loading while fetching lessons and courseware, then shows the resolved empty state", async () => {
     let resolveLessons!: (lessons: ClassroomLesson[]) => void;
     let resolveCourseware!: (courseware: typeof noCourseware) => void;
@@ -558,10 +573,10 @@ describe("minimal classroom", () => {
     await flushPromises();
 
     const panel = wrapper.get("aside.slides--courseware");
-    expect(panel.get(".slides__title").text()).toBe("Structify 本地演示课件");
+    expect(panel.get(".slides__title").text()).toBe("数筑 · Structify 本地演示课件");
     expect(panel.get("img.slides__image").attributes("src")).toContain("slide-01");
     expect(panel.find(".slides__position").exists()).toBe(false);
-    expect(panel.get(".classroom__lesson-select .runtime-select__trigger").text()).toContain("Structify 本地演示课件");
+    expect(panel.get(".classroom__lesson-select .runtime-select__trigger").text()).toContain("数筑 · Structify 本地演示课件");
     expect(panel.get(".classroom__silver-start .liquid-metal-button__native").attributes("disabled")).toBeDefined();
     wrapper.unmount();
   });
@@ -727,7 +742,7 @@ describe("minimal classroom", () => {
     await homeButton.trigger("click");
     await flushPromises();
 
-    expect(navigation.push).toHaveBeenCalledWith("/");
+    expect(navigation.push).toHaveBeenCalledWith("/begin");
     wrapper.unmount();
   });
 
@@ -769,7 +784,7 @@ describe("minimal classroom", () => {
     await wrapper.findAll("button").find((button) => button.text() === "回到首页")!.trigger("click");
     await flushPromises();
 
-    expect(navigation.push).toHaveBeenCalledWith("/");
+    expect(navigation.push).toHaveBeenCalledWith("/begin");
     expect(localStorage.getItem("structify.classroom.last")).toBe("session-1");
     wrapper.unmount();
   });

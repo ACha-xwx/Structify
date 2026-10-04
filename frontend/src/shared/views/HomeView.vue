@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import BrandStage from "../components/BrandStage.vue";
+import AiTitle from "../components/AiTitle.vue";
 import LiquidMetalButton from "../../admin/components/LiquidMetalButton.vue";
 import rightArrowIcon from "../../assets/classroom/right-arrow.svg";
 import { useI18n } from "../i18n/locale";
@@ -38,7 +39,7 @@ async function signOut() {
 <template>
   <BrandStage>
     <section class="entry-flow" aria-labelledby="entry-title">
-      <h1 id="entry-title" class="entry__title">{{ t("home.title") }}</h1>
+      <AiTitle><h1 id="entry-title" class="entry__title">{{ t("home.title") }}</h1></AiTitle>
 
       <nav class="entry__choices" :aria-label="t('home.choices')">
         <div class="choice">
@@ -110,10 +111,10 @@ async function signOut() {
 </template>
 
 <style scoped>
-.entry-flow { display: grid; width: min(100%, 420px); gap: 28px; justify-items: center; text-align: center; }
-.entry__title { margin: 0; color: var(--text); font-family: var(--font-ui); font-size: clamp(40px, 5vw, 58px); font-weight: 400; letter-spacing: 0; line-height: 1.04; }
+.entry-flow { display: grid; width: min(100%, 760px); gap: 28px; justify-items: center; text-align: center; }
+.entry__title { margin: 0; color: var(--text); font-family: var(--font-ui); font-size: clamp(32px, 7vw, 58px); font-weight: 400; letter-spacing: 0; line-height: 1.04; white-space: nowrap; }
 
-.entry__choices { display: grid; width: 100%; gap: 14px; }
+.entry__choices { display: grid; width: min(100%, 420px); gap: 14px; }
 
 /* Each entry is the same pill as a sign-in field: double hairline, glass surface, lit rim. */
 .choice {
@@ -195,7 +196,7 @@ async function signOut() {
 .choice__arrow { display: block; width: 24px; height: 24px; }
 :global([data-theme="dark"]) .choice__arrow { filter: invert(1); }
 
-.entry-links { display: flex; width: 100%; align-items: center; justify-content: center; gap: 32px; padding-top: 2px; color: var(--text-muted); font-size: 17px; font-weight: 650; text-align: center; }
+.entry-links { display: flex; width: min(100%, 420px); align-items: center; justify-content: center; gap: 32px; padding-top: 2px; color: var(--text-muted); font-size: 17px; font-weight: 650; text-align: center; }
 
 .entry-links a,
 .entry__signout {

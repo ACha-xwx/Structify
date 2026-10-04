@@ -20,8 +20,8 @@ describe("message catalog", () => {
   });
 
   it("translates into the requested language and fills placeholders", () => {
-    expect(translate("home.title", "zh-CN")).toBe("从哪开始？");
-    expect(translate("home.title", "en-US")).toBe("Where do you want to start?");
+    expect(translate("home.title", "zh-CN")).toBe("让我们从哪里开始？");
+    expect(translate("home.title", "en-US")).toBe("Where shall we begin?");
     expect(translate("classroom.step", "zh-CN", { index: 2, total: 7 })).toBe("第 2 / 7 步");
     expect(translate("classroom.step", "en-US", { index: 2, total: 7 })).toBe("Step 2 of 7");
   });

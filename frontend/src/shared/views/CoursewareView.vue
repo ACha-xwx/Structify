@@ -3,12 +3,13 @@ import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from "vue";
 import { useRouter } from "vue-router";
 import { BookOpen, Check, ChevronDown } from "@lucide/vue";
 import BrandStage from "../components/BrandStage.vue";
+import AiTitle from "../components/AiTitle.vue";
 import { describeDeck } from "../courseware/deck-labels";
-import { prefetchSlideWindow } from "../courseware/prefetch-slides";
+import { scheduleSlidePrefetch } from "../courseware/prefetch-slides";
 import { useSlidePaging } from "../courseware/use-slide-paging";
 import { useI18n } from "../i18n/locale";
 import type { PresentationDeck, PresentationSlide } from "../types/contracts";
-import { userApi } from "../../user/runtime";
+import { coursewareCatalog } from "../../user/runtime";
 import leftArrowIcon from "../../assets/classroom/left-arrow.svg";
 import rightArrowIcon from "../../assets/classroom/right-arrow.svg";
 import exitIcon from "../../assets/classroom/exit.svg";
@@ -31,6 +32,8 @@ const imageFailed = ref(false);
 const selectedCoursewareDeckId = ref("");
 const SELECTED_COURSEWARE_KEY = "structify.courseware.selected";
 let deckRequest = 0;
+let disposed = false;
+let cancelPrefetch = () => {};
 const chapterListId = `courseware-chapters-${useId()}`;
 
 const current = computed(() => slides.value[index.value] ?? null);
@@ -72,7 +75,7 @@ async function openDeck(deckId: string) {
   imageFailed.value = false;
   error.value = "";
   try {
-    const result = await userApi.listDeckSlides(deckId);
+    const result = await coursewareCatalog.getSlides(deckId);
     if (request !== deckRequest) return;
     slides.value = result;
   } catch (cause) {
@@ -123,13 +126,20 @@ function selectCurrentCourseware() {
   void router.push("/classroom");
 }
 
-/** Warm the pages around this one, so 下一页 is a lookup rather than a round trip through the edge. */
-watch([index, slides], () => prefetchSlideWindow(slides.value, index.value));
+watch([index, slides], () => cancelPrefetch(), { flush: "sync" });
+
+function onImageLoad(event: Event) {
+  if ((event.target as HTMLImageElement).getAttribute("src") !== current.value?.imageUrl) return;
+  cancelPrefetch();
+  cancelPrefetch = scheduleSlidePrefetch(slides.value, index.value);
+}
 
 onMounted(async () => {
   selectedCoursewareDeckId.value = readSelectedDeckId();
   try {
-    decks.value = await userApi.listPresentationDecks();
+    const result = await coursewareCatalog.getDecks();
+    if (disposed) return;
+    decks.value = result;
     if (decks.value.length) await openDeck(displayedDecks.value[0].deck.deckId);
     else loading.value = false;
   } catch (cause) {
@@ -140,13 +150,15 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   deckRequest += 1;
+  disposed = true;
+  cancelPrefetch();
 });
 </script>
 
 <template>
   <BrandStage wide>
     <div class="courseware-page">
-      <h1 class="workbench-title">{{ t("courseware.title") }}</h1>
+      <AiTitle><h1 class="workbench-title">{{ t("courseware.title") }}</h1></AiTitle>
     <div class="courseware" aria-live="polite">
       <aside class="courseware__decks" :aria-label="t('courseware.list')">
         <h2 class="courseware__heading">{{ t("slides.title") }}</h2>
@@ -212,6 +224,9 @@ onBeforeUnmount(() => {
               class="courseware__image"
               :src="current.imageUrl"
               :alt="current.title || current.semanticSummary || t('slides.position', { page: current.slideNumber })"
+              fetchpriority="high"
+              decoding="async"
+              @load="onImageLoad"
               @error="imageFailed = true"
             >
             <p v-else class="courseware__hint courseware__hint--error">{{ t("courseware.imageFailed") }}</p>

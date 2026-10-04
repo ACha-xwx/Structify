@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import BrandStage from "../shared/components/BrandStage.vue";
+import AiTitle from "../shared/components/AiTitle.vue";
 import AnimationPlayer from "../animation/AnimationPlayer.vue";
 import type { ClassroomAction, ClassroomSession, ClassroomSlideMatch, DsvpRequest, DsvpSimulationResponse, LessonCourseware } from "../shared/types/contracts";
 import { useI18n } from "../shared/i18n/locale";
@@ -511,7 +512,7 @@ function exitClassroom() {
 /** Back to the entry page without forgetting the lesson: the session stays under 继续上次课堂. */
 function leaveToHome() {
   if (session.value) localStorage.setItem(LAST_KEY, session.value.id);
-  void router.push("/");
+  void router.push("/begin");
 }
 
 watch(lessonId, (id) => {
@@ -530,7 +531,7 @@ onBeforeUnmount(() => {
 <template>
   <BrandStage wide fixed>
     <div class="classroom-page">
-      <h1 class="workbench-title">{{ t("classroom.title") }}</h1>
+      <AiTitle><h1 class="workbench-title">{{ t("classroom.title") }}</h1></AiTitle>
     <div class="classroom" :class="{ 'classroom--split': showSlides && session, 'classroom--courseware': showSlides && !session }" aria-live="polite">
       <div v-if="session || !showSlides" class="classroom__conversation" :class="{ 'classroom__conversation--active': session }">
         <header v-if="session" class="classroom__topbar">
@@ -564,7 +565,7 @@ onBeforeUnmount(() => {
             <div class="classroom__actions classroom__actions--start">
               <LiquidMetalButton class="classroom__silver-start" :disabled="busy || !canStartLesson" :aria-label="t('classroom.start')" @click="startLesson">{{ t("classroom.start") }}</LiquidMetalButton>
               <LiquidMetalButton v-if="lastSessionId" class="classroom__silver-start classroom__silver-resume" :disabled="busy" :aria-label="t('home.resume')" @click="restoreLast">{{ t("home.resume") }}</LiquidMetalButton>
-              <LiquidMetalButton class="classroom__silver-icon" view-mode="icon" :aria-label="t('common.backHome')" :title="t('common.backHome')" @click="router.push('/')">
+              <LiquidMetalButton class="classroom__silver-icon" view-mode="icon" :aria-label="t('common.backHome')" :title="t('common.backHome')" @click="router.push('/begin')">
                 <template #icon><img class="classroom__icon" :src="homeIcon" alt="" aria-hidden="true"></template>
                 <span class="classroom__icon-label">{{ t("common.backHome") }}</span>
               </LiquidMetalButton>
