@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -57,6 +58,55 @@ class DsvpLocalEngineTest {
         } finally {
             engine.shutdown();
         }
+    }
+
+    /**
+     * Pins the three annotations a learner actually reads off the picture: which cells the named pointers
+     * stand on (`i`/`j`/`low`/`mid`), what currently holds about the structure (`invariant`), and how much
+     * work has been done so far (`compareCount`/`swapCount`).
+     *
+     * <p>The renderer draws these fields and nothing else, so they are pinned at the engine boundary too: a
+     * simulator that stops reporting a comparison would otherwise only show up as a counter stuck at zero on
+     * a learner's screen. The counts asserted here are the textbook ones for four elements - ten adjacent
+     * comparisons are not needed for 5,3,8,1 and the last pass stops early, so 6 comparisons and 4 swaps.
+     */
+    @Test
+    void annotatesEverySortStepWithCursorsCountersAndWhatCurrentlyHolds() {
+        var engine = engine();
+        try {
+            ObjectNode request = new ObjectMapper().createObjectNode();
+            request.put("version", "1.0");
+            request.put("structure", "sort");
+            request.put("operation", "bubble");
+            request.putObject("initial_state").putArray("data").add(5).add(3).add(8).add(1);
+
+            var reply = engine.simulate(request);
+            assumeTrue(reply.isPresent(), "本地 node 引擎不可用");
+            var steps = reply.get().path("player").path("steps");
+            assertThat(steps).isNotEmpty();
+
+            for (var step : steps) {
+                assertThat(meta(step).path("invariant").asText()).isNotBlank();
+            }
+
+            var totals = meta(steps.get(steps.size() - 1));
+            assertThat(totals.path("compareCount").asInt()).isEqualTo(6);
+            assertThat(totals.path("swapCount").asInt()).isEqualTo(4);
+
+            // 比较两格的一步必须同时报出 i 和 j，否则学生只看到一个没有名字的高亮。
+            var first = meta(steps.get(0));
+            assertThat(first.path("i").isNumber()).isTrue();
+            assertThat(first.path("j").isNumber()).isTrue();
+        } finally {
+            engine.shutdown();
+        }
+    }
+
+    private static JsonNode meta(JsonNode step) {
+        for (var panel : step.path("dsvpState").path("view")) {
+            if ("meta".equals(panel.path("role").asText())) return panel;
+        }
+        return new ObjectMapper().createObjectNode();
     }
 
     @Test

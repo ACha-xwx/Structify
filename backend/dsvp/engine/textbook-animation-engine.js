@@ -573,24 +573,28 @@ for(let t=0;t<seq.length;t++){const idx=seq[t];steps.push(makeStep(sid++,"probe"
 }
 
 function sequenceRows(a,extra={}){return[row("array",a),row("meta",[],extra)];}
-function simulateSort(request,api){const {makeStep,makeTrace,action}=makeHelpers(api);const a=numberArray(request.initial_state.data,[49,38,65,97,76,13,27,49]);const initialText=`[${a.join(",")}]`;const op=request.operation;let sid=1;const steps=[makeStep(sid++,"init","待排序序列",`[${a.join(", ")}]`,viewState("sort",sequenceRows(a,{operation:op})))];if(!a.length){steps.push(makeStep(sid,"done","序列为空","没有待排序记录，排序结束。",viewState("sort",sequenceRows(a,{operation:op,done:true}))));return makeTrace(request,`教材排序演示：${op}`,initialText,"[]",steps);}function snap(title,note,extra={},act=null){steps.push(makeStep(sid++,extra.phase||"sort",title,note,viewState("sort",sequenceRows(a,{operation:op,...extra})),act?[action(act,"排序操作",extra)]:[]));}
+function simulateSort(request,api){const {makeStep,makeTrace,action}=makeHelpers(api);const a=numberArray(request.initial_state.data,[49,38,65,97,76,13,27,49]);const initialText=`[${a.join(",")}]`;const op=request.operation;let sid=1;let invariant="";const steps=[makeStep(sid++,"init","待排序序列",`[${a.join(", ")}]`,viewState("sort",sequenceRows(a,{operation:op,invariant:"整个序列都还是待排序区，没有任何记录就位"})))];if(!a.length){steps.push(makeStep(sid,"done","序列为空","没有待排序记录，排序结束。",viewState("sort",sequenceRows(a,{operation:op,done:true}))));return makeTrace(request,`教材排序演示：${op}`,initialText,"[]",steps);}function snap(title,note,extra={},act=null){const acts=Array.isArray(act)?act:(act?[act]:[]);const meta={operation:op,...(invariant?{invariant}:{}),...extra};steps.push(makeStep(sid++,extra.phase||"sort",title,note,viewState("sort",sequenceRows(a,meta)),acts.map(t=>action(t,t==="compare"?"比较关键字":"排序操作",extra))));}
+  /* 一次比较报一帧，是「比较次数」这个计数器的唯一来源：计数器只数引擎真正报出来的动作，
+     所以只要比较没有自己的帧，冒泡排序就会显示「比较 0 次、交换 5 次」——比不显示更误导。
+     每帧只讲这一步在比较谁、结果如何；真的发生交换时把 swap 动作挂在同一帧上，帧数就等于比较次数，
+     不会因为"先比较再交换"而翻倍。 */
   if(op==="direct_insertion"||op==="binary_insertion"){
-    for(let i=1;i<a.length;i++){const key=a[i];let pos=i;if(op==="binary_insertion"){let l=0,r=i-1;while(l<=r){const m=Math.floor((l+r)/2);snap("折半定位",`比较待插记录 ${key} 与 a[${m}]=${a[m]}。`,{current:m,low:l,high:r});if(key<a[m])r=m-1;else l=m+1;}pos=l;}else{while(pos>0&&a[pos-1]>key)pos--;}
+    for(let i=1;i<a.length;i++){const key=a[i];let pos=i;invariant=`下标 0 到 ${i-1} 是已排好的有序区；现在把 a[${i}]=${key} 插进有序区`;if(op==="binary_insertion"){let l=0,r=i-1;while(l<=r){const m=Math.floor((l+r)/2);snap("折半定位",`比较待插记录 ${key} 与 a[${m}]=${a[m]}。`,{current:m,low:l,high:r},"compare");if(key<a[m])r=m-1;else l=m+1;}pos=l;}else{while(pos>0){if(!(a[pos-1]>key)){snap("比较后确定插入位置",`a[${pos-1}]=${a[pos-1]} ≤ ${key}：不再前移，插入位置是 ${pos}。`,{current:pos-1,sortedEnd:i},"compare");break;}const before=a[pos-1];pos--;snap("比较并继续前移",`a[${pos}]=${before} > ${key}：插入位置继续前移。`,{current:pos,sortedEnd:i},"compare");}}
       for(let j=i;j>pos;j--)a[j]=a[j-1];a[pos]=key;snap("插入到有序区",`把 ${key} 插入位置 ${pos}。`,{current:pos,sortedEnd:i},"insert");}
   } else if(op==="shell"){
     /* 每个子序列插入各报一帧（以前整趟只有一帧，画面既没有过程也没有高亮）。 */
-    const gaps=Array.isArray(request.params.gaps)?request.params.gaps.map(Number).filter(x=>Number.isInteger(x)&&x>0):[Math.floor(a.length/2),1];for(const gap0 of gaps){const gap=Math.min(gap0,a.length-1);if(gap<1)continue;for(let i=gap;i<a.length;i++){const temp=a[i];let j=i;while(j>=gap&&a[j-gap]>temp){a[j]=a[j-gap];j-=gap;}a[j]=temp;snap("子序列插入",`gap=${gap}：把 ${temp} 插到位置 ${j}。`,{gap,i,j,phase:"group_sort"},"insert");}}
+    const gaps=Array.isArray(request.params.gaps)?request.params.gaps.map(Number).filter(x=>Number.isInteger(x)&&x>0):[Math.floor(a.length/2),1];for(const gap0 of gaps){const gap=Math.min(gap0,a.length-1);if(gap<1)continue;invariant=`当前增量 gap=${gap}：每隔 ${gap} 个位置取一条子序列，子序列内部做插入排序`;for(let i=gap;i<a.length;i++){const temp=a[i];let j=i;while(j>=gap){if(!(a[j-gap]>temp)){snap("比较后停止后移",`gap=${gap}：a[${j-gap}]=${a[j-gap]} ≤ ${temp}，插入位置是 ${j}。`,{gap,i,j,phase:"group_sort"},"compare");break;}const before=a[j-gap];a[j]=before;j-=gap;snap("比较并后移",`gap=${gap}：a[${j}]=${before} > ${temp}，继续前移。`,{gap,i,j,phase:"group_sort"},"compare");}a[j]=temp;snap("子序列插入",`gap=${gap}：把 ${temp} 插到位置 ${j}。`,{gap,i,j,phase:"group_sort"},"insert");}}
   } else if(op==="bubble"){
-    for(let end=a.length-1;end>0;end--){let swapped=false;for(let i=0;i<end;i++){if(a[i]>a[i+1]){[a[i],a[i+1]]=[a[i+1],a[i]];swapped=true;snap("交换相邻记录",`交换下标 ${i} 与 ${i+1}。`,{i,j:i+1},"swap");}}snap("一趟冒泡结束",`最大元素已到位置 ${end}。`,{sortedStart:end});if(!swapped)break;}
+    for(let end=a.length-1;end>0;end--){let swapped=false;invariant=`下标 ${end+1} 到 ${a.length-1} 已经排好（后面都比前面大）；本趟把 [0, ${end}] 里的最大值冒到下标 ${end}`;for(let i=0;i<end;i++){const left=a[i],right=a[i+1];if(left>right){[a[i],a[i+1]]=[right,left];swapped=true;snap("比较后交换相邻记录",`${left} > ${right}：交换下标 ${i} 与 ${i+1}。`,{i,j:i+1},["compare","swap"]);}else{snap("比较相邻记录",`${left} ≤ ${right}：顺序正确，不交换。`,{i,j:i+1},"compare");}}snap("一趟冒泡结束",`最大元素已到位置 ${end}。`,{sortedStart:end});if(!swapped)break;}
   } else if(op==="quick"){
-    function q(l,r){if(l>=r)return;const pivot=a[l];let i=l,j=r;while(i<j){while(i<j&&a[j]>=pivot)j--;if(i<j)a[i++]=a[j];while(i<j&&a[i]<=pivot)i++;if(i<j)a[j--]=a[i];}a[i]=pivot;snap("完成一次划分",`枢轴 ${pivot} 落在位置 ${i}。`,{low:l,high:r,pivotIndex:i},"partition");q(l,i-1);q(i+1,r);}q(0,a.length-1);
+    function q(l,r){if(l>=r)return;const pivot=a[l];invariant=`正在划分区间 [${l}, ${r}]：枢轴是 a[${l}]=${pivot}，比它小的放左边、大的放右边`;let i=l,j=r;while(i<j){while(i<j){const hit=a[j]>=pivot;snap(hit?"右端与枢轴比较":"右端小于枢轴，准备填空",`a[${j}]=${a[j]} ${hit?"≥":"<"} 枢轴 ${pivot}。`,{low:l,high:r,pivotIndex:i,current:j},"compare");if(!hit)break;j--;}if(i<j)a[i++]=a[j];while(i<j){const hit=a[i]<=pivot;snap(hit?"左端与枢轴比较":"左端大于枢轴，准备填空",`a[${i}]=${a[i]} ${hit?"≤":">"} 枢轴 ${pivot}。`,{low:l,high:r,pivotIndex:i,current:i},"compare");if(!hit)break;i++;}if(i<j)a[j--]=a[i];}a[i]=pivot;snap("完成一次划分",`枢轴 ${pivot} 落在位置 ${i}。`,{low:l,high:r,pivotIndex:i},"partition");q(l,i-1);q(i+1,r);}q(0,a.length-1);
   } else if(op==="simple_selection"){
-    for(let i=0;i<a.length-1;i++){let min=i;for(let j=i+1;j<a.length;j++)if(a[j]<a[min])min=j;if(min!==i)[a[i],a[min]]=[a[min],a[i]];snap("选择最小记录",`第 ${i+1} 个位置确定为 ${a[i]}。`,{current:i,selected:min},"select");}
+    for(let i=0;i<a.length-1;i++){let min=i;invariant=`下标 0 到 ${i-1} 已经排好，而且是全局最小的 ${i} 个；现在从下标 ${i} 到 ${a.length-1} 里挑最小值`;for(let j=i+1;j<a.length;j++){if(a[j]<a[min]){const old=a[min];min=j;snap("比较后刷新最小值",`a[${j}]=${a[j]} < 当前最小 ${old}：最小值改为下标 ${min}。`,{current:i,selected:min,scan:j},"compare");}else{snap("比较后保留当前最小",`a[${j}]=${a[j]} ≥ 当前最小 a[${min}]=${a[min]}：最小值不变。`,{current:i,selected:min,scan:j},"compare");}}if(min!==i){[a[i],a[min]]=[a[min],a[i]];snap("最小记录交换到有序区",`把最小记录 ${a[i]} 交换到位置 ${i}，原位置 ${i} 的 ${a[min]} 换到下标 ${min}。`,{current:i,selected:min},["swap","select"]);}else{snap("无需交换",`位置 ${i} 已是剩余记录中的最小值，第 ${i+1} 个位置确定为 ${a[i]}。`,{current:i,selected:min},"select");}}
   } else if(op==="tournament_selection"){
-    const remain=a.map((v,i)=>({v,i})),out=[];while(remain.length){remain.sort((x,y)=>x.v-y.v);const win=remain.shift();out.push(win.v);/* current 指向胜者在原序列里的下标，画面才知道高亮谁 */snap("锦标赛选出当前最小值",`${win.v} 胜出并输出。`,{winner:win.v,current:win.i,output:[...out]},"select");}a.splice(0,a.length,...out);
+    const remain=a.map((v,i)=>({v,i})),out=[];while(remain.length){remain.sort((x,y)=>x.v-y.v);const win=remain.shift();out.push(win.v);invariant=`已经输出 ${out.length} 个最小记录；剩下 ${remain.length} 个还在锦标赛里`;/* current 指向胜者在原序列里的下标，画面才知道高亮谁 */snap("锦标赛选出当前最小值",`${win.v} 胜出并输出。`,{winner:win.v,current:win.i,output:[...out]},"select");}a.splice(0,a.length,...out);
   } else if(op==="heap"){
-    function down(n,i){while(true){let largest=i,l=2*i+1,r=2*i+2;if(l<n&&a[l]>a[largest])largest=l;if(r<n&&a[r]>a[largest])largest=r;if(largest===i)break;[a[i],a[largest]]=[a[largest],a[i]];snap("向下调整堆",`交换 ${i} 与 ${largest}。`,{i,j:largest,heapSize:n},"swap");i=largest;}}
-    for(let i=Math.floor(a.length/2)-1;i>=0;i--)down(a.length,i);snap("建立初始大根堆","从最后一个非叶结点向前调整。",{heapSize:a.length},"heapify");for(let end=a.length-1;end>0;end--){[a[0],a[end]]=[a[end],a[0]];snap("堆顶与末尾交换",`最大元素固定到位置 ${end}。`,{i:0,j:end,heapSize:end},"swap");down(end,0);}
+    function down(n,i){invariant=`堆区是 [0, ${n-1}]，正在从结点 ${i} 向下调整：让父结点不小于它的孩子`;while(true){let largest=i;const l=2*i+1,r=2*i+2;if(l<n){const hit=a[l]>a[largest];snap("左孩子与当前最大比较",`a[${l}]=${a[l]} ${hit?">":"≤"} a[${largest}]=${a[largest]}。`,{i,j:largest,heapSize:n,current:l},"compare");if(hit)largest=l;}if(r<n){const hit=a[r]>a[largest];snap("右孩子与当前最大比较",`a[${r}]=${a[r]} ${hit?">":"≤"} a[${largest}]=${a[largest]}。`,{i,j:largest,heapSize:n,current:r},"compare");if(hit)largest=r;}if(largest===i)break;[a[i],a[largest]]=[a[largest],a[i]];snap("向下调整堆",`交换 ${i} 与 ${largest}。`,{i,j:largest,heapSize:n},"swap");i=largest;}}
+    for(let i=Math.floor(a.length/2)-1;i>=0;i--)down(a.length,i);snap("建立初始大根堆","从最后一个非叶结点向前调整。",{heapSize:a.length},"heapify");for(let end=a.length-1;end>0;end--){[a[0],a[end]]=[a[end],a[0]];invariant=`下标 ${end+1} 到 ${a.length-1} 已经排好；堆区是 [0, ${end}]，堆顶 ${a[0]} 是当前最大值`;snap("堆顶与末尾交换",`最大元素固定到位置 ${end}。`,{i:0,j:end,heapSize:end},"swap");down(end,0);}
   } else if(op==="merge"){
     /* 逐记录归并：以前整段只报一帧、且只带 left/mid/right 三个数字，
        画面既没有过程也没有高亮（2026-09-24：「你的高亮，不行，整个卡住」）。
@@ -599,21 +603,22 @@ function simulateSort(request,api){const {makeStep,makeTrace,action}=makeHelpers
     for(let width=1;width<a.length;width*=2){
       for(let l=0;l<a.length;l+=2*width){
         const m=Math.min(l+width,a.length),r=Math.min(l+2*width,a.length);
-        if(m>=r)continue;                                   // 只剩一段，本身有序，无需归并
+        if(m>=r)continue;invariant=`正在合并 [${l}, ${m}) 与 [${m}, ${r})：两段各自已经有序，谁小先取谁`;                                   // 只剩一段，本身有序，无需归并
         const seg=a.slice(l,r),half=m-l,leftSeg=seg.slice(0,half),rightSeg=seg.slice(half);
         let i=0,j=half,k=l;
         const show=()=>viewState("sort",[
           row("array",a),
           row("left",leftSeg,{focusIndex:Math.max(0,Math.min(i,leftSeg.length-1))}),
           row("right",rightSeg,{focusIndex:Math.max(0,Math.min(j-half,rightSeg.length-1))}),
-          row("meta",[],{operation:op,current:k,low:l,high:r-1,mid:m}),
+          row("meta",[],{operation:op,current:k,low:l,high:r-1,mid:m,...(invariant?{invariant}:{})}),
         ]);
-        const emit=(title,note)=>steps.push(makeStep(sid++,"merge",title,note,show(),[action("merge","归并当前记录",{to:k})]));
+        const emit=(title,note,compared=false)=>steps.push(makeStep(sid++,"merge",title,note,show(),compared?[action("compare","比较两段当前记录",{to:k}),action("merge","归并当前记录",{to:k})]:[action("merge","归并当前记录",{to:k})]));
         emit("开始归并有序段",`合并 [${l},${m}) 与 [${m},${r})。`);
         while(i<half&&j<seg.length){
           const fromLeft=seg[i]<=seg[j];
-          a[k]=fromLeft?seg[i]:seg[j];
-          emit(fromLeft?"取前半段较小记录":"取后半段较小记录",`${a[k]} 写入位置 ${k}。`);
+          const taken=fromLeft?seg[i]:seg[j];
+          a[k]=taken;
+          emit(fromLeft?"取前半段较小记录":"取后半段较小记录",`比较左段 ${seg[i]} 与右段 ${seg[j]}，取 ${taken} 写入位置 ${k}。`,true);
           if(fromLeft)i++;else j++;
           k++;
         }
@@ -625,9 +630,9 @@ function simulateSort(request,api){const {makeStep,makeTrace,action}=makeHelpers
     }
   } else if(op==="radix"){
     /* 逐个元素分桶（以前整趟只有一帧）：每帧高亮正在分派的那个元素。 */
-    let exp=1,max=Math.max(...a.map(Math.abs));while(Math.floor(max/exp)>0){const buckets=Array.from({length:10},()=>[]);a.forEach((v,idx)=>{const d=Math.floor(Math.abs(v)/exp)%10;buckets[d].push(v);snap("按当前位分配",`${v} 的第 ${exp===1?"个位":exp===10?"十位":`10^${Math.log10(exp)}位`}是 ${d}，进 ${d} 号队列。`,{exp,digit:d,current:idx,phase:"distribute"},"distribute");});a.splice(0,a.length,...buckets.flat());snap("按桶序收集","依次收集 0~9 号队列。",{exp,phase:"collect"},"collect");exp*=10;}
+    let exp=1,max=Math.max(...a.map(Math.abs));while(Math.floor(max/exp)>0){const unit=exp===1?"个位":exp===10?"十位":`10^${Math.log10(exp)}位`;invariant=`第 ${Math.round(Math.log10(exp))+1} 趟：按${unit}把每条记录分进 0~9 号桶，再按桶号收回来`;const buckets=Array.from({length:10},()=>[]);a.forEach((v,idx)=>{const d=Math.floor(Math.abs(v)/exp)%10;buckets[d].push(v);snap("按当前位分配",`${v} 的第 ${exp===1?"个位":exp===10?"十位":`10^${Math.log10(exp)}位`}是 ${d}，进 ${d} 号队列。`,{exp,digit:d,current:idx,phase:"distribute"},"distribute");});a.splice(0,a.length,...buckets.flat());snap("按桶序收集","依次收集 0~9 号队列。",{exp,phase:"collect"},"collect");exp*=10;}
   }
-  snap("排序完成",`[${a.join(", ")}]`,{done:true},"done");return makeTrace(request,`教材排序演示：${op}`,initialText,`[${a.join(",")}]`,steps);}
+  invariant="排序结束：整个序列已经有序";snap("排序完成",`[${a.join(", ")}]`,{done:true},"done");return makeTrace(request,`教材排序演示：${op}`,initialText,`[${a.join(",")}]`,steps);}
 
 function simulateExternalSort(request,api){const {makeStep,makeTrace,action}=makeHelpers(api);const rawRuns=request.params.runs!==undefined?request.params.runs:request.initial_state.data;const runs=Array.isArray(rawRuns)&&rawRuns.every(Array.isArray)?rawRuns.map(r=>numberArray(r,[])):[[1,7,13],[2,8,12],[3,6,15]];if(request.operation!=="replacement_selection"&&runs.length===0)throw new SimulationInputError("EMPTY_RUNS","归并段列表为空：请提供至少一个初始归并段","runs");let sid=1;const steps=[makeStep(sid++,"init","初始归并段",`${runs.length} 个归并段。`,viewState("external_sort",[row("runs",runs),row("meta",[],{operation:request.operation})]))];if(request.operation==="replacement_selection"){const input=numberArray(request.params.input??(Array.isArray(request.initial_state.data)&&!request.initial_state.data.every(Array.isArray)?request.initial_state.data:undefined),[12,7,18,3,15,9,20,4]);if(request.params.input!==undefined&&!input.length)throw new SimulationInputError("EMPTY_INPUT","输入记录为空：置换选择至少需要一条记录","input");const memSize=intParam(request.params,"memorySize",3,2,8);const pool=input.slice(0,memSize),rest=input.slice(memSize),out=[];let last=-Infinity;while(pool.length){pool.sort((a,b)=>a-b);let idx=pool.findIndex(x=>x>=last);if(idx<0){steps.push(makeStep(sid++,"new_run","开始新的初始归并段","内存中剩余记录均小于当前输出下界。",viewState("external_sort",[row("memory",pool),row("output",out),row("input",rest),row("meta",[],{operation:request.operation})])));last=-Infinity;idx=0;}const v=pool.splice(idx,1)[0];out.push(v);last=v;if(rest.length)pool.push(rest.shift());steps.push(makeStep(sid++,"output","输出当前可选最小记录",`输出 ${v}，并读入下一条记录。`,viewState("external_sort",[row("memory",pool),row("output",out,{focusIndex:out.length-1}),row("input",rest),row("meta",[],{operation:request.operation,last})]),[action("output","生成初始归并段",{value:v})]));}return makeTrace(request,"置换选择生成初始归并段","输入文件",`输出=${out.join(",")}`,steps);}let current=runs.map(r=>[...r]);const k=request.operation==="multiway_merge"?Math.max(2,intParam(request.params,"ways",3,2,8)):2;while(current.length>1){const next=[];for(let i=0;i<current.length;i+=k){const group=current.slice(i,i+k),pos=Array(group.length).fill(0),merged=[];next.push(merged);
 /* 逐记录归并：整组只报一帧时，输出顺串是"瞬间长出来的"，看不出选了谁（2026-09-24 用户反馈）。

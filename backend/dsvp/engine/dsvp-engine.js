@@ -660,6 +660,60 @@ function stateValues(state) {
   return Array.isArray(state?.items) ? state.items.map((item) => item?.value) : [];
 }
 
+/**
+ * The actions a learner counts as work: comparing two keys, and swapping two of them.
+ *
+ * Watching a sort with no numbers attached is what makes it feel random; "47 comparisons, 12 swaps" is what
+ * turns it into "selection sort compares a lot and swaps rarely". Counted here, once, from the actions each
+ * step already carries, rather than in every simulator - and only for the actions that mean the same thing
+ * in every structure, so the count can never claim something the animation does not show.
+ *
+ * A zero on one side is a real statement, not a missing value: 简单选择排序 swaps, 直接插入排序/希尔排序/归并排序
+ * shift records instead (so "交换 0 次" is exactly what they do), and 基数排序 neither swaps nor compares keys -
+ * it gets no counter row at all rather than a row of zeros.
+ */
+const COUNTED_ACTIONS = new Map([
+  ["compare", "compareCount"],
+  ["swap", "swapCount"],
+  ["exchange", "swapCount"]
+]);
+
+/** Running totals written onto each step, so a learner can see how much work the step has cost so far. */
+function attachCounters(steps) {
+  const totals = { compareCount: 0, swapCount: 0 };
+  for (const step of steps) {
+    for (const action of step.dsvpActions || []) {
+      const key = COUNTED_ACTIONS.get(String(action?.type || ""));
+      if (key) totals[key] += 1;
+    }
+    // Before anything has been counted, "0 comparisons" is noise; after that it is the whole point.
+    if (totals.compareCount || totals.swapCount) writeMeta(step.dsvpState, { ...totals });
+  }
+}
+
+/**
+ * Writes fields into whichever meta a state shape uses: the `meta` row inside `view` (what every textbook
+ * simulator emits), the state's own `meta` object, or the state itself for the older flat shapes.
+ *
+ * Never creates a row: a frame that keeps its meta nowhere is left alone rather than given a shape its own
+ * renderer does not expect.
+ */
+function writeMeta(state, fields) {
+  if (!state || typeof state !== "object") return;
+  if (Array.isArray(state.view)) {
+    const metaRow = state.view.find((panel) => panel && (panel.role === "meta" || panel.role === "pointers"));
+    if (metaRow) {
+      Object.assign(metaRow, fields);
+      return;
+    }
+  }
+  if (state.meta && typeof state.meta === "object") {
+    Object.assign(state.meta, fields);
+    return;
+  }
+  if (!Array.isArray(state.view)) Object.assign(state, fields);
+}
+
 function traceToPlayerData(trace) {
   if (!trace || typeof trace !== "object" || !Array.isArray(trace.steps) || !trace.steps.length) {
     throw new DsvpValidationError("INVALID_TRACE", "VisualizationTrace 缺少可播放步骤", "trace.steps");
@@ -679,7 +733,7 @@ function traceToPlayerData(trace) {
       dsvpHighlights: step.highlights || emptyHighlights()
     };
   });
-  return {
+  const player = {
     animation: true,
     protocol: "dsvp/1",
     traceId: trace.trace_id,
@@ -698,6 +752,8 @@ function traceToPlayerData(trace) {
       : [{ op: "inspect", label: "查看结果", note: trace.summary.result, stateSnapshot: initial, dsvpState: firstState }],
     dsvpTrace: trace
   };
+  attachCounters(player.steps);
+  return player;
 }
 
 module.exports = {
