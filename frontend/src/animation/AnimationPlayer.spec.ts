@@ -30,6 +30,25 @@ afterEach(() => {
 });
 
 describe("animation player", () => {
+  it("says so when the engine produced no process at all, instead of a dead 'next' button", () => {
+    // 初始化这类操作的 trace 只有一帧：进度条一格、「下一步」按了不动。学生只会以为演示坏了。
+    const oneFrame: AnimationDefinition = {
+      animation: true,
+      type: "stack",
+      title: "顺序栈的初始化",
+      description: "",
+      initial: [],
+      steps: [{ op: "inspect", label: "查看结果", note: "空栈", dsvpState: { kind: "stack", items: [], top: -1 } }],
+    };
+
+    const silent = mount(AnimationPlayer, { props: { definition: oneFrame } });
+    expect(silent.get(".player__single").text()).toBe("这一步只有结果，没有中间过程");
+
+    // 有过程的动画不该挂这句话。
+    const withSteps = mount(AnimationPlayer, { props: { definition } });
+    expect(withSteps.find(".player__single").exists()).toBe(false);
+  });
+
   it("preserves step controls and changes the silver transport icon with playback state", async () => {
     vi.useFakeTimers();
     const wrapper = mount(AnimationPlayer, { props: { definition, controlsVariant: "silver" } });

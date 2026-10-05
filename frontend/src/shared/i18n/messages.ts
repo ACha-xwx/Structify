@@ -293,6 +293,12 @@ export const messages = {
   "player.speedLabel": { zh: "播放速度", en: "Playback speed" },
   "player.rail": { zh: "步骤跳转（点一格跳到那一步）", en: "Step rail (click a tick to jump there)" },
   "player.placeholder": { zh: "还没有生成动画", en: "No animation yet" },
+  // 有些操作（初始化、哈希函数…）引擎一个过程帧都给不出来，整条动画只有一帧。不写这一句，
+  // 学生点「下一步」画面不动，只会以为坏了。
+  "player.singleFrame": {
+    zh: "这一步只有结果，没有中间过程",
+    en: "This one has a result but no steps in between"
+  },
 
   /** The animation renderer. */
   "stage.emptyBucket": { zh: "空", en: "empty" },

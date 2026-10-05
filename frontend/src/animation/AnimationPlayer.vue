@@ -41,6 +41,13 @@ const playbackIdentity = computed(() =>
 const playback = useAnimationPlayback(stepCount, { identity: playbackIdentity });
 
 const currentStep = computed(() => (playback.index.value >= 0 ? steps.value[playback.index.value] ?? null : null));
+/**
+ * True when the engine produced no process frames at all, so the whole animation is one picture.
+ *
+ * 初始化、取平方取中、伪随机这类操作本来就只有一个状态，引擎给不出中间帧。此时进度条上只有一格、
+ * 「下一步」按了也不动，学生只会以为演示坏了——把这件事说出来，比让他自己猜好。
+ */
+const singleFrame = computed(() => stepCount.value === 1);
 /** Before the first step the learner sees the input, not a blank canvas. */
 const initialState = computed(() => initialFrame(props.definition, props.trace));
 /** The one big line under the title: the step's concrete outcome (note) beats its category (label),
@@ -70,6 +77,9 @@ function onKeydown(event: KeyboardEvent) {
 
     <template v-if="definition">
       <p class="player__headline" aria-live="polite">{{ headline }}</p>
+      <!-- 引擎给不出过程帧的操作（初始化、哈希函数…）整条动画只有一帧。不写这一句，
+           学生点「下一步」画面不动，只会以为坏了。 -->
+      <p v-if="singleFrame" class="player__single">{{ t("player.singleFrame") }}</p>
 
       <div class="player__viewport" tabindex="0" role="group" :aria-label="t('player.canvas')" @keydown="onKeydown">
         <!-- The initial frame is only for the "before the first step" position: once a step is active its
@@ -154,6 +164,14 @@ function onKeydown(event: KeyboardEvent) {
   min-height: 28px;
   font-size: 19px;
   font-weight: 600;
+  text-wrap: pretty;
+}
+
+/* 只有一帧的演示：说明白"这一步没有过程"，而不是留一个按了没反应的「下一步」。 */
+.player__single {
+  margin: 6px 0 0;
+  font-size: 19px;
+  color: var(--text-muted, #6f6d69);
   text-wrap: pretty;
 }
 
