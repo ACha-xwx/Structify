@@ -277,7 +277,7 @@ public class ClassroomPreparation {
             subLessonTitles.put(subLesson.lessonId(), subLesson.title());
         }
         int number = 0;
-        for (com.feng.dsagent.presentation.PresentationSlide slide : pages) {
+        for (com.feng.dsagent.presentation.PresentationSlide slide : taughtPages(pages)) {
             // First sub-lesson of the lesson that claims the page, in plan order, keeps A before B.
             String subLessonId = subLessonOrder.stream().filter(slide.lessonIds()::contains).findFirst().orElse("");
             number++;
@@ -286,6 +286,18 @@ public class ClassroomPreparation {
                 subLessonTitles.getOrDefault(subLessonId, ""), sceneOf(slide), slide.terms()));
         }
         return slides;
+    }
+
+    /**
+     * The pages of a deck that are teaching material. A deck also holds pages that are not: its cover, the
+     * school's own introduction, an acknowledgement - and it marks them {@code shouldShow=false}. They were
+     * still walked as teaching steps, so a lesson could be made to narrate one thing over a page that shows
+     * another. Three pages in the whole catalogue are affected today; the rule is what keeps it from
+     * happening again when a deck re-renders.
+     */
+    static List<com.feng.dsagent.presentation.PresentationSlide> taughtPages(
+        List<com.feng.dsagent.presentation.PresentationSlide> pages) {
+        return pages.stream().filter(com.feng.dsagent.presentation.PresentationSlide::shouldShow).toList();
     }
 
     /**
@@ -344,10 +356,7 @@ public class ClassroomPreparation {
         for (int index = 0; index < part.size(); index++) {
             SlideSpinePlan.Slide slide = part.get(index);
             LessonPassageIndex.Evidence evidence = textbook.evidence(slide.section(), slideQuery(slide), 2);
-            String label = slide.title().isBlank() ? slide.summary() : slide.title();
-            if (label.length() > 30) {
-                label = label.substring(0, 30);
-            }
+            String label = SlideSpinePlan.promptLabel(slide);
             catalogue.append('\n').append(index + 1).append(". ").append(slide.id())
                 .append(" [").append(slide.section().isBlank() ? "-" : slide.section()).append('/')
                 .append(slide.role().isBlank() ? "-" : slide.role()).append("] ").append(label);
