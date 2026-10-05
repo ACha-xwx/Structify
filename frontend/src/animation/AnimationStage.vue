@@ -20,6 +20,20 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
+/**
+ * The cursors standing on one cell: `i` and `j` can share a cell, and a step may be reading while a stack
+ * marker sits elsewhere. Drawing them all is the point - a single highlight cannot say "i is here, j is
+ * there", which is exactly what a learner has to see during a compare or a partition.
+ */
+function cursorsOf(panel: FramePanel, cell: number) {
+  return panel.cursors.filter((cursor) => cursor.index === cell);
+}
+
+/** The lead cursor of a panel is the one the step is operating on; it gets the filled pill. */
+function isLeadCursor(panel: FramePanel, cursor: { key: string }): boolean {
+  return panel.cursors.length > 0 && panel.cursors[0].key === cursor.key;
+}
+
 const frame = computed<AnimationFrame>(() => normalizeFrame(props.state ?? props.step?.dsvpState ?? null));
 // A frame whose only content is metadata still says something (n, result, front/rear...); treating it as
 // "nothing to render" made such a step a completely blank canvas.
@@ -379,6 +393,9 @@ const graphLayouts = computed(() => {
       <!-- The engine's meta fields (front/rear/top/k/formula/stored...) belong to the frame, not to one
            panel; without this row they were computed and then dropped, so a step that reported "k = 7"
            showed nothing at all. -->
+      <!-- 不变式条：这一步"结构上什么成立"（"下标 0 到 i-1 已经排好"）。给学生的是能带到下一步去的那句话，
+           所以它是这一帧的标题句、单独占一行放在画布上方，而不是混进下面那排字段胶囊里。 -->
+      <p v-if="frame.invariant" class="stage__invariant">{{ frame.invariant }}</p>
       <div v-if="frame.chips.length" class="stage__meta">
         <span v-for="chip in frame.chips" :key="`meta-${chip.label}`" class="chip"><i>{{ chip.label }}</i>{{ chip.value }}</span>
       </div>
@@ -388,6 +405,30 @@ const graphLayouts = computed(() => {
         <template v-if="panel.kind === 'array' || panel.kind === 'text'">
           <!-- 空的顺序结构：容量已知就摆出空槽，容量未知就给一个大「空」字——空白画布说明不了任何事。 -->
           <p v-if="!panel.values.length" class="panel__vacant">{{ t("stage.emptyBucket") }}</p>
+          <!-- 链表家族：值本身没说明力，链接才是重点，所以画成结点框 + 箭头，而不是一排格子。 -->
+          <ol v-else-if="panel.chain" class="chain">
+            <li
+              v-for="(value, cell) in panel.values"
+              :key="`node-${cell}`"
+              class="chain__node"
+              :class="{ 'chain__node--focus': panel.focus === cell }"
+            >
+              <span class="chain__marks">
+                <span v-if="cell === 0" class="cursor cursor--primary">head</span>
+                <span
+                  v-for="cursor in cursorsOf(panel, cell)"
+                  :key="`${cell}-${cursor.key}`"
+                  class="cursor"
+                  :class="{ 'cursor--primary': cell === 0 && isLeadCursor(panel, cursor) }"
+                >{{ cursor.label }}</span>
+              </span>
+              <span class="chain__body">
+                <span class="chain__value">{{ isEmptyValue(value) ? "∅" : frameValueText(value) }}</span>
+                <span class="chain__next">{{ cell === panel.values.length - 1 ? "NULL" : "next" }}</span>
+              </span>
+              <span v-if="cell < panel.values.length - 1" class="chain__link" aria-hidden="true"></span>
+            </li>
+          </ol>
           <ol v-else class="cells">
             <li
               v-for="(value, cell) in panel.values"
@@ -395,6 +436,14 @@ const graphLayouts = computed(() => {
               class="cell"
               :class="{ 'cell--empty': isEmptyValue(value), 'cell--focus': panel.focus === cell, 'cell--inRange': panel.range && cell >= panel.range[0] && cell < panel.range[1] }"
             >
+              <span v-if="cursorsOf(panel, cell).length" class="cell__cursors">
+                <span
+                  v-for="cursor in cursorsOf(panel, cell)"
+                  :key="`${cell}-${cursor.key}`"
+                  class="cursor"
+                  :class="{ 'cursor--primary': isLeadCursor(panel, cursor) }"
+                >{{ cursor.label }}</span>
+              </span>
               <span v-if="!isEmptyValue(value)" class="cell__value">{{ frameValueText(value) }}</span>
               <span class="cell__index">{{ cell }}</span>
             </li>
@@ -627,7 +676,119 @@ const graphLayouts = computed(() => {
 
 .cell--focus .cell__value { font-weight: 660; }
 
-.cell--inRange { border-style: dashed; }
+/* 正在处理的那一段（排序的一趟、折半查找的候选区间）：虚线边框 + 顶上一道细条，
+   一眼看出"工作量在缩小"。 */
+.cell--inRange {
+  border-style: dashed;
+  box-shadow: inset 0 3px 0 color-mix(in srgb, var(--stage-ink) 26%, transparent);
+}
+
+/* 具名游标：引擎一直在报 i/j/mid/top/front/rear，以前只在页眉印一遍，格子上什么都没有。
+   颜色在这是灰阶设计，靠"名字 + 主次填充"区分：当前那一个是实心，其余是描边。 */
+.cell__cursors,
+.chain__marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+}
+
+.cursor {
+  padding: 1px 7px;
+  border: 1px solid color-mix(in srgb, var(--stage-ink) 30%, transparent);
+  border-radius: 999px;
+  background: var(--stage-face);
+  color: var(--stage-ink-soft);
+  font-size: 14px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.cursor--primary {
+  border-color: var(--stage-ink);
+  background: var(--stage-ink);
+  color: var(--stage-face);
+}
+
+/* 链表：结点框 [值 | next] + 结点之间的箭头。值挤在一排格子里看不出"谁指向谁"。 */
+.chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chain__node {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-top: 24px;
+}
+
+.chain__marks {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 140px;
+}
+
+.chain__body {
+  display: flex;
+  align-items: stretch;
+  border: 1px double color-mix(in srgb, var(--stage-ink) 22%, transparent);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--stage-cell);
+}
+
+.chain__node--focus .chain__body {
+  border-color: color-mix(in srgb, var(--stage-ink) 55%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--stage-ink) 18%, transparent);
+}
+
+.chain__value {
+  display: grid;
+  place-items: center;
+  min-width: 54px;
+  min-height: 48px;
+  padding: 0 6px;
+  font-size: 19px;
+  color: var(--stage-ink);
+}
+
+.chain__next {
+  display: grid;
+  place-items: center;
+  min-width: 46px;
+  border-left: 1px solid color-mix(in srgb, var(--stage-ink) 18%, transparent);
+  background: color-mix(in srgb, var(--stage-ink) 6%, transparent);
+  color: var(--stage-ink-soft);
+  font-size: 14px;
+}
+
+.chain__link {
+  align-self: center;
+  position: relative;
+  width: 28px;
+  height: 2px;
+  margin: 0 3px;
+  background: var(--stage-line);
+}
+
+.chain__link::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: -4px;
+  width: 9px;
+  height: 9px;
+  border-top: 2px solid var(--stage-line);
+  border-right: 2px solid var(--stage-line);
+  transform: rotate(45deg);
+}
 
 .cell__value {
   font-size: 19px;
@@ -717,6 +878,19 @@ const graphLayouts = computed(() => {
 
 /* One row for the frame's own metadata, above the panels it describes. */
 .stage__meta { display: flex; flex-wrap: wrap; gap: 7px; }
+
+/* 不变式条：现在这一步"什么成立"。它是学生要带到下一步去的那句话，不是又一个字段值，
+   所以字不能小（≥19px）、独占一行，并用左侧竖线和大面积底色和胶囊区分开。 */
+.stage__invariant {
+  margin: 0 0 10px;
+  padding: 10px 14px;
+  border-left: 4px solid color-mix(in srgb, var(--stage-ink) 30%, transparent);
+  border-radius: 10px;
+  background: var(--stage-cell);
+  color: var(--stage-ink);
+  font-size: 19px;
+  line-height: 1.5;
+}
 
 .chip {
   display: inline-flex;

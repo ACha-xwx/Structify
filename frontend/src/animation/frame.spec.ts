@@ -8,6 +8,65 @@ import type { DsvpState } from "../shared/types/animation";
  * in the engine that the frontend cannot draw shows up here instead of on a learner's screen.
  */
 
+describe("cursor publication", () => {
+  it("publishes every pointer the step reports, not just the one it focuses", () => {
+    // A compare stands on two cells at once; one highlight cannot say "i is here, j is there".
+    const frame = normalizeFrame({
+      kind: "sort",
+      view: [
+        { role: "array", values: [49, 38, 65, 97] },
+        { role: "meta", values: [], operation: "bubble", i: 1, j: 3 },
+      ],
+    } as DsvpState);
+
+    const panel = frame.panels[0];
+    expect(panel.cursors.map((cursor) => `${cursor.label}@${cursor.index}`)).toEqual(["j@3", "i@1"]);
+    // The single focus keeps the order it always had, so nothing that read it moved.
+    expect(panel.focus).toBe(3);
+  });
+
+  it("keeps a stack's own marker next to the slot the step is reading", () => {
+    const frame = normalizeFrame({ kind: "stack", items: [10, 20, 30], top: 2, current: 1 } as DsvpState);
+
+    expect(frame.panels[0].cursors.map((cursor) => `${cursor.label}@${cursor.index}`)).toEqual(["top@2", "当前@1"]);
+    expect(frame.panels[0].focus).toBe(2);
+  });
+
+  it("draws the values of a linked list as a chain and an array as plain cells", () => {
+    const list = normalizeFrame({
+      kind: "linked_list",
+      view: [{ role: "L", values: [10, 20, 30] }, { role: "meta", values: [], operation: "insert", current: 1 }],
+    } as DsvpState);
+    expect(list.panels[0].chain).toBe(true);
+    expect(list.panels[0].cursors.map((cursor) => cursor.key)).toEqual(["current"]);
+
+    const array = normalizeFrame({ kind: "sort", view: [{ role: "array", values: [1, 2] }] } as DsvpState);
+    expect(array.panels[0].chain).toBe(false);
+  });
+});
+
+describe("frame invariant", () => {
+  it("promotes the engine's invariant to a line of its own and keeps it out of the chips", () => {
+    // "什么成立" 是这一帧的标题句，不是又一个字段值：混在 i/j/mid 中间会被读成同一个层级的东西。
+    const frame = normalizeFrame({
+      kind: "sort",
+      view: [
+        { role: "array", values: [3, 1, 2] },
+        { role: "meta", values: [], operation: "bubble", i: 0, j: 1, invariant: "下标 1 到 2 已经排好", compareCount: 4, swapCount: 1 },
+      ],
+    } as DsvpState);
+
+    expect(frame.invariant).toBe("下标 1 到 2 已经排好");
+    expect(frame.chips.map((chip) => chip.label)).toEqual(expect.arrayContaining(["比较次数", "交换次数"]));
+    expect(frame.chips.map((chip) => chip.label)).not.toContain("invariant");
+  });
+
+  it("has no invariant line when the engine states none", () => {
+    const frame = normalizeFrame({ kind: "stack", items: [10], top: 0 } as DsvpState);
+    expect(frame.invariant).toBe("");
+  });
+});
+
 describe("normalizeFrame", () => {
   it("returns an empty frame for a step the engine did not annotate", () => {
     expect(normalizeFrame(null).panels).toEqual([]);
