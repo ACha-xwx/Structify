@@ -239,6 +239,7 @@ export const messages = {
   "slides.unavailable": { zh: "课件暂时无法访问", en: "Courseware is temporarily unavailable" },
   "slides.imageFailed": { zh: "这一页图片加载失败，请翻到下一页或稍后重试。", en: "This page failed to load. Turn to the next page or try again later." },
   "slides.browseAll": { zh: "浏览全部课件", en: "Browse all courseware" },
+  "slides.backToStep": { zh: "回到当前页", en: "Back to the page" },
   "courseware.title": { zh: "全部课件", en: "All courseware" },
   "slides.pinnedByTeacher": { zh: "老师指定", en: "Chosen by the teacher" },
   "slides.followSource": { zh: "教材延伸", en: "Follows the textbook" },

@@ -261,4 +261,28 @@ describe("slide panel", () => {
 
     expect((await pressKey("ArrowRight")).defaultPrevented).toBe(false);
   });
+
+  /**
+   * The lesson keeps talking about its own page while the learner is free to browse. When they browse away
+   * the way back has to be one click - the reported complaint was having to guess how far to page back.
+   */
+  it("offers one click back while the panel is on a page the lesson is not talking about", async () => {
+    const wrapper = mount(SlidePanel, {
+      props: { courseware: courseware([slide("a", 1), slide("b", 2), slide("c", 3)]), activeSlideId: "b", match, loading: false, error: "" },
+    });
+    await wrapper.vm.$nextTick();
+
+    const backLabel = "回到当前页";
+    const chip = () => wrapper.findAll("button").find((button) => button.text() === backLabel);
+    expect(chip()).toBeUndefined();
+
+    await wrapper.findAll("button").find((button) => button.text() === "下一页")!.trigger("click");
+    expect(wrapper.get("img").attributes("src")).toBe("/api/v1/presentation/slides/c/image");
+    expect(chip()).toBeTruthy();
+
+    await chip()!.trigger("click");
+    expect(wrapper.get("img").attributes("src")).toBe("/api/v1/presentation/slides/b/image");
+    // Back on the step's own page there is nothing to return to, so the chip goes away again.
+    expect(chip()).toBeUndefined();
+  });
 });
