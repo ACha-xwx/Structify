@@ -223,6 +223,9 @@ public class ClassroomPreparation {
                         + (spine.isEmpty() ? "" : spineInstruction(part, textbook, partNumber, partCount)),
                         modelInput, 5000, json -> accepted.set(validatePart(json, rules, parser, mapper)));
                     if (accepted.get() != null) {
+                        if (!spine.isEmpty()) {
+                            alignNarrations(job.user, accepted.get(), part);
+                        }
                         mergedSteps.addAll(accepted.get());
                     }
                     if (first == null) {
@@ -298,6 +301,144 @@ public class ClassroomPreparation {
     static List<com.feng.dsagent.presentation.PresentationSlide> taughtPages(
         List<com.feng.dsagent.presentation.PresentationSlide> pages) {
         return pages.stream().filter(com.feng.dsagent.presentation.PresentationSlide::shouldShow).toList();
+    }
+
+    /** How many steps one consistency pass may rewrite, so a pathological answer cannot spiral. */
+    private static final int NARRATION_REPAIR_LIMIT = 4;
+    /** The consistency check reads pages and narrations; it never rewrites anything itself. */
+    private static final String NARRATION_CHECK_SYSTEM = """
+        你在检查一节数据结构课的讲稿：每一段讲稿都必须讲它引用的那一页课件。
+        输入是一个数组，每一项有 step（步骤序号）、这一页讲的是（这一页实际的内容）、讲稿。
+        只依据"这一页讲的是"来判定：讲稿讲的是这一页的内容就算对；在讲别的页、别的主题，或者只是空话，就算不对。
+        讲稿写得短、写得浅不算不对；用词不同、换了讲解角度也不算不对。
+        只输出 JSON：{"off":[序号,…]}；全部都贴合就输出 {"off":[]}。""";
+
+    /** The page a teaching step shows; empty for the extension and closing steps, which carry no page. */
+    static String stepPage(JsonNode step) {
+        JsonNode refs = step.path("slideRefs");
+        return refs.isArray() && !refs.isEmpty() ? refs.get(0).asText("") : "";
+    }
+
+    /**
+     * The review payload: every step that shows a page, with what that page holds and the narration written
+     * for it. Package-private so the payload can be asserted without a model.
+     */
+    static ArrayNode narrationReview(ObjectMapper mapper, ArrayNode steps, List<SlideSpinePlan.Slide> part) {
+        Map<String, SlideSpinePlan.Slide> bySlide = new LinkedHashMap<>();
+        for (SlideSpinePlan.Slide slide : part) {
+            bySlide.put(slide.id(), slide);
+        }
+        ArrayNode rows = mapper.createArrayNode();
+        for (int index = 0; index < steps.size(); index++) {
+            JsonNode step = steps.get(index);
+            SlideSpinePlan.Slide slide = bySlide.get(stepPage(step));
+            String content = step.path("content").asText("").strip();
+            if (slide == null || content.isBlank()) {
+                continue;
+            }
+            ObjectNode row = rows.addObject();
+            row.put("step", index);
+            row.put("这一页讲的是", SlideSpinePlan.promptLabel(slide));
+            row.put("讲稿", content);
+        }
+        return rows;
+    }
+
+    /** The step numbers the check named, in range and capped, in the order the model gave them. */
+    static List<Integer> narrationOff(JsonNode verdict, int limit) {
+        List<Integer> off = new ArrayList<>();
+        for (JsonNode item : verdict.path("off")) {
+            if (item.isIntegralNumber() && item.asInt() >= 0 && !off.contains(item.asInt())) {
+                off.add(item.asInt());
+            }
+            if (off.size() >= limit) {
+                break;
+            }
+        }
+        return off;
+    }
+
+    /** Writes {"fixed":[{"step":n,"讲稿":…}]} back onto the steps; anything malformed is skipped. */
+    static int applyNarrationRewrites(ArrayNode steps, JsonNode rewrites) {
+        int applied = 0;
+        for (JsonNode row : rewrites.path("fixed")) {
+            int index = row.path("step").asInt(-1);
+            String content = row.path("讲稿").asText("").strip();
+            if (index < 0 || index >= steps.size() || content.isBlank() || !steps.get(index).isObject()) {
+                continue;
+            }
+            ((ObjectNode) steps.get(index)).put("content", content);
+            applied++;
+        }
+        return applied;
+    }
+
+    /**
+     * Ask the model whether each narration is about the page the step shows, and rewrite the ones that are
+     * not.
+     *
+     * <p>The structural validator cannot see this: a step that references the right page while narrating a
+     * different topic breaks no rule, which is how a lesson came to explain {@code int} over the school's
+     * organisation chart. Checking and repairing here - rather than rejecting the part - keeps one drifting
+     * step from costing the learner the other eleven, and a failure of the check itself costs nothing: the
+     * narration simply stays as the model first wrote it.
+     */
+    private void alignNarrations(long user, ArrayNode steps, List<SlideSpinePlan.Slide> part) {
+        ArrayNode review = narrationReview(mapper, steps, part);
+        if (review.isEmpty()) {
+            return;
+        }
+        LOGGER.info("narration review: {} step(s) checked against the page each one shows", review.size());
+        List<Integer> off;
+        try {
+            JsonNode verdict = model.generate(user, NARRATION_CHECK_SYSTEM, review.toString(), 900,
+                ClassroomPreparation::requireNarrationVerdict);
+            off = narrationOff(verdict, NARRATION_REPAIR_LIMIT);
+        } catch (RuntimeException error) {
+            LOGGER.warn("narration check skipped for one part: {}", error.getMessage());
+            return;
+        }
+        if (off.isEmpty()) {
+            return;
+        }
+        try {
+            JsonNode rewrites = model.generate(user, narrationRewriteSystem(off), review.toString(), 1600,
+                ClassroomPreparation::requireNarrationRewrites);
+            LOGGER.info("narration aligned: {} of the {} named step(s) rewritten", applyNarrationRewrites(steps, rewrites), off.size());
+        } catch (RuntimeException error) {
+            LOGGER.warn("narration rewrite skipped for one part: {}", error.getMessage());
+        }
+    }
+
+    private static String narrationRewriteSystem(List<Integer> steps) {
+        return """
+           下面这些步骤的讲稿与它引用的那一页不符：%s。
+           请逐条重写这些步骤的讲稿：只讲"这一页讲的是"里出现的内容，像老师看着这一页讲课。
+           不要改动没有被点名的步骤，也不要改其它字段；不要写出处、页码，也不要写"依据教材"这类说明。
+           只输出 JSON：{"fixed":[{"step":序号,"讲稿":"重写后的讲稿"},…]}。""".formatted(steps);
+    }
+
+    private static void requireNarrationVerdict(JsonNode json) {
+        if (!json.path("off").isArray()) {
+            throw new IllegalArgumentException("$.off 必须是数组");
+        }
+        for (JsonNode item : json.path("off")) {
+            if (!item.isIntegralNumber()) {
+                throw new IllegalArgumentException("$.off 只能放步骤序号");
+            }
+        }
+    }
+
+    private static void requireNarrationRewrites(JsonNode json) {
+        JsonNode fixed = json.path("fixed");
+        if (!fixed.isArray()) {
+            throw new IllegalArgumentException("$.fixed 必须是数组");
+        }
+        for (JsonNode row : fixed) {
+            if (!row.path("step").isIntegralNumber() || row.path("讲稿").asText("").isBlank()) {
+                throw new IllegalArgumentException("$.fixed 每一项都要有 step 和讲稿");
+            }
+        }
     }
 
     /**
