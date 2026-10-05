@@ -28,16 +28,19 @@ describe("AI ball", () => {
     vi.useFakeTimers();
     const view = mount(AiBall, { props: { followPointer: false } });
     expect(view.findAll(".ai-ball__eye")).toHaveLength(2);
+    expect(view.find(".ai-ball__stage").exists()).toBe(true);
+    expect(view.findAll(".ai-ball__orbit")).toHaveLength(2);
     expect(view.get("button").attributes("type")).toBe("button");
     await view.trigger("click");
     expect(view.attributes("data-spinning")).toBe("true");
     expect(view.attributes("data-awake")).toBe("true");
+    expect(view.attributes("data-spin-mode")).toBe("orbit");
     vi.advanceTimersByTime(600);
     await view.trigger("click");
     vi.advanceTimersByTime(700);
     await view.vm.$nextTick();
     expect(view.attributes("data-spinning")).toBe("true");
-    vi.advanceTimersByTime(60);
+    vi.advanceTimersByTime(200);
     await view.vm.$nextTick();
     expect(view.attributes("data-spinning")).toBe("false");
     await view.trigger("click");
@@ -106,8 +109,26 @@ describe("AI ball", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("keeps click space, expression motion, and the ball shape on separate layers", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const view = mount(AiBall, { props: { followPointer: false, expressive: true } });
+    const stage = view.find(".ai-ball__stage");
+    const motion = view.find(".ai-ball__motion");
+    const shape = view.find(".ai-ball__shape");
+    expect(stage.find(".ai-ball__orbit--back").exists()).toBe(true);
+    expect(stage.find(".ai-ball__orbit--front").exists()).toBe(true);
+    expect(motion.find(".ai-ball__shape").element).toBe(shape.element);
+
+    await view.trigger("click");
+    expect(view.attributes("data-spin-mode")).toBe("orbit");
+    expect(view.find(".ai-ball__motion").exists()).toBe(true);
+    expect(view.find(".ai-ball__shape").exists()).toBe(true);
+  });
+
   it("pauses pointer gaze while an expressive animation is active", async () => {
     vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
     const frames = mockFrame();
     const view = mount(AiBall, { props: { expressive: true } });
     vi.spyOn(view.element, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, width: 40, height: 40 } as DOMRect);
