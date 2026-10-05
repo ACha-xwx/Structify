@@ -100,3 +100,78 @@
 1. **排序的视觉**：教材视角是"顺序表/数组"，我建议**用格子 + 游标 + 已排序区间**（而不是常见网站的柱状图）——更贴教材，也和学生做题的视角一致。同意吗？
 2. **阶段 1 能不能先做**（纯渲染、低风险、立刻能看出差别）？我打算做完用真机截图 + 你能看懂的判据（"10 秒内能说出这一步在干什么"）来验收。
 3. **链表改造（阶段 2）**要动引擎的面板结构，属于结构性改动，我要不要**先出一张静态示意图**（我画好给你看：结点框、箭头、head/p 指针的构图），你认了再动代码？
+
+---
+
+## 六、实施进度（2026-10-06 夜，本地已改、未上服务器）
+
+> 三件事按上面的顺序都做了；**排序视觉选了"格子 + 游标 + 已排序区间"**（第 1 条的建议），
+> 链表改造直接做了（第 3 条的示意图没来得及单独出，但改动可以在播放器里直接看）。
+
+### 阶段 1：把引擎已经有、但没画的信息画出来（前端为主）
+
+`frontend/src/animation/frame.ts`
+- 新增 `FrameCursor {key,label,index}`，`FramePanel` 增加 `cursors: FrameCursor[]`。以前一帧只能有一个高亮，
+  现在**每个具名指针都发布出来**：`i`、`j`、`k`、`low`、`mid`、`high`、`top`、`front`、`rear`、`current`、`pivot`…
+  `focus` 保持原来的取值顺序，所以读它的代码一行没改。
+- 新增 `chain: boolean`：单/双/循环链表、链式栈队列走"结点框"渲染，其它数组走格子。
+
+`frontend/src/animation/AnimationStage.vue`
+- 数组/文本面板：格子上渲染 `.cursor` 胶囊（`i`/`mid`/`top`… 用的就是教材里的名字，不翻译成"中点"），
+  区间（`low..high`）用 `.cell--inRange` 描边。
+- 链表家族：`.chain__node`（`[值 | next]` 两格）+ `.chain__link` 箭头，首结点标 `head`、末结点 `next` 写 `NULL`，
+  具名指针悬在结点上方。
+
+### 阶段 2：链表改成结点框 + 箭头 + 具名头指针
+
+同上 `.chain` 那一套。逆置/插入/删除现在能看见"链接"本身，而不是一排没有名字的值。
+
+### 阶段 3：不变式条 + 计数器
+
+`backend/dsvp/engine/textbook-animation-engine.js`（`simulateSort`）
+- **比较必须有自己的帧**。原来只有"发生交换"才报帧，所以计数器数出来是
+  **冒泡排序「比较 0 次、交换 5 次」**——比不显示更误导。现在一次比较报一帧，
+  发生交换时把 `swap` 动作挂在同一帧上（帧数 = 比较次数，不会因为"先比较再交换"翻倍）。
+- 覆盖：冒泡、直接插入、折半插入、希尔、快速、简单选择、堆、归并（分派/收集阶段不比关键字，
+  基数排序**一次关键字比较都没有**，所以它没有计数器——这是对的，也是个教学点）。
+- **不变式**：每帧在 `meta.invariant` 里给一句话（"下标 0 到 i-1 是已排好的有序区……"），
+  播放器画成画布上方的一条（`.stage__invariant`，19px）。
+
+`backend/dsvp/engine/dsvp-engine.js`
+- `attachCounters(steps)`：从每步已有的动作里累计 `compareCount` / `swapCount` 写回 meta。
+  **只数 `compare`/`swap` 这两个含义在任何结构里都一致的动作**，所以计数器不可能声称动画没画过的事。
+
+`frontend/src/animation/frame.ts` + `AnimationStage.vue`
+- `invariant` 单独成行、**不重复成胶囊**（混在 `i`/`mid` 中间会被读成同一个层级的东西）；`比较次数/交换次数` 走胶囊。
+
+### 怎么验的（数字都是本机实跑）
+
+| 验的东西 | 命令 | 结果 |
+|---|---|---|
+| 计数器 + 排序结果 | 直接调 `simulateOperation` 10 种排序 × 3 组数据 | `[5,3,8,1]` 冒泡 **比较 6 / 交换 4**（教科书值）；`[49,…,27]` 冒泡 21/12、选择 21/6；**10 种排序末帧数组全部有序** |
+| 不变式覆盖 | 同上，数带 `invariant` 的帧 | 9 种排序 **每帧都有**；归并的 `show()` 补过一次（否则 1/33） |
+| 引擎自身校验 | `backend/dsvp/test/verify-*.js` | 167 能力 / 1182 步、边界探针 **13 条与基线一致** |
+| 引擎契约（进 CI） | `DsvpLocalEngineTest#annotatesEverySortStepWithCursorsCountersAndWhatCurrentlyHolds` | 每帧有 invariant；4 元素冒泡末帧 6/4；比较帧同时报 i 和 j |
+| 播放器渲染 | `vitest run src/animation` | 45 passed（不变式成行不成胶囊、cursor 落在格子上、链表成链） |
+| 类型 | `vue-tsc --noEmit` | 干净 |
+
+### 还没做
+
+- **阶段 4（过渡与虚影）**：交换/移动目前还是"一帧到位"，没有 200–500ms 的过渡。
+- **阶段 5**：抽象层级切换（底层指针 ↔ 高层逻辑），按上面说的先不做。
+- **真机截图验收**：以上都是引擎与组件级验证，**还没在浏览器里看过**（本轮只改到本地）。
+
+### 顺手量到的一件事：第 7 条「最少步数下限」比想的更值得做
+
+把 167 个能力的标准例子逐个跑一遍、数 `trace.steps`：
+
+| trace 帧数 | 个数 | 意味 |
+|---|---|---|
+| **1 帧** | **9 个** | `stack.initialize`、`circular_queue.initialize`、`double_stack.initialize`、`linked_queue.initialize`、`circular_linked_list.initialize`、`static_linked_list.initialize`、`union_find.initialize`、`hash_function.division_remainder`、`hash_function.pseudo_random` —— **引擎一个过程帧都没有**，播放器只能走 `查看结果` 兜底 |
+| 2 帧 | 2 个 | `linked_list.initialize`（建立头结点）、`hash_function.mid_square`（取平方值中间若干位） |
+
+也就是说有 9 个能力点出来的"动画"**从头到尾只有一帧**，学生点「下一步」什么都不会变——
+这正是"看着像坏了"。按第 7 条做（不播，或明确写"这一步只有结果、没有过程"）能直接消掉这 9 个；
+本轮**只量了、没改**。
+
+
