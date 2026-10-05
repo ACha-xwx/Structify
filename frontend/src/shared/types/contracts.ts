@@ -2,6 +2,7 @@
 
 // Imported as well as re-exported below: the learning-workbench shape in this file is built on it.
 import type { AnimationDefinition } from "./animation";
+import type { ChatAttachment, ChatReasoningEffort } from "./chat";
 
 export type Role = "STUDENT" | "TEACHER" | "ADMIN";
 export type LicenseScope = "PUBLIC" | "TEAM_ONLY" | "CLASSROOM_ONLY";
@@ -87,12 +88,17 @@ export type ChatRole = "user" | "assistant";
 export interface ChatTurn {
   role: ChatRole;
   content: string;
+  attachments?: ChatAttachment[];
 }
 export interface ChatRequest {
   prompt: string;
   chapterId?: string;
   sessionId?: string;
   history?: ChatTurn[];
+  thinkingEnabled?: boolean;
+  reasoningEffort?: ChatReasoningEffort;
+  attachments?: ChatAttachment[];
+  retryMessageId?: number;
 }
 export interface ChatSource {
   id: string;
@@ -109,6 +115,7 @@ export interface ChatResponse {
   sessionId?: string | null;
   sources: ChatSource[];
   persisted: boolean;
+  reasoning?: string | null;
 }
 export interface ChatSessionSummary {
   id: string;
@@ -116,6 +123,7 @@ export interface ChatSessionSummary {
   title: string;
   updatedAt: string;
   messageCount: number;
+  pinned?: boolean;
 }
 export interface ChatMessage {
   id: number;
@@ -123,6 +131,11 @@ export interface ChatMessage {
   content: string;
   sources: ChatSource[];
   createdAt: string;
+  attachments?: ChatAttachment[];
+  reasoning?: string | null;
+  chapterId?: string | null;
+  thinkingEnabled?: boolean | null;
+  reasoningEffort?: ChatReasoningEffort | null;
 }
 export interface ChatSession {
   id: string;
@@ -130,6 +143,7 @@ export interface ChatSession {
   title: string;
   updatedAt: string;
   messages: ChatMessage[];
+  pinned?: boolean;
 }
 
 export interface ClassroomScript {

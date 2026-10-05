@@ -64,6 +64,8 @@ prototype.wip-*
 *.png
 *.jpg
 *.jpeg
+!frontend/src/assets/structify-demo/
+!frontend/src/assets/structify-demo/*.png
 
 # === Debug & Test Outputs ===
 public-*.html

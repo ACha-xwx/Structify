@@ -17,6 +17,7 @@ function createTestRouter() {
     history: createMemoryHistory(),
     routes: [
       { path: "/", component: { template: "<div>home</div>" } },
+      { path: "/begin", component: { template: "<div>learning entry</div>" } },
       { path: "/login", component: AuthView, props: { mode: "login" } },
       { path: "/register", component: AuthView, props: { mode: "register" } },
       { path: "/reset-password", component: AuthView, props: { mode: "reset" } },
@@ -47,6 +48,7 @@ describe("verification-code auth flow", () => {
     expect(send().attributes("disabled")).toBeDefined();
 
     await wrapper.get('input[type="email"]').setValue("student@example.com");
+    await wrapper.get('[aria-label="继续填写密码"]').trigger("click");
     expect(send().attributes("disabled")).toBeUndefined();
     await send().trigger("click");
     await send().trigger("click");
@@ -58,7 +60,8 @@ describe("verification-code auth flow", () => {
     resolveDelivery({ message: "Verification code has been sent" });
     await flushPromises();
 
-    expect(wrapper.get('[role="status"]').text()).toContain("Verification code has been sent");
+    expect(wrapper.get('[role="status"]').text()).toBe("已发送");
+    expect(wrapper.find('[data-testid="verification-sent"] .form-feedback__icon').exists()).toBe(true);
     expect(wrapper.get('[data-testid="verification-countdown"]').text()).toContain("60");
     await vi.advanceTimersByTimeAsync(1_000);
     expect(wrapper.get('[data-testid="verification-countdown"]').text()).toContain("59");
@@ -74,6 +77,7 @@ describe("verification-code auth flow", () => {
     const wrapper = await mountAuth("reset");
 
     await wrapper.get('input[type="email"]').setValue("student@example.com");
+    await wrapper.get('[aria-label="继续填写密码"]').trigger("click");
     await wrapper.get('[data-testid="send-verification-code"]').trigger("click");
     await flushPromises();
 
@@ -99,6 +103,22 @@ describe("verification-code auth flow", () => {
     });
   });
 
+  it("uses the same sent confirmation and hides the verification subtitle on reset-password", async () => {
+    authMock.requestCode.mockResolvedValueOnce({ message: "server-specific response" });
+    const wrapper = await mountAuth("reset");
+
+    await wrapper.get('input[type="email"]').setValue("student@example.com");
+    await wrapper.get('[aria-label="继续填写密码"]').trigger("click");
+    await wrapper.get('[data-testid="send-verification-code"]').trigger("click");
+    await flushPromises();
+    await new Promise((resolve) => setTimeout(resolve, 260));
+
+    expect(authMock.requestCode).toHaveBeenCalledWith({ email: "student@example.com", purpose: "reset" });
+    expect(wrapper.get('[data-testid="verification-sent"]').text()).toBe("已发送");
+    expect(wrapper.find('[data-testid="verification-sent"] .form-feedback__icon').exists()).toBe(true);
+    expect(wrapper.find(".auth-flow__heading p").exists()).toBe(false);
+  });
+
   it("submits a username through the username login field without breaking email login compatibility", async () => {
     authMock.login.mockResolvedValueOnce({ id: 1, email: "admin@example.com", roles: ["ADMIN"] });
     const wrapper = await mountAuth("login");
@@ -113,6 +133,7 @@ describe("verification-code auth flow", () => {
     await flushPromises();
 
     expect(authMock.login).toHaveBeenCalledWith({ username: "ACha_", password: "correct-horse-battery-staple" });
+    expect(wrapper.vm.$router.currentRoute.value.path).toBe("/begin");
   });
 
   it("uses the management entry shell when login redirects into the admin console", async () => {

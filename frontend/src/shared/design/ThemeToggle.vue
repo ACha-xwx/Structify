@@ -20,14 +20,16 @@ const label = computed(() => {
 const labelId = `theme-toggle-label-${useId()}`;
 const grainFilterId = `theme-toggle-grain-${useId()}`;
 const localeControlLabel = computed(() => locale.value === "zh-CN" ? "切换语言，当前中文" : "Switch language, currently English");
-const pulseId = ref(0);
+const themePulseId = ref(0);
+const localePulseId = ref(0);
 
 function updateTheme() {
-  pulseId.value += 1;
+  themePulseId.value += 1;
   toggleTheme();
 }
 
 function updateLocale() {
+  localePulseId.value += 1;
   toggleLocale();
 }
 </script>
@@ -64,7 +66,7 @@ function updateLocale() {
         <path d="M20.2 15.2A8.6 8.6 0 0 1 8.8 3.8 8.65 8.65 0 1 0 20.2 15.2Z" />
       </svg>
       <span class="theme-toggle__thumb" aria-hidden="true">
-        <span v-if="pulseId" :key="pulseId" class="theme-toggle__particles">
+        <span v-if="themePulseId" :key="themePulseId" class="theme-toggle__particles">
           <i v-for="index in 3" :key="index" class="theme-toggle__particle" :style="{ '--particle-delay': `${(index - 1) * 45}ms` }"></i>
         </span>
         <span class="theme-toggle__thumb-gloss"></span>
@@ -79,6 +81,7 @@ function updateLocale() {
     </button>
     <button
       class="theme-toggle__locale-toggle"
+      :class="{ 'is-english': locale === 'en-US', 'is-dark': isDark }"
       type="button"
       role="switch"
       :aria-checked="locale === 'en-US'"
@@ -86,8 +89,18 @@ function updateLocale() {
       :title="localeControlLabel"
       @click.stop="updateLocale"
     >
-      <span class="theme-toggle__locale-track" aria-hidden="true"></span>
-      <span class="theme-toggle__locale-thumb" aria-hidden="true">{{ locale === 'en-US' ? 'EN' : '中' }}</span>
+      <span class="theme-toggle__groove theme-toggle__locale-track" aria-hidden="true"></span>
+      <span class="theme-toggle__gloss" aria-hidden="true"></span>
+      <span class="theme-toggle__texture" :style="{ filter: `url(#${grainFilterId})` }" aria-hidden="true"></span>
+      <span class="theme-toggle__locale-option theme-toggle__locale-option--zh" aria-hidden="true">中</span>
+      <span class="theme-toggle__locale-option theme-toggle__locale-option--en" aria-hidden="true">EN</span>
+      <span class="theme-toggle__locale-thumb theme-toggle__thumb" aria-hidden="true">
+        <span v-if="localePulseId" :key="localePulseId" class="theme-toggle__particles">
+          <i v-for="index in 3" :key="index" class="theme-toggle__particle" :style="{ '--particle-delay': `${(index - 1) * 45}ms` }"></i>
+        </span>
+        <span class="theme-toggle__thumb-gloss"></span>
+        <span class="theme-toggle__locale-label">{{ locale === 'en-US' ? 'EN' : '中' }}</span>
+      </span>
     </button>
   </div>
 </template>
@@ -116,7 +129,8 @@ function updateLocale() {
 
 .theme-toggle__filters { position: absolute; width: 0; height: 0; overflow: hidden; }
 
-.theme-toggle__control {
+.theme-toggle__control,
+.theme-toggle__locale-toggle {
   position: relative;
   display: flex;
   width: 64px;
@@ -137,7 +151,8 @@ function updateLocale() {
   transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 120ms ease;
 }
 
-.theme-toggle__control.is-dark {
+.theme-toggle__control.is-dark,
+.theme-toggle__locale-toggle.is-dark {
   border-color: rgba(83, 83, 83, 0.92);
   background: radial-gradient(ellipse at top left, #3b3b3b 0%, #222222 42%, #101010 100%);
   box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.88), inset -2px -2px 5px rgba(110, 110, 110, 0.28), inset 4px 4px 8px rgba(0, 0, 0, 0.58), inset -4px -4px 8px rgba(115, 115, 115, 0.16), 0 1px 1px rgba(255, 255, 255, 0.05), 0 3px 8px rgba(0, 0, 0, 0.36), 0 8px 16px rgba(0, 0, 0, 0.3);
@@ -160,10 +175,12 @@ function updateLocale() {
   inset: 2px;
   box-shadow: inset 0 1px 4px rgba(83, 83, 78, 0.34), inset 0 -1px 2px rgba(255, 255, 255, 0.84);
 }
-.theme-toggle__control.is-dark .theme-toggle__groove { box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.84), inset 0 -1px 2px rgba(127, 127, 127, 0.24); }
+.theme-toggle__control.is-dark .theme-toggle__groove,
+.theme-toggle__locale-toggle.is-dark .theme-toggle__groove { box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.84), inset 0 -1px 2px rgba(127, 127, 127, 0.24); }
 
 .theme-toggle__gloss { background: radial-gradient(ellipse at top, rgba(255, 255, 255, 0.72) 0%, transparent 54%), linear-gradient(to bottom, rgba(255, 255, 255, 0.34), transparent 34%, transparent 70%, rgba(70, 70, 67, 0.12)); mix-blend-mode: overlay; }
-.theme-toggle__control.is-dark .theme-toggle__gloss { background: radial-gradient(ellipse at top, rgba(215, 215, 215, 0.12) 0%, transparent 54%), linear-gradient(to bottom, rgba(215, 215, 215, 0.12), transparent 34%, transparent 70%, rgba(0, 0, 0, 0.28)); }
+.theme-toggle__control.is-dark .theme-toggle__gloss,
+.theme-toggle__locale-toggle.is-dark .theme-toggle__gloss { background: radial-gradient(ellipse at top, rgba(215, 215, 215, 0.12) 0%, transparent 54%), linear-gradient(to bottom, rgba(215, 215, 215, 0.12), transparent 34%, transparent 70%, rgba(0, 0, 0, 0.28)); }
 .theme-toggle__texture { z-index: 1; opacity: 0.24; }
 
 .theme-toggle__ambient-icon {
@@ -198,7 +215,8 @@ function updateLocale() {
   transition: transform 360ms cubic-bezier(0.22, 1.28, 0.36, 1), background 180ms ease, border-color 180ms ease, box-shadow 180ms ease, color 180ms ease;
 }
 
-.theme-toggle__control.is-dark .theme-toggle__thumb {
+.theme-toggle__control.is-dark .theme-toggle__thumb,
+.theme-toggle__locale-toggle.is-dark .theme-toggle__thumb {
   border-color: rgba(163, 163, 163, 0.34);
   background: linear-gradient(145deg, #707070 0%, #4b4b4b 52%, #303030 100%);
   box-shadow: inset 1px 1px 2px rgba(168, 168, 168, 0.28), inset -1px -1px 2px rgba(0, 0, 0, 0.78), inset 0 1px 1px rgba(255, 255, 255, 0.13), 0 3px 8px rgba(0, 0, 0, 0.48);
@@ -224,46 +242,46 @@ function updateLocale() {
   animation: theme-toggle-particle 440ms var(--particle-delay) ease-out both;
 }
 
-.theme-toggle__locale-toggle {
-  position: relative;
-  display: inline-flex;
-  width: 64px;
-  height: 40px;
-  flex: 0 0 64px;
-  align-items: center;
-  padding: 4px;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface, #f7f7f5) 76%, #898989 24%);
-  color: var(--text, #242424);
-  cursor: pointer;
-  transition: background 180ms ease, border-color 180ms ease, transform 120ms ease;
-}
 .theme-toggle__locale-toggle:active { transform: scale(.985); }
 .theme-toggle__locale-toggle:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
-.theme-toggle__locale-track { position: absolute; inset: 3px; border-radius: inherit; background: linear-gradient(to bottom, rgba(255,255,255,.42), rgba(0,0,0,.08)); pointer-events: none; }
+.theme-toggle__locale-track { inset: 2px; }
+.theme-toggle__locale-option {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #666666;
+  font-family: var(--font-ui, var(--font-sans, system-ui, sans-serif));
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+  transition: color 180ms ease, opacity 180ms ease;
+}
+.theme-toggle__locale-option--zh { left: 9px; }
+.theme-toggle__locale-option--en { right: 8px; letter-spacing: 0.01em; }
+.theme-toggle__locale-toggle.is-dark .theme-toggle__locale-option { color: #cfcfcf; }
 .theme-toggle__locale-thumb {
+  color: #606060;
+}
+.theme-toggle__locale-toggle.is-dark .theme-toggle__locale-thumb {
+  color: #e1e1e1;
+}
+.theme-toggle__locale-label {
   position: relative;
-  z-index: 1;
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border: 1px solid color-mix(in srgb, currentColor 24%, transparent);
-  border-radius: 50%;
-  background: var(--surface, #ffffff);
-  box-shadow: 0 2px 6px rgba(0,0,0,.16);
-  font-family: var(--font-mono, ui-monospace, monospace);
+  z-index: 2;
+  font-family: var(--font-ui, var(--font-sans, system-ui, sans-serif));
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0;
   line-height: 1;
-  transform: translateX(0);
-  transition: transform 260ms cubic-bezier(.22,1.28,.36,1), background 180ms ease;
 }
-.theme-toggle__locale-toggle[aria-checked="true"] { background: color-mix(in srgb, var(--text, #242424) 22%, var(--surface, #f7f7f5)); }
-.theme-toggle__locale-toggle[aria-checked="true"] .theme-toggle__locale-thumb { transform: translateX(26px); }
+.theme-toggle__locale-toggle[aria-checked="false"] .theme-toggle__locale-thumb {
+  transform: translateX(0);
+}
+.theme-toggle__locale-toggle[aria-checked="true"] .theme-toggle__locale-thumb {
+  transform: translateX(26px);
+}
 
 @keyframes theme-toggle-particle {
   0% { opacity: 0; transform: scale(0.1); }
@@ -273,8 +291,11 @@ function updateLocale() {
 
 @media (prefers-reduced-motion: reduce) {
   .theme-toggle__control,
+  .theme-toggle__locale-toggle,
   .theme-toggle__thumb,
-  .theme-toggle__ambient-icon { transition: none; }
+  .theme-toggle__locale-thumb,
+  .theme-toggle__ambient-icon,
+  .theme-toggle__locale-option { transition: none; }
   .theme-toggle__particle { animation: none; }
 }
 

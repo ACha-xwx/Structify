@@ -1,4 +1,5 @@
 import type { Locale } from "../shared/i18n/locale";
+import { BRAND_NAME } from "../shared/brand";
 
 type RouteLike = {
   name?: unknown;
@@ -8,13 +9,16 @@ type RouteLike = {
 
 const titleByName: Record<string, { zh: string; en: string }> = {
   home: { zh: "首页", en: "Home" },
-  classroom: { zh: "课堂", en: "Classroom" },
-  courseware: { zh: "课件", en: "Courseware" },
+  begin: { zh: "学习入口", en: "Learning entry" },
+  classroom: { zh: "课堂学习", en: "Classroom learning" },
+  courseware: { zh: "全部课件", en: "All courseware" },
   "animation-lab": { zh: "动画实验室", en: "Animation lab" },
+  compiler: { zh: "C 编辑器", en: "C Compiler" },
+  chat: { zh: "课程问答", en: "Ask the course" },
   login: { zh: "登录", en: "Sign in" },
   register: { zh: "注册", en: "Register" },
   "reset-password": { zh: "重置密码", en: "Reset password" },
-  "user-home": { zh: "学习台", en: "Workbench" },
+  "user-home": { zh: "个人主页", en: "My profile" },
   "user-chapters": { zh: "章节", en: "Chapters" },
   "user-chapter-detail": { zh: "章节", en: "Chapters" },
   "user-resource": { zh: "资料详情", en: "Resource" },
@@ -45,6 +49,7 @@ const titleByPath: Array<[RegExp, { zh: string; en: string }]> = [
   [/^\/login$/, { zh: "登录", en: "Sign in" }],
   [/^\/register$/, { zh: "注册", en: "Register" }],
   [/^\/reset-password$/, { zh: "重置密码", en: "Reset password" }],
+  [/^\/begin$/, { zh: "学习入口", en: "Learning entry" }],
   [/^\/403$/, { zh: "无权访问", en: "Access denied" }],
   [/^\/404$/, { zh: "页面不存在", en: "Not found" }],
 ];
@@ -59,5 +64,5 @@ function routeLabel(route: RouteLike) {
 
 export function documentTitleForRoute(route: RouteLike, locale: Locale): string {
   const label = routeLabel(route);
-  return `${locale === "en-US" ? label.en : label.zh} | Structify`;
+  return `${locale === "en-US" ? label.en : label.zh} | ${BRAND_NAME}`;
 }

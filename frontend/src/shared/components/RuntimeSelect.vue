@@ -20,12 +20,14 @@ const props = withDefaults(defineProps<{
   testId?: string;
   className?: string;
   field?: string;
+  variant?: "default" | "reference";
 }>(), {
   disabled: false,
   placeholder: "",
   testId: "",
   className: "",
   field: "",
+  variant: "default",
 });
 
 const emit = defineEmits<{
@@ -215,7 +217,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <span ref="selectRoot" class="runtime-select" :class="className" :data-open="String(open)">
+  <span ref="selectRoot" class="runtime-select" :class="[className, `runtime-select--${variant}`]" :data-open="String(open)">
     <select
       class="runtime-select__native"
       :data-testid="testId || undefined"
@@ -264,6 +266,7 @@ onBeforeUnmount(() => {
         :id="menuId"
         ref="menu"
         class="runtime-select__menu"
+        :class="{ 'runtime-select__menu--reference': variant === 'reference' }"
         :style="menuStyle"
         role="listbox"
         :aria-label="ariaLabel"
@@ -422,5 +425,85 @@ onBeforeUnmount(() => {
 }
 @media (prefers-reduced-transparency: reduce) {
   .runtime-select__trigger, .runtime-select__menu { background: var(--surface); }
+}
+
+/* The classroom picker mirrors the supplied animated-select reference. The default variant above is
+   intentionally unchanged because it is used by the admin forms. */
+.runtime-select--reference {
+  --runtime-select-height: calc(1em + 2.5rem);
+}
+
+.runtime-select--reference .runtime-select__trigger {
+  min-height: var(--runtime-select-height);
+  height: var(--runtime-select-height);
+  padding: 1.25rem .75rem;
+  border-color: rgba(0, 0, 0, .1);
+  border-radius: .75rem;
+  background: #fff;
+  color: #000;
+  box-shadow: none;
+  font-size: 17px;
+}
+
+.runtime-select--reference .runtime-select__trigger:hover:not(:disabled),
+.runtime-select--reference[data-open="true"] .runtime-select__trigger {
+  border-color: rgba(0, 0, 0, .2);
+  background: rgba(0, 0, 0, .04);
+}
+
+.runtime-select__menu--reference {
+  padding: .25rem;
+  border-color: rgba(0, 0, 0, .1);
+  border-radius: .75rem;
+  background: #fff;
+  color: #000;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .12);
+}
+
+.runtime-select__menu--reference .runtime-select__option {
+  min-height: 0;
+  padding: .5rem 1.25rem;
+  border-radius: .75rem;
+  color: #000;
+  font-size: 16px;
+}
+
+.runtime-select__menu--reference .runtime-select__option:hover:not(:disabled),
+.runtime-select__menu--reference .runtime-select__option:focus-visible,
+.runtime-select__menu--reference .runtime-select__option[aria-selected="true"] {
+  background: rgba(0, 0, 0, .08);
+  color: #000;
+}
+
+:global([data-theme="dark"]) .runtime-select--reference .runtime-select__trigger {
+  border-color: rgba(255, 255, 255, .1);
+  background: #000;
+  color: #fff;
+}
+
+:global([data-theme="dark"]) .runtime-select--reference .runtime-select__trigger:hover:not(:disabled),
+:global([data-theme="dark"]) .runtime-select--reference[data-open="true"] .runtime-select__trigger {
+  border-color: rgba(255, 255, 255, .2);
+  background: rgba(255, 255, 255, .08);
+}
+
+:global([data-theme="dark"]) .runtime-select__menu--reference {
+  border-color: rgba(255, 255, 255, .1);
+  background: #000;
+  color: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .36);
+}
+
+:global([data-theme="dark"]) .runtime-select__menu--reference .runtime-select__option,
+:global([data-theme="dark"]) .runtime-select__menu--reference .runtime-select__option:hover:not(:disabled),
+:global([data-theme="dark"]) .runtime-select__menu--reference .runtime-select__option:focus-visible,
+:global([data-theme="dark"]) .runtime-select__menu--reference .runtime-select__option[aria-selected="true"] {
+  color: #fff;
+}
+
+:global([data-theme="dark"]) .runtime-select__menu--reference .runtime-select__option:hover:not(:disabled),
+:global([data-theme="dark"]) .runtime-select__menu--reference .runtime-select__option:focus-visible,
+:global([data-theme="dark"]) .runtime-select__menu--reference .runtime-select__option[aria-selected="true"] {
+  background: rgba(255, 255, 255, .1);
 }
 </style>

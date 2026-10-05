@@ -26,6 +26,7 @@ export function createViteConfig(command: string, env: Record<string, string | u
         "@": build.sourceRoot,
       },
     },
+    worker: { format: "es" as const },
     server: createDevelopmentServerConfig(env),
     build: {
       outDir: build.outDir,

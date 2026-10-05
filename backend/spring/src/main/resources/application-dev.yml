@@ -5,3 +5,4 @@ app:
     expose-development-code: ${AUTH_EXPOSE_DEV_CODE:true}
   knowledge:
     auto-publish-local: ${KNOWLEDGE_AUTO_PUBLISH_LOCAL:true}
+    directory: ${KNOWLEDGE_DIR:../../knowledge/dev}

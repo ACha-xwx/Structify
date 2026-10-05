@@ -28,6 +28,9 @@ if [[ "$EXECUTE" != "1" ]]; then
   print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d mysql
   print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T mysql mysql restore from mysql.sql
   print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm --no-deps -T node restore node.sqlite through stdin into /app/data
+  if [[ -r "$BACKUP_DIR/chat-attachments.tar.gz" ]]; then
+    print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" run --rm --no-deps -T --entrypoint /bin/sh spring-api restore chat-attachments.tar.gz through stdin into /app/chat-attachments
+  fi
   print_command docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d node spring-api
   if [[ "$caddy_mode_value" == "container" ]]; then
     print_command docker compose --profile container-caddy --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d caddy
@@ -54,6 +57,11 @@ compose exec -T mysql sh -c 'exec mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MY
 compose run --rm --no-deps -T --entrypoint /bin/sh node -c 'set -eu; target=/app/data/data.db; temporary="${target}.restore"; rm -f "$temporary"; cat > "$temporary"; mv "$temporary" "$target"; rm -f /app/data/data.db-wal /app/data/data.db-shm' < "$BACKUP_DIR/node.sqlite"
 if [[ -r "$BACKUP_DIR/node-pdfs.tar.gz" ]]; then
   compose run --rm --no-deps -T --entrypoint /bin/sh node -c 'set -eu; stage="$(mktemp -d)"; trap "rm -rf \"$stage\"" EXIT; tar -xzf - -C "$stage"; rm -rf /app/pdfs/* /app/pdfs/.[!.]*; cp -a "$stage"/. /app/pdfs/' < "$BACKUP_DIR/node-pdfs.tar.gz"
+fi
+if [[ -r "$BACKUP_DIR/chat-attachments.tar.gz" ]]; then
+  # Stream the 0600 host archive into the unprivileged helper instead of exposing
+  # the host backup directory to a container. Legacy backups have no such file.
+  compose run --rm --no-deps -T --entrypoint /bin/sh spring-api -c 'set -eu; stage="$(mktemp -d)"; trap '\''rm -rf "$stage"'\'' EXIT; tar -xzf - -C "$stage"; find /app/chat-attachments -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; cp -a "$stage"/. /app/chat-attachments/; chmod 700 /app/chat-attachments' < "$BACKUP_DIR/chat-attachments.tar.gz"
 fi
 compose up -d node spring-api
 if [[ "$(caddy_mode)" == "container" ]]; then

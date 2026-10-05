@@ -89,6 +89,17 @@ class ChatHistoryServiceTest {
         }
 
         @Override
+        public boolean updateSession(long userId, String sessionId, String title, Boolean pinned) {
+            ChatSessionView current = sessionsFor(userId).get(sessionId);
+            if (current == null) return false;
+            sessionsFor(userId).put(sessionId, new ChatSessionView(
+                current.id(), current.chapterId(), title == null ? current.title() : title,
+                current.updatedAt(), current.messages(), pinned == null ? current.pinned() : pinned
+            ));
+            return true;
+        }
+
+        @Override
         public boolean deleteSession(long userId, String sessionId) {
             return sessionsFor(userId).remove(sessionId) != null;
         }

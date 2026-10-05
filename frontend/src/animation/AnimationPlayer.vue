@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import AnimationStage from "./AnimationStage.vue";
+import LiquidMetalButton from "../admin/components/LiquidMetalButton.vue";
+import RuntimeSelect from "../shared/components/RuntimeSelect.vue";
+import leftArrowIcon from "../assets/classroom/left-arrow.svg";
+import rightArrowIcon from "../assets/classroom/right-arrow.svg";
+import playIcon from "../assets/animation/play.svg";
+import pauseIcon from "../assets/animation/pause.svg";
+import loopIcon from "../assets/animation/loop.svg";
 import { initialFrame } from "./frame";
 import { PLAYBACK_SPEEDS, useAnimationPlayback } from "./useAnimationPlayback";
 import { useI18n } from "../shared/i18n/locale";
@@ -21,7 +28,8 @@ const props = withDefaults(defineProps<{
   placeholder?: string;
   /** Hides the headline when the caller already renders the title (the classroom does). */
   compact?: boolean;
-}>(), { placeholder: "", compact: false, trace: null });
+  controlsVariant?: "default" | "silver";
+}>(), { placeholder: "", compact: false, trace: null, controlsVariant: "default" });
 
 const { t } = useI18n();
 const steps = computed(() => props.definition?.steps ?? []);
@@ -75,16 +83,33 @@ function onKeydown(event: KeyboardEvent) {
       </div>
 
       <div class="player__controls">
+        <template v-if="controlsVariant === 'silver'">
+          <LiquidMetalButton class="player__silver-control" view-mode="icon" :disabled="playback.atStart.value" :aria-label="t('player.previous')" :title="t('player.previous')" @click="playback.previous">
+            <template #icon><img class="player__icon" :src="leftArrowIcon" alt="" aria-hidden="true"></template>
+          </LiquidMetalButton>
+          <LiquidMetalButton class="player__silver-control" view-mode="icon" :aria-label="playback.playing.value ? t('player.pause') : t('player.play')" :title="playback.playing.value ? t('player.pause') : t('player.play')" @click="playback.toggle">
+            <template #icon><img class="player__icon" :src="playback.playing.value ? pauseIcon : playIcon" alt="" aria-hidden="true"></template>
+          </LiquidMetalButton>
+          <LiquidMetalButton class="player__silver-control" view-mode="icon" :disabled="playback.atEnd.value" :aria-label="t('player.next')" :title="t('player.next')" @click="playback.next">
+            <template #icon><img class="player__icon" :src="rightArrowIcon" alt="" aria-hidden="true"></template>
+          </LiquidMetalButton>
+          <LiquidMetalButton class="player__silver-control" view-mode="icon" :aria-label="t('player.reset')" :title="t('player.reset')" @click="playback.reset">
+            <template #icon><img class="player__icon" :src="loopIcon" alt="" aria-hidden="true"></template>
+          </LiquidMetalButton>
+        </template>
+        <template v-else>
         <button class="player__button" type="button" :disabled="playback.atStart.value" @click="playback.previous">{{ t("player.previous") }}</button>
         <button class="player__button player__button--primary" type="button" @click="playback.toggle">
           {{ playback.playing.value ? t("player.pause") : t("player.play") }}
         </button>
         <button class="player__button" type="button" :disabled="playback.atEnd.value" @click="playback.next">{{ t("player.next") }}</button>
         <button class="player__button" type="button" @click="playback.reset">{{ t("player.reset") }}</button>
+        </template>
         <span class="player__position">{{ playback.positionLabel.value }}</span>
         <label class="player__speed">
           <span>{{ t("player.speed") }}</span>
-          <select v-model.number="playback.speed.value" :aria-label="t('player.speedLabel')">
+          <RuntimeSelect v-if="controlsVariant === 'silver'" v-model="playback.speed.value" class-name="player__speed-select" variant="reference" :options="PLAYBACK_SPEEDS.map(option => ({ value: option, label: `${option}×` }))" :ariaLabel="t('player.speedLabel')" />
+          <select v-else v-model.number="playback.speed.value" :aria-label="t('player.speedLabel')">
             <option v-for="option in PLAYBACK_SPEEDS" :key="option" :value="option">{{ option }}×</option>
           </select>
         </label>
@@ -169,6 +194,11 @@ function onKeydown(event: KeyboardEvent) {
 .player__button:disabled { cursor: default; opacity: .38; }
 .player__button--primary { border-color: transparent; background: var(--text); color: var(--surface); font-weight: 620; }
 .player__button--primary:hover:not(:disabled) { background: var(--accent-strong); border-color: transparent; }
+
+.player__silver-control { --liquid-width: 50px; --liquid-height: 50px; flex: 0 0 50px; }
+.player__icon { display: block; width: 24px; height: 24px; }
+:global([data-theme="dark"]) .player__icon { filter: invert(1); }
+.player__speed :deep(.player__speed-select) { width: 98px; flex: none; }
 
 .player__position {
   margin-left: auto;

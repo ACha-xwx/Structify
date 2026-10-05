@@ -6,6 +6,7 @@ import { auth } from "../providers/runtime";
 import LiquidMetalButton from "../../admin/components/LiquidMetalButton.vue";
 import DirectionalArrowIcon from "../../shared/components/DirectionalArrowIcon.vue";
 import ExitArrowIcon from "../../shared/components/ExitArrowIcon.vue";
+import brandIcon from "../../favicon.svg";
 
 type NavigationIcon = "overview" | "users" | "reviews" | "tasks" | "audit" | "settings" | "mail" | "sandbox";
 type AdminNavigationItem = { to: string; label: string; icon: NavigationIcon };
@@ -188,7 +189,7 @@ onBeforeUnmount(() => {
     <template v-if="isAdmin">
       <header class="admin-mobile-bar">
         <RouterLink class="admin-mobile-bar__brand" to="/admin" aria-label="返回管理总览">
-          <span class="admin-brand-mark" aria-hidden="true"></span><span>管理后台</span>
+          <img class="admin-brand-mark" :src="brandIcon" width="32" height="32" alt="" aria-hidden="true" /><span>管理后台</span>
         </RouterLink>
         <div class="admin-mobile-bar__actions">
           <ThemeToggle />
@@ -199,7 +200,7 @@ onBeforeUnmount(() => {
       <Transition name="admin-menu">
         <div v-if="mobileNavOpen" id="admin-mobile-navigation" ref="mobileNavLayer" class="admin-mobile-nav-layer" role="dialog" aria-modal="true" aria-label="管理端导航" tabindex="-1">
           <div class="admin-mobile-nav-layer__topline">
-            <RouterLink class="admin-mobile-nav-layer__brand" to="/admin" aria-label="返回管理总览" @click="closeMobileNavWithoutRestoringFocus"><span class="admin-brand-mark" aria-hidden="true"></span><span>管理后台</span></RouterLink>
+            <RouterLink class="admin-mobile-nav-layer__brand" to="/admin" aria-label="返回管理总览" @click="closeMobileNavWithoutRestoringFocus"><img class="admin-brand-mark" :src="brandIcon" width="32" height="32" alt="" aria-hidden="true" /><span>管理后台</span></RouterLink>
             <button ref="mobileNavClose" class="admin-mobile-nav-layer__close" type="button" aria-label="关闭管理端导航" @click="closeMobileNav"><span aria-hidden="true">x</span></button>
           </div>
           <nav class="admin-mobile-nav" aria-label="管理端移动导航">
@@ -216,7 +217,7 @@ onBeforeUnmount(() => {
       <div class="admin-workspace" :class="{ 'is-sidebar-expanded': desktopSidebarVisible, 'is-sidebar-pinned': desktopSidebarPinned }">
         <aside class="admin-sidebar admin-sidebar--fixed" data-layout="admin-sidebar" :aria-label="desktopSidebarPinned ? '管理端导航，已固定展开' : desktopSidebarVisible ? '管理端导航，已展开' : '管理端导航，已收拢'" @mouseenter="expandDesktopSidebar" @mouseleave="collapseDesktopSidebar" @focusin="expandDesktopSidebar" @focusout="handleDesktopSidebarFocusOut">
           <div class="admin-sidebar__brand-row">
-            <RouterLink class="admin-sidebar__brand" to="/admin" aria-label="返回管理总览" title="管理后台"><span class="admin-brand-mark" aria-hidden="true"></span><span class="admin-sidebar__label">管理后台</span></RouterLink>
+            <RouterLink class="admin-sidebar__brand" to="/admin" aria-label="返回管理总览" title="管理后台"><img class="admin-brand-mark" :src="brandIcon" width="32" height="32" alt="" aria-hidden="true" /><span class="admin-sidebar__label">管理后台</span></RouterLink>
             <button
               class="admin-sidebar__pin"
               type="button"
@@ -415,21 +416,12 @@ onBeforeUnmount(() => {
 }
 
 .admin-brand-mark {
-  position: relative;
-  display: grid;
+  display: block;
   width: 32px;
   height: 32px;
   flex: 0 0 32px;
-  overflow: hidden;
-  border: 1px solid var(--admin-ink);
-  border-radius: 8px;
-  background: var(--admin-ink);
-  box-shadow: inset 1px 1px color-mix(in srgb, var(--surface) 22%, transparent), inset -1px -1px rgba(0, 0, 0, 0.24);
+  object-fit: contain;
 }
-.admin-brand-mark::before,
-.admin-brand-mark::after { position: absolute; display: block; content: ""; }
-.admin-brand-mark::before { top: 7px; left: 7px; width: 8px; height: 8px; border: 1px solid var(--surface); border-radius: 2px; }
-.admin-brand-mark::after { right: 7px; bottom: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--surface); }
 
 .admin-sidebar__nav { display: grid; gap: 4px; padding: 18px 10px; }
 .admin-sidebar__nav a,
@@ -558,8 +550,6 @@ onBeforeUnmount(() => {
   }
   .admin-mobile-bar__brand { gap: 9px; font-size: 14px; }
   .admin-mobile-bar__brand .admin-brand-mark { width: 28px; height: 28px; flex-basis: 28px; }
-  .admin-mobile-bar__brand .admin-brand-mark::before { top: 6px; left: 6px; width: 6px; height: 6px; }
-  .admin-mobile-bar__brand .admin-brand-mark::after { right: 6px; bottom: 6px; width: 6px; height: 6px; }
   .admin-mobile-bar__actions { display: inline-flex; align-items: center; gap: 8px; }
   .admin-menu-toggle,
   .admin-mobile-nav-layer__close {

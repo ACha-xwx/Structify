@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 import AnimationPlayer from "./AnimationPlayer.vue";
+import playIcon from "../assets/animation/play.svg";
+import pauseIcon from "../assets/animation/pause.svg";
 import type { AnimationDefinition } from "../shared/types/animation";
 
 const definition: AnimationDefinition = {
@@ -28,6 +30,43 @@ afterEach(() => {
 });
 
 describe("animation player", () => {
+  it("preserves step controls and changes the silver transport icon with playback state", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(AnimationPlayer, { props: { definition, controlsVariant: "silver" } });
+
+    expect(wrapper.get('button[aria-label="上一步"]').attributes("disabled")).toBeDefined();
+    expect(wrapper.get('button[aria-label="播放"]')).toBeDefined();
+    const playImage = wrapper.get('button[aria-label="播放"]').element.parentElement!.querySelector("img")!;
+    expect(playImage.getAttribute("src")).toBe(playIcon);
+    await wrapper.get('button[aria-label="下一步"]').trigger("click");
+    expect(wrapper.get(".player__position").text()).toBe("1 / 2");
+    await wrapper.get('button[aria-label="上一步"]').trigger("click");
+    expect(wrapper.get(".player__position").text()).toBe("起点 / 共 2 步");
+
+    await wrapper.get('button[aria-label="播放"]').trigger("click");
+    const pauseImage = wrapper.get('button[aria-label="暂停"]').element.parentElement!.querySelector("img")!;
+    expect(pauseImage.getAttribute("src")).toBe(pauseIcon);
+    await wrapper.get('button[aria-label="暂停"]').trigger("click");
+    vi.advanceTimersByTime(1200);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.get(".player__position").text()).toBe("起点 / 共 2 步");
+
+    await wrapper.get(".player__speed select").setValue("2");
+    await wrapper.get('button[aria-label="播放"]').trigger("click");
+    vi.advanceTimersByTime(560);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.get(".player__position").text()).toBe("1 / 2");
+    vi.advanceTimersByTime(560);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.get(".player__position").text()).toBe("2 / 2");
+    expect(wrapper.find('button[aria-label="暂停"]').exists()).toBe(false);
+    expect(wrapper.get('button[aria-label="下一步"]').attributes("disabled")).toBeDefined();
+
+    await wrapper.get('button[aria-label="回到起点"]').trigger("click");
+    expect(wrapper.get(".player__position").text()).toBe("起点 / 共 2 步");
+    wrapper.unmount();
+  });
+
   it("starts on the initial state so the input is visible before the first frame", () => {
     const wrapper = mount(AnimationPlayer, { props: { definition } });
 

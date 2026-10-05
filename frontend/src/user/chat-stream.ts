@@ -1,4 +1,4 @@
-import type { ChatResponse, ChatSource } from "../shared/types";
+import type { ChatResponse, ChatSource, ChatStreamPendingPayload } from "../shared/types";
 import type { MessageKey } from "../shared/i18n/messages";
 
 /**
@@ -62,6 +62,12 @@ export function doneOf(event: ChatWireEvent): ChatResponse | null {
   return payload as unknown as ChatResponse;
 }
 
+export function pendingOf(event: ChatWireEvent): ChatStreamPendingPayload | null {
+  const payload = payloadOf(event);
+  if (!isRecord(payload) || typeof payload.sessionId !== "string" || typeof payload.messageId !== "number") return null;
+  return { sessionId: payload.sessionId, messageId: payload.messageId };
+}
+
 export function errorOf(event: ChatWireEvent): ChatStreamError | null {
   const payload = payloadOf(event);
   if (!isRecord(payload)) return null;
@@ -89,6 +95,8 @@ export function chatErrorKey(code: string): MessageKey {
       return "chat.error.notConfigured";
     case "CHAT_SESSION_NOT_FOUND":
       return "chat.error.sessionGone";
+    case "CHAT_RETRY_CONFLICT":
+      return "chat.retryConflict";
     case "MODEL_REQUEST_TIMEOUT":
     case "MODEL_STREAM_IDLE_TIMEOUT":
     case "CHAT_STREAM_STALLED":

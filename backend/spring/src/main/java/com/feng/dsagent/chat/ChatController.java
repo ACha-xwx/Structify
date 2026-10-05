@@ -20,12 +20,16 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.ContentDisposition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -84,7 +88,7 @@ public class ChatController {
         Long userId = user == null ? null : user.userId();
         rateLimiter.check(userId, servletRequest.getRemoteAddr());
         chat.requireFormalAuthentication(userId);
-        SseEmitter emitter = new SseEmitter(70_000L);
+        SseEmitter emitter = new SseEmitter(600_000L);
         // Commit the response headers now with an SSE comment (clients ignore ":" lines). Without it
         // the headers wait for the first real event - retrieval plus the model's first token - and a
         // slow model day reads to the browser as a network timeout of its own client clock.
@@ -190,7 +194,11 @@ public class ChatController {
                         log.info("chat stream: first token after {} ms", millis(startedAt));
                     }
                     send(emitter, "delta", Map.of("content", content), closed, lastWrite);
-                }
+                },
+                content -> send(emitter, "reasoning", Map.of("content", content), closed, lastWrite),
+                pending -> send(emitter, "pending", Map.of(
+                    "sessionId", pending.sessionId(), "messageId", pending.messageId()
+                ), closed, lastWrite)
             );
             log.info("chat stream: done after {} ms answerChars={}", millis(startedAt),
                 response.answer() == null ? 0 : response.answer().length());
@@ -243,29 +251,65 @@ public class ChatController {
         return history.session(user.userId(), id);
     }
 
+    @PatchMapping("/sessions/{id}")
+    ChatSessionView updateSession(
+        @AuthenticationPrincipal AuthenticatedUser user,
+        @PathVariable String id,
+        @RequestBody ChatSessionUpdateRequest request
+    ) {
+        if (request == null) {
+            throw new ApiException(org.springframework.http.HttpStatus.BAD_REQUEST, "CHAT_SESSION_UPDATE_EMPTY", "至少需要修改名称或置顶状态");
+        }
+        return history.update(user.userId(), id, request.title(), request.pinned());
+    }
+
     @DeleteMapping("/sessions/{id}")
     ResponseEntity<Void> deleteSession(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable String id) {
         history.delete(user.userId(), id);
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/attachments/{id}")
+    ResponseEntity<Resource> attachment(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable String id) {
+        ChatAttachmentFile file = history.attachment(user.userId(), id);
+        MediaType mediaType;
+        try { mediaType = MediaType.parseMediaType(file.mimeType()); }
+        catch (RuntimeException ignored) { mediaType = MediaType.APPLICATION_OCTET_STREAM; }
+        return ResponseEntity.ok()
+            .contentType(mediaType)
+            .header("Content-Disposition", ContentDisposition.attachment().filename(file.name(), java.nio.charset.StandardCharsets.UTF_8).build().toString())
+            .contentLength(file.bytes().length)
+            .body(new ByteArrayResource(file.bytes()));
+    }
+
     public record ChatRequest(
         @NotBlank @Size(max = 4000) String prompt,
         @Size(max = 64) String chapterId,
         @Size(max = 64) String sessionId,
-        @Size(max = 12) List<@Valid TurnRequest> history
+        @Size(max = 12) List<@Valid TurnRequest> history,
+        Boolean thinkingEnabled,
+        @jakarta.validation.constraints.Pattern(regexp = "low|high|max") String reasoningEffort,
+        @Size(max = 6) List<ChatAttachment> attachments,
+        @jakarta.validation.constraints.Positive Long retryMessageId
     ) {
         ChatCommand command() {
             List<ChatTurn> turns = history == null ? List.of() : history.stream()
-                .map(turn -> new ChatTurn(turn.role(), turn.content()))
+                .map(turn -> new ChatTurn(turn.role(), turn.content(), turn.attachments()))
                 .toList();
-            return new ChatCommand(prompt, chapterId, sessionId, turns);
+            return new ChatCommand(prompt, chapterId, sessionId, turns, thinkingEnabled, reasoningEffort, attachments, retryMessageId);
         }
     }
 
     public record TurnRequest(
         @NotBlank @Size(max = 16) String role,
-        @NotBlank @Size(max = 4000) String content
+        @NotBlank @Size(max = 4000) String content,
+        @Size(max = 6) List<ChatAttachment> attachments
+    ) {
+    }
+
+    public record ChatSessionUpdateRequest(
+        @Size(max = 200) String title,
+        Boolean pinned
     ) {
     }
 }

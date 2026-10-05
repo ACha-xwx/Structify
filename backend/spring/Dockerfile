@@ -23,6 +23,8 @@ FROM ${JAVA_RUNTIME_IMAGE}
 
 RUN useradd --system --uid 10001 --create-home appuser
 WORKDIR /app
+# Docker copies this ownership into a fresh named volume before appuser runs.
+RUN install -d -m 700 -o appuser -g appuser /app/chat-attachments
 COPY --from=build /workspace/target/ds-agent-server-*.jar app.jar
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 COPY dsvp /dsvp

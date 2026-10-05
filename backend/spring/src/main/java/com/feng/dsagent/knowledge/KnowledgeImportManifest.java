@@ -11,19 +11,22 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Page-level allow list for locally reviewed textbook material.
+ * Page-level allow list for locally reviewed textbook material or an explicitly marked local
+ * development seed.
  *
  * <p>The loader refuses to publish anything that is not listed here, so an unreviewed OCR file
  * cannot become classroom material just because it was dropped into the knowledge directory.
- * The manifest lives outside the tracked tree together with the reviewed textbook itself.
+ * The manifest is stored beside the candidate lessons so the source, hash and page mapping are
+ * reviewed as one import unit; production deployments may place that unit in a private directory.
  */
 record KnowledgeImportManifest(Map<String, Entry> accepted) {
 
     static final String FILE_NAME = "import-manifest.json";
     static final int SUPPORTED_VERSION = 2;
 
-    /** Only pages carrying this exact label prefix may be published. */
+    /** Only pages carrying one of these exact labels may be published. */
     static final String REVIEWED_LABEL_PREFIX = "> OCR质量：已对照原始教材 PDF 核验（";
+    static final String LOCAL_DEVELOPMENT_LABEL_PREFIX = "> 本地开发种子：已由项目组复核（";
 
     record Entry(String source, String targetSha256, String pageRange, Map<Integer, Integer> pdfPages) {
         Entry {
@@ -120,7 +123,8 @@ record KnowledgeImportManifest(Map<String, Entry> accepted) {
         java.util.Set<Integer> declared = new java.util.LinkedHashSet<>();
         for (LessonPageBlock block : blocks) {
             declared.add(block.page());
-            if (!block.label().startsWith(REVIEWED_LABEL_PREFIX)) {
+            if (!block.label().startsWith(REVIEWED_LABEL_PREFIX)
+                && !block.label().startsWith(LOCAL_DEVELOPMENT_LABEL_PREFIX)) {
                 rejections.add(new Rejection(fileName, "PAGE_" + block.page() + "_LABEL_NOT_REVIEWED"));
             }
             Integer expectedPdfPage = entry.pdfPages().get(block.page());
