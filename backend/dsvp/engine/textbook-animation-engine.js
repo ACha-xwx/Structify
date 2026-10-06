@@ -664,22 +664,69 @@ function simulateTree(request,api){
 }
 
 function simulateHuffman(request,api){
-  const {makeStep,makeTrace,action}=makeHelpers(api);const weights=numberArray(request.params.weights??request.initial_state.data,[2,3,4,7]);
+  const {makeStep,makeTrace,action}=makeHelpers(api);
+  const weights=numberArray(request.params.weights??request.initial_state.data,[2,3,4,7]);
   if(weights.length===0) throw new SimulationInputError("EMPTY_WEIGHTS","权值列表为空：哈夫曼树至少需要一个权值","weights");
   if(weights.length>12) throw new SimulationInputError("INPUT_TOO_LARGE",`哈夫曼动画最多演示 12 个权值，当前 ${weights.length} 个`,"weights");
   if(Array.isArray(request.params.symbols)&&request.params.symbols.length!==weights.length) throw new SimulationInputError("SYMBOL_MISMATCH",`symbols 数量（${request.params.symbols.length}）必须与 weights 数量（${weights.length}）一致`,"symbols");
   const symbols=Array.isArray(request.params.symbols)&&request.params.symbols.length===weights.length?request.params.symbols.map(String):weights.map((_,i)=>String.fromCharCode(65+i));
-  let nodes=weights.map((w,i)=>({id:i,label:symbols[i],weight:w,left:null,right:null,parent:null}));let active=nodes.map(n=>n.id),nextId=nodes.length,sid=1;/* currentId = 这一步要突出的结点（新建的父结点/编码时的根）：不发它整棵树一格高亮都没有。 */const rows=(currentId)=>[row("tree",[],{nodes:deepClone(nodes),edges:nodes.flatMap(n=>[[n.id,n.left],[n.id,n.right]].filter(e=>e[1]!==null))}),row("active",active.map(id=>nodes.find(n=>n.id===id)?.weight)),row("meta",[],{operation:request.operation,...(currentId===undefined?{}:{current:String(currentId)})})];const steps=[makeStep(sid++,"init","初始权值集合",`权值：${weights.join(", ")}`,viewState("huffman",rows()))];
-  while(active.length>1){active.sort((a,b)=>nodes.find(n=>n.id===a).weight-nodes.find(n=>n.id===b).weight);const a=active.shift(),b=active.shift(),na=nodes.find(n=>n.id===a),nb=nodes.find(n=>n.id===b);const parent={id:nextId++,label:String(na.weight+nb.weight),weight:na.weight+nb.weight,left:a,right:b,parent:null};na.parent=parent.id;nb.parent=parent.id;nodes.push(parent);active.push(parent.id);steps.push(makeStep(sid++,"merge","选两个最小权值合并",`${na.weight}+${nb.weight}=${parent.weight}，生成新结点。`,viewState("huffman",rows(parent.id)),[action("merge","合并两个最小权值",{from:`${na.weight},${nb.weight}`,to:parent.weight})]));}
-  if(request.operation==="encode"){
-    const root=active[0];const codes={};function walk(id,prefix){const n=nodes.find(x=>x.id===id);if(n.left===null&&n.right===null){codes[n.label]=prefix||"0";return;}if(n.left!==null)walk(n.left,prefix+"0");if(n.right!==null)walk(n.right,prefix+"1");}walk(root,"");steps.push(makeStep(sid++,"encode","沿左 0 右 1 生成编码",Object.entries(codes).map(([s,c])=>`${s}:${c}`).join("，"),viewState("huffman",[...rows(root),row("codes",Object.entries(codes).map(([symbol,code])=>({label:symbol,value:code})))])));return makeTrace(request,"哈夫曼编码","权值集合",JSON.stringify(codes),steps);
+  let nodes=weights.map((w,i)=>({id:i,label:symbols[i],weight:w,left:null,right:null,parent:null}));
+  let active=nodes.map(n=>n.id),nextId=nodes.length,sid=1;
+  const find=(id)=>nodes.find((n)=>n.id===id);
+  const treeRow=()=>row("tree",[],{nodes:deepClone(nodes),edges:nodes.flatMap((n)=>[[n.id,n.left],[n.id,n.right]].filter((e)=>e[1]!==null))});
+  const base=(extra={})=>viewState("huffman",[treeRow(),row("active",active.map((id)=>find(id).weight)),row("meta",[],{operation:request.operation,...extra})]);
+  const steps=[makeStep(sid++,"init","权值集合",`每个权值先看成一棵只有根结点的树：${weights.map((w,i)=>`${symbols[i]}=${w}`).join("、")}。`,base())];
+  const snap=(code,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"merge",code,code,base(extra),act?[act]:[]));
+  /* 合并：`a = 最小的树` → `b = 次小的树` → `s = malloc(); s->weight = …` → `s->left = a; s->right = b` → 放回森林。
+     取走的两棵、新结点、新边、森林的变化，各报一帧。 */
+  while(active.length>1){
+    active.sort((a,b)=>find(a).weight-find(b).weight);
+    const a=active.shift(),wa=find(a).weight;
+    snap(`a = 最小的一棵（${find(a).label} = ${wa}）`,{current:String(a),a:wa},action("select","取权值最小的树",{value:wa}),true);
+    const b=active.shift(),wb=find(b).weight;
+    snap(`b = 次小的一棵（${find(b).label} = ${wb}）`,{current:String(b),a:wa,b:wb},action("select","取次小的树",{value:wb}),true);
+    const parent={id:nextId++,label:String(wa+wb),weight:wa+wb,left:null,right:null,parent:null};
+    find(a).parent=parent.id;find(b).parent=parent.id;
+    nodes.push(parent);
+    snap(`s = malloc(); s->weight = ${wa} + ${wb} = ${wa+wb}`,{current:String(parent.id),sum:wa+wb},action("merge","新建父结点",{value:wa+wb}));
+    parent.left=a;parent.right=b;
+    snap("s->left = a; s->right = b",{current:String(parent.id),sum:wa+wb},action("link","两棵最小的树挂到 s 下面",{value:wa+wb}),true);
+    active.push(parent.id);
+    snap("把 s 放回森林",{current:String(parent.id),n:active.length},action("insert","新树放回森林",{value:wa+wb}),true);
   }
-  return makeTrace(request,"构造哈夫曼树","权值集合",`WPL 构造完成`,steps);
+  if(request.operation!=="encode"){
+    const root=active[0];
+    snap("return root",{current:String(root),root:find(root).weight},action("visit",`森林里只剩一棵树，根权值 ${find(root).weight}`,{value:find(root).weight}));
+    return makeTrace(request,"构造哈夫曼树","权值集合",`根权值=${find(root).weight}`,steps);
+  }
+  /* encode：从根往下递归，`左 0 右 1`；每到一个叶子就定下一个编码。 */
+  const root=active[0];
+  const codes=[];
+  const at=(extra={},withCodes=true)=>viewState("huffman",[treeRow(),...(withCodes&&codes.length?[row("codes",codes.map((c)=>({label:c.label,value:c.value})))]:[]),row("meta",[],{operation:request.operation,...extra})]);
+  const enc=(code,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"encode",code,code,at(extra),act?[act]:[]));
+  steps[0]=makeStep(1,"init","哈夫曼树",`树建好了：从根往下走，向左收 0、向右收 1。`,at());
+  const visit=(id,prefix,parentId)=>{
+    const node=find(id);
+    const leaf=node.left===null&&node.right===null;
+    enc(`if (p 是叶子) → ${leaf}`,{current:String(id),code:prefix||'""'},null,true);
+    if(leaf){
+      codes.push({label:node.label,value:prefix||"0"});
+      enc(`codes[${node.label}] = "${prefix||"0"}"`,{current:String(id),code:prefix||"0"},action("visit",`${node.label} 的编码是 ${prefix||"0"}`,{value:prefix||"0"}));
+      if(parentId!==null)enc("return",{current:String(parentId),code:prefix||"0"},null,true);
+      return;
+    }
+    enc(`Encode(p->left, code + "0")`,{current:String(node.left),code:prefix+"0",call:/left/},action("move","向左走一步（收 0）",{value:prefix+"0"}),true);
+    visit(node.left,prefix+"0",id);
+    enc(`Encode(p->right, code + "1")`,{current:String(node.right),code:prefix+"1",call:/right/},action("move","向右走一步（收 1）",{value:prefix+"1"}),true);
+    visit(node.right,prefix+"1",id);
+    if(parentId!==null)enc("return",{current:String(parentId),code:prefix||'""'},null,true);
+  };
+  visit(root,"",null);
+  enc("return codes",{current:String(root),root:find(root).weight},action("visit",`得到 ${codes.length} 个编码`,{value:codes.length}));
+  const map={};for(const c of codes)map[c.label]=c.value;
+  return makeTrace(request,"哈夫曼编码","权值集合",JSON.stringify(map),steps);
 }
 
-/* 并查集：`parent` 数组里负值是根（绝对值为集合大小）。
-   代码级的两条主线——`while (parent[x] >= 0) x = parent[x];` 往根上走，
-   `parent[x] = root;` 把沿途结点直接接到根上。 */
 function simulateUnionFind(request,api){
   const {makeStep,makeTrace,action}=makeHelpers(api);
   // 用户显式传入的 parent 优先（注册表明明声明了这个参数，此前却被静默替换成 size 个单点集）。
@@ -991,11 +1038,189 @@ function simulateAVL(request,api){
   return makeTrace(request,"AVL 树插入与平衡调整",`key=${key}`,"保持平衡",steps);
 }
 
-function simpleBTree(keys,order=3){const maxKeys=order-1;const sorted=[...new Set(keys)].sort((a,b)=>a-b);const leaves=[];for(let i=0;i<sorted.length;i+=maxKeys)leaves.push({keys:sorted.slice(i,i+maxKeys),children:[]});if(leaves.length<=1)return{keys:leaves[0]?.keys||[],children:[]};return{keys:leaves.slice(1).map(x=>x.keys[0]),children:leaves};}
+/* B 树：先按插入顺序建成**真正的** m 阶 B 树。
+   （原来那个 simpleBTree 是"把关键字每 m-1 个切一刀"的示意形状：m=3 时根有 2 个关键字、
+   孩子里却含分隔关键字本身，孩子区间与分隔符对不上。真正的 B 树在这里，查找/插入/删除才是对的。） */
+/* B 树：先按插入顺序建成**真正的** m 阶 B 树。
+   （原来那个 simpleBTree 是"把关键字每 m-1 个切一刀"的示意形状：m=3 时根有 2 个关键字、
+   孩子里却含分隔关键字本身，孩子区间与分隔符对不上。真正的 B 树在这里，查找/插入/删除才是对的。） */
+/* B 树：先按插入顺序建成**真正的** m 阶 B 树。
+   （原来那个 simpleBTree 是"把关键字每 m-1 个切一刀"的示意形状：m=3 时根有 2 个关键字、
+   孩子里却含分隔关键字本身，孩子区间与分隔符对不上。真正的 B 树在这里，查找/插入/删除才是对的。） */
+function btreeNode(keys,children){return {keys:[...keys],children:children?[...children]:[]};}
+function btreeSplitInPlace(parent,i,maxKeys){
+  const child=parent.children[i];
+  const mid=Math.floor(child.keys.length/2);
+  const promote=child.keys[mid];
+  const left=btreeNode(child.keys.slice(0,mid),child.children.slice(0,mid+1));
+  const right=btreeNode(child.keys.slice(mid+1),child.children.slice(mid+1));
+  parent.keys.splice(i,0,promote);
+  parent.children.splice(i,1,left,right);
+  return promote;
+}
+function btreeInsertKey(node,k,maxKeys){
+  let i=0;while(i<node.keys.length&&k>node.keys[i])i++;
+  if(node.keys[i]===k)return;
+  if(!node.children.length){node.keys.splice(i,0,k);return;}
+  btreeInsertKey(node.children[i],k,maxKeys);
+  if(node.children[i].keys.length>maxKeys)btreeSplitInPlace(node,i,maxKeys);
+}
+function btreeBuildAll(keys,order){
+  const maxKeys=order-1;
+  let root=btreeNode([],[]);
+  for(const k of keys){
+    btreeInsertKey(root,k,maxKeys);
+    /* 根也会满：每插一个都要看一眼，满了就把根劈成两个孩子、长高一层。 */
+    if(root.keys.length>maxKeys){
+      const holder=btreeNode([],[root]);
+      btreeSplitInPlace(holder,0,maxKeys);
+      root=holder;
+    }
+  }
+  return root;
+}
 function btreeRows(tree,extra={}){const nodes=[],edges=[];let id=0;function walk(n,parent=null,depth=0){const my=id++;nodes.push({id:my,label:(n.keys||[]).join(" | "),keys:n.keys||[],depth});if(parent!==null)edges.push([parent,my]);for(const c of n.children||[])walk(c,my,depth+1);}walk(tree);return[row("tree",[],{nodes,edges,multiKey:true}),row("meta",[],extra)];}
-function simulateBTree(request,api){const {makeStep,makeTrace,action}=makeHelpers(api);const keys=numberArray(request.initial_state.data,[10,20,30,40,50,60]);const key=Number(request.params.key??35);if(!Number.isFinite(key))throw new SimulationInputError("INVALID_PARAM",`参数 key=${JSON.stringify(request.params.key)} 必须是数字`,"key");const order=intParam(request.params,"order",3,3,6);if(request.operation!=="insert"&&keys.length===0)return api.makeRuntimeError(request,"B 树"+(request.operation==="search"?"查找":request.operation==="delete"?"删除":"操作"),"EMPTY_TREE","B 树为空：请先在 initialData 中提供关键字。",viewState("btree",btreeRows({keys:[],children:[]},{operation:request.operation,key,order})),`key=${key}`);let tree=simpleBTree(keys,order);const steps=[makeStep(1,"init","B 树初始状态",`${order} 阶 B 树。`,viewState("btree",btreeRows(tree,{operation:request.operation,key,order})))];if(request.operation==="search"){let candidates=[tree],sid=2;while(candidates.length){const n=candidates.shift();steps.push(makeStep(sid++,"compare","在结点内查找区间",`比较关键字 ${key} 与 [${n.keys.join(",")}]。`,viewState("btree",btreeRows(tree,{operation:request.operation,key,current:n.keys})),[action("compare","结点内顺序/折半比较",{value:key})]));if(n.keys.includes(key))return makeTrace(request,"B 树查找",`key=${key}`,"查找成功",steps);if(n.children?.length){let idx=n.keys.findIndex(k=>key<k);if(idx<0)idx=n.children.length-1;candidates.push(n.children[Math.min(idx,n.children.length-1)]);}}return makeTrace(request,"B 树查找",`key=${key}`,"未找到",steps);}let next=[...keys];if(request.operation==="insert"&&!next.includes(key))next.push(key);if(request.operation==="delete")next=next.filter(x=>x!==key);const nextTree=simpleBTree(next,order);
-let probe=[tree],sid=2,hit=null;while(probe.length){const n=probe.shift();steps.push(makeStep(sid++,"compare","自根向下定位结点",`比较关键字 ${key} 与结点 [${n.keys.join(",")}]。`,viewState("btree",btreeRows(tree,{operation:request.operation,key,current:n.keys})),[action("compare","结点内比较",{value:key})]));if(n.keys.includes(key)){hit=n;break;}if(n.children?.length){let idx=n.keys.findIndex(k=>key<k);if(idx<0)idx=n.children.length-1;probe.push(n.children[Math.min(idx,n.children.length-1)]);}}
-steps.push(makeStep(sid++,request.operation,"执行结点调整",request.operation==="insert"?"插入后若结点关键字过多则分裂并向上提升中间关键字。":"删除后若关键字过少则借关键字或合并兄弟结点。",viewState("btree",btreeRows(nextTree,{operation:request.operation,key,order,adjusted:true})),[action(request.operation,request.operation==="insert"?"插入/分裂":"删除/借位/合并",{value:key})]));return makeTrace(request,request.operation==="insert"?"B 树插入":"B 树删除",`key=${key}`,"调整完成",steps);}
+
+function simulateBTree(request,api){
+  const {makeStep,makeTrace,action}=makeHelpers(api);
+  const keys=numberArray(request.initial_state.data,[10,20,30,40,50,60]);
+  const key=Number(request.params.key??45);
+  if(!Number.isFinite(key))throw new SimulationInputError("INVALID_PARAM",`参数 key=${JSON.stringify(request.params.key)} 必须是数字`,"key");
+  const order=intParam(request.params,"order",3,3,6);
+  const maxKeys=order-1,minKeys=Math.max(1,Math.ceil(order/2)-1);
+  const op=request.operation;
+  if(op!=="insert"&&keys.length===0)return api.makeRuntimeError(request,`B 树${op==="search"?"查找":"删除"}`,"EMPTY_TREE","B 树为空：请先在 initialData 中提供关键字。",viewState("btree",btreeRows(btreeNode([],[]),{operation:op,key,order})),`key=${key}`);
+  const tree={root:btreeBuildAll(keys,order)};
+  let sid=1;
+  /* 一行一帧：`i++`、`p = p->child[i]`、`mid = n / 2`、`parent->key[i] = s`……
+     当前结点用 `current`（结点内关键字组）点亮，当前下标/当前值走胶囊。 */
+  const at=(extra={})=>viewState("btree",btreeRows(tree.root,{operation:op,key,order,...extra}));
+  const steps=[makeStep(sid++,"init","B 树",`${order} 阶 B 树：每个结点最多 ${maxKeys} 个关键字（根最少 1 个，其余最少 ${minKeys} 个）。`,at())];
+  const snap=(code,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"compare",code,code,at(extra),act?[act]:[]));
+  const path=[]; /* 下降时记下每一层：{parent, pos}，pos 是"从父结点第几个孩子下来的"。 */
+  const descend=()=>{
+    let p=tree.root;
+    snap("p = root",{current:p.keys},null,true);
+    for(;;){
+      snap("i = 0",{current:p.keys,i:0},null,true);
+      let i=0;
+      for(;;){
+        const cont=i<p.keys.length&&key>p.keys[i];
+        snap(`while (i < n && k > key[i]) → ${cont}`,{current:p.keys,i,"key[i]":i<p.keys.length?p.keys[i]:null,n:p.keys.length},null,true);
+        if(!cont)break;
+        i++;
+        snap("i++",{current:p.keys,i},null,true);
+      }
+      const hit=i<p.keys.length&&key===p.keys[i];
+      snap(`if (i < n && k == key[i]) → ${hit}`,{current:p.keys,i,k:key},null,true);
+      if(hit)return {node:p,pos:i,found:true};
+      if(!p.children.length)return {node:p,pos:i,found:false};
+      path.push({parent:p,pos:i});
+      const child=p.children[i];
+      snap("p = p->child[i]",{current:child.keys,i,child:child.keys.join(",")},action("move","沿第 i 个孩子下降",{value:child.keys.join(",")}),true);
+      p=child;
+    }
+  };
+
+  if(op==="search"){
+    const {node,pos,found}=descend();
+    if(found){
+      snap("return p->key[i]",{current:node.keys,i:pos,found:key},action("visit",`在第 ${pos+1} 个位置找到 ${key}`,{value:key}));
+      return makeTrace(request,"B 树查找",`key=${key}`,"查找成功",steps);
+    }
+    snap("return NULL",{current:node.keys,i:pos,found:"NULL"},action("miss","到达叶结点仍未命中，查找失败",{value:null}));
+    return makeTrace(request,"B 树查找",`key=${key}`,"未找到",steps);
+  }
+
+  if(op==="insert"){
+    const {node,pos,found}=descend();
+    if(found){
+      snap("return 0",{current:node.keys,i:pos,"return":0},action("skip","关键字已存在，不再插入",{value:0}));
+      return makeTrace(request,"B 树插入",`key=${key}`,"未插入：关键字已存在",steps);
+    }
+    node.keys.splice(pos,0,key);
+    snap("p->key[i] = k; p->n = p->n + 1",{current:node.keys,i:pos},action("insert","关键字写进叶结点",{value:key}));
+    snap(`if (p->n > m-1) → ${node.keys.length>maxKeys}`,{current:node.keys,i:pos,n:node.keys.length},null,true);
+    /* 溢出就分裂：中间关键字提升给父结点，父结点也可能跟着溢出，一层层往上，直到根。 */
+    let cur=node,li=path.length-1;
+    while(cur.keys.length>maxKeys){
+      const parent=li>=0?path[li].parent:null;
+      const idx=li>=0?path[li].pos:0;
+      const mid=Math.floor(cur.keys.length/2);
+      const promote=cur.keys[mid];
+      snap("mid = n / 2",{current:cur.keys,mid,n:cur.keys.length},null,true);
+      snap("s = p->key[mid]",{current:cur.keys,mid,s:promote},action("read","中间那个关键字要提升",{value:promote}),true);
+      const left=btreeNode(cur.keys.slice(0,mid),cur.children.slice(0,mid+1));
+      const right=btreeNode(cur.keys.slice(mid+1),cur.children.slice(mid+1));
+      if(parent===null){
+        tree.root=btreeNode([promote],[left,right]);
+        snap("r = malloc(); r->key[0] = s; r->child[0] = p; r->child[1] = q; root = r",{current:tree.root.keys,s:promote},action("split","根结点分裂：树长高一层",{value:promote}));
+        break;
+      }
+      parent.keys.splice(idx,0,promote);
+      parent.children.splice(idx,1,left,right);
+      snap("parent->key[i] = s; parent->child[i+1] = q",{current:parent.keys,i:idx,s:promote},action("split",`${promote} 提升到父结点，${left.keys.join(",")||"空"} 与 ${right.keys.join(",")||"空"} 分成两个孩子`,{value:promote}));
+      snap(`if (parent->n > m-1) → ${parent.keys.length>maxKeys}`,{current:parent.keys,n:parent.keys.length},null,true);
+      cur=parent;li--;
+    }
+    return makeTrace(request,"B 树插入",`key=${key}`,"插入完成",steps);
+  }
+
+  /* delete：先找到关键字并删掉；关键字数掉到下限以下时，先找兄弟借一个，借不到就与兄弟合并。 */
+  const {node,pos,found}=descend();
+  if(!found){
+    snap("return 0",{current:node.keys,i:pos,"return":0},action("miss","树里没有这个关键字",{value:0}));
+    return makeTrace(request,"B 树删除",`key=${key}`,"未找到关键字，未删除",steps);
+  }
+  const parent=path.length?path[path.length-1].parent:null;
+  const idx=path.length?path[path.length-1].pos:0;
+  for(let j=pos;j<node.keys.length-1;j++){
+    node.keys[j]=node.keys[j+1];
+    snap(`key[${j}] = key[${j+1}]`,{current:node.keys,i:j},null,true);
+  }
+  node.keys.pop();
+  snap("p->n = p->n - 1",{current:node.keys,i:Math.min(pos,node.keys.length-1),n:node.keys.length},action("delete",`从结点里删掉 ${key}`,{value:key}));
+  snap(`if (p->n < ${minKeys}) → ${node.keys.length<minKeys}`,{current:node.keys,n:node.keys.length},null,true);
+  let cur=node,li=path.length-1;
+  while(cur.keys.length<minKeys&&li>=0){
+    const par=path[li].parent,ci=path[li].pos;
+    const left=ci>0?par.children[ci-1]:null;
+    const right=ci+1<par.children.length?par.children[ci+1]:null;
+    snap(`if (brother->n > ${minKeys}) → ${Boolean((left&&left.keys.length>minKeys)||(right&&right.keys.length>minKeys))}`,{current:par.keys,n:cur.keys.length},null,true);
+    if(left&&left.keys.length>minKeys){
+      cur.keys.unshift(par.keys[ci-1]);
+      par.keys[ci-1]=left.keys.pop();
+      if(left.children.length)cur.children.unshift(left.children.pop());
+      snap("p->key[0] = parent->key[i-1]",{current:cur.keys,from:"left"},action("move","左兄弟最大的关键字借过来（分隔关键字先下来）",{value:par.keys[ci-1]}));
+      snap("parent->key[i-1] = brother->key[n-1]",{current:par.keys,from:"left"},action("move","分隔关键字被兄弟最大关键字顶替",{value:par.keys[ci-1]}));
+      break;
+    }
+    if(right&&right.keys.length>minKeys){
+      cur.keys.push(par.keys[ci]);
+      par.keys[ci]=right.keys.shift();
+      if(right.children.length)cur.children.push(right.children.shift());
+      snap("p->key[p->n] = parent->key[i]",{current:cur.keys,from:"right"},action("move","右兄弟最小的关键字借过来（分隔关键字先下来）",{value:par.keys[ci]}));
+      snap("parent->key[i] = brother->key[0]",{current:par.keys,from:"right"},action("move","分隔关键字被兄弟最小关键字顶替",{value:par.keys[ci]}));
+      break;
+    }
+    /* 两边兄弟都只剩下限：把关键字并到一起，父结点少一个关键字，再往上看父结点够不够。 */
+    const target=left||right;
+    if(!target){
+      cur=par;li--;continue;
+    }
+    const down=left?par.keys[ci-1]:par.keys[ci];
+    cur.keys.unshift(down);
+    cur.keys.push(...target.keys);
+    cur.children.push(...target.children);
+    par.keys.splice(left?ci-1:ci,1);
+    par.children.splice(left?ci-1:ci+1,1);
+    snap(left?"q = p; 与左兄弟合并，分隔关键字 parent->key[i-1] 下来":"q = p; 与右兄弟合并，分隔关键字 parent->key[i] 下来",{current:cur.keys,merged:true},action("split","兄弟不足，合并成一个结点",{value:down}));
+    cur=par;li--;
+  }
+  if(li<0&&tree.root.keys.length===0&&tree.root.children.length)tree.root=tree.root.children[0];
+  snap("return 1",{current:tree.root.keys,"return":1});
+  return makeTrace(request,"B 树删除",`key=${key}`,"删除完成",steps);
+}
 
 function hashIndex(key,m){const n=typeof key==="number"?key:[...String(key)].reduce((h,c)=>h*31+c.charCodeAt(0),0);return Math.abs(n)%m;}
 function simulateHash(request,api){

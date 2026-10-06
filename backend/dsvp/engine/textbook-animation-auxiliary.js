@@ -698,10 +698,80 @@ function simulateTreeAux(req,api){const {makeStep,makeTrace,action}=helpers(api)
   if(op==="path_to_node"){const target=String(req.params.target??arr[arr.length-1]);const idx=arr.findIndex(x=>String(x)===target);if(idx<0)return api.makeRuntimeError(req,"根到指定结点路径","TARGET_NOT_FOUND",`目标 ${target} 不在这棵二叉树中（结点：${arr.filter(x=>x!==null&&x!==undefined).join("、")}），请检查 target 参数。`,view("tree",treeRows(arr,{operation:op,target})),`target=${target}`);const path=[];let p=idx;while(p>=0){path.unshift(p);if(p===0)break;p=Math.floor((p-1)/2);}for(let i=0;i<path.length;i++)steps.push(makeStep(sid++,"path","沿根到目标路径前进",`到达 ${arr[path[i]]}。`,view("tree",treeRows(arr,{operation:op,current:path[i],path:path.slice(0,i+1)})),[action("move","路径前进",{to:path[i]})]));return makeTrace(req,"根到指定结点路径",`target=${target}`,path.map(i=>arr[i]).join("→"),steps);}
   const other=treeArray(req.params.other);const max=Math.max(arr.length,other.length);let same=true;for(let i=0;i<max;i++){const a=arr[i]??null,b=other[i]??null;steps.push(makeStep(sid++,"compare","比较对应位置",`${String(a)} ${a===b?"=":"≠"} ${String(b)}`,view("tree_compare",[row("left",arr),row("right",other),row("meta",[],{operation:op,index:i,equal:a===b})]),[action("compare","比较对应结点",{target:i})]));if((a===null)!==(b===null)){same=false;break;}}return makeTrace(req,"判断两棵二叉树结构相似","两棵树",same?"结构相似":"结构不同",steps);}
 
-function simulateForest(req,api){const {makeStep,makeTrace,action}=helpers(api),op=req.operation;const groups=Array.isArray(req.params.trees)?req.params.trees:[["A","B","C"],["D","E"],["F"]];if(!groups.length)throw new SimulationInputError("EMPTY_FOREST","森林至少需要一棵树（trees 为空）","trees");if(groups.length>8)throw new SimulationInputError("INPUT_TOO_LARGE",`森林动画最多演示 8 棵树，当前 ${groups.length} 棵`,"trees");groups.forEach((g,i)=>{if(!Array.isArray(g)||!g.length)throw new SimulationInputError("EMPTY_TREE",`第 ${i+1} 棵树为空：每棵树至少要有一个结点`,`trees[${i}]`);if(g.length>10)throw new SimulationInputError("INPUT_TOO_LARGE",`第 ${i+1} 棵树有 ${g.length} 个结点，超过单棵 10 个的上限`,`trees[${i}]`);});let sid=1;const steps=[makeStep(sid++,"init",op==="to_binary_tree"?"森林":"二叉树表示","按孩子-兄弟对应关系转换。",view("forest",[row("trees",groups),row("meta",[],{operation:op})]))];const labels=groups.flat();for(let i=0;i<groups.length;i++){steps.push(makeStep(sid++,"link",`链接第 ${i+1} 棵树（根 ${groups[i][0]}）`,groups[i].length>1?`树根 ${groups[i][0]} 的第一孩子作左孩子，其余孩子依次成为右兄弟：${groups[i].join("、")}。`:`单结点树 ${groups[i][0]}：没有孩子，只作为前一棵树的右兄弟挂接点。`,view("forest",[row("trees",groups,{focusCell:[i,0]}),row("meta",[],{operation:op,currentTree:i+1})]),[action("link","按孩子兄弟规则链接",{value:groups[i].length})]));}steps.push(makeStep(sid++,"link",op==="to_binary_tree"?"第一孩子作为左孩子，下一兄弟作为右孩子":"左链还原孩子，右链分隔兄弟",`建立孩子-兄弟链接关系：${labels.join("、")}。`,view("forest",[row("trees",groups),row("binaryRepresentation",labels),row("meta",[],{operation:op,converted:true})]),[action("link","按孩子兄弟规则转换",{value:labels.length})]));return makeTrace(req,op==="to_binary_tree"?"森林转换为二叉树":"二叉树还原为森林","孩子兄弟关系","转换完成",steps);}
+/* 森林 ↔ 二叉树（孩子-兄弟表示）：
+   `p->lchild = 第一个孩子`、`p->rchild = 下一个兄弟`——**一行一帧**，
+   每写一行二叉树上就真的多一根边；反过来就是把右链在"树根"处一根根剪断。 */
+function forestTreesOf(groups){return groups.map((g)=>({root:String(g[0]),children:g.slice(1).map(String)}));}
+function forestPreorder(trees){const out=[];trees.forEach((t,ti)=>{out.push({label:t.root,ti,index:0});t.children.forEach((c,i)=>out.push({label:c,ti,index:i+1}));});return out;}
+function forestBtRow(bt){return row("tree",[],{nodes:bt.nodes.map((l)=>({id:l,label:l,key:l})),edges:bt.edges.map((e)=>[e[0],e[1],e[2]])});}
+function forestDotRow(trees){return row("trees",trees.map((t)=>[t.root,...t.children]));}
 
-/* 并查集：`parent` 数组里负值是根（绝对值为集合大小）。
-   初始化 = 逐个单元写 -1；路径压缩查找 = 先走到根、再 `parent[x] = root` 把沿途结点直接接到根上。 */
+function simulateForest(req,api){
+  const {makeStep,makeTrace,action}=helpers(api),op=req.operation;
+  const groups=Array.isArray(req.params.trees)?req.params.trees:[["A","B","C"],["D","E"],["F"]];
+  if(!groups.length)throw new SimulationInputError("EMPTY_FOREST","森林至少需要一棵树（trees 为空）","trees");
+  if(groups.length>8)throw new SimulationInputError("INPUT_TOO_LARGE",`森林动画最多演示 8 棵树，当前 ${groups.length} 棵`,"trees");
+  groups.forEach((g,i)=>{if(!Array.isArray(g)||!g.length)throw new SimulationInputError("EMPTY_TREE",`第 ${i+1} 棵树为空：每棵树至少要有一个结点`,`trees[${i}]`);if(g.length>10)throw new SimulationInputError("INPUT_TOO_LARGE",`第 ${i+1} 棵树有 ${g.length} 个结点，超过单棵 10 个的上限`,`trees[${i}]`);});
+  const trees=forestTreesOf(groups);
+  const order=forestPreorder(trees);
+  const nextRootOf=(ti)=>ti+1<trees.length?trees[ti+1].root:undefined;
+  /* 每个结点在二叉树里的两个孩子：第一个孩子作左孩子；同层下一个结点作右孩子（根之间也按兄弟看待）。 */
+  const childOf=(item)=>(item.index===0?trees[item.ti].children[0]:undefined);
+  const siblingOf=(item)=>(item.index===0?nextRootOf(item.ti):trees[item.ti].children[item.index]);
+  let sid=1;
+  const bt={nodes:[],edges:[]};
+  const buildBt=()=>{for(const item of order){
+    const label=item.label;
+    if(!bt.nodes.includes(label))bt.nodes.push(label);
+    const l=childOf(item),r=siblingOf(item);
+    if(l!==undefined&&!bt.nodes.includes(l))bt.nodes.push(l);
+    if(l!==undefined)bt.edges.push([label,l,"L"]);
+    if(r!==undefined&&!bt.nodes.includes(r))bt.nodes.push(r);
+    if(r!==undefined)bt.edges.push([label,r,"R"]);
+  }};
+  const rowsWith=(extraRows,extra)=>view("forest",[forestDotRow(trees),forestBtRow(bt),...extraRows,row("meta",[],{operation:op,...extra})]);
+  const steps=[makeStep(sid++,"init",op==="to_binary_tree"?"森林":"孩子-兄弟二叉树",
+    op==="to_binary_tree"?`${trees.length} 棵树：${trees.map((t)=>[t.root,...t.children].join("")).join(" | ")}。按"第一孩子作左孩子、下一兄弟作右孩子"转换。`:"这棵二叉树就是森林的孩子-兄弟表示：右链上的每个结点都是一棵新树的根。",
+    rowsWith([],{}))];
+  const snap=(code,extraRows,extra,act,line)=>steps.push(makeStep(sid++,line?"line":op,code,code,rowsWith(extraRows,extra),act?[act]:[]));
+
+  if(op==="to_binary_tree"){
+    for(const item of order){
+      const label=item.label;
+      if(!bt.nodes.includes(label))bt.nodes.push(label);
+      snap(`p = ${label}`,[],{current:label},null,true);
+      const l=childOf(item),r=siblingOf(item);
+      bt.edges=bt.edges.filter((e)=>!(e[0]===label&&e[2]==="L"));
+      if(l!==undefined){if(!bt.nodes.includes(l))bt.nodes.push(l);bt.edges.push([label,l,"L"]);}
+      snap(`p->lchild = ${l===undefined?"NULL":l}`,[],{current:label,slot:"lchild"},action("link","第一个孩子作左孩子",{value:l??null}));
+      bt.edges=bt.edges.filter((e)=>!(e[0]===label&&e[2]==="R"));
+      if(r!==undefined){if(!bt.nodes.includes(r))bt.nodes.push(r);bt.edges.push([label,r,"R"]);}
+      snap(`p->rchild = ${r===undefined?"NULL":r}`,[],{current:label,slot:"rchild",hook:r??"NULL"},action("link","下一个兄弟作右孩子",{value:r??null}));
+    }
+    return makeTrace(req,"森林转换为二叉树","孩子兄弟关系",`二叉树 ${bt.nodes.length} 个结点`,steps);
+  }
+
+  /* 反方向：先把孩子-兄弟二叉树摆出来当起点，再沿右链把每一棵树的根剪开。 */
+  buildBt();
+  steps[0]=makeStep(1,"init","孩子-兄弟二叉树",`右链上的每个结点都是下一棵树的根：${trees.map((t)=>t.root).join(" → ")}。`,rowsWith([],{}));
+  const roots=[trees[0].root];
+  const cut=(code,extra,act,line)=>steps.push(makeStep(sid++,line?"line":op,code,code,rowsWith([row("roots",roots)],extra),act?[act]:[]));
+  cut("p = root",{current:roots[0]},null,true);
+  let p=roots[0];
+  for(;;){
+    const q=(bt.edges.find((e)=>e[0]===p&&e[2]==="R")||[])[1];
+    cut("q = p->rchild",{current:q??p,q:q??"NULL"},null,true);
+    if(q===undefined)break;
+    bt.edges=bt.edges.filter((e)=>!(e[0]===p&&e[2]==="R"));
+    roots.push(q);
+    cut("p->rchild = NULL",{current:p,slot:"rchild",cut:q},action("split",`断开 ${p} → ${q}：${q} 成为下一棵树的根`,{from:p,to:q}));
+    cut("p = q",{current:q},null,true);
+    p=q;
+  }
+  cut("p == NULL",{current:p,done:roots.length});
+  return makeTrace(req,"二叉树还原为森林","孩子兄弟关系",`还原出 ${roots.length} 棵树`,steps);
+}
+
 function simulateUnionFindAux(req,api){
   const {makeStep,makeTrace,action}=helpers(api),op=req.operation;
   const n=int(req.params.size,6,2,30,"size");
@@ -857,8 +927,76 @@ function simulateAVLRotation(req,api){
   return makeTrace(req,`AVL ${title}`,keys.join(","),`局部根=${pieces[0].key}`,steps);
 }
 
-function simulateBTreeAux(req,api){const {makeStep,makeTrace,action}=helpers(api),op=req.operation;const keys=numArray(req.initial_state.data,[10,20,30,40]);if(!keys.length)throw new SimulationInputError("EMPTY_TREE","B 树结点为空：请在 initialData 中提供结点关键字","initialData");if(req.params.key!==undefined&&!Number.isFinite(Number(req.params.key)))throw new SimulationInputError("INVALID_PARAM",`参数 key=${JSON.stringify(req.params.key)} 必须是数字`,"key");const key=Number(req.params.key??25),order=int(req.params.order,4,3,8,"order");let sid=1;const steps=[makeStep(sid++,"init","B 树结点关键字",`当前结点：[${keys.join(", ")}]，m=${order}。`,view("btree",[row("node",keys),row("meta",[],{operation:op,key,order})]))];if(op==="locate_position"){let pos=0;while(pos<keys.length&&keys[pos]<=key){steps.push(makeStep(sid++,"compare","寻找不大于 k 的最大序号",`比较 key[${pos}]=${keys[pos]} 与 k=${key}。`,view("btree",[row("node",keys,{focusIndex:pos}),row("meta",[],{operation:op,key,pos})]),[action("compare","结点内比较",{target:pos,value:key})]));pos++;}return makeTrace(req,"B 树结点内定位关键字序号",`k=${key}`,`ipos=${Math.max(0,pos-1)}`,steps);}if(op==="node_insert"){const pos=Math.max(0,keys.findIndex(k=>k>key));steps.push(makeStep(sid++,"compare","找到插入序号",`新关键字 ${key} 应插在序号 ${pos}：右侧关键字和孩子指针先后右移。`,view("btree",[row("node",keys,{focusIndex:pos}),row("meta",[],{operation:op,key,pos})]),[action("compare","结点内定位",{target:pos,value:key})]));const out=[...keys,key].sort((a,b)=>a-b);steps.push(makeStep(sid,"insert","在结点内插入关键字",`${key} 写入序号 ${pos}，结点变为 [${out.join(", ")}]。`,view("btree",[row("node",out,{focusIndex:pos}),row("meta",[],{operation:op,key})]),[action("insert","结点内插入关键字",{value:key})]));return makeTrace(req,"B 树结点内插入",`[${keys.join(",")}]`,`[${out.join(",")}]`,steps);}const full=[...keys,key].sort((a,b)=>a-b),mid=Math.floor(full.length/2),promote=full[mid],left=full.slice(0,mid),right=full.slice(mid+1);steps.push(makeStep(sid++,"compare","插入后结点已满",`插入 ${key} 后结点为 [${full.join(", ")}]，超过 ${order-1} 个的上限，必须分裂。`,view("btree",[row("node",full,{focusIndex:mid}),row("meta",[],{operation:op,key,order})]),[action("compare","检查结点关键字数",{value:full.length})]));steps.push(makeStep(sid,"split","分裂满结点",`中间关键字 ${promote} 上移，左右分裂为 [${left}] 和 [${right}]。`,view("btree",[row("left",left),row("promote",[promote]),row("right",right),row("meta",[],{operation:op,order})]),[action("split","分裂并提升中间关键字",{value:promote})]));return makeTrace(req,"B 树结点分裂",`[${full.join(",")}]`,`promote=${promote}`,steps);}
-
+/* B 树结点内的三个原子操作：定位序号、腾位置插入、分裂提升。
+   一帧 = 一行：`i++` 一格、`key[j] = key[j-1]` 挪一格、`mid = n / 2` 一行。 */
+/* B 树结点内的三个原子操作：定位序号、腾位置插入、分裂提升中间关键字。
+   一帧 = 一行：`i++` 一格、`key[j] = key[j-1]` 挪一格、`mid = n / 2` 一行。
+   代码行里写**变量名**（`key[i]`），当前下标/当前值走 meta 胶囊——不然"代码"每帧都在变。 */
+function simulateBTreeAux(req,api){
+  const {makeStep,makeTrace,action}=helpers(api),op=req.operation;
+  const keys=numArray(req.initial_state.data,[10,20,30,40]);
+  if(!keys.length)throw new SimulationInputError("EMPTY_TREE","B 树结点为空：请在 initialData 中提供结点关键字","initialData");
+  if(req.params.key!==undefined&&!Number.isFinite(Number(req.params.key)))throw new SimulationInputError("INVALID_PARAM",`参数 key=${JSON.stringify(req.params.key)} 必须是数字`,"key");
+  const key=Number(req.params.key??25),order=int(req.params.order,4,3,8,"order");
+  let sid=1;
+  if(op==="locate_position"){
+    /* 找"不大于 k 的最大关键字序号"：`key[i] <= k` 就一直右移。 */
+    const arr=[...keys];
+    const at=(extra={})=>view("btree",[row("node",arr),row("meta",[],{operation:op,key,order,...extra})]);
+    const steps=[makeStep(sid++,"init","B 树结点",`当前结点：[${arr.join(", ")}]，m=${order}；找不大于 k=${key} 的最大关键字序号。`,at())];
+    const step=(code,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"compare",code,code,at(extra),act?[act]:[]));
+    step("i = 0",{current:0,i:0},null,true);
+    let i=0;
+    for(;;){
+      const cont=i<arr.length&&arr[i]<=key;
+      step(`while (i < n && key[i] <= k) → ${cont}`,{current:Math.min(i,arr.length-1),i,"key[i]":i<arr.length?arr[i]:null,n:arr.length},null,true);
+      if(!cont)break;
+      i++;
+      step("i++",{current:Math.min(i,arr.length-1),i},null,true);
+    }
+    step("return i - 1",{current:Math.max(0,i-1),i,ipos:Math.max(0,i-1)},action("visit",`不大于 ${key} 的最大序号是 ${Math.max(0,i-1)}`,{value:Math.max(0,i-1)}));
+    return makeTrace(req,"B 树结点内定位关键字序号",`k=${key}`,`ipos=${Math.max(0,i-1)}`,steps);
+  }
+  if(op==="node_insert"){
+    /* 先定位，再从最后一个关键字起**一格一格往后挪**，最后把新关键字写进腾出来的位置。 */
+    const arr=[...keys];
+    const at=(extra={})=>view("btree",[row("node",arr),row("meta",[],{operation:op,key,order,...extra})]);
+    const steps=[makeStep(sid++,"init","B 树结点",`当前结点：[${arr.join(", ")}]，m=${order}；把 ${key} 插到正确的位置上。`,at())];
+    const step=(code,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"compare",code,code,at(extra),act?[act]:[]));
+    step("i = 0",{current:0,i:0},null,true);
+    let i=0;
+    for(;;){
+      const cont=i<arr.length&&arr[i]<key;
+      step(`while (i < n && k > key[i]) → ${cont}`,{current:Math.min(i,arr.length-1),i,"key[i]":i<arr.length?arr[i]:null,n:arr.length},null,true);
+      if(!cont)break;
+      i++;
+      step("i++",{current:Math.min(i,arr.length-1),i},null,true);
+    }
+    arr.push(null);
+    for(let j=arr.length-1;j>i;j--){
+      arr[j]=arr[j-1];
+      step(`key[${j}] = key[${j-1}]`,{current:j,i},null,true);
+    }
+    arr[i]=key;
+    step("key[i] = k",{current:i,i,"key[i]":key},action("insert","新关键字写入腾出来的位置",{value:key}));
+    step("n = n + 1",{current:i,i,n:arr.length},action("assign","结点关键字数加一",{value:arr.length}));
+    return makeTrace(req,"B 树结点内插入",`[${keys.join(",")}]`,`[${arr.join(",")}]`,steps);
+  }
+  /* split：结点已经满了，先插进去，再从中位数处劈成两半，中位数上移到父结点。 */
+  const full=[...keys,key].sort((a,b)=>a-b);
+  const mid=Math.floor(full.length/2);
+  const left=full.slice(0,mid),right=full.slice(mid+1);
+  const at=(rows,extra={})=>view("btree",[...rows,row("meta",[],{operation:op,key,order,...extra})]);
+  const steps=[makeStep(sid++,"init","满结点",`插入 ${key} 之前结点是 [${keys.join(", ")}]，m=${order}。`,at([row("node",[...keys])]))];
+  const step=(code,rows,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"split",code,code,at(rows,extra),act?[act]:[]));
+  step("p->key[ipos] = k",[row("node",full)],{current:mid},action("insert",`先插进满结点，现在有 ${full.length} 个关键字`,{value:key}),true);
+  step("mid = n / 2",[row("node",full)],{current:mid,mid,n:full.length},null,true);
+  step("s = p->key[mid]",[row("node",full)],{current:mid,mid,s:full[mid]},action("read","中位数就是上移的那个关键字",{value:full[mid]}),true);
+  step("p->n = mid",[row("node",full),row("left",left)],{current:mid,mid,s:full[mid]},null,true);
+  step("q->key[0..] = p->key[mid+1..]",[row("node",full),row("left",left),row("right",right)],{current:mid,mid,s:full[mid]},action("split","右半搬进新结点 q",{value:right}),true);
+  step("parent->key[i] = s; parent->child[i+1] = q",[row("left",left),row("promote",[full[mid]]),row("right",right)],{mid,s:full[mid]},action("link","中间关键字提升到父结点",{value:full[mid]}));
+  return makeTrace(req,"B 树结点分裂",`[${full.join(",")}]`,`promote=${full[mid]}`,steps);
+}
 
 function simulateSentinelSearch(req,api){const {makeStep,makeTrace,action}=helpers(api);const data=numArray(req.initial_state.data,[12,25,37,48,59]),key=Number(req.params.key??37);const r=[key,...data],steps=[makeStep(1,"init","设置监视哨","把待查关键字写入 r[0]，从表尾向前查找。",view("search",[row("R",r),row("meta",[],{operation:req.operation,key,index:data.length})]),[action("assign","设置 r[0]=key",{target:0,value:key})])];let i=data.length,sid=2;while(r[i]!==key){steps.push(makeStep(sid++,"compare","从后向前比较",`r[${i}]=${r[i]} ≠ ${key}，i--。`,view("search",[row("R",r),row("meta",[],{operation:req.operation,key,index:i})]),[action("compare","比较关键字",{target:i,value:key})]));i--;}steps.push(makeStep(sid,"found",i===0?"落到监视哨":"找到记录",i===0?"只匹配到 r[0]，原表中不存在该关键字。":`在第 ${i} 个位置找到 ${key}。`,view("search",[row("R",r),row("meta",[],{operation:req.operation,key,index:i,found:i>0})]),[action("mark",i===0?"查找失败":"查找成功",{target:i})]));return makeTrace(req,"带监视哨的顺序查找",`key=${key}`,i===0?"not found":`position=${i}`,steps);}
 
