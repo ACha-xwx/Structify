@@ -356,6 +356,8 @@ const META_LABELS: Record<string, string> = {
   removed: "移出",
   compareCount: "比较次数",
   swapCount: "交换次数",
+  // 交换的三步里那个临时变量。它得看得见，否则"为什么要 temp"讲不清（也解释不了中间那帧的重复值）。
+  temp: "临时变量",
   // 双端栈：两个栈顶在同一个共享数组里，还要看得见还剩几个单元。
   topLeft: "左栈顶",
   topRight: "右栈顶",
