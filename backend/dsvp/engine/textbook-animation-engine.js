@@ -304,6 +304,9 @@ function simulateDoublyList(request, api) {
     /* 先把新结点插进显示序（它最终就落在 position 这个位置），但**两个指针都还空着**——
        旁边两个结点也还互相指着，这就是"还没接上去"的样子。 */
     const cur = { labels: [...base.labels], prior: [...base.prior], next: [...base.next] };
+    /* 第 0 帧必须是**操作之前**的样子：播放器的"起点"显示的就是它。
+       少了这一帧，起点上那个"还没申请的新结点"（∅）就已经在表里了（Rrd 2026-10-06 一眼看出来的）。 */
+    snap("L", cur, { pointers: { L: 0 } }, action("inspect", "L 是头指针", {}));
     cur.labels.splice(index, 0, "");
     cur.prior.splice(index, 0, null);
     cur.next.splice(index, 0, null);

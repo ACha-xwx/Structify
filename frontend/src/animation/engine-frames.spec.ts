@@ -55,7 +55,7 @@ function blank(frame: AnimationFrame): boolean {
 
 interface Audited {
   capability: string;
-  player: { steps: Array<Record<string, unknown>> };
+  player: { steps: Array<Record<string, unknown>>; initial?: unknown };
 }
 
 const audited: Audited[] = [];
@@ -139,6 +139,21 @@ describe("engine frames are drawable", () => {
     expect(blanks).toEqual([]);
     expect(noText).toEqual([]);
     expect(identical).toEqual([]);
+  });
+
+  it("starts from the state before the operation, not from a half-built one", () => {
+    // 播放器的"起点"显示的是 player.initial（= trace 第 0 帧）。它必须是**操作之前**的样子：
+    // 一旦某一步先"申请了结点、数据还没写"，那个 `""` 占位就会出现在起点上——
+    // 学生看到的是"新结点已经在表里了"。Rrd 2026-10-06 一眼看出来的就是这个。
+    // （`null` 不算：哈希表空槽、循环缓冲区空位本来就是 null。）
+    const polluted = audited
+      .filter(({ player }) =>
+        (Array.isArray(player.initial) ? player.initial : []).some(
+          (panel) => panel && Array.isArray((panel as { values?: unknown[] }).values) && (panel as { values: unknown[] }).values.includes(""),
+        ),
+      )
+      .map(({ capability }) => capability);
+    expect(polluted).toEqual([]);
   });
 
   it("prints the ledger the animation work is tracked against", () => {
