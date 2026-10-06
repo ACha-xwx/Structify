@@ -293,7 +293,7 @@ console.log(`\n  共 ${report.length} 条发现`);
  * fails. Override for a deliberate change: `--baseline=N`.
  */
 const requested = process.argv.find((arg) => arg.startsWith("--baseline="));
-const BASELINE = requested ? Number(requested.slice("--baseline=".length)) : 13;
+const BASELINE = requested ? Number(requested.slice("--baseline=".length)) : 12;
 if (!Number.isInteger(BASELINE) || BASELINE < 0) {
   console.error(`  FAIL：--baseline 需要非负整数，收到 ${requested}`);
   process.exit(2);

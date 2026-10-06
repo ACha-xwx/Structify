@@ -82,6 +82,13 @@ export interface FramePanel {
   cursors: FrameCursor[];
   /** Present when the values are a chain of nodes: how a node is shaped and how nodes are wired. */
   chain: ChainShape | null;
+  /**
+   * 引擎按结构给的槽位文字：`next: ["1","3","5","head"]` 就是"第 i 个结点 next 栏写什么"。
+   * 有就直接用它，前端不再自己反推——两处各推一份，迟早会推得不一样。
+   */
+  chainText: Record<string, string[]> | null;
+  /** 这一帧正在改写哪个结点的指针（渲染器把那一格点亮，对应标题里那行代码）。 */
+  chainWrite: number | null;
   /** Zero-based [row, column] of the one cell a grid step is standing on (matrix panels only). */
   focusCell: [number, number] | null;
   /** Half-open index range a sort pass is working on (`low`..`high`). */
@@ -467,6 +474,8 @@ function panelFromView(panel: DsvpPanel, pointers: Record<string, number>, raw: 
     focus: null,
     cursors: [],
     chain: null,
+    chainText: null,
+    chainWrite: null,
     focusCell: null,
     range: null,
     chips: [],
@@ -520,6 +529,8 @@ function panelFromView(panel: DsvpPanel, pointers: Record<string, number>, raw: 
   // 说得清），不同格就都画出来。
   const ownFocus = typeof panel.focusIndex === "number" ? panel.focusIndex : null;
   frame.chain = frame.kind === "array" || frame.kind === "records" ? chainShapeOf(role, kind) : null;
+  frame.chainText = chainTextOf(panel);
+  frame.chainWrite = typeof panel.write === "number" ? panel.write : null;
   if (ownFocus !== null) {
     const bounded = clamp(ownFocus, frame.values.length);
     const own = bounded === null ? [] : [{ key: "focus", label: cursorLabel("focus"), index: bounded }];
@@ -528,6 +539,12 @@ function panelFromView(panel: DsvpPanel, pointers: Record<string, number>, raw: 
     frame.cursors = sameCell ? [sameCell, ...structural.filter((cursor) => cursor !== sameCell)] : [...own, ...structural];
   } else {
     frame.cursors = cursorsFor(role, pointers, frame.values.length);
+  }
+  // 面板自己的具名指针（`pointers: {p: 3, A: 0}`）排在最前：它们是**这个结构**的指针，
+  // 比"整帧共用池"里推出来的更具体，也该是渲染器强调的那一个。
+  const ownPointers = ownPointerCursors(panel, frame.values.length);
+  if (ownPointers.length) {
+    frame.cursors = [...ownPointers, ...frame.cursors.filter((cursor) => !ownPointers.some((own) => own.key === cursor.key))];
   }
   // Pattern matching: both string panels would stay unhighlighted because i/j are not in cursorsFor's
   // generic set. Each side rides its own pointer — i over the text, j over the pattern.
@@ -544,8 +561,39 @@ function panelFromView(panel: DsvpPanel, pointers: Record<string, number>, raw: 
   return frame;
 }
 
-/** The one cell a grid step stands on, when the engine names it as `focusCell: [row, column]`. */
-function focusCellOf(panel: DsvpPanel): [number, number] | null {
+/**
+ * 面板自带的具名指针：`pointers: {p: 3, A: 0}`（名字 → 第几个结点）。
+ *
+ * 与整帧共用的指针池不同，这些指针**只属于这个面板**——两个循环表各有自己的 p、q 时，
+ * 一份共用的池会把 LB 的 q 标到 LA 上。所以引擎按面板发，这里按面板收。
+ */
+function ownPointerCursors(panel: DsvpPanel, length: number): FrameCursor[] {
+  const raw = panel.pointers;
+  if (!isRecord(raw)) return [];
+  const cursors: FrameCursor[] = [];
+  for (const [key, value] of Object.entries(raw)) {
+    const index = clamp(Number(value), length);
+    if (index === null) continue;
+    cursors.push({ key, label: cursorLabel(key), index });
+  }
+  return cursors;
+}
+
+/**
+ * 引擎按结构给的槽位文字：`next: ["1","3","5","head"]` —— 第 i 个结点 next 栏此刻该写什么。
+ * 有就不在前端反推（`NULL`/`head`/相邻结点各推一份，迟早推得不一样）。
+ */
+function chainTextOf(panel: DsvpPanel): Record<string, string[]> | null {
+  const text: Record<string, string[]> = {};
+  for (const key of ["next", "prior"] as const) {
+    const value = panel[key];
+    if (!Array.isArray(value)) continue;
+    text[key] = value.map((item) => (item === null || item === undefined ? "NULL" : String(item)));
+  }
+  return Object.keys(text).length ? text : null;
+}
+
+/** The one cell a grid step stands on, when the engine names it as `focusCell: [row, column]`. */function focusCellOf(panel: DsvpPanel): [number, number] | null {
   const value = panel.focusCell;
   if (!Array.isArray(value) || value.length < 2) return null;
   const row = Number(value[0]);
@@ -568,6 +616,8 @@ function panelsFromLegacy(kind: string, state: Record<string, unknown>, chips: F
     focus: null,
     cursors: [],
     chain: chainShapeOf(role, kind),
+    chainText: null,
+    chainWrite: null,
     focusCell: null,
     range: null,
     chips: [],

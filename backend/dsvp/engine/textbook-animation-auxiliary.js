@@ -80,16 +80,97 @@ function simulateLinkedListAux(req,api){
 function simulateCircularList(req,api){
   const {makeStep,makeTrace,action}=helpers(api),op=req.operation; const raw=Array.isArray(req.initial_state.data)?req.initial_state.data:[];
   const left=scalarArray(req.params.left??raw[0],[1,3,5]),right=scalarArray(req.params.right??raw[1],[2,4,6]); let sid=1;
-  // 合并的两帧要各自指出"眼睛在看哪一格"：定位表尾时两个表的尾结点一起亮，接完链后亮新尾结点
-  // （它 next 指回 LA 头结点）。没有焦点时这两帧各是一排安静的数字，看起来像"高亮卡住不动"。
-  const state=(la,lb=[],extra={},focus={})=>view("circular_linked_list",[row("LA",la,focus.la===undefined?{}:{focusIndex:focus.la}),row("LB",lb,focus.lb===undefined?{}:{focusIndex:focus.lb}),row("meta",[],{operation:op,circular:true,...extra})]);
-  /* 循环表的初始化动作就是"头结点 next 指向自己"——自环必须画出来，否则这一课只有一块空白。 */
-  if(op==="initialize"){const loopView=view("circular_linked_list",[row("LA",[],{nodes:[{id:"head",label:"head"}],edges:[["head","head"]]}),row("meta",[],{head:"head",next:"head",circular:true,headSelfLoop:true,operation:op})]);return makeTrace(req,"初始化循环单链表","未初始化","head.next=head",[makeStep(1,"init","建立头结点并自环","空循环链表中头结点 next 指向自身。",loopView,[action("link","head.next=head",{from:"head",to:"head"})])]);}
-  if(op==="build"){const vals=scalarArray(req.params.values??raw,[1,2,3,4]),out=[];/* 单行视图 + 高亮刚插入的尾结点：空 LB 行会多出一个"空"面板，尾插也不用看两个表 */const buildState=(la)=>view("circular_linked_list",[row("LA",la,{focusIndex:la.length-1}),row("meta",[],{operation:op,circular:true,tail:la.length-1})]);const steps=[makeStep(sid++,"init","建立循环表头","先建立空循环链表。",view("circular_linked_list",[row("LA",[],{nodes:[{id:"head",label:"head"}],edges:[["head","head"]]}),row("meta",[],{operation:op,circular:true})]))];for(const x of vals){out.push(x);steps.push(makeStep(sid++,"link","尾插并保持首尾相接",`插入 ${x}，新尾结点 next 指回头结点。`,buildState(out),[action("link","尾结点接回 head",{value:x})]));}return makeTrace(req,"建立循环单链表",`输入=${vals.join(",")}`,`循环表=${out.join("→")}→head`,steps);}
-  const steps=[makeStep(sid++,"init","两个循环单链表",`LA=${left.join("→")}，LB=${right.join("→")}`,state(left,right))];
-  steps.push(makeStep(sid++,"locate","定位两个表尾",op==="merge_head_pointer"?"分别从头指针沿 next 找到表尾。":"尾指针已直接指向两个表尾。",state(left,right,{tailsLocated:true},{la:left.length-1,lb:right.length-1}),[action("move","定位表尾",{target:"tail"})]));
-  const merged=[...left,...right];steps.push(makeStep(sid++,"link","首尾重新连接",op==="merge_head_pointer"?"LA 尾结点连接 LB 首数据结点，LB 尾结点再接回 LA 头结点。":"利用尾指针直接交换/重接头尾链接。",state(merged,[],{merged:true},{la:merged.length-1}),[action("link","连接两个循环表",{from:"LA.tail",to:"LB.first"})]));
-  return makeTrace(req,op==="merge_head_pointer"?"循环单链表合并（头指针）":"循环单链表合并（尾指针）","两个循环表",`L=${merged.join("→")}→head`,steps);
+
+  /* 循环单链表**带头结点**（教材 2.4）。整条链的真相就是一个 `next` 数组：第 i 个结点的 next 指向第几个结点。
+     第 0 个结点是头结点（标签 head），尾结点的 next 指回 0 —— "循环"这件事就落在这一张数组上。
+     这个操作按**代码级别**报帧：**一帧 = 一行赋值**，帧的标题就是那行代码；面板里：
+       · `next[i]` 写明第 i 个结点此刻 next 栏该显示什么（指向谁一目了然，不需要猜）；
+       · `write` 标出这一帧正在改哪个结点的指针（渲染器把那一格点亮）；
+       · `pointers` 是**本面板自己的**具名指针（p / q / r / A / B），不是全帧共用的——
+         两个表各自有 p、q 时，共用一份会互相串（LB 的 q 会标到 LA 上）。
+     这样"怎么断的、怎么连的"就是画面本身，不需要旁白。 */
+  const chain=(values,headLabel="head")=>{
+    const labels=[headLabel,...values];
+    const next=labels.map((_,i)=>(i+1<labels.length?String(labels[i+1]):headLabel));
+    return {labels,next};
+  };
+  const pan=(role,c,extra={})=>row(role,c.labels,{next:[...c.next],...extra});
+
+  if(op==="initialize"){
+    const c=chain([]);
+    return makeTrace(req,"初始化循环单链表","未初始化","head->next = head",[
+      makeStep(sid++,"init","L = 空表","建立头结点之前，表是空的",view("circular_linked_list",[row("LA",[],{next:[]}),row("meta",[],{operation:op,circular:true})])),
+      makeStep(sid++,"link","head->next = head","head->next = head",
+        view("circular_linked_list",[pan("LA",c,{pointers:{head:0},write:0}),row("meta",[],{operation:op,circular:true})]),
+        [action("link","head.next=head",{target:"head",to:"head"})])
+    ]);
+  }
+
+  if(op==="build"){
+    const vals=scalarArray(req.params.values??raw,[1,2,3,4]);
+    const c=chain([]);let tail=0;
+    const steps=[makeStep(sid++,"init","r = head","空循环链表，尾指针 r 先指向头结点",
+      view("circular_linked_list",[pan("LA",c,{pointers:{head:0,r:tail}}),row("meta",[],{operation:op,circular:true,tail})]))];
+    for(const x of vals){
+      const idx=c.labels.length;
+      c.labels.push(String(x));c.next.push("head");                       /* s = new; s->data = x; s->next = head; */
+      steps.push(makeStep(sid++,"link","s->next = head","s->next = head",
+        view("circular_linked_list",[pan("LA",c,{focusIndex:idx,pointers:{head:0,r:tail},write:idx}),row("meta",[],{operation:op,circular:true,tail,value:x})]),
+        [action("link","新结点先接回头结点",{target:idx,to:"head",value:x})]));
+      c.next[tail]=String(x);                                             /* r->next = s;  r = s; */
+      steps.push(makeStep(sid++,"link","r->next = s","r->next = s",
+        view("circular_linked_list",[pan("LA",c,{focusIndex:idx,pointers:{head:0,r:tail},write:tail}),row("meta",[],{operation:op,circular:true,tail:idx,value:x})]),
+        [action("link","原尾结点接到新结点",{target:tail,to:x,value:x})]));
+      tail=idx;
+    }
+    return makeTrace(req,"建立循环单链表",`输入=${vals.join(",")}`,`循环表=head→${vals.join("→")}→head`,steps);
+  }
+  /* 两个表并排画时，两个头结点**必须各有名字**：`q->next = A` 之后 B 的尾结点指向的是 **A 的头结点**，
+     如果两个都叫 head，这一帧和"指向自己"长得一模一样——学生看不出接没接上（契约测试会直接判它同画面）。 */
+  const A=chain(left,"headA"),B=chain(right,"headB");
+  const merged=[...left,...right],M=chain(merged,"headA");
+  const headPointer=op==="merge_head_pointer";
+  const steps=[makeStep(sid++,"init",headPointer?"A / B":"rA / rB",headPointer?"A、B 分别是两个循环表的头指针":"rA、rB 分别是两个循环表的尾指针",
+    view("circular_linked_list",[
+      pan("LA",A,headPointer?{pointers:{A:0}}:{pointers:{rA:A.labels.length-1}}),
+      pan("LB",B,headPointer?{pointers:{B:0}}:{pointers:{rB:B.labels.length-1}}),
+      row("meta",[],{operation:op,circular:true})
+    ]))];
+
+  if(headPointer){
+    /* 算法 2.14：先沿 next 走到两个表的尾结点，再把 A 尾接到 B 的首数据结点、B 尾接回 A。每行一帧。 */
+    steps.push(makeStep(sid++,"assign","p = A","p = A",
+      view("circular_linked_list",[pan("LA",A,{pointers:{p:0,A:0}}),pan("LB",B,{pointers:{B:0}}),row("meta",[],{operation:op,circular:true})]),[action("move","p 指向 A 的头结点",{target:"p"})]));
+    for(let i=0;i<A.labels.length-1;i++){
+      steps.push(makeStep(sid++,"assign","p = p->next","p = p->next",
+        view("circular_linked_list",[pan("LA",A,{focusIndex:i+1,pointers:{p:i+1,A:0}}),pan("LB",B,{pointers:{B:0}}),row("meta",[],{operation:op,circular:true})]),[action("move","p 后移",{target:"p",value:i+1})]));
+    }
+    A.next[A.labels.length-1]="2";
+    steps.push(makeStep(sid++,"assign","p->next = B->next","p->next = B->next",
+      view("circular_linked_list",[pan("LA",A,{focusIndex:A.labels.length-1,pointers:{p:A.labels.length-1,A:0},write:A.labels.length-1}),pan("LB",B,{pointers:{B:0}}),row("meta",[],{operation:op,circular:true})]),[action("link","改写 A 尾结点的 next",{target:"p->next",from:"head",to:"2"})]));
+    steps.push(makeStep(sid++,"assign","q = B","q = B",
+      view("circular_linked_list",[pan("LA",A,{pointers:{p:A.labels.length-1,A:0}}),pan("LB",B,{pointers:{q:0,B:0}}),row("meta",[],{operation:op,circular:true})]),[action("move","q 指向 B 的头结点",{target:"q"})]));
+    for(let i=0;i<B.labels.length-1;i++){
+      steps.push(makeStep(sid++,"assign","q = q->next","q = q->next",
+        view("circular_linked_list",[pan("LA",A,{pointers:{p:A.labels.length-1,A:0}}),pan("LB",B,{focusIndex:i+1,pointers:{q:i+1,B:0}}),row("meta",[],{operation:op,circular:true})]),[action("move","q 后移",{target:"q",value:i+1})]));
+    }
+    B.next[B.labels.length-1]="headA";
+    steps.push(makeStep(sid++,"assign","q->next = A","q->next = A",
+      view("circular_linked_list",[pan("LA",A,{pointers:{p:A.labels.length-1,A:0}}),pan("LB",B,{focusIndex:B.labels.length-1,pointers:{q:B.labels.length-1,B:0},write:B.labels.length-1}),row("meta",[],{operation:op,circular:true})]),[action("link","改写 B 尾结点的 next",{target:"q->next",from:"head",to:"A"})]));
+  } else {
+    /* 算法 2.15：有尾指针就不用找尾，三行赋值接完。 */
+    steps.push(makeStep(sid++,"assign","p = rA->next","p = rA->next",
+      view("circular_linked_list",[pan("LA",A,{pointers:{p:0,rA:A.labels.length-1}}),pan("LB",B,{pointers:{rB:B.labels.length-1}}),row("meta",[],{operation:op,circular:true})]),[action("move","p = rA->next",{target:"p",value:0})]));
+    A.next[A.labels.length-1]="2";
+    steps.push(makeStep(sid++,"assign","rA->next = rB->next","rA->next = rB->next",
+      view("circular_linked_list",[pan("LA",A,{focusIndex:A.labels.length-1,pointers:{p:0,rA:A.labels.length-1},write:A.labels.length-1}),pan("LB",B,{pointers:{rB:B.labels.length-1}}),row("meta",[],{operation:op,circular:true})]),[action("link","改写 A 尾结点的 next",{target:"rA->next",from:"head",to:"2"})]));
+    B.next[B.labels.length-1]="headA";
+    steps.push(makeStep(sid++,"assign","rB->next = p","rB->next = p",
+      view("circular_linked_list",[pan("LA",A,{pointers:{p:0,rA:A.labels.length-1}}),pan("LB",B,{focusIndex:B.labels.length-1,pointers:{rB:B.labels.length-1},write:B.labels.length-1}),row("meta",[],{operation:op,circular:true})]),[action("link","改写 B 尾结点的 next",{target:"rB->next",to:"A"})]));
+  }
+  steps.push(makeStep(sid++,"free","free(B)","free(B)",
+    view("circular_linked_list",[pan("LA",M,{pointers:{head:0}}),row("LB",[],{next:[]}),row("meta",[],{operation:op,circular:true,merged:true})]),[action("free","释放 B 的头结点",{value:"B"})]));
+  return makeTrace(req,headPointer?"循环单链表合并（头指针）":"循环单链表合并（尾指针）","两个循环表",`L=head→${merged.join("→")}→head`,steps);
 }
 
 function simulateStaticList(req,api){

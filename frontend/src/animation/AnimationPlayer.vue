@@ -48,6 +48,11 @@ const currentStep = computed(() => (playback.index.value >= 0 ? steps.value[play
  * 「下一步」按了也不动，学生只会以为演示坏了——把这件事说出来，比让他自己猜好。
  */
 const singleFrame = computed(() => stepCount.value === 1);
+/**
+ * 这一帧的标题就是**一行代码**（引擎把赋值语句放在 step 的 title/note 里，phase 标成 `assign`）。
+ * 代码用等宽字体显示：一眼分得出"这是一行程序"还是"这是一句解释"。
+ */
+const headlineIsCode = computed(() => currentStep.value?.phase === "assign");
 /** Before the first step the learner sees the input, not a blank canvas. */
 const initialState = computed(() => initialFrame(props.definition, props.trace));
 /** The one big line under the title: the step's concrete outcome (note) beats its category (label),
@@ -76,7 +81,7 @@ function onKeydown(event: KeyboardEvent) {
     </header>
 
     <template v-if="definition">
-      <p class="player__headline" aria-live="polite">{{ headline }}</p>
+      <p class="player__headline" :class="{ 'player__headline--code': headlineIsCode }" aria-live="polite">{{ headline }}</p>
       <!-- 引擎给不出过程帧的操作（初始化、哈希函数…）整条动画只有一帧。不写这一句，
            学生点「下一步」画面不动，只会以为坏了。 -->
       <p v-if="singleFrame" class="player__single">{{ t("player.singleFrame") }}</p>
@@ -173,6 +178,15 @@ function onKeydown(event: KeyboardEvent) {
   font-size: 19px;
   color: var(--text-muted, #6f6d69);
   text-wrap: pretty;
+}
+
+/* 标题本身是一行代码时用等宽字体：学生一眼分得出"这是程序"还是"这是解释"。
+   代码级动画的每一帧标题就是那行赋值（`p->next = B->next`），解释性文字越少越好。 */
+.player__headline--code {
+  font-family: var(--font-mono, ui-monospace, Consolas, monospace);
+  font-weight: 500;
+  letter-spacing: 0;
+  font-variant-ligatures: none;
 }
 
 /* The canvas the panels stand on: lighter than the cards inside it, so they read as raised. */

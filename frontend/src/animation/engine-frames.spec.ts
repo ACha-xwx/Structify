@@ -38,6 +38,10 @@ function picture(frame: AnimationFrame): string {
       panel.focusCell,
       panel.cursors.map((cursor) => `${cursor.key}@${cursor.index}`),
       panel.chips,
+      // 结点框里每格写什么（next/prior 指向谁）+ 这一帧在改哪一格：两者都是画出来的东西，
+      // 少算了它们，"两帧只差一个被点亮的格子"就会被误判成同画面。
+      panel.chainText,
+      panel.chainWrite,
     ]),
     chips: frame.chips,
     invariant: frame.invariant,

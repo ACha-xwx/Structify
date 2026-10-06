@@ -35,12 +35,29 @@ function isLeadCursor(panel: FramePanel, cursor: { key: string }): boolean {
 }
 
 /**
+ * 尾结点末端要不要画"绕回头结点"的那根箭头。
+ *
+ * 不能只看结构形状（`chain.circular`）：循环表**被改过指针之后**，尾结点的 next 可能已经指向别的结点
+ * （合并第一行 `p->next = B->next` 之后，A 的尾结点指向的是 2，不再指回自己的头结点）。
+ * 所以以引擎给的槽位文字为准：末结点的 next 确实解析成头结点时才画那根绕回箭头。
+ */
+function chainWraps(panel: FramePanel): boolean {
+  if (!panel.chain?.circular || panel.values.length === 0) return false;
+  const lastNext = panel.chainText?.next?.[panel.values.length - 1];
+  if (lastNext === undefined) return true;
+  return lastNext === String(panel.values[0]);
+}
+
+/**
  * 结点框里某一栏写什么。
  *
- * `next` / `prior` 在链表的**两端**本来就没有指向：第一个结点的 prior、末结点的 next 都该写 `NULL`——
- * 唯一例外是循环链表，它的末结点 `next` 指回 `head`（写 `head` 而不写 `NULL`，否则和单链表没区别）。
+ * **优先用引擎给的文字**（`panel.chainText.next[i]`）——引擎按结构定义知道第 i 个结点的 next 此刻指向谁，
+ * 前端不该再推一份。引擎没给才退回按形状推：`next`/`prior` 在链表两端本来就没有指向（写 `NULL`），
+ * 唯一例外是循环链表，它的末结点 `next` 指回 `head`。
  */
 function chainSlotText(panel: FramePanel, cell: number, slot: string): string {
+  const fromEngine = panel.chainText?.[slot]?.[cell];
+  if (typeof fromEngine === "string") return fromEngine;
   const last = panel.values.length - 1;
   if (slot === "next") return cell < last ? slot : panel.chain?.circular ? "head" : "NULL";
   if (slot === "prior") return cell === 0 ? "NULL" : slot;
@@ -440,15 +457,22 @@ const graphLayouts = computed(() => {
                      循环链表末结点的 next 写 head 而不是 NULL。以前这两样都被写死成单链表的画法。 -->
                 <span v-if="panel.chain.lead" class="chain__slot chain__slot--lead">{{ chainSlotText(panel, cell, panel.chain.lead) }}</span>
                 <span class="chain__value">{{ isEmptyValue(value) ? "∅" : frameValueText(value) }}</span>
-                <span v-for="slot in panel.chain.slots" :key="slot" class="chain__slot">{{ chainSlotText(panel, cell, slot) }}</span>
+                <!-- 槽位里写的是**指向谁**（引擎给的 next/prior 文字）。正在被改写的那一格点亮——
+                     帧的标题就是那行代码（`p->next = B->next`），一格一亮对应一行。 -->
+                <span
+                  v-for="slot in panel.chain.slots"
+                  :key="slot"
+                  class="chain__slot"
+                  :class="{ 'chain__slot--writing': panel.chainWrite === cell }"
+                >{{ chainSlotText(panel, cell, slot) }}</span>
               </span>
               <!-- 结点之间：正向一根；双向链表再在下面补一根反向的（prior 指向前驱）。 -->
               <span v-if="cell < panel.values.length - 1" class="chain__links">
                 <span class="chain__link" aria-hidden="true"></span>
                 <span v-if="panel.chain.back" class="chain__link chain__link--back" aria-hidden="true"></span>
               </span>
-              <!-- 循环链表：尾结点的 next 绕回首结点，画不出真实的曲线就明写成一根回到 head 的箭头。 -->
-              <span v-else-if="panel.chain.circular" class="chain__links chain__links--wrap">
+              <!-- 循环链表：尾结点的 next 绕回首结点时，明写成一根回到 head 的箭头。 -->
+              <span v-else-if="chainWraps(panel)" class="chain__links chain__links--wrap">
                 <span class="chain__link" aria-hidden="true"></span>
                 <span class="chain__wrap">{{ t("stage.backToHead") }}</span>
               </span>
@@ -805,6 +829,14 @@ const graphLayouts = computed(() => {
 .chain__slot--lead {
   border-left: none;
   border-right: 1px solid color-mix(in srgb, var(--stage-ink) 18%, transparent);
+}
+
+/* 这一帧正在改写的那一格（帧标题就是那行代码，比如 `p->next = B->next`）：
+   点亮它，"断了哪根、接上哪根"就不用旁白。 */
+.chain__slot--writing {
+  background: color-mix(in srgb, var(--stage-focus) 18%, var(--stage-face));
+  color: var(--stage-ink);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--stage-focus) 45%, transparent);
 }
 
 /* 结点之间的箭头区：正向一根；双向链表在下面再补一根反向的，两根都居中于结点框。 */
