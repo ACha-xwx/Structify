@@ -34,6 +34,19 @@ function isLeadCursor(panel: FramePanel, cursor: { key: string }): boolean {
   return panel.cursors.length > 0 && panel.cursors[0].key === cursor.key;
 }
 
+/**
+ * 结点框里某一栏写什么。
+ *
+ * `next` / `prior` 在链表的**两端**本来就没有指向：第一个结点的 prior、末结点的 next 都该写 `NULL`——
+ * 唯一例外是循环链表，它的末结点 `next` 指回 `head`（写 `head` 而不写 `NULL`，否则和单链表没区别）。
+ */
+function chainSlotText(panel: FramePanel, cell: number, slot: string): string {
+  const last = panel.values.length - 1;
+  if (slot === "next") return cell < last ? slot : panel.chain?.circular ? "head" : "NULL";
+  if (slot === "prior") return cell === 0 ? "NULL" : slot;
+  return slot;
+}
+
 const frame = computed<AnimationFrame>(() => normalizeFrame(props.state ?? props.step?.dsvpState ?? null));
 // A frame whose only content is metadata still says something (n, result, front/rear...); treating it as
 // "nothing to render" made such a step a completely blank canvas.
@@ -423,10 +436,22 @@ const graphLayouts = computed(() => {
                 >{{ cursor.label }}</span>
               </span>
               <span class="chain__body">
+                <!-- 结点里有哪些槽位、写什么，全部来自结构定义（`panel.chain`）：双向链表多一格 prior，
+                     循环链表末结点的 next 写 head 而不是 NULL。以前这两样都被写死成单链表的画法。 -->
+                <span v-if="panel.chain.lead" class="chain__slot chain__slot--lead">{{ chainSlotText(panel, cell, panel.chain.lead) }}</span>
                 <span class="chain__value">{{ isEmptyValue(value) ? "∅" : frameValueText(value) }}</span>
-                <span class="chain__next">{{ cell === panel.values.length - 1 ? "NULL" : "next" }}</span>
+                <span v-for="slot in panel.chain.slots" :key="slot" class="chain__slot">{{ chainSlotText(panel, cell, slot) }}</span>
               </span>
-              <span v-if="cell < panel.values.length - 1" class="chain__link" aria-hidden="true"></span>
+              <!-- 结点之间：正向一根；双向链表再在下面补一根反向的（prior 指向前驱）。 -->
+              <span v-if="cell < panel.values.length - 1" class="chain__links">
+                <span class="chain__link" aria-hidden="true"></span>
+                <span v-if="panel.chain.back" class="chain__link chain__link--back" aria-hidden="true"></span>
+              </span>
+              <!-- 循环链表：尾结点的 next 绕回首结点，画不出真实的曲线就明写成一根回到 head 的箭头。 -->
+              <span v-else-if="panel.chain.circular" class="chain__links chain__links--wrap">
+                <span class="chain__link" aria-hidden="true"></span>
+                <span class="chain__wrap">{{ t("stage.backToHead") }}</span>
+              </span>
             </li>
           </ol>
           <ol v-else class="cells">
@@ -765,7 +790,8 @@ const graphLayouts = computed(() => {
   color: var(--stage-ink);
 }
 
-.chain__next {
+/* 结点框里的槽位：`next` / `prior` / `cursor`。和值用竖线隔开，底色略深，像教科书里画的结构体字段。 */
+.chain__slot {
   display: grid;
   place-items: center;
   min-width: 46px;
@@ -775,13 +801,40 @@ const graphLayouts = computed(() => {
   font-size: 14px;
 }
 
-.chain__link {
+/* 值左边的槽位（双向链表的 prior）：竖线画在右边。 */
+.chain__slot--lead {
+  border-left: none;
+  border-right: 1px solid color-mix(in srgb, var(--stage-ink) 18%, transparent);
+}
+
+/* 结点之间的箭头区：正向一根；双向链表在下面再补一根反向的，两根都居中于结点框。 */
+.chain__links {
   align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chain__link {
   position: relative;
   width: 28px;
   height: 2px;
   margin: 0 3px;
   background: var(--stage-line);
+}
+
+/* 反向箭头直接镜像整根线（含箭头尖）：`scaleX(-1)` 一定指向左，比手算旋转角度可靠。 */
+.chain__link--back { transform: scaleX(-1); }
+
+.chain__links--wrap { flex-direction: row; align-items: center; gap: 6px; }
+
+.chain__wrap {
+  padding: 1px 7px;
+  border: 1px dashed color-mix(in srgb, var(--stage-ink) 34%, transparent);
+  border-radius: 999px;
+  color: var(--stage-ink-soft);
+  font-size: 14px;
+  white-space: nowrap;
 }
 
 .chain__link::after {

@@ -302,6 +302,8 @@ export const messages = {
 
   /** The animation renderer. */
   "stage.emptyBucket": { zh: "空", en: "empty" },
+  // 循环链表尾结点指回首结点。画不出真实的绕回曲线，就明写一根回到 head 的箭头。
+  "stage.backToHead": { zh: "回到 head", en: "back to head" },
   "stage.panelLabel": { zh: "{label}结构图", en: "{label} diagram" },
 
   /** The courseware browser. */

@@ -33,6 +33,35 @@ export interface FrameCursor {
   index: number;
 }
 
+/**
+ * 一个结点框该有哪些槽位、结点之间该有哪些箭头——**按结构定义来**，不是"链表都长一样"。
+ *
+ * 单链表每个结点只有后继，所以是 `[值 | next]`；双向链表每个结点**同时存前驱和后继**，
+ * 框里必须有 `prior` 那一栏，结点之间也要有一根**反向**箭头——只画 next 就等于把双向链表画成了单链表
+ * （2026-10-06 Rrd 拿截图问"双向链表这个箭头方向是不是也不对"，就是这里）。
+ * 循环链表则要把尾结点的 next 绕回首结点，末结点的 `next` 栏写 `head` 而不是 `NULL`。
+ */
+export interface ChainShape {
+  /** 值左边的槽位名（双向链表的 `prior`）；没有就是 null。 */
+  lead: string | null;
+  /** 值右边的槽位名（`next`；链式栈/队列同样是 next）。 */
+  slots: string[];
+  /** 结点之间还要画一根反向箭头（prior 指向前驱），画在正向箭头下面一行。 */
+  back: boolean;
+  /** 尾结点的 next 绕回首结点。 */
+  circular: boolean;
+}
+
+/** 按 `kind`（结构定义本身）给形状；认不出的链表面板退回单链表画法。 */
+const CHAIN_SHAPES: Record<string, ChainShape> = {
+  linked_list: { lead: null, slots: ["next"], back: false, circular: false },
+  doubly_linked_list: { lead: "prior", slots: ["next"], back: true, circular: false },
+  circular_linked_list: { lead: null, slots: ["next"], back: false, circular: true },
+  linked_stack: { lead: null, slots: ["next"], back: false, circular: false },
+  linked_queue: { lead: null, slots: ["next"], back: false, circular: false },
+};
+const DEFAULT_CHAIN: ChainShape = { lead: null, slots: ["next"], back: false, circular: false };
+
 export interface FramePanel {
   role: string;
   label: string;
@@ -51,8 +80,8 @@ export interface FramePanel {
   focus: number | null;
   /** Every named position the engine reports for this panel, drawn on the cells they stand on. */
   cursors: FrameCursor[];
-  /** A singly-linked chain of values (single/double/circular list, chain stack or queue) - drawn as nodes. */
-  chain: boolean;
+  /** Present when the values are a chain of nodes: how a node is shaped and how nodes are wired. */
+  chain: ChainShape | null;
   /** Zero-based [row, column] of the one cell a grid step is standing on (matrix panels only). */
   focusCell: [number, number] | null;
   /** Half-open index range a sort pass is working on (`low`..`high`). */
@@ -105,8 +134,7 @@ const NESTED_ROLES = new Set([
   "usedIndices",
 ]);
 
-/** Meta fields whose numeric value is a cursor a sibling panel should highlight. */
-const POINTER_KEYS = new Set([
+/** Meta fields whose numeric value is a cursor a sibling panel should highlight. */const POINTER_KEYS = new Set([
   "index",
   "current",
   "top",
@@ -121,7 +149,19 @@ const POINTER_KEYS = new Set([
   "pivotIndex",
   "mid",
   "column",
+  // 双端栈：两个栈顶在**同一个共享数组**里从两端往中间长，所以两边的栈顶都要标出来。
+  "topLeft",
+  "topRight",
+  // 简单选择排序：一边扫一边记"目前最小的在哪"——这两格不标出来，那几十帧比较帧看起来就是静止的。
+  "selected",
+  "scan",
 ]);
+
+/**
+ * 这几个游标说的是"**这个结构长什么样**"，不是"这一步在动哪一格"：栈顶、队首、队尾。
+ * 所以它们和面板自带的 `focusIndex` 一起画，不会被顶掉（双端栈的左右栈顶就是这么丢过一次的）。
+ */
+const STRUCTURAL_CURSOR_KEYS = new Set(["top", "front", "rear"]);
 
 const ROLE_LABELS: Record<string, string> = {
   A: "塔 A",
@@ -306,6 +346,10 @@ const META_LABELS: Record<string, string> = {
   removed: "移出",
   compareCount: "比较次数",
   swapCount: "交换次数",
+  // 双端栈：两个栈顶在同一个共享数组里，还要看得见还剩几个单元。
+  topLeft: "左栈顶",
+  topRight: "右栈顶",
+  free: "空位",
   found: "命中",
   digit: "数位",
   pass: "趟",
@@ -422,7 +466,7 @@ function panelFromView(panel: DsvpPanel, pointers: Record<string, number>, raw: 
     multiKey: false,
     focus: null,
     cursors: [],
-    chain: false,
+    chain: null,
     focusCell: null,
     range: null,
     chips: [],
@@ -470,11 +514,18 @@ function panelFromView(panel: DsvpPanel, pointers: Record<string, number>, raw: 
   frame.focusCell = focusCellOf(panel);
   // A panel may carry its own cursor (`focusIndex`); that beats the shared pointer pool, which several
   // panels read at once and which therefore cannot say "slot 7 of the packed array, not column 7".
+  //
+  // 但**结构性的标记不能因此被顶掉**：双端栈的左右两个栈顶、循环缓冲区的 front/rear 属于"这个结构长什么样"，
+  // 每一帧都该看得见，而 focusIndex 说的是"这一步正在动哪一格"。两者同格时用结构性的名字（`top` 比"当前"
+  // 说得清），不同格就都画出来。
   const ownFocus = typeof panel.focusIndex === "number" ? panel.focusIndex : null;
-  frame.chain = (frame.kind === "array" || frame.kind === "records") && chainPanel(role, kind);
+  frame.chain = frame.kind === "array" || frame.kind === "records" ? chainShapeOf(role, kind) : null;
   if (ownFocus !== null) {
     const bounded = clamp(ownFocus, frame.values.length);
-    frame.cursors = bounded === null ? [] : [{ key: "focus", label: cursorLabel("focus"), index: bounded }];
+    const own = bounded === null ? [] : [{ key: "focus", label: cursorLabel("focus"), index: bounded }];
+    const structural = cursorsFor(role, pointers, frame.values.length).filter((cursor) => STRUCTURAL_CURSOR_KEYS.has(cursor.key));
+    const sameCell = structural.find((cursor) => cursor.index === bounded);
+    frame.cursors = sameCell ? [sameCell, ...structural.filter((cursor) => cursor !== sameCell)] : [...own, ...structural];
   } else {
     frame.cursors = cursorsFor(role, pointers, frame.values.length);
   }
@@ -516,7 +567,7 @@ function panelsFromLegacy(kind: string, state: Record<string, unknown>, chips: F
     multiKey: false,
     focus: null,
     cursors: [],
-    chain: chainPanel(role, kind),
+    chain: chainShapeOf(role, kind),
     focusCell: null,
     range: null,
     chips: [],
@@ -649,6 +700,9 @@ const CURSOR_LABELS: Record<string, string> = {
   targetIndex: "目标",
   movingIndex: "移动中",
   pivotIndex: "枢轴",
+  // 简单选择排序的两个位置：正在扫的那一格，和目前最小的那一格。
+  selected: "最小",
+  scan: "扫描",
   mid: "mid",
   column: "列",
   focus: "当前",
@@ -659,8 +713,13 @@ export function cursorLabel(key: string): string {
   return CURSOR_LABELS[key] ?? key;
 }
 
-/** Cursors any panel may show, in the order the single focus used to pick from them. */
-const GENERIC_CURSOR_KEYS = ["current", "pivotIndex", "j", "i", "mid", "index", "position"] as const;
+/**
+ * Cursors any panel may show, in the order the single focus used to pick from them.
+ *
+ * `front`/`rear` 在这里是有意的：队列的**两端**都要标出来——只标 front 的话，"队尾在哪、还剩几个空位"
+ * 就得靠胶囊去读（2026-10-06 把队列和循环缓冲区一并过了一遍才发现）。
+ */
+const GENERIC_CURSOR_KEYS = ["current", "pivotIndex", "j", "i", "mid", "index", "position", "front", "rear", "selected", "scan"] as const;
 
 /** Panels whose values are a chain of nodes: a list's links live in the gaps between the values. */
 const CHAIN_ROLES = new Set(["L", "LA", "LB", "LC", "head", "new"]);
@@ -672,8 +731,10 @@ const CHAIN_KINDS = new Set([
   "linked_queue",
 ]);
 
-function chainPanel(role: string, kind: string): boolean {
-  return CHAIN_ROLES.has(role) || CHAIN_KINDS.has(kind);
+/** 这个面板是不是"结点链"，是的话结点该长什么样——形状由结构定义（`kind`）决定。 */
+function chainShapeOf(role: string, kind: string): ChainShape | null {
+  if (!CHAIN_ROLES.has(role) && !CHAIN_KINDS.has(kind)) return null;
+  return CHAIN_SHAPES[kind] ?? DEFAULT_CHAIN;
 }
 
 /**
@@ -690,13 +751,17 @@ export function cursorsFor(role: string, pointers: Record<string, number>, lengt
     role === "table" && pointers.index !== undefined ? { key: "index", at: pointers.index }
       : role === "stack" && pointers.top !== undefined ? { key: "top", at: pointers.top }
         : role === "queue" && pointers.front !== undefined ? { key: "front", at: pointers.front }
-          : /A$/.test(role) && pointers.i !== undefined ? { key: "i", at: pointers.i - 1 }
-            : /B$/.test(role) && pointers.j !== undefined ? { key: "j", at: pointers.j - 1 }
-              : /C$/.test(role) && length > 0 ? { key: "latest", at: length - 1 }
-                : role === "result" && length > 0 ? { key: "latest", at: length - 1 }
-                  : role === "left" && pointers.i !== undefined ? { key: "i", at: pointers.i }
-                    : role === "right" && pointers.j !== undefined ? { key: "j", at: pointers.j }
-                      : null;
+          // 双端栈：每一侧自己的栈顶都在那一侧数组的**最后一个元素**上（引擎给的是共享数组里的全局下标，
+          // 直接拿来标本侧会越界），所以两侧都取 length-1，标签统一写 top。
+          : role === "left" && pointers.topLeft !== undefined ? { key: "top", at: length - 1 }
+            : role === "right" && pointers.topRight !== undefined ? { key: "top", at: length - 1 }
+              : /A$/.test(role) && pointers.i !== undefined ? { key: "i", at: pointers.i - 1 }
+                : /B$/.test(role) && pointers.j !== undefined ? { key: "j", at: pointers.j - 1 }
+                  : /C$/.test(role) && length > 0 ? { key: "latest", at: length - 1 }
+                    : role === "result" && length > 0 ? { key: "latest", at: length - 1 }
+                      : role === "left" && pointers.i !== undefined ? { key: "i", at: pointers.i }
+                        : role === "right" && pointers.j !== undefined ? { key: "j", at: pointers.j }
+                          : null;
 
   if (specific) {
     const index = clamp(specific.at, length);

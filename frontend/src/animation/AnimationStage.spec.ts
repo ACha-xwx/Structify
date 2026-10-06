@@ -85,6 +85,36 @@ describe("AnimationStage", () => {
     expect(nodes[1].findAll(".cursor").map((cursor) => cursor.text())).toEqual(["当前"]);
   });
 
+  it("gives a doubly linked node a prior slot and a backwards arrow", () => {
+    const wrapper = mountState({
+      kind: "doubly_linked_list",
+      view: [{ role: "L", values: [10, 15, 20] }, { role: "meta", values: [], operation: "insert", position: 2 }],
+    });
+
+    const nodes = wrapper.findAll(".chain__node");
+    // 第一个结点：prior 没有指向 ⇒ NULL；末结点：next 没有指向 ⇒ NULL。
+    expect(nodes[0].find(".chain__slot--lead").text()).toBe("NULL");
+    expect(nodes[1].find(".chain__slot--lead").text()).toBe("prior");
+    expect(nodes[2].findAll(".chain__slot").map((slot) => slot.text())).toEqual(["prior", "NULL"]);
+    // 每个结点框都是 [prior | 值 | next] 三格。
+    expect(nodes[1].findAll(".chain__body > span").map((cell) => cell.text())).toEqual(["prior", "15", "next"]);
+    // 三结点两段间隙，每段两根箭头（正向 + 反向）。
+    expect(wrapper.findAll(".chain__link")).toHaveLength(4);
+    expect(wrapper.findAll(".chain__link--back")).toHaveLength(2);
+  });
+
+  it("sends a circular list's tail back to its head instead of NULL", () => {
+    const wrapper = mountState({
+      kind: "circular_linked_list",
+      view: [{ role: "LA", values: [1, 3, 5] }, { role: "meta", values: [], circular: true }],
+    });
+
+    const nodes = wrapper.findAll(".chain__node");
+    expect(nodes[2].findAll(".chain__slot").map((slot) => slot.text())).toEqual(["head"]);
+    expect(wrapper.findAll(".chain__wrap")).toHaveLength(1);
+    expect(wrapper.get(".chain__wrap").text()).toBe("回到 head");
+  });
+
   it("states what currently holds above the canvas, and counts the work done so far", () => {
     // 计数器与不变式是"效率直觉"的来源：没有它们，一串格子动来动去说明不了任何事。
     const wrapper = mountState({

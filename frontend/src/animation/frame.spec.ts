@@ -37,11 +37,34 @@ describe("cursor publication", () => {
       kind: "linked_list",
       view: [{ role: "L", values: [10, 20, 30] }, { role: "meta", values: [], operation: "insert", current: 1 }],
     } as DsvpState);
-    expect(list.panels[0].chain).toBe(true);
+    expect(list.panels[0].chain).not.toBeNull();
     expect(list.panels[0].cursors.map((cursor) => cursor.key)).toEqual(["current"]);
 
     const array = normalizeFrame({ kind: "sort", view: [{ role: "array", values: [1, 2] }] } as DsvpState);
-    expect(array.panels[0].chain).toBe(false);
+    expect(array.panels[0].chain).toBeNull();
+  });
+
+  it("shapes a node by its structure definition, not by 'lists all look alike'", () => {
+    // 双向链表每个结点同时存前驱和后继：框里要有 prior 一栏、结点之间要有反向箭头。
+    // 只画 next 就是把双向链表画成了单链表——2026-10-06 用户拿截图问的正是这个。
+    const doubly = normalizeFrame({
+      kind: "doubly_linked_list",
+      view: [{ role: "L", values: [10, 15, 20] }, { role: "meta", values: [], operation: "insert", position: 2 }],
+    } as DsvpState);
+    expect(doubly.panels[0].chain).toEqual({ lead: "prior", slots: ["next"], back: true, circular: false });
+
+    const singly = normalizeFrame({
+      kind: "linked_list",
+      view: [{ role: "L", values: [10, 15] }],
+    } as DsvpState);
+    expect(singly.panels[0].chain).toEqual({ lead: null, slots: ["next"], back: false, circular: false });
+
+    // 循环链表尾结点的 next 指回 head，所以要绕回去。
+    const circular = normalizeFrame({
+      kind: "circular_linked_list",
+      view: [{ role: "LA", values: [1, 3, 5] }, { role: "meta", values: [], circular: true }],
+    } as DsvpState);
+    expect(circular.panels[0].chain).toEqual({ lead: null, slots: ["next"], back: false, circular: true });
   });
 });
 
