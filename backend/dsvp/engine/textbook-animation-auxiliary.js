@@ -828,25 +828,146 @@ function simulateUnionFindAux(req,api){
 
 function graphData(req,defaults={}){return normalizeGraphSpec(req,defaults);}
 function graphRows(g,extra={}){return[row("graph",[],{nodes:g.nodes.map((x,i)=>({id:x,label:x,index:i})),edges:g.edges}),row("meta",[],{directed:g.directed,...extra})];}
-function simulateGraphAux(req,api){const {makeStep,makeTrace,action}=helpers(api),op=req.operation;
+function simulateGraphAux(req,api){
+  const {makeStep,makeTrace,action}=helpers(api),op=req.operation;
   // compute_indegree：入度是有向图概念，缺省按有向图处理，显式 directed=false 直接报错；
   // 建图/遍历操作缺省按无向图；连通分量无论 directed 均按无向边处理。
   const g=graphData(req,{directed:op==="compute_indegree"});
   if(op==="build_cross_list"&&req.params.directed===false)throw new SimulationInputError("INVALID_PARAM","十字链表用于存储有向图：directed 不能为 false","directed");
   if(op==="compute_indegree"&&!g.directed)return api.makeRuntimeError(req,"计算各顶点入度","UNDIRECTED_INDEGREE","入度是针对有向图的概念：请设置 directed=true，或改用求连通分量等无向图算法。",view("graph",graphRows(g,{operation:op})),"无向图");
-  let sid=1;const steps=[makeStep(sid++,"init","图结构",`${g.nodes.length} 个顶点，${g.edges.length} 条边；${g.directed?"有向图":"无向图"}。`,view("graph",graphRows(g,{operation:op})))];
+  const n=g.nodes.length,idxOf=(v)=>g.nodes.indexOf(v);
+  let sid=1;
+  const vertexNodes=()=>g.nodes.map((x)=>({id:x,label:x}));
+  const edgeGraphRow=(edges)=>row("graph",[],{nodes:vertexNodes(),edges,directed:g.directed});
+  const steps=[makeStep(sid++,"init","图结构",`${n} 个顶点，${g.edges.length} 条边；${g.directed?"有向图":"无向图"}。`,view("graph",graphRows(g,{operation:op})))];
+  const snap=(code,rows,extra,act,line)=>steps.push(makeStep(sid++,line?"line":op,code,code,view("graph",[...rows,row("meta",[],{operation:op,directed:g.directed,...extra})]),act?[act]:[]));
+
   if(op.startsWith("build_")){
     if(!g.edges.length)throw new SimulationInputError("EMPTY_EDGES","建图演示至少需要一条边（edges 为空）","edges");
-    const built=[];
-    for(const e of g.edges){built.push(e);const title=op==="build_adjacency_matrix"?"写入邻接矩阵":"建立边结点并挂接指针";
-      steps.push(makeStep(sid++,title==="写入邻接矩阵"?"build":"build",title,op==="build_adjacency_matrix"?`设置 ${e[0]}→${e[1]} 的矩阵单元${g.directed?"":"（无向图同时设置对称单元）"}。`:`加入边 ${e[0]}→${e[1]}${op==="build_cross_list"?"，同时接入出边链和入边链":g.directed?" 到起点邻接链":"（无向图同时挂到终点邻接链）"}。`,view("graph",[row("graph",[],{nodes:g.nodes.map(x=>({id:x,label:x})),edges:[...built],directed:g.directed}),row("meta",[],{operation:op,edge:e,directed:g.directed})]),[action("link","写入图存储结构",{from:e[0],to:e[1],value:e[2]})]));}
-    return makeTrace(req,{build_adjacency_matrix:"建立图的邻接矩阵",build_adjacency_list:"建立图的邻接表",build_cross_list:"建立有向图十字链表"}[op],"边集合","建立完成",steps);}
-  const adjForDfs=new Map(g.nodes.map(n=>[n,[]]));for(const [u,v] of g.edges){adjForDfs.get(u)?.push(v);if(!g.directed)adjForDfs.get(v)?.push(u);}
-  if(op==="compute_indegree"){const indegree=Object.fromEntries(g.nodes.map(n=>[n,0]));for(const [u,v] of g.edges){if(v in indegree)indegree[v]++;/* edge = 这一步处理的这条边（渲染器画成活动边）；indegree 面板高亮刚加 1 的那个顶点。 */steps.push(makeStep(sid++,"count","统计入度",`处理边 ${u}→${v}，indegree[${v}]=${indegree[v]}。`,view("graph",[...graphRows(g,{operation:op,edge:[u,v]}),row("indegree",Object.entries(indegree).map(([vertex,value])=>({vertex,value})),{focusIndex:g.nodes.indexOf(v)})]),[action("count","终点入度加 1",{target:v,value:indegree[v]})]));}return makeTrace(req,"计算各顶点入度","有向图",Object.entries(indegree).map(([v,d])=>`${v}:${d}`).join(", "),steps);}
-  if(op==="dfs_nonrecursive"){const start=String(req.params.start??g.nodes[0]);requireVertex(g,start,"起点 start");const stack=[start],seen=new Set(),order=[];while(stack.length){const u=stack.pop();if(seen.has(u))continue;seen.add(u);order.push(u);steps.push(makeStep(sid++,"visit","显式栈退栈访问",`访问 ${u}。`,view("graph",[...graphRows(g,{operation:op,current:u,visited:[...order]}),row("stack",stack)]),[action("visit","DFS 访问顶点",{value:u})]));const ns=[...(adjForDfs.get(u)||[])].reverse();for(const v of ns)if(!seen.has(v))stack.push(v);}return makeTrace(req,"非递归深度优先搜索",`start=${start}`,order.join("→"),steps);}
-  // connected_components：按无向边求连通分量（教材定义），不受 directed 影响。
-  const adjUndirected=new Map(g.nodes.map(n=>[n,[]]));for(const [u,v] of g.edges){adjUndirected.get(u)?.push(v);adjUndirected.get(v)?.push(u);}
-  const seen=new Set();let component=0;for(const start of g.nodes){if(seen.has(start))continue;component++;const q=[start],members=[];while(q.length){const u=q.shift();if(seen.has(u))continue;seen.add(u);members.push(u);for(const v of adjUndirected.get(u)||[])if(!seen.has(v))q.push(v);}steps.push(makeStep(sid++,"component","找到一个连通分量",`第 ${component} 个分量：${members.join("、")}`,view("graph",graphRows(g,{operation:op,component,members,visited:[...seen]})),[action("mark","标记连通分量",{value:component})]));}return makeTrace(req,"求图的连通分量","图",`components=${component}`,steps);}
+    if(op==="build_adjacency_matrix"){
+      /* 邻接矩阵：一条边写一格，无向图连对称格一起写——每写一格矩阵面板都变。 */
+      const m=Array.from({length:n},()=>Array(n).fill(null));
+      const cells=()=>m.map((r)=>r.map((x)=>x===null?"∞":x));
+      for(const [u,v,w] of g.edges){
+        const i=idxOf(u),j=idxOf(v);
+        m[i][j]=w;
+        snap(`A[${i}][${j}] = ${w}`,[edgeGraphRow([[u,v]]),row("matrix",cells(),{focusCell:[i,j]})],{edge:[u,v]},action("link","写入矩阵单元",{from:u,to:v,value:w}));
+        if(!g.directed){
+          m[j][i]=w;
+          snap(`A[${j}][${i}] = ${w}`,[edgeGraphRow([[u,v]]),row("matrix",cells(),{focusCell:[j,i]})],{edge:[u,v],symmetric:true},action("link","无向图同时写对称单元",{from:v,to:u,value:w}));
+        }
+      }
+      return makeTrace(req,"建立图的邻接矩阵","边集合","建立完成",steps);
+    }
+    if(op==="build_adjacency_list"){
+      /* 邻接表：`p = malloc(); p->adjvex = j; p->next = adj[i].first` 一行、`adj[i].first = p` 一行。 */
+      const adj=g.nodes.map(()=>[]);
+      const listRow=()=>row("adj",adj.map((l)=>l.length?l.join(" → "):"∧"));
+      let k=0;
+      for(const [u,v] of g.edges){
+        const i=idxOf(u),j=idxOf(v),id=`e${++k}`;
+        snap(`p = malloc(); p->adjvex = ${j}; p->next = adj[${i}].first`,[edgeGraphRow([[u,v]]),listRow()],{p:id,edge:[u,v]},null,true);
+        adj[i].unshift(j);
+        snap(`adj[${i}].first = p`,[edgeGraphRow([[u,v]]),listRow()],{p:id,edge:[u,v]},action("link",`${u} 的邻接链头插 ${v}`,{from:u,to:v}));
+        if(!g.directed){
+          const id2=`e${++k}`;
+          snap(`q = malloc(); q->adjvex = ${i}; q->next = adj[${j}].first`,[edgeGraphRow([[u,v]]),listRow()],{p:id2,edge:[u,v],symmetric:true},null,true);
+          adj[j].unshift(i);
+          snap(`adj[${j}].first = q`,[edgeGraphRow([[u,v]]),listRow()],{p:id2,edge:[u,v],symmetric:true},action("link",`${v} 的邻接链头插 ${u}`,{from:v,to:u}));
+        }
+      }
+      return makeTrace(req,"建立图的邻接表","边集合","建立完成",steps);
+    }
+    /* 十字链表：每个边结点同时挂进**出边链**（tail）和**入边链**（head）。 */
+    const out=g.nodes.map(()=>[]),inn=g.nodes.map(()=>[]);
+    const outRow=()=>row("out",out.map((l)=>l.length?l.join(" → "):"∧"));
+    const inRow=()=>row("in",inn.map((l)=>l.length?l.join(" → "):"∧"));
+    let k=0;
+    for(const [u,v] of g.edges){
+      const i=idxOf(u),j=idxOf(v),id=`e${++k}`;
+      snap(`p = malloc(); p->tailvex = ${i}; p->headvex = ${j}`,[edgeGraphRow([[u,v]]),outRow(),inRow()],{p:id,edge:[u,v]},null,true);
+      out[i].unshift(`${u}→${v}`);
+      snap(`p->tlink = tail[${i}]; tail[${i}] = p`,[edgeGraphRow([[u,v]]),outRow(),inRow()],{p:id,edge:[u,v]},action("link",`接进 ${u} 的出边链`,{from:u,to:v}));
+      inn[j].unshift(`${u}→${v}`);
+      snap(`p->hlink = head[${j}]; head[${j}] = p`,[edgeGraphRow([[u,v]]),outRow(),inRow()],{p:id,edge:[u,v]},action("link",`接进 ${v} 的入边链`,{from:u,to:v}));
+    }
+    return makeTrace(req,"建立有向图十字链表","边集合","建立完成",steps);
+  }
+
+  if(op==="compute_indegree"){
+    /* 逐边扫描：`indegree[v] = indegree[v] + 1`，每扫一条边入度面板就变一格。 */
+    const indegree=Object.fromEntries(g.nodes.map((x)=>[x,0]));
+    for(const [u,v] of g.edges){
+      if(!(v in indegree))continue;
+      indegree[v]+=1;
+      snap(`indegree[${v}] = indegree[${v}] + 1`,[...graphRows(g,{operation:op,edge:[u,v]}),row("indegree",g.nodes.map((x)=>({vertex:x,value:indegree[x]})),{focusIndex:g.nodes.indexOf(v)})],{edge:[u,v],v:indegree[v]},action("count","终点入度加 1",{target:v,value:indegree[v]}));
+    }
+    return makeTrace(req,"计算各顶点入度","有向图",g.nodes.map((x)=>`${x}:${indegree[x]}`).join(", "),steps);
+  }
+
+  if(op==="dfs_nonrecursive"){
+    /* 显式栈：`s.push(邻居)` 一行、`v = s.pop()` 一行、`visited[v] = 1` 一行。 */
+    const start=String(req.params.start??g.nodes[0]);
+    requireVertex(g,start,"起点 start");
+    const adj=new Map(g.nodes.map((x)=>[x,[]]));
+    for(const [u,v] of g.edges){adj.get(u)?.push(v);if(!g.directed)adj.get(v)?.push(u);}
+    const stack=[start],seen=new Set(),order=[];
+    const rows=(current,extra={})=>[...graphRows(g,{operation:op,current,visited:[...order]}),row("stack",[...stack],{focusIndex:stack.length-1}),row("meta",[],{operation:op,directed:g.directed,...extra})];
+    const step=(code,current,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"visit",code,code,view("graph",rows(current,extra)),act?[act]:[]));
+    step(`s.push(${start})`,start,{},action("push","起点入栈",{value:start}),true);
+    while(stack.length){
+      step("while (!s.empty()) → true",stack[stack.length-1],{s:stack.join(",")},null,true);
+      const u=stack.pop();
+      step("v = s.pop()",u,{v:u},action("move","退栈",{value:u}),true);
+      const already=seen.has(u);
+      step(`if (visited[${u}]) → ${already}`,u,{v:u,visited:already?1:0},null,true);
+      if(already)continue;
+      seen.add(u);order.push(u);
+      step(`visited[${u}] = 1`,u,{v:u,visited:order.length},action("visit",`访问 ${u}`,{value:u}));
+      const ns=[...(adj.get(u)||[])].reverse();
+      for(const v of ns){
+        if(seen.has(v))continue;
+        stack.push(v);
+        step(`s.push(${v})`,u,{v:u,pushed:v},action("push",`${v} 入栈`,{value:v}),true);
+      }
+    }
+    step("while (!s.empty()) → false",null,{s:"(空)"});
+    return makeTrace(req,"非递归深度优先搜索",`start=${start}`,order.join("→"),steps);
+  }
+
+  if(op==="connected_components"){
+    /* 从每个未访问顶点启动一次遍历；`component++`、`u = q.pop()`、`visited[u] = 1` 各一行。 */
+    const adj=new Map(g.nodes.map((x)=>[x,[]]));
+    for(const [u,v] of g.edges){adj.get(u)?.push(v);adj.get(v)?.push(u);}
+    const seen=new Set();const members=[];let component=0;
+    const rows=(current,extra={})=>[...graphRows(g,{operation:op,visited:[...seen],current}),row("members",members.join(" ")),row("meta",[],{operation:op,component,directed:g.directed,...extra})];
+    const step=(code,current,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"component",code,code,view("graph",rows(current,extra)),act?[act]:[]));
+    for(const start of g.nodes){
+      const inside=seen.has(start);
+      step(`if (visited[${start}]) → ${inside}`,start,{v:start,visited:inside?1:0},null,true);
+      if(inside)continue;
+      component++;
+      step("component++",start,{component},action("mark",`第 ${component} 个连通分量`,{value:component}),true);
+      const q=[start];
+      members.length=0;
+      step(`q.push(${start})`,start,{q:q.join(",")},action("push","起点入队",{value:start}),true);
+      while(q.length){
+        const u=q.shift();
+        step("u = q.pop()",u,{q:q.join(",")},null,true);
+        if(seen.has(u)){step(`if (visited[${u}]) → true`,u,{visited:1},null,true);continue;}
+        seen.add(u);members.push(u);
+        step(`visited[${u}] = 1`,u,{component,members:members.join("")},action("visit",`${u} 属于第 ${component} 个分量`,{value:u}));
+        for(const v of adj.get(u)||[]){
+          if(seen.has(v))continue;
+          q.push(v);
+          step(`q.push(${v})`,u,{q:q.join(","),pushed:v},action("push",`${v} 入队`,{value:v}),true);
+        }
+      }
+    }
+    return makeTrace(req,"求图的连通分量","图",`components=${component}`,steps);
+  }
+  throw new SimulationInputError("UNSUPPORTED_OPERATION",`图辅助演示不支持操作 ${op}`,"operation");
+}
 
 function bstInsert(root,key){if(!root)return {key,left:null,right:null};if(key<root.key)root.left=bstInsert(root.left,key);else if(key>root.key)root.right=bstInsert(root.right,key);return root;}
 function bstRows(root,extra={}){const nodes=[],edges=[];let id=0;function walk(n,parent=null,side=""){if(!n)return;const my=id++;nodes.push({id:my,label:String(n.key),key:n.key});if(parent!==null)edges.push([parent,my,side]);walk(n.left,my,"L");walk(n.right,my,"R");}walk(root);return[row("tree",[],{nodes,edges}),row("meta",[],extra)];}

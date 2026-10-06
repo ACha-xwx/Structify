@@ -801,57 +801,245 @@ function simulateGraph(request,api){
   else start=g.nodes[0];
   if(op==="path_search"){const target=String(request.params.target??g.nodes[g.nodes.length-1]);requireVertex(g,target,"终点 target");}
   if(op==="dijkstra"){for(const [a,b,w] of g.edges){if(w<0) throw new SimulationInputError("NEGATIVE_WEIGHT",`Dijkstra 不支持负权边：边 ${a}→${b} 的权值为 ${w}。带负权时请改用 Floyd 等算法`,"edges");}}
-  let sid=1;const steps=[makeStep(sid++,"init","图的初始状态",`顶点 ${g.nodes.join(", ")}；${g.edges.length} 条边；${directed?"有向图":"无向图"}${undirectedByDefault.has(op)?"（最小生成树按无向图处理）":""}。`,viewState("graph",graphRows(g,{operation:op,visited:[],current:null})))];
+  let sid=1;
+  /* 代码级：每一步都是那行代码执行**之后**的图 —— `visited[v] = 1`、`q.push(邻居)`、
+     `dist[v] = dist[u] + w`、`indegree[w] = indegree[w] - 1`……一行一帧。
+     辅助结构（栈/队列/入度/距离/矩阵）各占一块面板，写得动的那一帧它就会变。 */
+  const gRow=(extra={})=>row("graph",[],{nodes:g.nodes,edges:g.edges,...extra});
+  /* `visited` 要放进 **meta** 行：渲染器的"已处理"淡显只从 meta 面板里读（放在图面板上没人读）。 */
+  const at=(extraRows,extra={},visited=[])=>viewState("graph",[gRow(),...extraRows,row("meta",[],{operation:op,directed,...extra,...(visited&&visited.length?{visited}:{})})]);
+  const steps=[makeStep(sid++,"init","图的初始状态",`顶点 ${g.nodes.join(", ")}；${g.edges.length} 条边；${directed?"有向图":"无向图"}${undirectedByDefault.has(op)?"（最小生成树按无向图处理）":""}。`,at([],{}))];
+  const snap=(code,extraRows,extra,act,line,visited)=>steps.push(makeStep(sid++,line?"line":"visit",code,code,at(extraRows,extra,visited),act?[act]:[]));
+  const graphRowWith=(extra={})=>gRow(extra);
+
   // 核心契约的 graph visit/highlight：单步定位并高亮起点顶点。
   if(op==="visit"||op==="highlight"){
-    steps.push(makeStep(sid++,op,`${op==="visit"?"访问":"高亮"}顶点 ${start}`,`定位到顶点 ${start}。`,viewState("graph",graphRows(g,{operation:op,visited:[start],current:start})),[action("visit",op==="visit"?"访问顶点":"高亮顶点",{value:start})]));
+    snap(`${op==="visit"?"visit":"highlight"}(${start})`,[],{current:start},action("visit",`${op==="visit"?"访问":"高亮"}顶点 ${start}`,{value:start}),false,[start]);
     return makeTrace(request,op==="visit"?"访问指定顶点":"高亮指定顶点",`start=${start}`,start,steps);
   }
-  if(op==="dfs"||op==="bfs"||op==="path_search"){
-    const visited=[],seen=new Set();const target=String(request.params.target??g.nodes[g.nodes.length-1]);const parent={};const work=[start];
-    while(work.length){const v=op==="bfs"?work.shift():work.pop();if(seen.has(v))continue;seen.add(v);visited.push(v);steps.push(makeStep(sid++,"visit","访问顶点",`访问 ${v}。`,viewState("graph",graphRows(g,{operation:op,visited:[...visited],current:v,frontier:[...work]})),[action("visit","访问顶点",{value:v})]));if(op==="path_search"&&v===target)break;const ns=(adj.get(v)||[]).map(x=>x[0]).filter(n=>!seen.has(n));if(op==="dfs")ns.reverse();for(const n of ns){if(parent[n]===undefined)parent[n]=v;work.push(n);}}
-    let result=visited.join("→");if(op==="path_search"&&!seen.has(target)){steps.push(makeStep(sid++,"done","不存在可达路径",`从 ${start} 出发${directed?"沿有向边":"经过各条边"}无法到达 ${target}：两者之间没有路径。`,viewState("graph",graphRows(g,{operation:op,visited:[...visited],start,target})),[action("miss","无法到达目标",{from:start,to:target})]));return makeTrace(request,"图中简单路径搜索",`start=${start},target=${target}`,"不可达",steps);}if(op==="path_search"&&seen.has(target)){const path=[];let x=target;while(x!==undefined){path.push(x);if(x===start)break;x=parent[x];}result=path.reverse().join("→");steps.push(makeStep(sid++,"done","找到简单路径",result,viewState("graph",graphRows(g,{operation:op,visited:[...visited],path:result.split("→")}))));}
-    return makeTrace(request,op==="dfs"?"图的深度优先遍历":op==="bfs"?"图的广度优先遍历":"图中简单路径搜索",`start=${start}`,result,steps);
+
+  if(op==="dfs"){
+    /* 递归 DFS：`visited[v] = 1` → 逐个邻居 `if (!visited[w])` → `DFS(w)`。 */
+    const seen=new Set(),order=[];
+    const walk=(v)=>{
+      seen.add(v);order.push(v);
+      snap(`visited[${v}] = 1`,[],{current:v,v},action("visit",`访问 ${v}`,{value:v}),false,[...order]);
+      for(const [w] of adj.get(v)||[]){
+        const skip=seen.has(w);
+        snap(`if (!visited[${w}]) → ${!skip}`,[],{current:v,w,visited:skip?1:0},null,true,[...order]);
+        if(skip)continue;
+        snap(`DFS(${w})`,[],{current:w,w,from:v},action("move",`从 ${v} 深入 ${w}`,{from:v,to:w}),true,[...order]);
+        walk(w);
+      }
+    };
+    walk(start);
+    snap("return",[],{current:start,done:"遍历结束"},null,false,[...order]);
+    return makeTrace(request,"图的深度优先遍历",`start=${start}`,order.join("→"),steps);
   }
+
+  if(op==="bfs"){
+    /* 队列 BFS：`q.push(start); visited[start] = 1` → `v = q.pop()` → 邻居 `visited[w] = 1; q.push(w)`。 */
+    const seen=new Set([start]),order=[];
+    const q=[start];
+    snap(`q.push(${start}); visited[${start}] = 1`,[row("queue",[...q])],{v:start,q:q.join(",")},action("push","起点入队并标记",{value:start}),false,[start]);
+    while(q.length){
+      snap("while (!q.empty()) → true",[row("queue",[...q])],{q:q.join(",")},null,true,[...order]);
+      const v=q.shift();order.push(v);
+      snap("v = q.pop()",[row("queue",[...q])],{current:v,v},action("visit",`访问 ${v}`,{value:v}),false,[...order]);
+      for(const [w] of adj.get(v)||[]){
+        const skip=seen.has(w);
+        snap(`if (!visited[${w}]) → ${!skip}`,[row("queue",[...q])],{current:v,w,visited:skip?1:0},null,true,[...order]);
+        if(skip)continue;
+        seen.add(w);q.push(w);
+        snap(`visited[${w}] = 1`,[row("queue",[...q])],{current:w,w},action("visit",`${w} 第一次被访问`,{value:w}),true,[...order]);
+        snap(`q.push(${w})`,[row("queue",[...q])],{current:w,q:q.join(","),pushed:w},action("push",`${w} 入队`,{value:w}),true,[...order]);
+      }
+    }
+    snap("while (!q.empty()) → false",[row("queue",[])],{q:"(空)"},null,false,[...order]);
+    return makeTrace(request,"图的广度优先遍历",`start=${start}`,order.join("→"),steps);
+  }
+
+  if(op==="path_search"){
+    /* 带父指针的 DFS：`parent[w] = v` 记下是怎么走到 w 的，找到 target 后顺着 parent 倒推路径。 */
+    const target=String(request.params.target??g.nodes[g.nodes.length-1]);
+    const seen=new Set(),parent={},order=[];
+    let found=false;
+    const walk=(v)=>{
+      seen.add(v);order.push(v);
+      snap(`visited[${v}] = 1`,[],{current:v,v},action("visit",`访问 ${v}`,{value:v}),false,[...order]);
+      if(v===target){found=true;return;}
+      for(const [w] of adj.get(v)||[]){
+        const skip=seen.has(w);
+        snap(`if (!visited[${w}]) → ${!skip}`,[],{current:v,w,visited:skip?1:0},null,true,[...order]);
+        if(skip)continue;
+        parent[w]=v;
+        snap(`parent[${w}] = ${v}`,[],{current:v,w,parent:v},action("link",`记下 ${w} 是从 ${v} 来的`,{from:v,to:w}),true,[...order]);
+        walk(w);
+        if(found)return;
+      }
+    };
+    walk(start);
+    if(!found){
+      snap("return NULL",[],{current:start,found:"NULL"},action("miss",`从 ${start} 出发到不了 ${target}`,{from:start,to:target}),false,[...order]);
+      return makeTrace(request,"图中简单路径搜索",`start=${start},target=${target}`,"不可达",steps);
+    }
+    const path=[target];
+    let x=target;
+    while(x!==start){
+      x=parent[x];
+      if(x===undefined)break;
+      path.push(x);
+      snap(`p = parent[p]`, [], {current:x,p:x}, action("move",`沿 parent 退到 ${x}`,{value:x}), true, [...order]);
+    }
+    const route=path.reverse();
+    snap("return 路径",[],{current:start,path:route.join("→")},action("visit",`路径 ${route.join("→")}`,{value:route.length}),false,[...order]);
+    return makeTrace(request,"图中简单路径搜索",`start=${start},target=${target}`,route.join("→"),steps);
+  }
+
   if(op==="prim"){
-    const selected=new Set([start]);const mst=[];let total=0;while(selected.size<g.nodes.length){let best=null;for(const [a,b,w]of g.edges){if(selected.has(a)&&!selected.has(b)||selected.has(b)&&!selected.has(a)){if(!best||w<best[2])best=[a,b,w];}}if(!best){const unreached=g.nodes.filter(x=>!selected.has(x));steps.push(makeStep(sid++,"error","图不连通",`已覆盖顶点 ${[...selected].join("、")}；剩余顶点 ${unreached.join("、")} 与已选部分之间没有边，Prim 无法继续，无法生成最小生成树。`,viewState("graph",graphRows(g,{operation:op,selected:[...selected],chosenEdges:[...mst],total}))));return makeTrace(request,"Prim 最小生成树",`start=${start}`,"图不连通，无法生成最小生成树",steps,[{code:"DISCONNECTED_GRAPH",message:`图不连通：只覆盖了 ${selected.size}/${g.nodes.length} 个顶点`,detail:unreached.join(","),recoverable:false}]);}const [a,b,w]=best;selected.add(selected.has(a)?b:a);mst.push(best);total+=w;steps.push(makeStep(sid++,"select","选择当前最小跨边",`${a}-${b}(${w}) 加入生成树。`,viewState("graph",graphRows(g,{operation:op,selected:[...selected],chosenEdges:[...mst],total})),[action("select","加入最小生成树边",{from:a,to:b,value:w})]));}return makeTrace(request,"Prim 最小生成树",`start=${start}`,`总权值=${total}`,steps);
+    /* Prim：每一轮扫一遍所有边，挑"一端已在 U 里、另一端不在"的最小边。 */
+    const inU=new Set([start]);const mst=[];let total=0;
+    const inURow=()=>row("inU",[...inU]);
+    while(inU.size<g.nodes.length){
+      let best=null;
+      for(const e of g.edges){
+        const [u,v,w]=e;
+        const crosses=(inU.has(u)&&!inU.has(v))||(inU.has(v)&&!inU.has(u));
+        const better=crosses&&(best===null||w<best[2]);
+        snap(`if (一端在 U 内、另一端不在 且 w < min) → ${better}`,[inURow(),...(mst.length?[row("chosen",mst.map((m)=>`${m[0]}-${m[1]}`))]:[])],{edge:`${u}-${v}`,w,min:best?best[2]:null},null,true);
+        if(better)best=e;
+      }
+      if(!best){
+        const unreached=g.nodes.filter((x)=>!inU.has(x));
+        snap("没找到跨边 → 图不连通",[inURow()],{left:unreached.join("、")},null,false);
+        return makeTrace(request,"Prim 最小生成树",`start=${start}`,"图不连通，无法生成最小生成树",steps,[{code:"DISCONNECTED_GRAPH",message:`图不连通：只覆盖了 ${inU.size}/${g.nodes.length} 个顶点`,detail:unreached.join(","),recoverable:false}]);
+      }
+      const [a,b,w]=best;
+      const add=inU.has(a)?b:a;
+      inU.add(add);mst.push(best);total+=w;
+      snap(`U = U ∪ {${add}}`,[inURow(),row("chosen",mst.map((m)=>`${m[0]}-${m[1]}`))],{current:add,edge:`${a}-${b}`,total},action("select",`把 ${add} 并进 U（边 ${a}-${b} 权 ${w}）`,{from:a,to:b,value:w}));
+    }
+    return makeTrace(request,"Prim 最小生成树",`start=${start}`,`总权值=${total}`,steps);
   }
+
   if(op==="kruskal"){
-    const parent=Object.fromEntries(g.nodes.map(n=>[n,n]));function find(x){while(parent[x]!==x){parent[x]=parent[parent[x]];x=parent[x];}return x;}const mst=[];let total=0;for(const e of [...g.edges].sort((a,b)=>a[2]-b[2])){const[a,b,w]=e,ra=find(a),rb=find(b);if(ra!==rb){parent[rb]=ra;mst.push(e);total+=w;steps.push(makeStep(sid++,"select","按权从小到大选边",`${a}-${b}(${w}) 不构成环，加入。`,viewState("graph",graphRows(g,{operation:op,chosenEdges:[...mst],total})),[action("select","加入边",{from:a,to:b,value:w})]));}else steps.push(makeStep(sid++,"skip","跳过成环边",`${a}-${b}(${w}) 会形成环，跳过。`,viewState("graph",graphRows(g,{operation:op,chosenEdges:[...mst],skipped:e,total}))));}
-    if(mst.length<g.nodes.length-1){steps.push(makeStep(sid,"done","图不连通，得到生成森林",`连通的 ${g.nodes.length} 个顶点需要 ${g.nodes.length-1} 条边构成树，但只选出 ${mst.length} 条不构成环的边：图不连通，结果是生成森林而不是最小生成树。`,viewState("graph",graphRows(g,{operation:op,chosenEdges:[...mst],total,forest:true}))));return makeTrace(request,"Kruskal 最小生成树","边按权排序",`图不连通：生成森林，总权值=${total}`,steps,[],[{message:"图不连通，无法得到最小生成树，所选边构成生成森林"}]);}
+    /* Kruskal：先把边按权排序，然后一条条看它会不会成环（并查集判环）。 */
+    const parent=Object.fromEntries(g.nodes.map((n)=>[n,n]));
+    const find=(x)=>{let r=x;while(parent[r]!==r)r=parent[r];return r;};
+    const mst=[];let total=0;
+    const sorted=[...g.edges].sort((a,b)=>a[2]-b[2]);
+    for(const e of sorted){
+      const [a,b,w]=e,ra=find(a),rb=find(b);
+      const ok=ra!==rb;
+      snap(`if (Find(${a}) != Find(${b})) → ${ok}`,[row("chosen",mst.map((m)=>`${m[0]}-${m[1]}`))],{edge:`${a}-${b}`,w,ra,rb},null,true);
+      if(ok){
+        parent[rb]=ra;mst.push(e);total+=w;
+        snap(`Union(${a}, ${b})：${a}-${b} 加入`,[row("chosen",mst.map((m)=>`${m[0]}-${m[1]}`))],{chain:`${a}-${b}`,total},action("select","不构成环，加入",{from:a,to:b,value:w}));
+      }else{
+        snap(`${a}-${b} 已经在同一棵树上 → 跳过`,[row("chosen",mst.map((m)=>`${m[0]}-${m[1]}`))],{chain:`${a}-${b}`,skipped:true},action("skip","会构成环，跳过",{from:a,to:b,value:w}));
+      }
+    }
+    if(mst.length<g.nodes.length-1){
+      snap("边数不足以连通 → 生成森林",[row("chosen",mst.map((m)=>`${m[0]}-${m[1]}`))],{forest:true},null,false);
+      return makeTrace(request,"Kruskal 最小生成树","边按权排序",`图不连通：生成森林，总权值=${total}`,steps,[],[{message:"图不连通，无法得到最小生成树，所选边构成生成森林"}]);
+    }
     return makeTrace(request,"Kruskal 最小生成树","边按权排序",`总权值=${total}`,steps);
   }
+
   if(op==="topological_sort"||op==="critical_path"){
-    const indeg=Object.fromEntries(g.nodes.map(n=>[n,0]));for(const[a,b]of g.edges)indeg[b]++;const q=g.nodes.filter(n=>indeg[n]===0);const topo=[];const ve=Object.fromEntries(g.nodes.map(n=>[n,0]));while(q.length){const v=q.shift();topo.push(v);steps.push(makeStep(sid++,"output","输出入度为 0 的顶点",`输出 ${v}，删除其出边并更新入度。`,viewState("graph",graphRows(g,{operation:op,topo:[...topo],indegree:{...indeg},current:v})),[action("output","输出顶点",{value:v})]));for(const [to,w]of adj.get(v)||[]){indeg[to]--;ve[to]=Math.max(ve[to],ve[v]+w);if(indeg[to]===0)q.push(to);}}
-    if(topo.length<g.nodes.length){const remaining=g.nodes.filter(x=>!topo.includes(x));steps.push(makeStep(sid++,"error","检测到回路",`剩余顶点 ${remaining.join("、")} 的入度都不为 0，说明图中存在回路，拓扑排序无法完成。`,viewState("graph",graphRows(g,{operation:op,topo:[...topo],indegree:{...indeg},current:null}))));return makeTrace(request,"拓扑排序","AOV 网","存在回路，无法拓扑排序",steps,[{code:"CYCLE_DETECTED",message:`图中存在回路（卡住的顶点：${remaining.join("、")}）`,detail:remaining.join(","),recoverable:false}]);}
+    /* 拓扑排序：`indegree[w] = indegree[w] - 1` 一行、`if (indegree[w] == 0) q.push(w)` 一行。 */
+    const indeg=Object.fromEntries(g.nodes.map((n)=>[n,0]));
+    for(const [,b] of g.edges)indeg[b]++;
+    const indegRow=()=>row("indegree",g.nodes.map((x)=>({vertex:x,value:indeg[x]})));
+    const q=g.nodes.filter((n)=>indeg[n]===0);
+    const topo=[];const ve=Object.fromEntries(g.nodes.map((n)=>[n,0]));
+    while(q.length){
+      const v=q.shift();topo.push(v);
+      snap(`v = q.pop() → 输出 ${v}`,[indegRow(),row("topo",[...topo])],{current:v,indegree:indeg[v]},action("output",`输出 ${v}（入度已为 0）`,{value:v}));
+      for(const [to,w] of adj.get(v)||[]){
+        indeg[to]-=1;
+        ve[to]=Math.max(ve[to],ve[v]+w);
+        snap(`indegree[${to}] = indegree[${to}] - 1`,[indegRow(),row("topo",[...topo])],{current:to,indegree:indeg[to]},action("move",`删掉 ${v}→${to}，入度减一`,{from:v,to}),true);
+        const zero=indeg[to]===0;
+        snap(`if (indegree[${to}] == 0) → ${zero}`,[indegRow(),row("topo",[...topo])],{current:to,indegree:indeg[to],zero:zero?"入队":"继续"},null,true);
+        if(zero)q.push(to);
+      }
+    }
+    if(topo.length<g.nodes.length){
+      const remaining=g.nodes.filter((x)=>!topo.includes(x));
+      snap("剩余顶点入度都不为 0 → 有环",[indegRow(),row("topo",[...topo])],{current:null,left:remaining.join("、")},null,false);
+      return makeTrace(request,"拓扑排序","AOV 网","存在回路，无法拓扑排序",steps,[{code:"CYCLE_DETECTED",message:`图中存在回路（卡住的顶点：${remaining.join("、")}）`,detail:remaining.join(","),recoverable:false}]);
+    }
     if(op==="topological_sort")return makeTrace(request,"拓扑排序","AOV 网",topo.join("→"),steps);
-    const maxTime=Math.max(...Object.values(ve));const vl=Object.fromEntries(g.nodes.map(n=>[n,maxTime]));for(let k=topo.length-1;k>=0;k--){const v=topo[k];for(const[to,w]of adj.get(v)||[])vl[v]=Math.min(vl[v],vl[to]-w);}const critical=[];for(const[a,b,w]of g.edges){const e=ve[a],l=vl[b]-w;if(e===l)critical.push([a,b,w]);}steps.push(makeStep(sid++,"critical","计算活动最早/最迟开始时间",`关键活动：${critical.map(e=>`${e[0]}→${e[1]}`).join("，")}`,viewState("graph",graphRows(g,{operation:op,topo,ve,vl,criticalEdges:critical}))));return makeTrace(request,"关键路径","AOE 网",`工期=${maxTime}`,steps);
+    /* 关键路径：按拓扑序正推 ve（最早发生时间），再逆推 vl（最迟发生时间），ve == vl 的活动就是关键活动。 */
+    const maxTime=Math.max(...Object.values(ve));
+    const veRow=()=>row("ve",g.nodes.map((x)=>({vertex:x,value:ve[x]})));
+    snap(`ve = 拓扑序正推（工期 ${maxTime}）`,[veRow(),row("topo",[...topo])],{maxTime},action("compute","最早发生时间正推完成",{value:maxTime}));
+    const vl=Object.fromEntries(g.nodes.map((n)=>[n,maxTime]));
+    const vlRow=()=>row("vl",g.nodes.map((x)=>({vertex:x,value:vl[x]})));
+    for(let k=topo.length-1;k>=0;k--){
+      const v=topo[k];
+      for(const [to,w] of adj.get(v)||[]){
+        if(vl[to]-w<vl[v]){
+          vl[v]=vl[to]-w;
+          snap(`vl[${v}] = min(vl[${v}], vl[${to}] - ${w})`,[vlRow(),veRow()],{current:v,vl:vl[v]},action("compute","最迟发生时间逆推",{value:vl[v]}),true);
+        }
+      }
+    }
+    const critical=[];
+    for(const [a,b,w] of g.edges){
+      const isCritical=ve[a]===vl[b]-w;
+      snap(`if (ve[${a}] == vl[${b}] - ${w}) → ${isCritical}`,[vlRow(),veRow()],{edge:`${a}-${b}`,e:ve[a],l:vl[b]-w},null,true);
+      if(isCritical){critical.push([a,b,w]);snap(`${a}→${b} 是关键活动`,[vlRow(),veRow(),...(critical.length?[row("critical",critical.map((c)=>`${c[0]}→${c[1]}`))]:[])],{edge:`${a}-${b}`,critical:critical.length},action("mark","关键活动",{from:a,to:b}),false);}
+    }
+    snap("return 关键路径",[vlRow(),veRow(),row("critical",critical.map((c)=>`${c[0]}→${c[1]}`))],{maxTime,count:critical.length},action("visit",`工期 ${maxTime}`,{value:maxTime}),false);
+    return makeTrace(request,"关键路径","AOE 网",`工期=${maxTime}`,steps);
   }
+
   if(op==="dijkstra"){
-    const dist=Object.fromEntries(g.nodes.map(n=>[n,Infinity]));dist[start]=0;const done=new Set();const prev={};while(done.size<g.nodes.length){let u=null,best=Infinity;for(const n of g.nodes)if(!done.has(n)&&dist[n]<best){best=dist[n];u=n;}if(u===null)break;done.add(u);steps.push(makeStep(sid++,"select","确定当前最短顶点",`${u} 的最短距离确定为 ${dist[u]}。`,viewState("graph",graphRows(g,{operation:op,start,dist:{...dist},settled:[...done],current:u})),[action("select","加入已确定集合",{value:u})]));for(const[v,w]of adj.get(u)||[]){if(dist[u]+w<dist[v]){dist[v]=dist[u]+w;prev[v]=u;steps.push(makeStep(sid++,"relax","松弛边",`${u}→${v} 后 dist[${v}]=${dist[v]}。`,viewState("graph",graphRows(g,{operation:op,start,dist:{...dist},settled:[...done],current:v,relax:[u,v,w]})),[action("relax","更新最短距离",{from:u,to:v,value:dist[v]})]));}}}return makeTrace(request,"Dijkstra 单源最短路径",`start=${start}`,JSON.stringify(dist),steps);
+    /* Dijkstra：`u = 未确定里 dist 最小的` → 对每条出边 `if (dist[u] + w < dist[v]) → dist[v] = dist[u] + w`。 */
+    const dist=Object.fromEntries(g.nodes.map((n)=>[n,Infinity]));dist[start]=0;
+    const done=new Set();const prev={};
+    const distRow=()=>row("dist",g.nodes.map((x)=>({vertex:x,value:Number.isFinite(dist[x])?dist[x]:"∞"})));
+    while(done.size<g.nodes.length){
+      let u=null;let best=Infinity;
+      for(const n of g.nodes)if(!done.has(n)&&dist[n]<best){best=dist[n];u=n;}
+      if(u===null)break;
+      snap(`u = 未确定中 dist 最小的（min = ${Number.isFinite(best)?best:"∞"}）`,[distRow()],{current:u,min:Number.isFinite(best)?best:"∞"},action("select",`确定 ${u} 的最短距离`,{value:best}),true);
+      done.add(u);
+      snap(`S = S ∪ {${u}}`,[distRow()],{current:u,settled:done.size},action("select","加入已确定集合",{value:u}));
+      for(const [v,w] of adj.get(u)||[]){
+        const via=dist[u]+w;
+        const better=via<dist[v];
+        snap(`if (dist[${u}] + ${w} < dist[${v}]) → ${better}`,[distRow()],{current:u,edge:`${u}-${v}`,dist_u:dist[u],dist_v:Number.isFinite(dist[v])?dist[v]:"∞"},null,true);
+        if(!better)continue;
+        dist[v]=via;prev[v]=u;
+        snap(`dist[${v}] = dist[${u}] + ${w} = ${via}`,[distRow()],{current:v,relax:[u,v,w],dist_v:via},action("relax",`${u}→${v} 松弛到 ${via}`,{from:u,to:v,value:via}),true);
+      }
+    }
+    snap("return dist[]",[distRow()],{start},action("visit","求各顶点最短距离完成",{value:dist[start]}));
+    return makeTrace(request,"Dijkstra 单源最短路径",`start=${start}`,JSON.stringify(dist),steps);
   }
-  const n=g.nodes.length;const idx=Object.fromEntries(g.nodes.map((x,i)=>[x,i]));const d=Array.from({length:n},(_,i)=>Array.from({length:n},(_,j)=>i===j?0:Infinity));for(const[a,b,w]of g.edges){d[idx[a]][idx[b]]=Math.min(d[idx[a]][idx[b]],w);if(!directed)d[idx[b]][idx[a]]=Math.min(d[idx[b]][idx[a]],w);}// 距离矩阵里 A[i][j] 的数字就是 d[i][j]，∞ 表示当前还没有路径。每一帧都要交代"正踩在哪一格"：
-// 允许中间顶点时高亮该顶点所在的列（矩阵面板的 focusIndex 落在列上），发生缩短时高亮被改写的那一格，
-// 并在图上点亮 A[i]→A[k]→A[j] 这条边。此前只发一帧矩阵、没有任何指针，整条 Floyd 动画一格高亮都没有
-// （2026-09-24 用户反馈「你的高亮，不行」）。
-const cells=()=>d.map(r=>r.map(x=>Number.isFinite(x)?x:"∞"));
-for(let k=0;k<n;k++){
-  steps.push(makeStep(sid++,"intermediate","加入中间顶点",`允许 ${g.nodes[k]} 作为中间点，检查所有经过它的路径。`,
-    viewState("graph",[...graphRows(g,{operation:op,current:g.nodes[k]}),row("matrix",cells(),{focusIndex:k})]),
-    [action("visit","允许中间顶点",{value:g.nodes[k]})]));
-  for(let i=0;i<n;i++)for(let j=0;j<n;j++){
-    if(i===k||j===k||i===j)continue;
-    const via=d[i][k]+d[k][j];
-    if(via<d[i][j]){
+
+  /* Floyd：三层循环，每一对 (i,j) 都真的比较一次，能缩短就写进矩阵。 */
+  const n=g.nodes.length;const idx=Object.fromEntries(g.nodes.map((x,i)=>[x,i]));
+  const d=Array.from({length:n},(_,i)=>Array.from({length:n},(_,j)=>i===j?0:Infinity));
+  for(const [a,b,w] of g.edges){d[idx[a]][idx[b]]=Math.min(d[idx[a]][idx[b]],w);if(!directed)d[idx[b]][idx[a]]=Math.min(d[idx[b]][idx[a]],w);}
+  const cells=()=>d.map((r)=>r.map((x)=>Number.isFinite(x)?x:"∞"));
+  for(let k=0;k<n;k++){
+    snap(`k = ${k}：允许 ${g.nodes[k]} 作中间点`,[row("matrix",cells(),{focusIndex:k})],{current:g.nodes[k]},action("visit","允许中间顶点",{value:g.nodes[k]}),true);
+    for(let i=0;i<n;i++)for(let j=0;j<n;j++){
+      if(i===k||j===k||i===j)continue;
+      const via=d[i][k]+d[k][j];
+      const better=via<d[i][j];
+      snap(`if (d[${i}][${k}] + d[${k}][${j}] < d[${i}][${j}]) → ${better}`,[row("matrix",cells(),{focusCell:[i,j]})],{current:g.nodes[k],pair:`${g.nodes[i]}→${g.nodes[j]}`},null,true);
+      if(!better)continue;
       const before=d[i][j];d[i][j]=via;
-      steps.push(makeStep(sid++, "relax", `经 ${g.nodes[k]} 缩短 ${g.nodes[i]}→${g.nodes[j]}`,
-        `${g.nodes[i]}→${g.nodes[k]}→${g.nodes[j]} = ${via}，比原来的 ${Number.isFinite(before)?before:"∞"} 更短，写进矩阵。`,
-        viewState("graph",[...graphRows(g,{operation:op,current:g.nodes[k],relax:[g.nodes[i],g.nodes[j]]}),row("matrix",cells(),{focusCell:[i,j]})]),
-        [action("relax","更新距离矩阵",{from:g.nodes[i],to:g.nodes[j],value:via})]));
+      snap(`d[${i}][${j}] = ${via}`,[row("matrix",cells(),{focusCell:[i,j]})],{current:g.nodes[k],relax:[g.nodes[i],g.nodes[j]],before:Number.isFinite(before)?before:"∞"},action("relax","更新距离矩阵",{from:g.nodes[i],to:g.nodes[j],value:via}));
     }
   }
-}
-return makeTrace(request,"Floyd 各对顶点最短路径","初始距离矩阵","最终距离矩阵",steps);
+  snap("return d[][]",[row("matrix",cells())],{done:"各对顶点最短距离"},null,false);
+  return makeTrace(request,"Floyd 各对顶点最短路径","初始距离矩阵","最终距离矩阵",steps);
 }
 
 function simulateSearch(request,api){const {makeStep,makeTrace,action}=makeHelpers(api);const arr=numberArray(request.initial_state.data,[7,13,18,24,31,42,55]);if(request.params.key!==undefined&&!Number.isFinite(Number(request.params.key)))throw new SimulationInputError("INVALID_PARAM",`参数 key=${JSON.stringify(request.params.key)} 必须是数字`,"key");const key=Number(request.params.key??24);let sid=1;const steps=[makeStep(sid++,"init","准备查找",`查找关键字 ${key}。`,viewState("sequence",[row("array",arr),row("meta",[],{operation:request.operation,key})]))];if(request.operation==="sequential"){if(!arr.length){steps.push(makeStep(sid,"done","查找表为空","查找表中没有任何元素，顺序查找结束。",viewState("sequence",[row("array",[]),row("meta",[],{operation:request.operation,key})])));return makeTrace(request,"顺序查找",`key=${key}`,"未找到",steps);}for(let i=0;i<arr.length;i++){steps.push(makeStep(sid++,"compare","逐个比较",`${key} ${arr[i]===key?"=":"≠"} ${arr[i]}`,viewState("sequence",[row("array",arr),row("meta",[],{operation:request.operation,key,current:i})]),[action("compare","比较关键字",{target:i,value:arr[i]})]));if(arr[i]===key)return makeTrace(request,"顺序查找",`key=${key}`,`位置=${i+1}`,steps);}return makeTrace(request,"顺序查找",`key=${key}`,"未找到",steps);}if(request.operation==="binary"){if(!arr.length)return api.makeRuntimeError(request,"折半查找","EMPTY_TABLE","查找表为空：折半查找需要至少一个元素。",viewState("sequence",[row("array",[]),row("meta",[],{operation:request.operation,key})]),`key=${key}`);for(let i=1;i<arr.length;i++){if(arr[i-1]>arr[i])return api.makeRuntimeError(request,"折半查找","UNSORTED_INPUT",`折半查找要求有序表：a[${i-1}]=${arr[i-1]} > a[${i}]=${arr[i]}，当前输入不是非递减序列。请先排序，或改用顺序查找。`,viewState("sequence",[row("array",arr),row("meta",[],{operation:request.operation,key,violated:i})]),`key=${key}`);}const a=arr;let low=0,high=a.length-1;while(low<=high){const mid=Math.floor((low+high)/2);steps.push(makeStep(sid++,"compare","比较中间记录",`low=${low}, mid=${mid}, high=${high}，比较 ${key} 与 ${a[mid]}。`,viewState("sequence",[row("array",a),row("meta",[],{operation:request.operation,key,low,mid,high,current:mid})]),[action("compare","比较中间关键字",{target:mid,value:a[mid]})]));if(a[mid]===key)return makeTrace(request,"折半查找",`key=${key}`,`位置=${mid+1}`,steps);if(key<a[mid])high=mid-1;else low=mid+1;}return makeTrace(request,"折半查找",`key=${key}`,"未找到",steps);}if(!arr.length)return api.makeRuntimeError(request,"分块查找","EMPTY_TABLE","查找表为空：分块查找需要至少一个元素。",viewState("sequence",[row("array",[]),row("meta",[],{operation:request.operation,key})]),`key=${key}`);const blockSize=intParam(request.params,"blockSize",3,1,10);const blocks=[];for(let i=0;i<arr.length;i+=blockSize){const part=arr.slice(i,i+blockSize);blocks.push({start:i,end:i+part.length-1,max:Math.max(...part)});}for(let b=1;b<blocks.length;b++){const curMin=Math.min(...arr.slice(blocks[b].start,blocks[b].end+1));if(blocks[b-1].max>curMin)return api.makeRuntimeError(request,"分块查找","UNBLOCKED_ORDER",`分块查找要求“分块有序”：第 ${b} 块的最小值 ${curMin} 小于第 ${b} 块前一块的最大值 ${blocks[b-1].max}。请先排序或调整块划分。`,viewState("sequence",[row("array",arr),row("blocks",blocks),row("meta",[],{operation:request.operation,key,block:b})]),`key=${key}`);}let b=blocks.findIndex(x=>key<=x.max);steps.push(makeStep(sid++,"block","先查索引表",b>=0?`关键字应落在第 ${b+1} 块。`:"索引表中没有候选块。",viewState("sequence",[row("array",arr),row("blocks",blocks),row("meta",[],{operation:request.operation,key,block:b})])));if(b>=0)for(let i=blocks[b].start;i<=blocks[b].end;i++){steps.push(makeStep(sid++,"compare","块内顺序查找",`比较 ${key} 与 ${arr[i]}。`,viewState("sequence",[row("array",arr),row("blocks",blocks),row("meta",[],{operation:request.operation,key,block:b,current:i})])));if(arr[i]===key)return makeTrace(request,"分块查找",`key=${key}`,`位置=${i+1}`,steps);}return makeTrace(request,"分块查找",`key=${key}`,"未找到",steps);}
