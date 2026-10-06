@@ -622,11 +622,79 @@ function treeRows(arr,extra={}){const nodes=arr.map((x,i)=>x===null?null:{id:i,l
 function treeHeight(arr,i=0){if(i<0||i>=arr.length||arr[i]===null)return 0;const[l,r]=child(arr,i);return 1+Math.max(treeHeight(arr,l),treeHeight(arr,r));}
 function preorder(arr){const out=[];function f(i){if(i<0||i>=arr.length||arr[i]===null)return;out.push(i);const[l,r]=child(arr,i);f(l);f(r);}f(0);return out;}
 function inorder(arr){const out=[];function f(i){if(i<0||i>=arr.length||arr[i]===null)return;const[l,r]=child(arr,i);f(l);out.push(i);f(r);}f(0);return out;}
+/* 线索二叉树：线索画成虚线（树面板的 `threads`），`ltag`/`rtag` 落在结点上——
+   空孩子指针改指前驱/后继，正是线索树区别于普通二叉树的那两个特征位。 */
+function threadAll(arr){const threads=[],tags={};let pre=-1;for(const idx of inorder(arr)){if(child(arr,idx)[0]<0){if(pre>=0)threads.push([idx,pre,"L"]);tags[idx]={...(tags[idx]||{}),ltag:1};}if(pre>=0&&child(arr,pre)[1]<0){threads.push([pre,idx,"R"]);tags[pre]={...(tags[pre]||{}),rtag:1};}pre=idx;}return {threads,tags};}
+function threadView(arr,visited,current,threads,tags,extra={}){
+  const nodes=arr.map((v,i)=>v===null?null:{id:i,label:String(v),index:i,...(tags[i]||{})}).filter(Boolean);
+  const edges=[];
+  for(const n of nodes){const[l,r]=child(arr,n.index);if(l>=0)edges.push([n.index,l,"L"]);if(r>=0)edges.push([n.index,r,"R"]);}
+  const treeRow=row("tree",[],{nodes,edges});
+  treeRow.threads=threads.map((t)=>[t[0],t[1],t[2]]);
+  const rows=[treeRow];
+  if(visited.length)rows.push(row("visited",visited.map((i)=>arr[i])));
+  rows.push(row("meta",[],{currentValue:current>=0?arr[current]:null,currentIndex:current,...extra}));
+  return view("tree",rows);
+}
+
 function simulateTreeAux(req,api){const {makeStep,makeTrace,action}=helpers(api),op=req.operation;
   if(op==="build_extended_preorder"){const rawSeq=String(req.params.sequence??"AB##CD###");if(rawSeq.length>63)throw new SimulationInputError("INPUT_TOO_LONG",`扩展先序序列长度 ${rawSeq.length} 超过 63 字符上限（对应最多 31 个结点）`,"sequence");if(!rawSeq.length)throw new SimulationInputError("EMPTY_SEQUENCE","扩展先序序列不能为空","sequence");const seq=rawSeq;const arr=[];let sid=1;const steps=[makeStep(sid++,"init","准备按扩展先序建树","按序列递归建立二叉链表。",view("tree",treeRows(arr,{operation:op})))];const built=[];let k=0;function rec(index){if(k>=seq.length)return;const ch=seq[k++];if(ch==="#")return;while(built.length<=index)built.push(null);built[index]=ch;steps.push(makeStep(sid++,"build","读取扩展先序符号",`${ch} 建立为结点；# 表示空子树。`,view("tree",treeRows(built,{operation:op,readIndex:k-1,current:index})),[action("insert","递归建立结点",{target:index,value:ch})]));rec(2*index+1);rec(2*index+2);}rec(0);if(!built.some(x=>x!==null))throw new SimulationInputError("EMPTY_TREE","序列中没有任何结点符号（只有 #）：无法建立二叉树","sequence");return makeTrace(req,"由扩展先序序列建立二叉树",seq,`结点数=${built.filter(x=>x!==null).length}`,steps);}
   const arr=treeArray(req.initial_state.data);let sid=1;const steps=[makeStep(sid++,"init","二叉树","观察当前树结构。",view("tree",treeRows(arr,{operation:op})))];if(op==="leaf_output"||op==="leaf_count"){let count=0;for(const idx of preorder(arr)){const[l,r]=child(arr,idx),leaf=l<0&&r<0;if(leaf)count++;steps.push(makeStep(sid++,"visit",leaf?"发现叶子结点":"访问非叶结点",leaf?`${arr[idx]} 没有左右孩子，是第 ${count} 个叶子。`:`${arr[idx]} 还有孩子，继续遍历。`,view("tree",treeRows(arr,{operation:op,current:idx,leaf,count})),[action("visit","遍历并判断叶子",{value:arr[idx]})]));}return makeTrace(req,op==="leaf_output"?"先序遍历输出叶子结点":"统计二叉树叶子结点数","二叉树",`leafCount=${count}`,steps);}
   if(op==="height_postorder"||op==="height_preorder"){const h=treeHeight(arr);const order=op==="height_postorder"?[...preorder(arr)].reverse():preorder(arr);let maxDepth=0;for(const idx of order){const depth=Math.floor(Math.log2(idx+1))+1;maxDepth=Math.max(maxDepth,depth);steps.push(makeStep(sid++,"measure",op==="height_postorder"?"由子树高度向上合并":"按当前层次更新最大深度",op==="height_postorder"?`处理结点 ${arr[idx]}，高度由左右子树高度决定。`:`访问 ${arr[idx]}，当前层次 ${depth}。`,view("tree",treeRows(arr,{operation:op,current:idx,depth,maxDepth})),[action("compute","更新高度",{value:op==="height_postorder"?treeHeight(arr,idx):maxDepth})]));}return makeTrace(req,op==="height_postorder"?"后序遍历求二叉树高度":"先序遍历求二叉树高度","二叉树",`height=${h}`,steps);}
-  if(op==="thread_first"||op==="thread_traverse"){const order=inorder(arr);if(op==="thread_first"){let cur=0;while(child(arr,cur)[0]>=0){cur=child(arr,cur)[0];steps.push(makeStep(sid++,"walk","沿左孩子链向下",`结点 ${arr[cur]} 有左孩子，继续沿左链下走。`,view("tree",treeRows(arr,{operation:op,current:cur})),[action("move","沿左孩子下走",{to:cur})]));}const first=order[0];steps.push(makeStep(sid,"locate","到达中序第一个结点",`左链走完，${arr[first]} 没有左孩子，它就是中序第一个结点。`,view("tree",treeRows(arr,{operation:op,current:first})),[action("move","沿左孩子/线索定位",{to:first})]));return makeTrace(req,"中序线索树求第一个结点","线索树",String(arr[first]),steps);}const visited=[];for(const idx of order){visited.push(arr[idx]);steps.push(makeStep(sid++,"thread","沿后继线索遍历",`访问 ${arr[idx]}，再按孩子/后继线索寻找下一结点。`,view("tree",treeRows(arr,{operation:op,current:idx,visited:[...visited]})),[action("move","沿中序后继移动",{value:arr[idx]})]));}return makeTrace(req,"遍历中序线索二叉树","线索树",visited.join(" "),steps);}
+  if(op==="thread_first"||op==="thread_traverse"){
+    /* 线索树的"一行"就是**沿线索走**：找中序第一个结点 = 一路 `p = p->lchild`；
+       找后继 = 有 `rtag` 线索就一步走，否则走到右子树的**最左**。 */
+    const {threads,tags}=threadAll(arr);
+    const visited=[];
+    steps[0]=makeStep(1,"init","线索二叉树","线索已经建好：虚线指向前驱/后继（ltag/rtag 为 1 的那个空指针）。",threadView(arr,visited,-1,threads,tags,{operation:op}));
+    const step=(code,current,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"thread",code,code,threadView(arr,visited,current,threads,tags,{operation:op,...extra}),act?[act]:[]));
+    if(op==="thread_first"){
+      step("p = root",0,null,null,true);
+      let p=0;
+      for(;;){
+        const stop=Number((tags[p]||{}).ltag)===1;
+        step(`if (p->ltag == 0) → ${!stop}`,p,{ltag:stop?1:0},null,true);
+        if(stop)break;
+        const next=child(arr,p)[0];
+        step("p = p->lchild",next,{},action("move","沿左孩子往下走",{value:next>=0?arr[next]:null}),true);
+        if(next<0)break;
+        p=next;
+      }
+      step("return p",0,{p:arr[p]});
+      return makeTrace(req,"中序线索树求第一个结点","线索树",String(arr[p]),steps);
+    }
+    let p=inorder(arr)[0];
+    step(`p = ${arr[p]}`,p,{p:arr[p]},null,true);
+    while(p>=0){
+      visited.push(p);
+      step("visit(p)",p,{p:arr[p]},action("visit","访问结点",{value:arr[p]}));
+      const threaded=Number((tags[p]||{}).rtag)===1;
+      step(`if (p->rtag == 1) → ${threaded}`,p,{rtag:threaded?1:0},null,true);
+      if(threaded){
+        const t=threads.find((x)=>x[0]===p&&x[2]==="R");
+        const next=t?t[1]:-1;
+        step("p = p->rchild",next,{p:next>=0?arr[next]:"NULL"},action("move","沿后继线索走一步",{value:next>=0?arr[next]:null}),true);
+        p=next;
+        continue;
+      }
+      let q=child(arr,p)[1];
+      step("q = p->rchild",q,{},null,true);
+      if(q<0){p=-1;continue;}
+      for(;;){
+        const stop=Number((tags[q]||{}).ltag)===1;
+        step(`if (q->ltag == 0) → ${!stop}`,q,{ltag:stop?1:0},null,true);
+        if(stop)break;
+        const gone=child(arr,q)[0];
+        step("q = q->lchild",gone,{},action("move","沿左链走到最左",{value:gone>=0?arr[gone]:null}),true);
+        if(gone<0)break;
+        q=gone;
+      }
+      step("p = q",q,{p:q>=0?arr[q]:"NULL"},action("move","p 移到后继",{value:q>=0?arr[q]:null}),true);
+      p=q;
+    }
+    step("p == NULL",-1,{p:"NULL"});
+    return makeTrace(req,"遍历中序线索二叉树","线索树",visited.map((i)=>arr[i]).join(" "),steps);
+  }
   if(op==="path_to_node"){const target=String(req.params.target??arr[arr.length-1]);const idx=arr.findIndex(x=>String(x)===target);if(idx<0)return api.makeRuntimeError(req,"根到指定结点路径","TARGET_NOT_FOUND",`目标 ${target} 不在这棵二叉树中（结点：${arr.filter(x=>x!==null&&x!==undefined).join("、")}），请检查 target 参数。`,view("tree",treeRows(arr,{operation:op,target})),`target=${target}`);const path=[];let p=idx;while(p>=0){path.unshift(p);if(p===0)break;p=Math.floor((p-1)/2);}for(let i=0;i<path.length;i++)steps.push(makeStep(sid++,"path","沿根到目标路径前进",`到达 ${arr[path[i]]}。`,view("tree",treeRows(arr,{operation:op,current:path[i],path:path.slice(0,i+1)})),[action("move","路径前进",{to:path[i]})]));return makeTrace(req,"根到指定结点路径",`target=${target}`,path.map(i=>arr[i]).join("→"),steps);}
   const other=treeArray(req.params.other);const max=Math.max(arr.length,other.length);let same=true;for(let i=0;i<max;i++){const a=arr[i]??null,b=other[i]??null;steps.push(makeStep(sid++,"compare","比较对应位置",`${String(a)} ${a===b?"=":"≠"} ${String(b)}`,view("tree_compare",[row("left",arr),row("right",other),row("meta",[],{operation:op,index:i,equal:a===b})]),[action("compare","比较对应结点",{target:i})]));if((a===null)!==(b===null)){same=false;break;}}return makeTrace(req,"判断两棵二叉树结构相似","两棵树",same?"结构相似":"结构不同",steps);}
 
@@ -660,33 +728,80 @@ function bstInsert(root,key){if(!root)return {key,left:null,right:null};if(key<r
 function bstRows(root,extra={}){const nodes=[],edges=[];let id=0;function walk(n,parent=null,side=""){if(!n)return;const my=id++;nodes.push({id:my,label:String(n.key),key:n.key});if(parent!==null)edges.push([parent,my,side]);walk(n.left,my,"L");walk(n.right,my,"R");}walk(root);return[row("tree",[],{nodes,edges}),row("meta",[],extra)];}
 function simulateBSTAux(req,api){const {makeStep,makeTrace,action}=helpers(api);const op=req.operation;const vals=numArray(req.params.values??req.initial_state.data,[45,24,53,12,28,90]);if(req.params.key!==undefined&&!Number.isFinite(Number(req.params.key)))throw new SimulationInputError("INVALID_PARAM",`参数 key=${JSON.stringify(req.params.key)} 必须是数字`,"key");let root=null,sid=1;for(const v of vals)root=bstInsert(root,v);if(op==="create"){if(!vals.length)throw new SimulationInputError("EMPTY_INPUT","关键字列表为空：无法创建二叉排序树","values");root=null;const steps=[makeStep(sid++,"init","空二叉排序树","依次插入输入关键字。",view("tree",bstRows(root,{operation:op})))];for(const v of vals){root=bstInsert(root,v);steps.push(makeStep(sid++,"insert","按大小关系插入",`${v} 沿比较路径插入空孩子位置。`,view("tree",bstRows(root,{operation:op,current:v})),[action("insert","BST 插入",{value:v})]));}return makeTrace(req,"创建二叉排序树",`keys=${vals.join(",")}`,"创建完成",steps);}const key=Number(req.params.key??28),steps=[makeStep(sid++,"init","二叉排序树","从根开始利用有序性查找。",view("tree",bstRows(root,{operation:op,key})))];let cur=root,depth=0;while(cur){depth++;steps.push(makeStep(sid++,op==="search_recursive"?"call":"compare",op==="search_recursive"?"递归进入当前子树":"循环比较当前结点",`比较 ${key} 与 ${cur.key}。`,view("tree",bstRows(root,{operation:op,key,current:cur.key,depth})),[action("compare","比较关键字",{value:key,target:cur.key})]));if(key===cur.key)return makeTrace(req,op==="search_recursive"?"递归查找二叉排序树":"非递归查找二叉排序树",`key=${key}`,`found=${key}`,steps);cur=key<cur.key?cur.left:cur.right;}steps.push(makeStep(sid,"miss","到达空子树","当前指针为空，查找失败。",view("tree",bstRows(root,{operation:op,key,current:null,depth}))));return makeTrace(req,op==="search_recursive"?"递归查找二叉排序树":"非递归查找二叉排序树",`key=${key}`,"not found",steps);}
 
-function simulateAVLRotation(req,api){const {makeStep,makeTrace,action}=helpers(api),op=req.operation;const presets={rotate_ll:[30,20,10],rotate_rr:[10,20,30],rotate_lr:[30,10,20],rotate_rl:[10,30,20]};/* 旋转演示的 required 为空，resolver 不回填 demo 参数：空 data 视为未提供，回落到教材标准失衡序列 */const before=Array.isArray(req.initial_state.data)&&req.initial_state.data.length?numArray(req.initial_state.data):presets[op].slice();if(before.length<3)throw new SimulationInputError("INVALID_ROTATION_INPUT",`AVL 旋转演示需要 3 个关键字的失衡局部（如 ${JSON.stringify(presets[op])}），当前只有 ${before.length} 个`,"initialData");const after=[...before].sort((a,b)=>a-b);const title={rotate_ll:"LL 型右旋",rotate_rr:"RR 型左旋",rotate_lr:"LR 型先左后右旋",rotate_rl:"RL 型先右后左旋"}[op];
-  const treeShape=(keys,edges)=>row("tree",[],{nodes:keys.map((k)=>({id:String(k),label:String(k)})),edges:edges.map(([p,c,side])=>[String(keys[p]),String(keys[c]),side])});
-  const beforeEdges={rotate_ll:[[0,1,"L"],[1,2,"L"]],rotate_rr:[[0,1,"R"],[1,2,"R"]],rotate_lr:[[0,1,"L"],[1,2,"R"]],rotate_rl:[[0,1,"R"],[1,2,"L"]]}[op];
-  const beforeTree=treeShape(before,beforeEdges);
-  /* 旋转完成后中位数 after[1] 是局部根，after[0]/after[2] 是它的左右孩子。
-     原来写成 [[0,1,"L"],[0,2,"R"]] 会把最小关键字画成根——文字说"20 成为局部根"，图上根却是 10，
-     学生照着图理解就全错了（2026-09-24 截图核对发现）。 */
-  const afterTree=treeShape(after,[[1,0,"L"],[1,2,"R"]]);
-  /* current = 正在看的那个结点。只有 root 时 AVL 的最后一张图（旋转完成）没有任何高亮，
-     学生会觉得"画面闪了一下就没了"；current 让"新局部根"和"最小不平衡子树的根"都落在画面上。 */
-  /* LR/RL 型是"两次单旋"，标题就写着"先左后右旋/先右后左旋"。原来只有「失衡 → 结果」两张图，
-     中间那一次单旋完全看不到，学生会以为 LR 型和 LL 型是同一件事。这里把第一次单旋后的
-     中间形态单独画一帧（rotate_ll/rotate_rr 是单旋，没有中间形态，行为不变）。 */
-  const midEdges={rotate_lr:[[0,2,"L"],[2,1,"L"]],rotate_rl:[[0,2,"R"],[2,1,"R"]]}[op];
-  const midTree=midEdges?treeShape(before,midEdges):null;
-  const steps=[makeStep(1,"init","失衡局部",`插入序列 ${before.join("→")} 造成 ${title.split(" 型")[0]} 型失衡：最小不平衡子树的根是 ${before[0]}。`,view("tree",[beforeTree,row("meta",[],{operation:op,root:before[0],current:String(before[0])})]))];
-  let sid=2;
-  if(midTree){
-    const first=op==="rotate_lr"?"左旋":"右旋";
-    const side=op==="rotate_lr"?"右":"左";
-    steps.push(makeStep(sid++,"rotate",`第 1 步：对 ${before[1]} 做${first}`,`${before[1]} 的${side}孩子 ${before[2]} 上移成为子树根，${before[1]} 转为它的${side}孩子；${before[0]} 此刻仍然失衡，要靠第 2 步的${op==="rotate_lr"?"右旋":"左旋"}收尾。`,view("tree",[midTree,row("meta",[],{operation:op,current:String(before[2])})]),[action("rotate",`第 1 次${first}`,{value:first})]));
+/* AVL 旋转的"代码级"演示：**一帧 = 一行赋值**，画面上的树每一帧都真的动一次。
+   结点 id 用**关键字本身**（旋转后结点会换位置，id 稳定才看得出"谁被顶上去了"），边带 "L"/"R"。
+   旋转的中途树会真的**断开**（`p->left = q->right` 之后 q 那一支就悬空了）——
+   按真实的中间态画成一片森林，而不是假装它一直连着；挂回去之后才重新连成一棵。 */
+function avlBuildFromKeys(keys){let root=null;for(const k of keys){root=(function ins(n){if(!n)return{key:k,left:null,right:null};if(k<n.key)n.left=ins(n.left);else if(k>n.key)n.right=ins(n.right);return n;})(root);}return root;}
+function avlTreeRow(roots){const nodes=[],edges=[];for(const r of roots)(function walk(n,parentId,side){if(!n)return;const my=String(n.key);nodes.push({id:my,label:my,key:n.key});if(parentId!==null)edges.push([parentId,my,side]);walk(n.left,my,"L");walk(n.right,my,"R");})(r,null,"");return row("tree",[],{nodes,edges});}
+
+function simulateAVLRotation(req,api){
+  const {makeStep,makeTrace,action}=helpers(api),op=req.operation;
+  const presets={rotate_ll:[30,20,10],rotate_rr:[10,20,30],rotate_lr:[30,10,20],rotate_rl:[10,30,20]};
+  /* 旋转演示的 required 为空，resolver 不回填 demo 参数：空 data 视为未提供，回落到教材标准失衡序列 */
+  const given=Array.isArray(req.initial_state.data)&&req.initial_state.data.length?numArray(req.initial_state.data):presets[op].slice();
+  if(given.length<3)throw new SimulationInputError("INVALID_ROTATION_INPUT",`AVL 旋转演示需要 3 个关键字的失衡局部（如 ${JSON.stringify(presets[op])}），当前只有 ${given.length} 个`,"initialData");
+  const keys=given.slice(0,3);
+  const type={rotate_ll:"LL",rotate_rr:"RR",rotate_lr:"LR",rotate_rl:"RL"}[op];
+  const title={rotate_ll:"LL 型右旋",rotate_rr:"RR 型左旋",rotate_lr:"LR 型先左后右旋",rotate_rl:"RL 型先右后左旋"}[op];
+  const P=avlBuildFromKeys(keys);
+  /* 画面上当前有几棵"根"：旋转中途会断开，断开的每一支各算一棵。 */
+  const pieces=[P];
+  const at=(extra={})=>view("tree",[avlTreeRow(pieces.slice()),row("meta",[],{operation:op,root:pieces.map(r=>String(r.key)).join("、"),...extra})]);
+  let sid=1;const steps=[];
+  /* title 与 note 都写那行代码——渲染器据此排成等宽字体；`phase: "line"` 的是纯指针记账，
+     精简版会把这些帧压掉，留给"真的改了哪条链"的那几帧。 */
+  const line=(text,extra,act)=>steps.push(makeStep(sid++,"line",text,text,at(extra),act?[act]:[]));
+  const hold=(text,extra,act)=>steps.push(makeStep(sid++,"rotate",text,text,at(extra),act?[act]:[]));
+  const forest=(...roots)=>{pieces.length=0;for(const r of roots)pieces.push(r);};
+
+  steps.push(makeStep(sid++,"init","p = root",`${type} 型失衡：最小不平衡子树的根是 ${P.key}，它的${type==="RR"||type==="RL"?"右":"左"}子树比另一侧高 2。`,at()));
+
+  if(op==="rotate_ll"||op==="rotate_rr"){
+    /* 单旋：q 顶上来、p 降下去。LL 是右旋（q 取左孩子），RR 是左旋（q 取右孩子）。 */
+    const right=op==="rotate_ll";
+    const outer=right?"left":"right";
+    const inner=right?"right":"left";
+    const q=P[outer];
+    line(`q = p->${outer}`,{current:String(q.key)},action("move",`q 指向 p 的${right?"左":"右"}孩子`,{value:q.key}));
+    const moved=q[inner];
+    P[outer]=moved;
+    forest(P,q);
+    hold(`p->${outer} = q->${inner}`,{current:String(P.key)},action("link",`p 的${right?"左":"右"}子树改挂 q 的${inner==="right"?"右":"左"}子树`,{value:moved?moved.key:null}));
+    q[inner]=P;
+    forest(q);
+    hold(`q->${inner} = p`,{current:String(P.key)},action("rotate",`p 降为 q 的${inner==="right"?"右":"左"}孩子`,{value:P.key}));
+    line("p = q",{current:String(q.key)},action("move","q 成为这棵子树的根",{value:q.key}));
+  } else {
+    /* 双旋：先对 p 的孩子做一次单旋，再对 p 做一次——中间那次单旋真的出现在画面上。 */
+    const right=op==="rotate_lr";
+    const outer=right?"left":"right";
+    const inner=right?"right":"left";
+    const q=P[outer],r=q[inner];
+    line(`q = p->${outer}`,{current:String(q.key)},action("move",`q 指向 p 的${right?"左":"右"}孩子`,{value:q.key}));
+    line(`r = q->${inner}`,{current:String(r.key)},action("move",`r 指向 q 的${inner==="right"?"右":"左"}孩子`,{value:r.key}));
+    const moved1=r[outer];
+    q[inner]=moved1;
+    forest(P,r);
+    hold(`q->${inner} = r->${outer}`,{current:String(q.key)},action("link",`q 的${inner==="right"?"右":"左"}子树改挂 r 的${outer==="right"?"右":"左"}子树`,{value:moved1?moved1.key:null}));
+    P[outer]=r;
+    forest(P,q);
+    hold(`p->${outer} = r`,{current:String(P.key)},action("link",`p 的${right?"左":"右"}孩子换成 r`,{value:r.key}));
+    r[outer]=q;
+    forest(P);
+    hold(`r->${outer} = q`,{current:String(P.key)},action("link",`q 降为 r 的${outer==="right"?"右":"左"}孩子`,{value:q.key}));
+    /* 到这里 p 的孩子已经是 r，剩下与单旋完全一样。 */
+    const moved2=r[inner];
+    P[outer]=moved2;
+    forest(P,r);
+    hold(`p->${outer} = r->${inner}`,{current:String(P.key)},action("link",`p 的${right?"左":"右"}子树改挂 r 的${inner==="right"?"右":"左"}子树`,{value:moved2?moved2.key:null}));
+    r[inner]=P;
+    forest(r);
+    hold(`r->${inner} = p`,{current:String(P.key)},action("rotate",`p 降为 r 的${inner==="right"?"右":"左"}孩子`,{value:P.key}));
+    line("p = r",{current:String(r.key)},action("move","r 成为这棵子树的根",{value:r.key}));
   }
-  /* 双旋的第二帧高亮要挪到第二次旋转的轴（失衡根 before[0]）上：两次单旋的中间形态是同一棵树，
-     若高亮不挪，连续两帧画面一模一样，播放起来就像"卡住了"。 */
-  steps.push(makeStep(sid++,"rotate",midTree?`第 2 步：对 ${before[0]} 做${op==="rotate_lr"?"右旋":"左旋"}`:"以中位数 "+after[1]+" 为轴",midTree?`${before[2]} 已就位为子树根，接着对失衡根 ${before[0]} 做${op==="rotate_lr"?"右旋":"左旋"}，${after[1]} 被顶上来成为局部根。`:`三个关键字的中位数 ${after[1]} 旋转后必然成为局部子树的根。`,view("tree",[midTree||beforeTree,row("meta",[],{operation:op,current:String(midTree?before[0]:after[1])})]),[action("rotate","执行"+title,{value:title})]));
-  steps.push(makeStep(sid++,"done",title+"完成",`旋转后 ${after[1]} 成为局部根，${after[0]}、${after[2]} 分别是左右孩子，子树高度恢复、整树重新平衡。`,view("tree",[afterTree,row("meta",[],{operation:op,root:after[1],current:String(after[1])})]),[action("rotate","恢复平衡",{value:title})]));
-  return makeTrace(req,`AVL ${title}`,before.join(","),`局部根=${after[1]}`,steps);}
+  return makeTrace(req,`AVL ${title}`,keys.join(","),`局部根=${pieces[0].key}`,steps);
+}
 
 function simulateBTreeAux(req,api){const {makeStep,makeTrace,action}=helpers(api),op=req.operation;const keys=numArray(req.initial_state.data,[10,20,30,40]);if(!keys.length)throw new SimulationInputError("EMPTY_TREE","B 树结点为空：请在 initialData 中提供结点关键字","initialData");if(req.params.key!==undefined&&!Number.isFinite(Number(req.params.key)))throw new SimulationInputError("INVALID_PARAM",`参数 key=${JSON.stringify(req.params.key)} 必须是数字`,"key");const key=Number(req.params.key??25),order=int(req.params.order,4,3,8,"order");let sid=1;const steps=[makeStep(sid++,"init","B 树结点关键字",`当前结点：[${keys.join(", ")}]，m=${order}。`,view("btree",[row("node",keys),row("meta",[],{operation:op,key,order})]))];if(op==="locate_position"){let pos=0;while(pos<keys.length&&keys[pos]<=key){steps.push(makeStep(sid++,"compare","寻找不大于 k 的最大序号",`比较 key[${pos}]=${keys[pos]} 与 k=${key}。`,view("btree",[row("node",keys,{focusIndex:pos}),row("meta",[],{operation:op,key,pos})]),[action("compare","结点内比较",{target:pos,value:key})]));pos++;}return makeTrace(req,"B 树结点内定位关键字序号",`k=${key}`,`ipos=${Math.max(0,pos-1)}`,steps);}if(op==="node_insert"){const pos=Math.max(0,keys.findIndex(k=>k>key));steps.push(makeStep(sid++,"compare","找到插入序号",`新关键字 ${key} 应插在序号 ${pos}：右侧关键字和孩子指针先后右移。`,view("btree",[row("node",keys,{focusIndex:pos}),row("meta",[],{operation:op,key,pos})]),[action("compare","结点内定位",{target:pos,value:key})]));const out=[...keys,key].sort((a,b)=>a-b);steps.push(makeStep(sid,"insert","在结点内插入关键字",`${key} 写入序号 ${pos}，结点变为 [${out.join(", ")}]。`,view("btree",[row("node",out,{focusIndex:pos}),row("meta",[],{operation:op,key})]),[action("insert","结点内插入关键字",{value:key})]));return makeTrace(req,"B 树结点内插入",`[${keys.join(",")}]`,`[${out.join(",")}]`,steps);}const full=[...keys,key].sort((a,b)=>a-b),mid=Math.floor(full.length/2),promote=full[mid],left=full.slice(0,mid),right=full.slice(mid+1);steps.push(makeStep(sid++,"compare","插入后结点已满",`插入 ${key} 后结点为 [${full.join(", ")}]，超过 ${order-1} 个的上限，必须分裂。`,view("btree",[row("node",full,{focusIndex:mid}),row("meta",[],{operation:op,key,order})]),[action("compare","检查结点关键字数",{value:full.length})]));steps.push(makeStep(sid,"split","分裂满结点",`中间关键字 ${promote} 上移，左右分裂为 [${left}] 和 [${right}]。`,view("btree",[row("left",left),row("promote",[promote]),row("right",right),row("meta",[],{operation:op,order})]),[action("split","分裂并提升中间关键字",{value:promote})]));return makeTrace(req,"B 树结点分裂",`[${full.join(",")}]`,`promote=${promote}`,steps);}
 

@@ -34,6 +34,8 @@ function picture(frame: AnimationFrame): string {
       panel.values,
       panel.nodes,
       panel.edges,
+      // 线索二叉树的线索是画出来的虚线：只有线索多一根、画面就变了，不能算同画面。
+      panel.threads,
       panel.range,
       panel.focusCell,
       panel.cursors.map((cursor) => `${cursor.key}@${cursor.index}`),
@@ -93,7 +95,6 @@ const KNOWN_IDENTICAL = new Set([
   "string.kmp_match#3",
   "string.kmp_match#8",
   "heap_string.insert#1",
-  "tree.thread_first#2",
   "sort.merge#3",
   "sort.merge#7",
   "sort.merge#11",

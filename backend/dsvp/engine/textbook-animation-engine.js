@@ -538,6 +538,22 @@ function normalizeTreeArray(value){const arr=Array.isArray(value)&&value.length?
 function treeChildren(arr,i){const l=2*i+1,r=2*i+2;return [l<arr.length&&arr[l]!==null?l:-1,r<arr.length&&arr[r]!==null?r:-1];}
 function treeView(arr,visited=[],current=-1,extra={}){const nodes=arr.map((v,i)=>v===null?null:{id:i,label:String(v),index:i}).filter(Boolean);const edges=[];nodes.forEach(n=>{const [l,r]=treeChildren(arr,n.index);if(l>=0)edges.push([n.index,l,"L"]);if(r>=0)edges.push([n.index,r,"R"]);});return viewState("tree",[row("tree",[],{nodes,edges}),row("visited",visited.map(i=>arr[i])),row("meta",[],{currentValue:current>=0?arr[current]:null,currentIndex:current,...extra})]);}
 function traversalOrder(arr,mode){const out=[];function rec(i){if(i<0||i>=arr.length||arr[i]===null)return;const[l,r]=treeChildren(arr,i);if(mode==="pre")out.push(i);rec(l);if(mode==="in")out.push(i);rec(r);if(mode==="post")out.push(i);}if(mode==="level"){const q=[0];while(q.length){const i=q.shift();if(i<0||i>=arr.length||arr[i]===null)continue;out.push(i);const[l,r]=treeChildren(arr,i);if(l>=0)q.push(l);if(r>=0)q.push(r);}}else rec(0);return out;}
+/* 线索二叉树：线索画成虚线（树面板的 `threads`），`ltag`/`rtag` 落在结点上——
+   空孩子指针改指前驱/后继，正是线索树区别于普通二叉树的那两个特征位，
+   所以它们必须出现在画面上，而不是只写在旁白里。 */
+function threadAll(arr){const threads=[],tags={};let pre=-1;for(const idx of traversalOrder(arr,"in")){if(treeChildren(arr,idx)[0]<0){if(pre>=0)threads.push([idx,pre,"L"]);tags[idx]={...(tags[idx]||{}),ltag:1};}if(pre>=0&&treeChildren(arr,pre)[1]<0){threads.push([pre,idx,"R"]);tags[pre]={...(tags[pre]||{}),rtag:1};}pre=idx;}return {threads,tags};}
+function threadView(arr,visited,current,threads,tags,extra={}){
+  const nodes=arr.map((v,i)=>v===null?null:{id:i,label:String(v),index:i,...(tags[i]||{})}).filter(Boolean);
+  const edges=[];
+  for(const n of nodes){const[l,r]=treeChildren(arr,n.index);if(l>=0)edges.push([n.index,l,"L"]);if(r>=0)edges.push([n.index,r,"R"]);}
+  const treeRow=row("tree",[],{nodes,edges});
+  treeRow.threads=threads.map((t)=>[t[0],t[1],t[2]]);
+  const rows=[treeRow];
+  if(visited.length)rows.push(row("visited",visited.map((i)=>arr[i])));
+  rows.push(row("meta",[],{currentValue:current>=0?arr[current]:null,currentIndex:current,...extra}));
+  return viewState("tree",rows);
+}
+
 function simulateTree(request,api){
   const {makeStep,makeTrace,action}=makeHelpers(api);const arr=normalizeTreeArray(request.initial_state.data);const op=request.operation;
   if(op==="build"){const partial=Array(arr.length).fill(null);let sid=1;const steps=[makeStep(sid++,"init","开始建立二叉树","按层次序列逐个建立非空结点并连接孩子。",treeView(partial,[],-1,{operation:op}))];for(let i=0;i<arr.length;i++){if(arr[i]===null)continue;partial[i]=arr[i];steps.push(makeStep(sid++,"insert","建立结点并连接",`建立结点 ${arr[i]}${i?`，连接到父结点 ${arr[Math.floor((i-1)/2)]}`:"，作为根结点"}。`,treeView(partial,[],i,{operation:op}),[action("link","建立父子关系",{target:i,value:arr[i]})]));}return makeTrace(request,"建立二叉树","层次序列",`结点数=${arr.filter(x=>x!==null).length}`,steps);}
@@ -558,10 +574,75 @@ function simulateTree(request,api){
     const stack=[];let cur=0;while(cur>=0||stack.length){while(cur>=0&&arr[cur]!==null){stack.push(cur);steps.push(makeStep(sid++,"push","左链进栈",`${arr[cur]} 进栈，继续访问左孩子。`,treeView(arr,visited,cur,{operation:op,stack:stack.map(i=>arr[i])}),[action("push","结点指针进栈",{value:arr[cur]})]));cur=treeChildren(arr,cur)[0];}if(!stack.length)break;cur=stack.pop();visited.push(cur);steps.push(makeStep(sid++,"visit","退栈并访问",`访问 ${arr[cur]}。`,treeView(arr,visited,cur,{operation:op,stack:stack.map(i=>arr[i])}),[action("visit","访问结点",{value:arr[cur]})]));cur=treeChildren(arr,cur)[1];}
   } else if(op==="postorder_stack"){
     const stack=[[0,false]];while(stack.length){const [idx,expanded]=stack.pop();if(idx<0||idx>=arr.length||arr[idx]===null)continue;if(expanded){visited.push(idx);steps.push(makeStep(sid++,"visit","第二次退栈访问",`左右子树处理完毕，访问 ${arr[idx]}。`,treeView(arr,visited,idx,{operation:op,stack:stack.map(x=>arr[x[0]]).filter(Boolean)}),[action("visit","后序访问",{value:arr[idx]})]));continue;}stack.push([idx,true]);const[l,r]=treeChildren(arr,idx);if(r>=0)stack.push([r,false]);if(l>=0)stack.push([l,false]);steps.push(makeStep(sid++,"push","结点及孩子进栈",`记录 ${arr[idx]}，先处理左、右子树。`,treeView(arr,visited,idx,{operation:op,stack:stack.map(x=>arr[x[0]]).filter(Boolean)}),[action("push","保存待回访结点",{value:arr[idx]})]));}
-  } else if(op==="thread_inorder"){
-    let prev=-1;const threads=[];for(const idx of order){const[l]=treeChildren(arr,idx);if(l<0&&prev>=0)threads.push([idx,prev,"predecessor"]);if(prev>=0){const[,pr]=treeChildren(arr,prev);if(pr<0)threads.push([prev,idx,"successor"]);}visited.push(idx);steps.push(makeStep(sid++,"thread","建立中序线索",`访问 ${arr[idx]}，把空孩子指针改作前驱/后继线索。`,treeView(arr,visited,idx,{operation:op,threads:[...threads]}),[action("link","建立线索",{value:arr[idx]})]));prev=idx;}
+    } else if(op==="thread_inorder"){
+    /* 中序线索化：`if (p->lchild == NULL)` → `p->lchild = pre; p->ltag = 1` →
+       `if (pre && pre->rchild == NULL)` → `pre->rchild = p; pre->rtag = 1` → `pre = p`，**一行一帧**。
+       空孩子指针改成前驱/后继线索，画面上就多一根虚线（指不出去的就是一个吊在结点下方的 NULL 线头）。 */
+    const threads=[],tags={};let pre=-1;
+    const step=(code,current,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"thread",code,code,threadView(arr,visited,current,threads,tags,{operation:op,...extra}),act?[act]:[]));
+    for(const idx of order){
+      visited.push(idx);
+      const noLeft=treeChildren(arr,idx)[0]<0;
+      step(`if (p->lchild == NULL) → ${noLeft}`,idx,null,null,true);
+      if(noLeft){
+        if(pre>=0)threads.push([idx,pre,"L"]);
+        tags[idx]={...(tags[idx]||{}),ltag:1};
+        step("p->lchild = pre; p->ltag = 1",idx,{},action("link","左指针改作前驱线索",{value:pre>=0?arr[pre]:null}));
+      }
+      const preNoRight=pre>=0&&treeChildren(arr,pre)[1]<0;
+      step(`if (pre && pre->rchild == NULL) → ${preNoRight}`,pre>=0?pre:idx,{pre:pre>=0?arr[pre]:"NULL"},null,true);
+      if(preNoRight){
+        threads.push([pre,idx,"R"]);
+        tags[pre]={...(tags[pre]||{}),rtag:1};
+        step("pre->rchild = p; pre->rtag = 1",pre,{pre:arr[pre]},action("link","前驱的右指针改作后继线索",{value:arr[idx]}));
+      }
+      step("pre = p",idx,{pre:arr[idx]},null,true);
+      pre=idx;
+    }
+    return makeTrace(request,"中序线索化","二叉树",`线索 ${threads.length} 条`,steps);
   } else if(op==="thread_predecessor"||op==="thread_successor"){
-    const target=String(request.params.target??arr[order[Math.floor(order.length/2)] ]);const pos=order.findIndex(i=>String(arr[i])===target);const neighbor=op==="thread_predecessor"?order[pos-1]:order[pos+1];steps.push(makeStep(sid++,"locate","定位给定结点",`在线索中序序列中定位 ${target}。`,treeView(arr,order.slice(0,Math.max(0,pos+1)),pos>=0?order[pos]:-1,{operation:op,target})));steps.push(makeStep(sid++,"follow","沿线索找到相邻结点",neighbor===undefined?`${target} 没有对应的${op.endsWith("predecessor")?"前驱":"后继"}。`:`${target} 的${op.endsWith("predecessor")?"前驱":"后继"}是 ${arr[neighbor]}。`,treeView(arr,order.slice(0,Math.max(0,pos+1)),neighbor??-1,{operation:op,target,neighbor:neighbor===undefined?null:arr[neighbor]}),[action("move","沿线索指针移动",{from:target,to:neighbor===undefined?null:arr[neighbor]})]));return makeTrace(request,op==="thread_predecessor"?"中序线索树求前驱":"中序线索树求后继",`target=${target}`,neighbor===undefined?"不存在":String(arr[neighbor]),steps);
+    /* 求前驱/后继：**先看 tag**——标记为线索就直接沿线索走一步；不是线索才走子树，
+       找"左子树的最右"（前驱）或"右子树的最左"（后继）。 */
+    const {threads,tags}=threadAll(arr);
+    const target=String(request.params.target??arr[order[Math.floor(order.length/2)]]);
+    const pos=order.findIndex(i=>String(arr[i])===target);
+    if(pos<0)return api.makeRuntimeError(request,"中序线索树求前驱/后继","TARGET_NOT_FOUND",`目标 ${target} 不在这棵二叉树中（结点：${arr.filter(x=>x!==null).join("、")}），请检查 target 参数。`,threadView(arr,[],-1,threads,tags,{operation:op,target}),`target=${target}`);
+    const idx=order[pos];
+    const successor=op==="thread_successor";
+    const tagName=successor?"rtag":"ltag";
+    const step=(code,current,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"thread",code,code,threadView(arr,[],current,threads,tags,{operation:op,target,...extra}),act?[act]:[]));
+    /* 起点就是**已经线索化**的那棵树：线索本来就是这个结构的一部分。 */
+    steps[0]=makeStep(1,"init","线索二叉树",`${successor?"求后继":"求前驱"}：先看 ${tagName}，是线索就直接沿它走。`,threadView(arr,[],-1,threads,tags,{operation:op,target}));
+    step(`p = ${target}`,idx,null,null,true);
+    const threaded=Number((tags[idx]||{})[tagName])===1;
+    step(`if (p->${tagName} == 1) → ${threaded}`,idx,{[tagName]:threaded?1:0},null,true);
+    if(threaded){
+      /* 那根指针就是线索：一步走到前驱/后继。 */
+      const t=threads.find(x=>x[0]===idx&&x[2]===(successor?"R":"L"));
+      const answer=t?t[1]:-1;
+      step(`q = p->${successor?"rchild":"lchild"}`,answer,{q:answer>=0?arr[answer]:"NULL"},action("move",`沿${successor?"后继":"前驱"}线索直接走到 ${answer>=0?arr[answer]:"NULL"}`,{value:answer>=0?arr[answer]:null}));
+      step("return q",idx,{q:answer>=0?arr[answer]:"NULL"});
+      return makeTrace(request,successor?"中序线索树求后继":"中序线索树求前驱",`target=${target}`,answer>=0?String(arr[answer]):"NULL",steps);
+    }
+    const first=treeChildren(arr,idx)[successor?1:0];
+    step(`q = p->${successor?"rchild":"lchild"}`,first,{},action("move","不是线索，先走进子树",{value:first>=0?arr[first]:null}),true);
+    if(first<0){
+      step("if (q == NULL) return NULL",idx,{q:"NULL"});
+      return makeTrace(request,successor?"中序线索树求后继":"中序线索树求前驱",`target=${target}`,"NULL",steps);
+    }
+    let q=first;
+    /* 后继：一路**向左**走到底；前驱：一路**向右**走到底。走到 tag=1 就停——那一步就是答案。 */
+    for(;;){
+      const stop=Number((tags[q]||{})[tagName])===1;
+      step(`if (q->${tagName} == 0) → ${!stop}`,q,{[tagName]:stop?1:0},null,true);
+      if(stop)break;
+      const gone=treeChildren(arr,q)[successor?0:1];
+      step(`q = q->${successor?"lchild":"rchild"}`,gone,{},action("move",`沿${successor?"左":"右"}链走到 ${gone>=0?arr[gone]:"NULL"}`,{value:gone>=0?arr[gone]:null}),true);
+      if(gone<0)break;
+      q=gone;
+    }
+    step("return q",idx,{q:arr[q]});
+    return makeTrace(request,successor?"中序线索树求后继":"中序线索树求前驱",`target=${target}`,String(arr[q]),steps);
   } else {
     /* 递归遍历的"一行"：`visit(p)` 一格，**再走到下一个结点一格**。
        下一个结点是当前结点的左/右孩子，那一行就是 `p = p->left` / `p = p->right`；
@@ -757,8 +838,127 @@ function simulateBST(request,api){
   return makeTrace(request,"二叉排序树删除",`key=${key}`,"删除完成",steps);
 }
 
-function h(n){return n?1+Math.max(h(n.left),h(n.right)):0;}function rotR(y){const x=y.left,t=x.right;x.right=y;y.left=t;return x;}function rotL(x){const y=x.right,t=y.left;y.left=x;x.right=t;return y;}function avlInsert(node,key,events){if(!node){events.push({type:"insert",key});return{key,left:null,right:null};}if(key<node.key)node.left=avlInsert(node.left,key,events);else if(key>node.key)node.right=avlInsert(node.right,key,events);else return node;const bf=h(node.left)-h(node.right);if(bf>1&&key<node.left.key){events.push({type:"LL",at:node.key});return rotR(node);}if(bf<-1&&key>node.right.key){events.push({type:"RR",at:node.key});return rotL(node);}if(bf>1&&key>node.left.key){events.push({type:"LR",at:node.key});node.left=rotL(node.left);return rotR(node);}if(bf<-1&&key<node.right.key){events.push({type:"RL",at:node.key});node.right=rotR(node.right);return rotL(node);}return node;}
-function simulateAVL(request,api){const {makeStep,makeTrace,action}=makeHelpers(api);const values=numberArray(request.initial_state.data,[30,20,40,10]);const key=Number(request.params.key??request.params.value??5);if(!Number.isFinite(key))throw new SimulationInputError("INVALID_PARAM",`参数 key=${JSON.stringify(request.params.key)} 必须是数字`,"key");let root=null;for(const v of values)root=avlInsert(root,v,[]);const events=[];let sid=1;const steps=[makeStep(sid++,"init","初始 AVL 树",`准备插入 ${key}。`,viewState("tree",bstRows(root,{operation:"avl_insert",key})))];if(values.includes(key)){steps.push(makeStep(sid,"skip","关键字已存在",`${key} 已在树中：AVL 插入不允许重复关键字，树保持不变。`,viewState("tree",bstRows(root,{operation:"avl_insert",key})),[action("skip","重复关键字不插入",{value:key})]));return makeTrace(request,"AVL 树插入与平衡调整",`key=${key}`,"未插入：关键字已存在",steps);}root=avlInsert(root,key,events);for(const e of events){if(e.type==="insert")steps.push(makeStep(sid++,"insert","按 BST 规则插入",`${key} 先作为叶结点插入。`,viewState("tree",bstRows(root,{operation:"avl_insert",key,phase:e.type}))));else steps.push(makeStep(sid++,"rotate",`${e.type} 型失衡调整`,`在结点 ${e.at} 附近执行 ${e.type} 调整恢复平衡。`,viewState("tree",bstRows(root,{operation:"avl_insert",key,rotation:e.type,current:e.at})),[action("rotate","执行平衡旋转",{target:e.at,value:e.type})]));}return makeTrace(request,"AVL 树插入与平衡调整",`key=${key}`,"保持平衡",steps);}
+function h(n){return n?1+Math.max(h(n.left),h(n.right)):0;}
+/* AVL 的树形行：结点 id 用**关键字本身**、边带 "L"/"R"——旋转后结点会换位置，只有 id 稳定才看得出"谁上去了"。
+   这里**按当前真实存在的指针**画（不是从根遍历）：旋转中途会出现"两个父结点都指着同一个结点"
+   的瞬间（`q->right = p` 之后、父结点还没改指之前），那一刻画面上就该是两根箭头——
+   紧跟着的 `parent->left = q` 再把旧的那根撤掉。从根遍历会把整支摘掉的子树画没。 */
+function avlRowsOf(nodes,extra={}){const list=[],edges=[];for(const n of nodes){list.push({id:String(n.key),label:String(n.key),key:n.key});if(n.left)edges.push([String(n.key),String(n.left.key),"L"]);if(n.right)edges.push([String(n.key),String(n.right.key),"R"]);}return [row("tree",[],{nodes:list,edges}),row("meta",[],extra)];}
+
+function simulateAVL(request,api){
+  const {makeStep,makeTrace,action}=makeHelpers(api);
+  const values=numberArray(request.initial_state.data,[30,20,40,10]);
+  const key=Number(request.params.key??request.params.value??5);
+  if(!Number.isFinite(key))throw new SimulationInputError("INVALID_PARAM",`参数 key=${JSON.stringify(request.params.key)} 必须是数字`,"key");
+  /* 建树（同时记下所有结点：画树要按"当前指针"画，不能只从根遍历）。 */
+  const all=[];let root=null;
+  for(const v of values){
+    const node={key:v,left:null,right:null};
+    if(all.some(x=>x.key===v))continue;
+    all.push(node);
+    if(root===null){root=node;continue;}
+    for(let x=root;;){if(v<x.key){if(x.left===null){x.left=node;break;}x=x.left;}else if(v>x.key){if(x.right===null){x.right=node;break;}x=x.right;}else break;}
+  }
+  const tree={root};
+  let sid=1;
+  /* 代码级：**比较一行、下沉一行**找插入位置，插入后**回看平衡因子**，谁失衡就转谁——
+     每一帧都是那行代码执行**之后**的树。`bf` 作为胶囊显示出来，平衡因子不再只是旁白。 */
+  const at=(extra={})=>viewState("tree",avlRowsOf(all,{operation:"avl_insert",key,...extra}));
+  const steps=[makeStep(sid++,"init","p = root","从根开始按 BST 规则找插入位置；插完再回头检查哪一步失衡。",at())];
+  const snap=(phase,text,extra,act)=>steps.push(makeStep(sid++,phase,text,text,at(extra),act?[act]:[]));
+  const line=(text,extra,act)=>snap("line",text,extra,act);
+  const hold=(text,extra,act)=>snap("insert",text,extra,act);
+
+  const path=[];let n=tree.root,parent=null;
+  while(n){
+    const hit=key===n.key;
+    snap("assign",`if (p->key == ${key}) → ${hit}`,{current:String(n.key)},action("compare","比较关键字",{value:n.key}));
+    if(hit){snap("insert","return",{current:String(n.key)},action("skip","关键字已存在，不插入",{value:key}));return makeTrace(request,"AVL 树插入与平衡调整",`key=${key}`,"未插入：关键字已存在",steps);}
+    const dir=key<n.key?"left":"right";
+    const next=dir==="left"?n.left:n.right;
+    path.push({node:n,dir});
+    parent=n;
+    line(`p = p->${dir}`,{current:next?String(next.key):null});
+    n=next;
+  }
+  line("s = malloc()",{current:parent?String(parent.key):null},action("allocate","申请新结点 s",{value:key}));
+  const leaf={key,left:null,right:null};
+  all.push(leaf);
+  const side=parent===null?null:(key<parent.key?"left":"right");
+  if(parent===null)tree.root=leaf;else parent[side]=leaf;
+  hold(parent===null?"root = s":`q->${side} = s`,{current:String(key)},action("link","把 s 接到空位置",{value:key}));
+
+  for(let i=path.length-1;i>=0;i--){
+    const p=path[i].node;
+    const bf=h(p.left)-h(p.right);
+    const grand=i>0?path[i-1].node:null;
+    const grandDir=i>0?path[i-1].dir:null;
+    const relink=(newRoot)=>{if(grand===null)tree.root=newRoot;else grand[grandDir]=newRoot;};
+    const parentLine=(name)=>grand===null?`root = ${name}`:`parent->${grandDir} = ${name}`;
+    /* 沿插入路径**自下而上**逐层复核平衡因子：每一层都报一行，不失衡就继续往上。 */
+    snap("assign","bf = h(p->left) - h(p->right)",{current:String(p.key),bf},action("check_condition",`结点 ${p.key} 的平衡因子是 ${bf}`,{value:bf}));
+    if(Math.abs(bf)<=1)continue;
+    if(bf>1){
+      const q=p.left;
+      line("q = p->left",{current:String(q.key),bf},action("move","q 指向 p 的左孩子",{value:q.key}));
+      if(key<q.key){
+        /* LL：对 p 做一次右旋 */
+        p.left=q.right;
+        hold("p->left = q->right",{current:String(p.key),bf},action("link","p 的左子树改挂 q 的右子树",{value:q.right?q.right.key:null}));
+        q.right=p;
+        hold("q->right = p",{current:String(q.key),bf},action("rotate","p 降为 q 的右孩子",{value:p.key}));
+        relink(q);
+        line(parentLine("q"),{current:String(q.key)},action("move","子树的新根是 q",{value:q.key}));
+      }else{
+        /* LR：先对 q 左旋，再对 p 右旋。挂回父结点在挂 q 之前——中途不会出现"一个结点两个父亲"。 */
+        const r=q.right;
+        line("r = q->right",{current:String(r.key),bf},action("move","r 指向 q 的右孩子",{value:r.key}));
+        q.right=r.left;
+        hold("q->right = r->left",{current:String(q.key),bf},action("link","q 的右子树改挂 r 的左子树",{value:r.left?r.left.key:null}));
+        p.left=r;
+        hold("p->left = r",{current:String(p.key),bf},action("link","p 的左孩子换成 r",{value:r.key}));
+        r.left=q;
+        hold("r->left = q",{current:String(q.key),bf},action("link","q 降为 r 的左孩子",{value:q.key}));
+        p.left=r.right;
+        hold("p->left = r->right",{current:String(p.key),bf},action("link","p 的左子树改挂 r 的右子树",{value:r.right?r.right.key:null}));
+        r.right=p;
+        hold("r->right = p",{current:String(p.key),bf},action("rotate","p 降为 r 的右孩子",{value:p.key}));
+        relink(r);
+        line(parentLine("r"),{current:String(r.key)},action("move","子树的新根是 r",{value:r.key}));
+      }
+    }else{
+      const q=p.right;
+      line("q = p->right",{current:String(q.key),bf},action("move","q 指向 p 的右孩子",{value:q.key}));
+      if(key>q.key){
+        /* RR：对 p 做一次左旋 */
+        p.right=q.left;
+        hold("p->right = q->left",{current:String(p.key),bf},action("link","p 的右子树改挂 q 的左子树",{value:q.left?q.left.key:null}));
+        q.left=p;
+        hold("q->left = p",{current:String(q.key),bf},action("rotate","p 降为 q 的左孩子",{value:p.key}));
+        relink(q);
+        line(parentLine("q"),{current:String(q.key)},action("move","子树的新根是 q",{value:q.key}));
+      }else{
+        /* RL：先对 q 右旋，再对 p 左旋 */
+        const r=q.left;
+        line("r = q->left",{current:String(r.key),bf},action("move","r 指向 q 的左孩子",{value:r.key}));
+        q.left=r.right;
+        hold("q->left = r->right",{current:String(q.key),bf},action("link","q 的左子树改挂 r 的右子树",{value:r.right?r.right.key:null}));
+        p.right=r;
+        hold("p->right = r",{current:String(p.key),bf},action("link","p 的右孩子换成 r",{value:r.key}));
+        r.right=q;
+        hold("r->right = q",{current:String(q.key),bf},action("link","q 降为 r 的右孩子",{value:q.key}));
+        p.right=r.left;
+        hold("p->right = r->left",{current:String(p.key),bf},action("link","p 的右子树改挂 r 的左子树",{value:r.left?r.left.key:null}));
+        r.left=p;
+        hold("r->left = p",{current:String(p.key),bf},action("rotate","p 降为 r 的左孩子",{value:p.key}));
+        relink(r);
+        line(parentLine("r"),{current:String(r.key)},action("move","子树的新根是 r",{value:r.key}));
+      }
+    }
+    break;
+  }
+  return makeTrace(request,"AVL 树插入与平衡调整",`key=${key}`,"保持平衡",steps);
+}
 
 function simpleBTree(keys,order=3){const maxKeys=order-1;const sorted=[...new Set(keys)].sort((a,b)=>a-b);const leaves=[];for(let i=0;i<sorted.length;i+=maxKeys)leaves.push({keys:sorted.slice(i,i+maxKeys),children:[]});if(leaves.length<=1)return{keys:leaves[0]?.keys||[],children:[]};return{keys:leaves.slice(1).map(x=>x.keys[0]),children:leaves};}
 function btreeRows(tree,extra={}){const nodes=[],edges=[];let id=0;function walk(n,parent=null,depth=0){const my=id++;nodes.push({id:my,label:(n.keys||[]).join(" | "),keys:n.keys||[],depth});if(parent!==null)edges.push([parent,my]);for(const c of n.children||[])walk(c,my,depth+1);}walk(tree);return[row("tree",[],{nodes,edges,multiKey:true}),row("meta",[],extra)];}

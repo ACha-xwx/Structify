@@ -199,6 +199,11 @@ interface TreeLayout {
   height: number;
   nodes: PlacedNode[];
   edges: { x1: number; y1: number; x2: number; y2: number; active: boolean; loop: boolean }[];
+  /**
+   * 线索二叉树的线索：空孩子指针改指前驱/后继。画成虚线，**不参与布局**。
+   * `label` 非空的是"线索指向 NULL"（带 ltag/rtag 却找不到目标）——按教材画法吊在结点下方。
+   */
+  threads: { x1: number; y1: number; x2: number; y2: number; label: string }[];
   nodeWidth: (node: DsvpNode) => number;
 }
 
@@ -345,11 +350,48 @@ function layoutTree(panel: FramePanel): TreeLayout {
     })
     .filter((edge): edge is TreeLayout["edges"][number] => edge !== null);
 
+  // 线索：空孩子指针改指前驱/后继。它**不是父子边**，所以不参与上面的布局，只额外画一根虚线；
+  // 带 ltag/rtag 却在图上找不到目标（线索指向 NULL）的，按教材画法吊一小段虚线并标 NULL——
+  // 「p->ltag = 1」那一帧的可见变化就在这根短线上。
+  const threads: TreeLayout["threads"] = [];
+  const drawn = new Set<string>();
+  for (const thread of panel.threads) {
+    const from = positionOf.get(thread.from);
+    const to = positionOf.get(thread.to);
+    if (!from || !to) continue;
+    const node = byId.get(thread.from);
+    const half = (node ? widthOf(node) : 46) / 2;
+    const dy = NODE_HEIGHT / 2;
+    const left = thread.side === "L";
+    threads.push({
+      x1: left ? from.x - half : from.x + half,
+      y1: from.y + dy,
+      x2: left ? to.x + 6 : to.x - 6,
+      y2: to.y + (to.y >= from.y ? -dy : dy),
+      label: "",
+    });
+    drawn.add(`${thread.from}:${thread.side}`);
+  }
+  panel.nodes.forEach((node, index) => {
+    const id = String(node.id ?? index);
+    const placed = positionOf.get(id);
+    if (!placed) return;
+    const half = widthOf(node) / 2;
+    const dy = NODE_HEIGHT / 2;
+    if (Number(node.ltag) === 1 && !drawn.has(`${id}:L`)) {
+      threads.push({ x1: placed.x - half, y1: placed.y + dy, x2: placed.x - half - 16, y2: placed.y + dy + 26, label: "NULL" });
+    }
+    if (Number(node.rtag) === 1 && !drawn.has(`${id}:R`)) {
+      threads.push({ x1: placed.x + half, y1: placed.y + dy, x2: placed.x + half + 16, y2: placed.y + dy + 26, label: "NULL" });
+    }
+  });
+
   return {
     width,
-    height: PAD * 2 + maxDepth * LEVEL_HEIGHT + NODE_HEIGHT,
+    height: PAD * 2 + maxDepth * LEVEL_HEIGHT + NODE_HEIGHT + (threads.length ? 34 : 0),
     nodes,
     edges,
+    threads,
     nodeWidth: widthOf,
   };
 }
@@ -582,6 +624,14 @@ const graphLayouts = computed(() => {
               :class="{ 'edge--active': edge.active }"
               :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2"
             />
+          </template>
+          <template v-for="(thread, threadIndex) in treeLayouts[index].threads" :key="`thread-${threadIndex}`">
+            <line
+              class="edge edge--thread"
+              :class="{ 'edge--thread-null': thread.label !== '' }"
+              :x1="thread.x1" :y1="thread.y1" :x2="thread.x2" :y2="thread.y2"
+            />
+            <text v-if="thread.label" class="thread__label" :x="thread.x2" :y="thread.y2 + 13" text-anchor="middle">{{ thread.label }}</text>
           </template>
           <g v-for="placed in treeLayouts[index].nodes" :key="`node-${placed.key}`" class="node" :class="`node--${placed.state}`">
             <rect
@@ -1004,6 +1054,10 @@ const graphLayouts = computed(() => {
 
 .edge { fill: none; stroke: var(--stage-line); stroke-width: 1.8; }
 .edge--active { stroke: var(--stage-focus); stroke-width: 3.4; }
+/* 线索指针：虚线，和"父子边"一眼可分。指向 NULL 的那一小段用更浅的墨色。 */
+.edge--thread { stroke-dasharray: 5 4; stroke-width: 1.6; }
+.edge--thread-null { stroke: var(--stage-ink-soft); }
+.thread__label { fill: var(--stage-ink-soft); font-size: 11px; letter-spacing: .04em; }
 .edge__weight { fill: var(--stage-ink-soft); font-size: 13px; }
 
 .node__box { fill: var(--stage-cell); stroke: var(--stage-line); stroke-width: 1.8; }

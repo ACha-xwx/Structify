@@ -34,6 +34,18 @@ export interface FrameCursor {
 }
 
 /**
+ * 一根**线索**：`p->lchild`（或 `rchild`）本来是空指针，被改成指向前驱/后继。
+ *
+ * 引擎可以给 `[前, 后]`、`[前, 后, "successor"]` 或 `{from, to}` 三种写法，这里统一成 `{from, to}`。
+ */
+export interface PanelThread {
+  from: string;
+  /** 线索建在**哪一侧**的空指针上：`L` = 左指针改指前驱，`R` = 右指针改指后继。 */
+  to: string;
+  side: "L" | "R";
+}
+
+/**
  * 一个结点框该有哪些槽位、结点之间该有哪些箭头——**按结构定义来**，不是"链表都长一样"。
  *
  * 单链表每个结点只有后继，所以是 `[值 | next]`；双向链表每个结点**同时存前驱和后继**，
@@ -74,6 +86,11 @@ export interface FramePanel {
   /** Present for `tree`/`graph`, normalized to objects even when the engine lists bare labels. */
   nodes: DsvpNode[];
   edges: unknown[][];
+  /**
+   * 线索二叉树的**线索指针**（画成虚线）。它和"父子边"不是一回事：线索是空的左右孩子指针改指前驱/后继，
+   * 所以**不参与树形布局**（算进去会把结点排到错误的层上），只是额外画一根虚线。
+   */
+  threads: PanelThread[];
   /** B-tree nodes hold several keys; the tree renderer then draws a key strip per node. */
   multiKey: boolean;
   /** Zero-based index inside this panel that the step is operating on, when the engine says so. */
@@ -475,6 +492,7 @@ function panelFromView(panel: DsvpPanel, pointers: Record<string, number>, raw: 
     rows: [],
     nodes,
     edges,
+    threads: [],
     multiKey: false,
     focus: null,
     cursors: [],
@@ -489,6 +507,7 @@ function panelFromView(panel: DsvpPanel, pointers: Record<string, number>, raw: 
   if (nodes.length) {
     frame.kind = role === "graph" ? "graph" : "tree";
     frame.multiKey = nodes.some((node) => Array.isArray(node.keys) && node.keys.length > 1);
+    frame.threads = threadsOf(panel);
     return frame;
   }
 
@@ -633,6 +652,7 @@ function panelsFromLegacy(kind: string, state: Record<string, unknown>, chips: F
     rows: [],
     nodes: [],
     edges: [],
+    threads: [],
     multiKey: false,
     focus: null,
     cursors: [],
@@ -874,6 +894,28 @@ function normalizeNodes(value: unknown): DsvpNode[] {
       return null;
     })
     .filter((node): node is DsvpNode => node !== null);
+}
+
+/**
+ * 线索指针：`[[前, 后]]` / `[[前, 后, "successor"]]` / `[{from, to}]` 都收，统一成 `{from, to}`。
+ *
+ * 画成虚线、且**不参与树形布局**——线索是"空孩子指针改指前驱/后继"，不是父子关系；
+ * 混进 edges 会把结点排到错误的层上（也可能让根结点凭空多出一个父亲）。
+ */
+function threadsOf(panel: DsvpPanel): PanelThread[] {
+  if (!Array.isArray(panel.threads)) return [];
+  const out: PanelThread[] = [];
+  for (const item of panel.threads as unknown[]) {
+    if (Array.isArray(item) && item.length >= 2) {
+      const side = String(item[2] ?? "L").toUpperCase() === "R" ? "R" : "L";
+      out.push({ from: String(item[0]), to: String(item[1]), side });
+      continue;
+    }
+    if (isRecord(item) && item.from !== undefined && item.to !== undefined) {
+      out.push({ from: String(item.from), to: String(item.to), side: String(item.side ?? "L").toUpperCase() === "R" ? "R" : "L" });
+    }
+  }
+  return out;
 }
 
 function pushChip(chips: FrameChip[], label: string, value: unknown): void {
