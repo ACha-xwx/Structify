@@ -138,9 +138,13 @@
 | `circular_linked_list.merge_tail_pointer` | ✅ 代码级 | 2 → **4** |
 | `circular_linked_list.build` / `initialize` | ✅ 代码级 | 1/4 → 8 / 2 |
 | `doubly_linked_list.insert` / `delete` | ✅ 代码级 | 2/2 → **6 / 5**（精简 **3 / 4**） |
-| `linked_list.insert` / `delete` / `reverse` / `merge` | ⬜ 待做 | 现在各 2–3 帧，旁白为主 |
-| `linked_stack` / `linked_queue` 的 push/pop | ⬜ 待做 | 各 2 帧 |
-| `static_linked_list.allocate` / `free` | ⬜ 待做 | 各 2 帧（备用链的 cursor 改写） |
+| `linked_list.insert` / `delete` / `merge` | ✅ 代码级 | → **5 / 4 / 18**（精简 3 / 3 / 12） |
+| `linked_list.reverse` | ✅ 代码级 | → **13**（精简 9）：`q = p->next` → `p->next = r` → `r = p; p = q` |
+| `linked_list.build_head` / `build_tail` | ✅ 代码级 | → 16 / 16（精简 12 / 9） |
+| `linked_list` 的查找/求长度/初始化 | ✅ 代码级 | 按值查找 `if (p->data == key) → true/false`；长度 `n = n + 1` |
+| `linked_stack.push` / `pop` | ✅ 代码级 | → 4 / 3（精简 3 / 3） |
+| `linked_queue.initialize` / `enqueue` / `dequeue` | ✅ 代码级 | → 2 / 5 / 3（**带头结点**模型） |
+| `static_linked_list.*` | ✅ 代码级 | 初始化 7、申请 3、回收 3（`space[i].cur = i+1` 逐格） |
 | 树/图 | ⬜ 待定 | 它们的"一行代码"是另一套（递归调用 / 松弛），要单独定 |
 | **排序** | ✅ **两档都做了** | 交换拆成 `temp = a[i]` / `a[i] = a[j]` / `a[j] = temp` 三帧（标 line）；比较帧就是 `if (…) → true/false`。实测：冒泡 详细 **22** → 精简 **14**、堆 26 → 12、插入 13 → 11；7 元素的默认数据 详细 **64** → 精简 **40** |
 
@@ -188,6 +192,23 @@ Rrd：可以做两版——**详细**像 debug 一行一行（含比较过程）
 > ⚠️ **详细/精简的开关在同一个播放器实例上是保留的**（同一页里换动画不会重置）。
 > 写验收脚本时要注意：上一段停在精简，下一段就会在精简版上断言（我因此误报过 3 条）。
 > 现在 `annotation-check.mjs` 的 `generate()` 每次先归位到「详细」。
+
+9. 绕回/自环之类的标记要数据说了算（写完 `p->next = B->next` 之后 A 的尾结点已指向 2，
+   那根"回到 head"不能还挂着（只看 kind 就会挂）。
+10. **指针槽位写目标结点的"序号"**（`→ 3`），不写值——值会重复。结点框上标 `#1 #2 …`。
+11. **两档粒度**：中间过程帧标 `phase: "line"`，精简版把每段连续 line 压成最后一帧。
+
+### 改链表家族时踩到的四个真错（都可以用契约测试提前抓到）
+
+| 错 | 症状 | 根因 |
+|---|---|---|
+| 插入后没重建所有 next | `next=[2,3,3,null]`（结点指向自己） | 只改了前后两个结点；结点插进显示序后**所有**序号都变了，next 要整体重建 |
+| 合并取 B 的结点也写 `p = p->next` | 游标推错了一边 | 取哪边就推哪边（`p`/`q`） |
+| 链栈 push 的 `unshift` 后同样没重建 | `next=[2,2,3,null]` | 同上 |
+| "申请结点"两帧同画面 | 契约测试报 18 处 | `s = malloc()` 时数据域就已经填好了 ⇒ 现在先以 `∅` 出现，`s->data = x` 那一帧才有变化；静态链表初始化的 cursor 同理改成逐格设置 |
+
+> 这四类**引擎自检脚本抓不到**（它们只验"能跑"），是**契约测试**（167 能力逐帧过真实渲染器、
+> 相邻两帧不许同画面）抓出来的。改任何模拟器后都要跑它。
 
 ---
 
