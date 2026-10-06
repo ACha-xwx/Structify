@@ -554,9 +554,34 @@ function threadView(arr,visited,current,threads,tags,extra={}){
   return viewState("tree",rows);
 }
 
+/* 树面板 + 几块辅助行（栈/队列/已访问）：非递归遍历与层序遍历要把"容器里现在有什么"画出来。 */
+function treeViewExtra(arr,visited,current,rows,extra={}){
+  const nodes=arr.map((v,i)=>v===null?null:{id:i,label:String(v),index:i}).filter(Boolean);
+  const edges=[];
+  for(const n of nodes){const[l,r]=treeChildren(arr,n.index);if(l>=0)edges.push([n.index,l,"L"]);if(r>=0)edges.push([n.index,r,"R"]);}
+  const all=[row("tree",[],{nodes,edges})];
+  if(visited.length)all.push(row("visited",visited.map((i)=>arr[i])));
+  all.push(...rows);
+  all.push(row("meta",[],{currentValue:current>=0?arr[current]:null,currentIndex:current,...extra}));
+  return viewState("tree",all);
+}
+
 function simulateTree(request,api){
   const {makeStep,makeTrace,action}=makeHelpers(api);const arr=normalizeTreeArray(request.initial_state.data);const op=request.operation;
-  if(op==="build"){const partial=Array(arr.length).fill(null);let sid=1;const steps=[makeStep(sid++,"init","开始建立二叉树","按层次序列逐个建立非空结点并连接孩子。",treeView(partial,[],-1,{operation:op}))];for(let i=0;i<arr.length;i++){if(arr[i]===null)continue;partial[i]=arr[i];steps.push(makeStep(sid++,"insert","建立结点并连接",`建立结点 ${arr[i]}${i?`，连接到父结点 ${arr[Math.floor((i-1)/2)]}`:"，作为根结点"}。`,treeView(partial,[],i,{operation:op}),[action("link","建立父子关系",{target:i,value:arr[i]})]));}return makeTrace(request,"建立二叉树","层次序列",`结点数=${arr.filter(x=>x!==null).length}`,steps);}
+  if(op==="build"){
+    /* 按层次序列建树：`s = malloc(); s->data = 'B'` 一行、接到父结点上再一行。 */
+    const partial=Array(arr.length).fill(null);
+    let sid=1;const steps=[makeStep(sid++,"init","空二叉树",`按层次序列 ${arr.map((x)=>x===null?"#":x).join("")} 逐个建立非空结点。`,treeView(partial,[],-1,{operation:op}))];
+    const step=(code,current,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"build",code,code,treeView(partial,[],current,{operation:op,...extra}),act?[act]:[]));
+    for(let i=0;i<arr.length;i++){
+      if(arr[i]===null)continue;
+      const label=String(arr[i]);
+      step(`s = malloc(); s->data = '${label}'`,-1,{s:label,i},action("allocate","申请一个结点",{value:label}),true);
+      partial[i]=arr[i];
+      step(i===0?"root = s":`p->${i%2?"rchild":"lchild"} = s`,i,{i,parent:i?Math.floor((i-1)/2):null},action("link",i===0?"作为根结点":"接到父结点上",{target:i,value:label}));
+    }
+    return makeTrace(request,"建立二叉树","层次序列",`结点数=${arr.filter((x)=>x!==null).length}`,steps);
+  }
   // 核心契约的 tree visit/highlight（params.node 为层次下标）：单步定位并高亮一个结点。
   if(op==="visit"||op==="highlight"){
     const rawNode=request.params.node;
@@ -571,10 +596,65 @@ function simulateTree(request,api){
   if(op==="preorder")order=traversalOrder(arr,"pre");else if(["inorder","inorder_stack","thread_inorder","thread_predecessor","thread_successor"].includes(op))order=traversalOrder(arr,"in");else if(op==="postorder"||op==="postorder_stack")order=traversalOrder(arr,"post");else order=traversalOrder(arr,"level");
   const visited=[];let sid=1;const steps=[makeStep(sid++,"init","二叉树初始状态","准备按教材规定的次序访问结点。",treeView(arr,visited,-1,{operation:op}))];
   if(op==="inorder_stack"){
-    const stack=[];let cur=0;while(cur>=0||stack.length){while(cur>=0&&arr[cur]!==null){stack.push(cur);steps.push(makeStep(sid++,"push","左链进栈",`${arr[cur]} 进栈，继续访问左孩子。`,treeView(arr,visited,cur,{operation:op,stack:stack.map(i=>arr[i])}),[action("push","结点指针进栈",{value:arr[cur]})]));cur=treeChildren(arr,cur)[0];}if(!stack.length)break;cur=stack.pop();visited.push(cur);steps.push(makeStep(sid++,"visit","退栈并访问",`访问 ${arr[cur]}。`,treeView(arr,visited,cur,{operation:op,stack:stack.map(i=>arr[i])}),[action("visit","访问结点",{value:arr[cur]})]));cur=treeChildren(arr,cur)[1];}
+    /* 非递归中序：`s.push(p)` 一行、`p = p->lchild` 一行、`p = s.pop()` 一行、`p = p->rchild` 一行。 */
+    const stack=[];let cur=0;const visited=[];
+    const step=(code,current,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"push",code,code,treeViewExtra(arr,visited,current,[row("stack",stack.map((i)=>arr[i]))],{operation:op,...extra}),act?[act]:[]));
+    step("p = root",0,{s:""},null,true);
+    while(cur>=0||stack.length){
+      const down=cur>=0&&arr[cur]!==null;
+      step(`while (p != NULL) → ${down}`,cur,{s:stack.length?stack.map((i)=>arr[i]).join(","):"(空)"},null,true);
+      if(down){
+        stack.push(cur);
+        step("s.push(p)",cur,{s:stack.map((i)=>arr[i]).join(",")},action("push",`${arr[cur]} 进栈`,{value:arr[cur]}),true);
+        cur=treeChildren(arr,cur)[0];
+        step("p = p->lchild",cur,{s:stack.length?stack.map((i)=>arr[i]).join(","):"(空)",p:cur>=0?arr[cur]:"NULL"},null,true);
+        continue;
+      }
+      const out=stack.pop();visited.push(out);
+      cur=treeChildren(arr,out)[1];
+      step("p = s.pop(); visit(p)",out,{s:stack.map((i)=>arr[i]).join(","),visit:arr[out]},action("visit",`退栈并访问 ${arr[out]}`,{value:arr[out]}));
+      step("p = p->rchild",cur,{s:stack.length?stack.map((i)=>arr[i]).join(","):"(空)",p:cur>=0?arr[cur]:"NULL"},null,true);
+    }
+    return makeTrace(request,"非递归中序遍历","二叉树",`访问序列=${visited.map((i)=>arr[i]).join(" ")}`,steps);
   } else if(op==="postorder_stack"){
-    const stack=[[0,false]];while(stack.length){const [idx,expanded]=stack.pop();if(idx<0||idx>=arr.length||arr[idx]===null)continue;if(expanded){visited.push(idx);steps.push(makeStep(sid++,"visit","第二次退栈访问",`左右子树处理完毕，访问 ${arr[idx]}。`,treeView(arr,visited,idx,{operation:op,stack:stack.map(x=>arr[x[0]]).filter(Boolean)}),[action("visit","后序访问",{value:arr[idx]})]));continue;}stack.push([idx,true]);const[l,r]=treeChildren(arr,idx);if(r>=0)stack.push([r,false]);if(l>=0)stack.push([l,false]);steps.push(makeStep(sid++,"push","结点及孩子进栈",`记录 ${arr[idx]}，先处理左、右子树。`,treeView(arr,visited,idx,{operation:op,stack:stack.map(x=>arr[x[0]]).filter(Boolean)}),[action("push","保存待回访结点",{value:arr[idx]})]));}
-    } else if(op==="thread_inorder"){
+    /* 非递归后序（结点带"已展开"标志）：第一次退栈把它和两个孩子压回去，第二次退栈才访问。 */
+    const stack=[[0,false]];const visited=[];
+    const label=()=>stack.map((pair)=>`${arr[pair[0]]}${pair[1]?"*":""}`).join(",");
+    const step=(code,current,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"push",code,code,treeViewExtra(arr,visited,current,[row("stack",stack.map((pair)=>`${arr[pair[0]]}${pair[1]?"*":""}`))],{operation:op,...extra}),act?[act]:[]));
+    while(stack.length){
+      const [idx,expanded]=stack.pop();
+      if(idx<0||idx>=arr.length||arr[idx]===null){
+        step("if (p == NULL) continue",-1,{s:label()},null,true);
+        continue;
+      }
+      if(expanded){
+        visited.push(idx);
+        step("visit(p)",idx,{s:label(),visit:arr[idx]},action("visit",`第二次退栈，访问 ${arr[idx]}`,{value:arr[idx]}));
+        continue;
+      }
+      step("if (p 已展开) → false",idx,{s:label()},null,true);
+      const [l,r]=treeChildren(arr,idx);
+      stack.push([idx,true]);
+      if(r>=0)stack.push([r,false]);
+      if(l>=0)stack.push([l,false]);
+      step("s.push(p, 已展开); s.push(p->rchild); s.push(p->lchild)",idx,{s:label(),pushed:arr[idx]},action("push",`${arr[idx]} 与两个孩子重新入栈`,{value:arr[idx]}),true);
+    }
+    return makeTrace(request,"非递归后序遍历","二叉树",`访问序列=${visited.map((i)=>arr[i]).join(" ")}`,steps);
+  } else if(op==="levelorder"){
+    /* 层序：队列进出一个顶点一行，它的两个孩子入队各一行。 */
+    const q=[0];const visited=[];
+    const step=(code,current,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"queue",code,code,treeViewExtra(arr,visited,current,[row("queue",q.map((i)=>arr[i]))],{operation:op,...extra}),act?[act]:[]));
+    step("q.push(root)",0,{q:arr[0]},action("push",`根 ${arr[0]} 入队`,{value:arr[0]}),true);
+    while(q.length){
+      const v=q.shift();visited.push(v);
+      step("v = q.pop(); visit(v)",v,{q:q.map((i)=>arr[i]).join(",")},action("visit",`访问 ${arr[v]}`,{value:arr[v]}));
+      const [l,r]=treeChildren(arr,v);
+      if(l>=0){q.push(l);step("q.push(v->lchild)",v,{q:q.map((i)=>arr[i]).join(","),pushed:arr[l]},action("push",`左孩子 ${arr[l]} 入队`,{value:arr[l]}),true);}
+      if(r>=0){q.push(r);step("q.push(v->rchild)",v,{q:q.map((i)=>arr[i]).join(","),pushed:arr[r]},action("push",`右孩子 ${arr[r]} 入队`,{value:arr[r]}),true);}
+    }
+    step("while (!q.empty()) → false",-1,{q:"(空)"});
+    return makeTrace(request,"层序遍历","二叉树",`访问序列=${visited.map((i)=>arr[i]).join(" ")}`,steps);
+} else if(op==="thread_inorder"){
     /* 中序线索化：`if (p->lchild == NULL)` → `p->lchild = pre; p->ltag = 1` →
        `if (pre && pre->rchild == NULL)` → `pre->rchild = p; pre->rtag = 1` → `pre = p`，**一行一帧**。
        空孩子指针改成前驱/后继线索，画面上就多一根虚线（指不出去的就是一个吊在结点下方的 NULL 线头）。 */
@@ -650,9 +730,9 @@ function simulateTree(request,api){
        两帧的高亮因此总是不同的，不会出现"点一下什么都没动"。 */
     for(let k=0;k<order.length;k++){
       const idx=order[k];visited.push(idx);
-      steps.push(makeStep(sid++,op==="levelorder"?"line":"assign","visit(p)","visit(p)",treeView(arr,visited,idx,{operation:op}),[action("visit","按遍历次序访问",{value:arr[idx]})]));
+      steps.push(makeStep(sid++,"assign","visit(p)","visit(p)",treeView(arr,visited,idx,{operation:op}),[action("visit","按遍历次序访问",{value:arr[idx]})]));
       const next=k+1<order.length?order[k+1]:-1;
-      if(next<0||op==="levelorder")continue;
+      if(next<0)continue;
       const l=2*idx+1,r=2*idx+2;
       const isChild=next===l||next===r;
       const code=next===l?"p = p->left":next===r?"p = p->right":"return";
