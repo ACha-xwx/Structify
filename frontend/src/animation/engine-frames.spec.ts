@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,8 +24,29 @@ import { normalizeFrame, type AnimationFrame } from "./frame";
 const ENGINE =
   process.env.STRUCTIFY_ENGINE_DIR ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../backend/dsvp/engine");
 const require = createRequire(import.meta.url);
-const { ANIMATION_CAPABILITY_REGISTRY, resolveVisualizationIntent } = require(path.join(ENGINE, "animation-capabilities"));
-const { simulateOperation, traceToPlayerData } = require(path.join(ENGINE, "dsvp-engine"));
+
+/**
+ * ⚠️ **镜像构建时引擎不在构建上下文里**：`deployment/Dockerfile.node` 的 frontend 阶段只 `COPY frontend/`
+ * （外加两个 classroom-code 的 json），而它在构建阶段就跑 `npm test`。
+ * 于是在生产镜像里 `backend/dsvp/engine` 根本不存在 —— 模块顶层 `require` 会直接抛，
+ * 整个 `npm test` 挂掉、**镜像构建失败**（2026-09-24 踩过：把这份 spec `git rm --cached` 掉了）。
+ *
+ * 但那份文件又确实该留在版本库里（它以 `.gitignore` 忽略过一次，切基线时被整棵替换、**彻底丢过**）。
+ * 两个都要保住的办法：**引擎目录不在时整份跳过**，而不是让它加载失败。
+ * 这样本地/CI 照常跑 167 条能力的逐帧断言，镜像构建里它安静地 skip，`npm test` 仍然是绿的。
+ */
+const enginePresent =
+  existsSync(path.join(ENGINE, "animation-capabilities.js")) && existsSync(path.join(ENGINE, "dsvp-engine.js"));
+const engine = enginePresent
+  ? {
+      ...require(path.join(ENGINE, "animation-capabilities")),
+      ...require(path.join(ENGINE, "dsvp-engine")),
+    }
+  : null;
+const ANIMATION_CAPABILITY_REGISTRY = engine?.ANIMATION_CAPABILITY_REGISTRY ?? {};
+const resolveVisualizationIntent = engine?.resolveVisualizationIntent;
+const simulateOperation = engine?.simulateOperation;
+const traceToPlayerData = engine?.traceToPlayerData;
 
 /** What the learner actually sees, in one string: the panels, the pointers drawn on them, and the captions. */
 function picture(frame: AnimationFrame): string {
@@ -104,7 +126,8 @@ const KNOWN_IDENTICAL = new Set([
   "external_sort.multiway_merge#11",
 ]);
 
-describe("engine frames are drawable", () => {
+/* 引擎不在（生产镜像的构建阶段）就整份跳过：`npm test` 必须仍然是绿的，镜像才构建得出来。 */
+describe.skipIf(!enginePresent)("engine frames are drawable", () => {
   it("resolves a runnable standard example for every capability", () => {
     expect(notReady).toEqual([]);
     expect(audited.length).toBeGreaterThanOrEqual(160);
