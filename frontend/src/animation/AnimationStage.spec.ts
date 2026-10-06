@@ -93,11 +93,18 @@ describe("AnimationStage", () => {
 
     const nodes = wrapper.findAll(".chain__node");
     // 第一个结点：prior 没有指向 ⇒ NULL；末结点：next 没有指向 ⇒ NULL。
-    expect(nodes[0].find(".chain__slot--lead").text()).toBe("NULL");
-    expect(nodes[1].find(".chain__slot--lead").text()).toBe("prior");
-    expect(nodes[2].findAll(".chain__slot").map((slot) => slot.text())).toEqual(["prior", "NULL"]);
-    // 每个结点框都是 [prior | 值 | next] 三格。
-    expect(nodes[1].findAll(".chain__body > span").map((cell) => cell.text())).toEqual(["prior", "15", "next"]);
+    // 每一格两行：字段名 + 它此刻指向谁（只写目标值就看不出哪格是哪个字段）。
+    const targets = (node: ReturnType<typeof wrapper.findAll>[number]) =>
+      node.findAll(".chain__slot-target").map((cell) => cell.text());
+    const names = (node: ReturnType<typeof wrapper.findAll>[number]) =>
+      node.findAll(".chain__slot-name").map((cell) => cell.text());
+    expect(targets(nodes[0])).toEqual(["NULL", "15"]);
+    expect(names(nodes[0])).toEqual(["prior", "next"]);
+    expect(targets(nodes[1])).toEqual(["10", "20"]);
+    expect(targets(nodes[2])).toEqual(["15", "NULL"]);
+    // 每个结点框都是 [prior | 值 | next] 三格（字段名 + 指向谁各一行）。
+    expect(names(nodes[1])).toEqual(["prior", "next"]);
+    expect(targets(nodes[1])[0]).toBe("10");
     // 三结点两段间隙，每段两根箭头（正向 + 反向）。
     expect(wrapper.findAll(".chain__link")).toHaveLength(4);
     expect(wrapper.findAll(".chain__link--back")).toHaveLength(2);
@@ -110,7 +117,8 @@ describe("AnimationStage", () => {
     });
 
     const nodes = wrapper.findAll(".chain__node");
-    expect(nodes[2].findAll(".chain__slot").map((slot) => slot.text())).toEqual(["head"]);
+    // 末结点的 next 绕回首结点（这一帧的 LA 没有单独的头结点，所以目标就是第 1 个结点）。
+    expect(nodes[2].findAll(".chain__slot-target").map((slot) => slot.text())).toEqual(["1"]);
     expect(wrapper.findAll(".chain__wrap")).toHaveLength(1);
     expect(wrapper.get(".chain__wrap").text()).toBe("回到 head");
   });

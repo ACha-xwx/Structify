@@ -58,10 +58,14 @@ function chainWraps(panel: FramePanel): boolean {
 function chainSlotText(panel: FramePanel, cell: number, slot: string): string {
   const fromEngine = panel.chainText?.[slot]?.[cell];
   if (typeof fromEngine === "string") return fromEngine;
-  const last = panel.values.length - 1;
-  if (slot === "next") return cell < last ? slot : panel.chain?.circular ? "head" : "NULL";
-  if (slot === "prior") return cell === 0 ? "NULL" : slot;
-  return slot;
+  // 引擎没给就按**结点顺序**推：next 指向下一个结点、prior 指向上一个，两端是 NULL
+  // （循环链表的末结点 next 绕回首结点）。注意这里返回的是"指向谁"，不是字段名——
+  // 字段名由槽位上那行小字给，两者各占一行。
+  const labels = panel.values.map((value) => (isEmptyValue(value) ? "∅" : frameValueText(value)));
+  const last = labels.length - 1;
+  if (slot === "next") return cell < last ? labels[cell + 1] : panel.chain?.circular ? labels[0] ?? "head" : "NULL";
+  if (slot === "prior") return cell === 0 ? "NULL" : labels[cell - 1];
+  return "NULL";
 }
 
 const frame = computed<AnimationFrame>(() => normalizeFrame(props.state ?? props.step?.dsvpState ?? null));
@@ -454,17 +458,29 @@ const graphLayouts = computed(() => {
               </span>
               <span class="chain__body">
                 <!-- 结点里有哪些槽位、写什么，全部来自结构定义（`panel.chain`）：双向链表多一格 prior，
-                     循环链表末结点的 next 写 head 而不是 NULL。以前这两样都被写死成单链表的画法。 -->
-                <span v-if="panel.chain.lead" class="chain__slot chain__slot--lead">{{ chainSlotText(panel, cell, panel.chain.lead) }}</span>
+                     循环链表末结点的 next 写 head 而不是 NULL。以前这两样都被写死成单链表的画法。
+                     每一格**两行**：上面是字段名（prior / next），下面是它此刻指向谁——
+                     只写目标值就看不出哪格是哪个字段，只写字段名又看不出"next 指向谁"。 -->
+                <span
+                  v-if="panel.chain.lead"
+                  class="chain__slot chain__slot--lead"
+                  :class="{ 'chain__slot--writing': panel.chainWrite?.slot === panel.chain.lead && panel.chainWrite.index === cell }"
+                >
+                  <i class="chain__slot-name">{{ panel.chain.lead }}</i>
+                  <b class="chain__slot-target">{{ chainSlotText(panel, cell, panel.chain.lead) }}</b>
+                </span>
                 <span class="chain__value">{{ isEmptyValue(value) ? "∅" : frameValueText(value) }}</span>
-                <!-- 槽位里写的是**指向谁**（引擎给的 next/prior 文字）。正在被改写的那一格点亮——
-                     帧的标题就是那行代码（`p->next = B->next`），一格一亮对应一行。 -->
+                <!-- 正在被改写的那一格点亮——帧的标题就是那行代码（`p->next = B->next`），一格一亮对应一行。
+                     改的是**哪个字段**由引擎说了算（`p->next->prior = s` 亮的是 prior 格，不是 next 格）。 -->
                 <span
                   v-for="slot in panel.chain.slots"
                   :key="slot"
                   class="chain__slot"
-                  :class="{ 'chain__slot--writing': panel.chainWrite === cell }"
-                >{{ chainSlotText(panel, cell, slot) }}</span>
+                  :class="{ 'chain__slot--writing': panel.chainWrite?.slot === slot && panel.chainWrite.index === cell }"
+                >
+                  <i class="chain__slot-name">{{ slot }}</i>
+                  <b class="chain__slot-target">{{ chainSlotText(panel, cell, slot) }}</b>
+                </span>
               </span>
               <!-- 结点之间：正向一根；双向链表再在下面补一根反向的（prior 指向前驱）。 -->
               <span v-if="cell < panel.values.length - 1" class="chain__links">
@@ -814,15 +830,32 @@ const graphLayouts = computed(() => {
   color: var(--stage-ink);
 }
 
-/* 结点框里的槽位：`next` / `prior` / `cursor`。和值用竖线隔开，底色略深，像教科书里画的结构体字段。 */
+/* 结点框里的槽位：`prior` / `next`。两行——字段名在上、它此刻指向谁在下。
+   只写目标值看不出哪格是哪个字段，只写字段名又看不出"next 指向谁"，所以两样都要。 */
 .chain__slot {
   display: grid;
   place-items: center;
-  min-width: 46px;
+  align-content: center;
+  gap: 1px;
+  min-width: 52px;
+  padding: 2px 4px;
   border-left: 1px solid color-mix(in srgb, var(--stage-ink) 18%, transparent);
   background: color-mix(in srgb, var(--stage-ink) 6%, transparent);
+}
+
+.chain__slot-name {
   color: var(--stage-ink-soft);
-  font-size: 14px;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.2;
+}
+
+.chain__slot-target {
+  color: var(--stage-ink-soft);
+  font-size: 15px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
 }
 
 /* 值左边的槽位（双向链表的 prior）：竖线画在右边。 */

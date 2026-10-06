@@ -87,8 +87,11 @@ export interface FramePanel {
    * 有就直接用它，前端不再自己反推——两处各推一份，迟早会推得不一样。
    */
   chainText: Record<string, string[]> | null;
-  /** 这一帧正在改写哪个结点的指针（渲染器把那一格点亮，对应标题里那行代码）。 */
-  chainWrite: number | null;
+  /**
+   * 这一帧正在改写哪个结点的**哪个字段**（`{index, slot}`）——渲染器把那一格点亮，
+   * 对应标题里那行代码（`p->next->prior = s` 改的是 `prior`，不是 `next`）。
+   */
+  chainWrite: { index: number; slot: string } | null;
   /** Zero-based [row, column] of the one cell a grid step is standing on (matrix panels only). */
   focusCell: [number, number] | null;
   /** Half-open index range a sort pass is working on (`low`..`high`). */
@@ -530,7 +533,9 @@ function panelFromView(panel: DsvpPanel, pointers: Record<string, number>, raw: 
   const ownFocus = typeof panel.focusIndex === "number" ? panel.focusIndex : null;
   frame.chain = frame.kind === "array" || frame.kind === "records" ? chainShapeOf(role, kind) : null;
   frame.chainText = chainTextOf(panel);
-  frame.chainWrite = typeof panel.write === "number" ? panel.write : null;
+  frame.chainWrite = typeof panel.write === "number"
+    ? { index: panel.write, slot: typeof panel.writeSlot === "string" ? panel.writeSlot : "next" }
+    : null;
   if (ownFocus !== null) {
     const bounded = clamp(ownFocus, frame.values.length);
     const own = bounded === null ? [] : [{ key: "focus", label: cursorLabel("focus"), index: bounded }];
