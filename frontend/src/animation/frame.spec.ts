@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { frameValueText, normalizeFrame, panelRoleLabel } from "./frame";
+import { collapseBrief, frameValueText, normalizeFrame, panelRoleLabel } from "./frame";
 import type { DsvpState } from "../shared/types/animation";
 
 /**
@@ -65,6 +65,27 @@ describe("cursor publication", () => {
       view: [{ role: "LA", values: [1, 3, 5] }, { role: "meta", values: [], circular: true }],
     } as DsvpState);
     expect(circular.panels[0].chain).toEqual({ lead: null, slots: ["next"], back: false, circular: true });
+  });
+});
+
+describe("brief cut", () => {
+  it("drops a stage's line-by-line frames but keeps that stage's last one", () => {
+    const steps = [
+      { label: "申请", phase: "line" },
+      { label: "写数据", phase: "line" },
+      { label: "定位 p", phase: "assign" },
+      { label: "接前驱", phase: "line" },
+      { label: "接后继", phase: "line" },
+      { label: "完成", phase: "free" },
+    ];
+    // 每段连续 line 只留最后一帧——那一帧就是这个阶段的完成态，信息不丢。
+    expect(collapseBrief(steps).map((step) => step.label)).toEqual(["写数据", "定位 p", "接后继", "完成"]);
+  });
+
+  it("leaves an operation without line frames completely untouched", () => {
+    // 排序/树/图没标 line：详细与精简两版必须一模一样，否则那个开关会把它们压坏。
+    const steps = [{ label: "比较", phase: "sort" }, { label: "交换", phase: "sort" }, { label: "完成", phase: null }];
+    expect(collapseBrief(steps)).toHaveLength(3);
   });
 });
 

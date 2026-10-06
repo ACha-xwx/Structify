@@ -219,14 +219,14 @@ function simulateDoublyList(request, api) {
      新结点先以"两个指针都空"的样子出现，再一行一行接上去，正是教科书画的样子。 */
   const self = (labels) => ({
     labels,
-    prior: labels.map((_, i) => (i === 0 ? "NULL" : labels[i - 1])),
-    next: labels.map((_, i) => (i + 1 < labels.length ? labels[i + 1] : "NULL")),
+    prior: labels.map((_, i) => (i === 0 ? null : i)),
+    next: labels.map((_, i) => (i + 1 < labels.length ? i + 2 : null)),
   });
   const pan = (c, extra = {}) => row("L", c.labels, { prior: [...c.prior], next: [...c.next], ...extra });
   const steps = [];
   let sid = 1;
-  const snap = (code, cur, extra, act) => {
-    steps.push(makeStep(sid++, "assign", code, code,
+  const snap = (code, cur, extra, act, line = false) => {
+    steps.push(makeStep(sid++, line ? "line" : "assign", code, code,
       viewState("doubly_linked_list", [pan(cur, extra), row("meta", [], { operation: op, position, ...(extra?.meta || {}) })]),
       act ? [act] : []));
   };
@@ -238,30 +238,30 @@ function simulateDoublyList(request, api) {
        旁边两个结点也还互相指着，这就是"还没接上去"的样子。 */
     const cur = { labels: [...base.labels], prior: [...base.prior], next: [...base.next] };
     cur.labels.splice(index, 0, String(value));
-    cur.prior.splice(index, 0, "NULL");
-    cur.next.splice(index, 0, "NULL");
-    snap("s = malloc()", cur, { pointers: { L: 0, s: index } });
-    snap(`s->data = ${value}`, cur, { pointers: { L: 0, s: index } });
+    cur.prior.splice(index, 0, null);
+    cur.next.splice(index, 0, null);
+    snap("s = malloc()", cur, { pointers: { L: 0, s: index } }, null, true);
+    snap(`s->data = ${value}`, cur, { pointers: { L: 0, s: index } }, null, true);
     /* 改完再报帧：每个画面显示的是这一行**执行之后**的状态——学生点一次看到一行代码的效果。 */
     if (index === 0) {
-      cur.next[index] = cur.labels[1];
+      cur.next[index] = 2;
       snap("s->next = L", cur, { pointers: { L: 0, s: index }, write: index }, action("link", "新结点 next 指向原首结点", { to: cur.labels[1] }));
-      cur.prior[1] = String(value);
-      snap("L->prior = s", cur, { pointers: { L: 1, s: index }, write: 1, writeSlot: "prior" }, action("link", "原首结点 prior 指向新结点", { to: value }));
-      snap("L = s", cur, { pointers: { L: 0, s: index } });
+      cur.prior[1] = 1;
+      snap("L->prior = s", cur, { pointers: { L: 1, s: index }, write: 1, writeSlot: "prior" }, action("link", "原首结点 prior 指向新结点", { to: value }), true);
+      snap("L = s", cur, { pointers: { L: 0, s: index } }, null, true);
     } else {
       snap("p = L", cur, { pointers: { L: 0, p: 0 } });
       for (let i = 1; i < index; i += 1) {
-        snap("p = p->next", cur, { focusIndex: i, pointers: { L: 0, p: i, s: index } });
+        snap("p = p->next", cur, { focusIndex: i, pointers: { L: 0, p: i, s: index } }, null, true);
       }
-      cur.prior[index] = cur.labels[index - 1];
-      snap("s->prior = p", cur, { pointers: { L: 0, p: index - 1, s: index }, write: index, writeSlot: "prior" }, action("link", "新结点 prior 指向 p", { to: cur.labels[index - 1] }));
+      cur.prior[index] = index;
+      snap("s->prior = p", cur, { pointers: { L: 0, p: index - 1, s: index }, write: index, writeSlot: "prior" }, action("link", "新结点 prior 指向 p", { to: cur.labels[index - 1] }), true);
       cur.next[index] = cur.next[index - 1];
-      snap("s->next = p->next", cur, { pointers: { L: 0, p: index - 1, s: index }, write: index }, action("link", "新结点 next 指向 p 的后继", { to: cur.next[index - 1] }));
-      cur.prior[index + 1] = String(value);
-      snap("p->next->prior = s", cur, { pointers: { L: 0, p: index - 1, s: index }, write: index + 1, writeSlot: "prior" }, action("link", "后继的 prior 改指新结点", { to: value }));
-      cur.next[index - 1] = String(value);
-      snap("p->next = s", cur, { pointers: { L: 0, p: index - 1, s: index }, write: index - 1 }, action("link", "p 的 next 改指新结点", { to: value }));
+      snap("s->next = p->next", cur, { pointers: { L: 0, p: index - 1, s: index }, write: index }, action("link", "新结点 next 指向 p 的后继", { to: cur.next[index - 1] }), true);
+      cur.prior[index + 1] = index + 1;
+      snap("p->next->prior = s", cur, { pointers: { L: 0, p: index - 1, s: index }, write: index + 1, writeSlot: "prior" }, action("link", "后继的 prior 改指新结点", { to: value }), true);
+      cur.next[index - 1] = index + 1;
+      snap("p->next = s", cur, { pointers: { L: 0, p: index - 1, s: index }, write: index - 1 }, action("link", "p 的 next 改指新结点", { to: value }), true);
     }
     const result = [...items]; result.splice(index, 0, value);
     return makeTrace(request, "双向链表插入", `L=[${items.join(",")}]`, `L=[${result.join(",")}]`, steps);
@@ -270,23 +270,23 @@ function simulateDoublyList(request, api) {
   /* 删除：先 q 指向待删结点，再让前后两个结点互相指对方，最后释放 q。 */
   const removed = items[index];
   const cur = self(items.map(String));
-  snap("q = L", cur, { pointers: { L: 0, q: 0 } });
+  snap("q = L", cur, { pointers: { L: 0, q: 0 } }, null, true);
   if (index === 0) {
-    snap("L = L->next", cur, { pointers: { L: 1, q: 0 } });
-    cur.prior[1] = "NULL";
-    snap("L->prior = NULL", cur, { pointers: { L: 1, q: 0 }, write: 1, writeSlot: "prior" }, action("link", "新首结点没有前驱", { to: "NULL" }));
+    snap("L = L->next", cur, { pointers: { L: 1, q: 0 } }, null, true);
+    cur.prior[1] = null;
+    snap("L->prior = NULL", cur, { pointers: { L: 1, q: 0 }, write: 1, writeSlot: "prior" }, action("link", "新首结点没有前驱", { to: "NULL" }), true);
   } else {
     snap("p = L", cur, { pointers: { L: 0, p: 0, q: index } });
     for (let i = 1; i < index; i += 1) {
-      snap("p = p->next", cur, { focusIndex: i, pointers: { L: 0, p: i, q: index } });
+      snap("p = p->next", cur, { focusIndex: i, pointers: { L: 0, p: i, q: index } }, null, true);
     }
     snap("q = p->next", cur, { pointers: { L: 0, p: index - 1, q: index }, focusIndex: index });
     const successor = cur.next[index];
     cur.next[index - 1] = successor;
-    snap("p->next = q->next", cur, { pointers: { L: 0, p: index - 1, q: index }, write: index - 1 }, action("link", "p 直接指向 q 的后继", { to: successor }));
+    snap("p->next = q->next", cur, { pointers: { L: 0, p: index - 1, q: index }, write: index - 1 }, action("link", "p 直接指向 q 的后继", { to: successor }), true);
     if (index + 1 < cur.labels.length) {
-      cur.prior[index + 1] = cur.labels[index - 1];
-      snap("q->next->prior = p", cur, { pointers: { L: 0, p: index - 1, q: index }, write: index + 1, writeSlot: "prior" }, action("link", "后继的 prior 改指 p", { to: cur.labels[index - 1] }));
+      cur.prior[index + 1] = index;
+      snap("q->next->prior = p", cur, { pointers: { L: 0, p: index - 1, q: index }, write: index + 1, writeSlot: "prior" }, action("link", "后继的 prior 改指 p", { to: cur.labels[index - 1] }), true);
     }
   }
   const freed = self(items.filter((_, i) => i !== index).map(String));

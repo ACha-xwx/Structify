@@ -83,10 +83,10 @@ export interface FramePanel {
   /** Present when the values are a chain of nodes: how a node is shaped and how nodes are wired. */
   chain: ChainShape | null;
   /**
-   * 引擎按结构给的槽位文字：`next: ["1","3","5","head"]` 就是"第 i 个结点 next 栏写什么"。
-   * 有就直接用它，前端不再自己反推——两处各推一份，迟早会推得不一样。
+   * 引擎按结构给的槽位目标：`next: [2, 3, 4, null]` = "第 i 个结点的 next 指向第几个结点"。
+   * 存序号而不是值——值会重复，序号不会。有就直接用，前端不再自己反推。
    */
-  chainText: Record<string, string[]> | null;
+  chainText: Record<string, (string | number | null)[]> | null;
   /**
    * 这一帧正在改写哪个结点的**哪个字段**（`{index, slot}`）——渲染器把那一格点亮，
    * 对应标题里那行代码（`p->next->prior = s` 改的是 `prior`，不是 `next`）。
@@ -585,17 +585,31 @@ function ownPointerCursors(panel: DsvpPanel, length: number): FrameCursor[] {
 }
 
 /**
- * 引擎按结构给的槽位文字：`next: ["1","3","5","head"]` —— 第 i 个结点 next 栏此刻该写什么。
- * 有就不在前端反推（`NULL`/`head`/相邻结点各推一份，迟早推得不一样）。
+ * 引擎按结构给的槽位目标：`next: [2, 3, 4, null]` —— **第 i 个结点的 next 指向第几个结点**。
+ *
+ * 存的是**结点序号**而不是它的值：值会重复（`[20,20]` 两个 20 都写 "20" 就分不清指向谁），
+ * 只有序号唯一。跨表的用 `"B#2"` 这种带表后缀的写法。`null` = 没有指向。
  */
-function chainTextOf(panel: DsvpPanel): Record<string, string[]> | null {
-  const text: Record<string, string[]> = {};
+function chainTextOf(panel: DsvpPanel): Record<string, (string | number | null)[]> | null {
+  const text: Record<string, (string | number | null)[]> = {};
   for (const key of ["next", "prior"] as const) {
     const value = panel[key];
     if (!Array.isArray(value)) continue;
-    text[key] = value.map((item) => (item === null || item === undefined ? "NULL" : String(item)));
+    text[key] = value.map((item) => (item === undefined ? null : (item as string | number | null)));
   }
   return Object.keys(text).length ? text : null;
+}
+
+/**
+ * 精简版：把「逐行细节」帧的每一连续段压成最后一帧。
+ *
+ * 引擎用 `phase: "line"` 标出"这一帧只是一行代码的中间过程"（`s->prior = p`、`p = p->next` 之类），
+ * 段内最后一帧就是这一阶段的完成态，留着它这一段就没有信息损失。
+ * **没标 `line` 的操作（排序、树、图…）一帧都不会掉**——详细/精简这个开关对它们没有副作用。
+ * 详细版（默认）一帧不压：一行代码一帧，像 debug 单步。
+ */
+export function collapseBrief<T extends { phase?: string | null }>(steps: readonly T[]): T[] {
+  return steps.filter((step, index) => step.phase !== "line" || steps[index + 1]?.phase !== "line");
 }
 
 /** The one cell a grid step stands on, when the engine names it as `focusCell: [row, column]`. */function focusCellOf(panel: DsvpPanel): [number, number] | null {

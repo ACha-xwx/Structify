@@ -90,8 +90,11 @@ function simulateCircularList(req,api){
          两个表各自有 p、q 时，共用一份会互相串（LB 的 q 会标到 LA 上）。
      这样"怎么断的、怎么连的"就是画面本身，不需要旁白。 */
   const chain=(values,headLabel="head")=>{
-    const labels=[headLabel,...values];
-    const next=labels.map((_,i)=>(i+1<labels.length?String(labels[i+1]):headLabel));
+    const labels=[headLabel,...values.map(String)];
+    /* `next` 里放的是**目标结点的序号**（第几个结点，从 1 数起），**不是它的值**——
+       值会重复（[20,20] 两个 20 都写"20"就分不清指向谁），只有序号唯一。
+       第 1 个结点是头结点；尾结点指回 1（循环）。跨表的用 `"B#2"` 这种带表面板前缀的写法。 */
+    const next=labels.map((_,i)=>(i+1<labels.length?i+2:1));
     return {labels,next};
   };
   const pan=(role,c,extra={})=>row(role,c.labels,{next:[...c.next],...extra});
@@ -113,11 +116,11 @@ function simulateCircularList(req,api){
       view("circular_linked_list",[pan("LA",c,{pointers:{head:0,r:tail}}),row("meta",[],{operation:op,circular:true,tail})]))];
     for(const x of vals){
       const idx=c.labels.length;
-      c.labels.push(String(x));c.next.push("head");                       /* s = new; s->data = x; s->next = head; */
+      c.labels.push(String(x));c.next.push(1);                       /* s = new; s->data = x; s->next = head; */
       steps.push(makeStep(sid++,"link","s->next = head","s->next = head",
         view("circular_linked_list",[pan("LA",c,{focusIndex:idx,pointers:{head:0,r:tail},write:idx}),row("meta",[],{operation:op,circular:true,tail,value:x})]),
         [action("link","新结点先接回头结点",{target:idx,to:"head",value:x})]));
-      c.next[tail]=String(x);                                             /* r->next = s;  r = s; */
+      c.next[tail]=idx+1;                                             /* r->next = s;  r = s; */
       steps.push(makeStep(sid++,"link","r->next = s","r->next = s",
         view("circular_linked_list",[pan("LA",c,{focusIndex:idx,pointers:{head:0,r:tail},write:tail}),row("meta",[],{operation:op,circular:true,tail:idx,value:x})]),
         [action("link","原尾结点接到新结点",{target:tail,to:x,value:x})]));
@@ -139,32 +142,32 @@ function simulateCircularList(req,api){
 
   if(headPointer){
     /* 算法 2.14：先沿 next 走到两个表的尾结点，再把 A 尾接到 B 的首数据结点、B 尾接回 A。每行一帧。 */
-    steps.push(makeStep(sid++,"assign","p = A","p = A",
+    steps.push(makeStep(sid++,"line","p = A","p = A",
       view("circular_linked_list",[pan("LA",A,{pointers:{p:0,A:0}}),pan("LB",B,{pointers:{B:0}}),row("meta",[],{operation:op,circular:true})]),[action("move","p 指向 A 的头结点",{target:"p"})]));
     for(let i=0;i<A.labels.length-1;i++){
-      steps.push(makeStep(sid++,"assign","p = p->next","p = p->next",
+      steps.push(makeStep(sid++,"line","p = p->next","p = p->next",
         view("circular_linked_list",[pan("LA",A,{focusIndex:i+1,pointers:{p:i+1,A:0}}),pan("LB",B,{pointers:{B:0}}),row("meta",[],{operation:op,circular:true})]),[action("move","p 后移",{target:"p",value:i+1})]));
     }
-    A.next[A.labels.length-1]="2";
+    A.next[A.labels.length-1]="B#2";
     steps.push(makeStep(sid++,"assign","p->next = B->next","p->next = B->next",
       view("circular_linked_list",[pan("LA",A,{focusIndex:A.labels.length-1,pointers:{p:A.labels.length-1,A:0},write:A.labels.length-1}),pan("LB",B,{pointers:{B:0}}),row("meta",[],{operation:op,circular:true})]),[action("link","改写 A 尾结点的 next",{target:"p->next",from:"head",to:"2"})]));
-    steps.push(makeStep(sid++,"assign","q = B","q = B",
+    steps.push(makeStep(sid++,"line","q = B","q = B",
       view("circular_linked_list",[pan("LA",A,{pointers:{p:A.labels.length-1,A:0}}),pan("LB",B,{pointers:{q:0,B:0}}),row("meta",[],{operation:op,circular:true})]),[action("move","q 指向 B 的头结点",{target:"q"})]));
     for(let i=0;i<B.labels.length-1;i++){
-      steps.push(makeStep(sid++,"assign","q = q->next","q = q->next",
+      steps.push(makeStep(sid++,"line","q = q->next","q = q->next",
         view("circular_linked_list",[pan("LA",A,{pointers:{p:A.labels.length-1,A:0}}),pan("LB",B,{focusIndex:i+1,pointers:{q:i+1,B:0}}),row("meta",[],{operation:op,circular:true})]),[action("move","q 后移",{target:"q",value:i+1})]));
     }
-    B.next[B.labels.length-1]="headA";
+    B.next[B.labels.length-1]="A#1";
     steps.push(makeStep(sid++,"assign","q->next = A","q->next = A",
       view("circular_linked_list",[pan("LA",A,{pointers:{p:A.labels.length-1,A:0}}),pan("LB",B,{focusIndex:B.labels.length-1,pointers:{q:B.labels.length-1,B:0},write:B.labels.length-1}),row("meta",[],{operation:op,circular:true})]),[action("link","改写 B 尾结点的 next",{target:"q->next",from:"head",to:"A"})]));
   } else {
     /* 算法 2.15：有尾指针就不用找尾，三行赋值接完。 */
-    steps.push(makeStep(sid++,"assign","p = rA->next","p = rA->next",
+    steps.push(makeStep(sid++,"line","p = rA->next","p = rA->next",
       view("circular_linked_list",[pan("LA",A,{pointers:{p:0,rA:A.labels.length-1}}),pan("LB",B,{pointers:{rB:B.labels.length-1}}),row("meta",[],{operation:op,circular:true})]),[action("move","p = rA->next",{target:"p",value:0})]));
-    A.next[A.labels.length-1]="2";
+    A.next[A.labels.length-1]="B#2";
     steps.push(makeStep(sid++,"assign","rA->next = rB->next","rA->next = rB->next",
       view("circular_linked_list",[pan("LA",A,{focusIndex:A.labels.length-1,pointers:{p:0,rA:A.labels.length-1},write:A.labels.length-1}),pan("LB",B,{pointers:{rB:B.labels.length-1}}),row("meta",[],{operation:op,circular:true})]),[action("link","改写 A 尾结点的 next",{target:"rA->next",from:"head",to:"2"})]));
-    B.next[B.labels.length-1]="headA";
+    B.next[B.labels.length-1]="A#1";
     steps.push(makeStep(sid++,"assign","rB->next = p","rB->next = p",
       view("circular_linked_list",[pan("LA",A,{pointers:{p:0,rA:A.labels.length-1}}),pan("LB",B,{focusIndex:B.labels.length-1,pointers:{rB:B.labels.length-1},write:B.labels.length-1}),row("meta",[],{operation:op,circular:true})]),[action("link","改写 B 尾结点的 next",{target:"rB->next",to:"A"})]));
   }

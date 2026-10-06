@@ -290,6 +290,10 @@ export const messages = {
   "player.next": { zh: "下一步", en: "Next" },
   "player.reset": { zh: "回到起点", en: "Back to start" },
   "player.speed": { zh: "速度", en: "Speed" },
+  // 两档粒度：详细＝一行代码一帧（像 debug 单步）；精简＝每个阶段一帧。
+  "player.detailLabel": { zh: "演示详细程度", en: "Level of detail" },
+  "player.detailDebug": { zh: "详细", en: "Detailed" },
+  "player.detailBrief": { zh: "精简", en: "Brief" },
   "player.speedLabel": { zh: "播放速度", en: "Playback speed" },
   "player.rail": { zh: "步骤跳转（点一格跳到那一步）", en: "Step rail (click a tick to jump there)" },
   "player.placeholder": { zh: "还没有生成动画", en: "No animation yet" },

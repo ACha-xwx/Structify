@@ -49,6 +49,32 @@ describe("animation player", () => {
     expect(withSteps.find(".player__single").exists()).toBe(false);
   });
 
+  it("starts on the detailed cut and can switch to the brief one", async () => {
+    // 详细 = 一行代码一帧（默认，像 debug 单步）；精简 = 每个阶段一帧。
+    const coded: AnimationDefinition = {
+      animation: true,
+      type: "list",
+      title: "双向链表插入",
+      description: "",
+      initial: [10],
+      steps: [
+        { op: "assign", label: "申请结点", note: "s = malloc()", phase: "line" },
+        { op: "assign", label: "写数据", note: "s->data = 15", phase: "line" },
+        { op: "assign", label: "定位", note: "p = L", phase: "assign" },
+        { op: "assign", label: "接前驱", note: "s->prior = p", phase: "line" },
+        { op: "assign", label: "接后继", note: "s->next = p->next", phase: "line" },
+      ],
+    };
+
+    const wrapper = mount(AnimationPlayer, { props: { definition: coded } });
+    expect(wrapper.get(".player__position").text()).toContain("共 5 步");
+    expect(wrapper.get('button[aria-pressed="true"]').text()).toBe("详细");
+
+    await wrapper.findAll(".player__detail-option")[1].trigger("click");
+    expect(wrapper.get(".player__position").text()).toContain("共 3 步");
+    expect(wrapper.get('button[aria-pressed="true"]').text()).toBe("精简");
+  });
+
   it("preserves step controls and changes the silver transport icon with playback state", async () => {
     vi.useFakeTimers();
     const wrapper = mount(AnimationPlayer, { props: { definition, controlsVariant: "silver" } });

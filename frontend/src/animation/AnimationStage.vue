@@ -39,33 +39,33 @@ function isLeadCursor(panel: FramePanel, cursor: { key: string }): boolean {
  *
  * 不能只看结构形状（`chain.circular`）：循环表**被改过指针之后**，尾结点的 next 可能已经指向别的结点
  * （合并第一行 `p->next = B->next` 之后，A 的尾结点指向的是 2，不再指回自己的头结点）。
- * 所以以引擎给的槽位文字为准：末结点的 next 确实解析成头结点时才画那根绕回箭头。
+ * 所以以引擎给的序号为准：末结点的 next 确实是**第 1 个结点**时才画那根绕回箭头。
  */
 function chainWraps(panel: FramePanel): boolean {
   if (!panel.chain?.circular || panel.values.length === 0) return false;
   const lastNext = panel.chainText?.next?.[panel.values.length - 1];
   if (lastNext === undefined) return true;
-  return lastNext === String(panel.values[0]);
+  return lastNext === 1 || lastNext === "1";
 }
 
 /**
- * 结点框里某一栏写什么。
- *
- * **优先用引擎给的文字**（`panel.chainText.next[i]`）——引擎按结构定义知道第 i 个结点的 next 此刻指向谁，
- * 前端不该再推一份。引擎没给才退回按形状推：`next`/`prior` 在链表两端本来就没有指向（写 `NULL`），
- * 唯一例外是循环链表，它的末结点 `next` 指回 `head`。
+ * 结点框里某一栏写什么。**指向谁用结点序号表示**（`→ 3` = 第 3 个结点）——
+ * 写值的话遇到重复数据就不直观了（`[20,20]` 分不清指向哪一个）；序号唯一，而且结点框上就标着序号。
+ * 优先用引擎给的（`panel.chainText`），没有才按相邻关系推。
  */
 function chainSlotText(panel: FramePanel, cell: number, slot: string): string {
   const fromEngine = panel.chainText?.[slot]?.[cell];
-  if (typeof fromEngine === "string") return fromEngine;
-  // 引擎没给就按**结点顺序**推：next 指向下一个结点、prior 指向上一个，两端是 NULL
-  // （循环链表的末结点 next 绕回首结点）。注意这里返回的是"指向谁"，不是字段名——
-  // 字段名由槽位上那行小字给，两者各占一行。
-  const labels = panel.values.map((value) => (isEmptyValue(value) ? "∅" : frameValueText(value)));
-  const last = labels.length - 1;
-  if (slot === "next") return cell < last ? labels[cell + 1] : panel.chain?.circular ? labels[0] ?? "head" : "NULL";
-  if (slot === "prior") return cell === 0 ? "NULL" : labels[cell - 1];
+  if (fromEngine !== undefined) return chainTargetText(fromEngine);
+  const last = panel.values.length - 1;
+  if (slot === "next") return cell < last ? chainTargetText(cell + 2) : panel.chain?.circular ? chainTargetText(1) : "NULL";
+  if (slot === "prior") return cell === 0 ? "NULL" : chainTargetText(cell);
   return "NULL";
+}
+
+/** `2` → `→ 2`；`"B#2"` → `→ B#2`（跨表）；`null` → `NULL`。 */
+function chainTargetText(target: string | number | null): string {
+  if (target === null) return "NULL";
+  return `→ ${target}`;
 }
 
 const frame = computed<AnimationFrame>(() => normalizeFrame(props.state ?? props.step?.dsvpState ?? null));
@@ -469,7 +469,11 @@ const graphLayouts = computed(() => {
                   <i class="chain__slot-name">{{ panel.chain.lead }}</i>
                   <b class="chain__slot-target">{{ chainSlotText(panel, cell, panel.chain.lead) }}</b>
                 </span>
-                <span class="chain__value">{{ isEmptyValue(value) ? "∅" : frameValueText(value) }}</span>
+                <span class="chain__value">
+                  <b class="chain__value-text">{{ isEmptyValue(value) ? "∅" : frameValueText(value) }}</b>
+                  <!-- 结点序号：槽位里那些 `→ 3` 指的就是这个号。重复数据也能分清谁指向谁。 -->
+                  <i class="chain__index">#{{ cell + 1 }}</i>
+                </span>
                 <!-- 正在被改写的那一格点亮——帧的标题就是那行代码（`p->next = B->next`），一格一亮对应一行。
                      改的是**哪个字段**由引擎说了算（`p->next->prior = s` 亮的是 prior 格，不是 next 格）。 -->
                 <span
@@ -823,11 +827,28 @@ const graphLayouts = computed(() => {
 .chain__value {
   display: grid;
   place-items: center;
+  align-content: center;
+  gap: 1px;
   min-width: 54px;
   min-height: 48px;
   padding: 0 6px;
-  font-size: 19px;
   color: var(--stage-ink);
+}
+
+.chain__value-text {
+  font-size: 19px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+/* 结点序号（第几个结点）。槽位里的 `→ 3` 指的就是它——重复数据靠这个才分得清。 */
+.chain__index {
+  color: var(--stage-ink-soft);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 结点框里的槽位：`prior` / `next`。两行——字段名在上、它此刻指向谁在下。

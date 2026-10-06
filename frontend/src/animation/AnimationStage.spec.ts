@@ -98,13 +98,16 @@ describe("AnimationStage", () => {
       node.findAll(".chain__slot-target").map((cell) => cell.text());
     const names = (node: ReturnType<typeof wrapper.findAll>[number]) =>
       node.findAll(".chain__slot-name").map((cell) => cell.text());
-    expect(targets(nodes[0])).toEqual(["NULL", "15"]);
+    // 指向谁用**结点序号**表示（`→ 3` = 第 3 个结点）：写值的话重复数据就分不清了。
+    expect(targets(nodes[0])).toEqual(["NULL", "→ 2"]);
     expect(names(nodes[0])).toEqual(["prior", "next"]);
-    expect(targets(nodes[1])).toEqual(["10", "20"]);
-    expect(targets(nodes[2])).toEqual(["15", "NULL"]);
+    expect(targets(nodes[1])).toEqual(["→ 1", "→ 3"]);
+    expect(targets(nodes[2])).toEqual(["→ 2", "NULL"]);
+    // 结点框上标着序号，槽位里的 `→ n` 指的就是它。
+    expect(nodes[1].find(".chain__index").text()).toBe("#2");
     // 每个结点框都是 [prior | 值 | next] 三格（字段名 + 指向谁各一行）。
     expect(names(nodes[1])).toEqual(["prior", "next"]);
-    expect(targets(nodes[1])[0]).toBe("10");
+    expect(targets(nodes[1])[0]).toBe("→ 1");
     // 三结点两段间隙，每段两根箭头（正向 + 反向）。
     expect(wrapper.findAll(".chain__link")).toHaveLength(4);
     expect(wrapper.findAll(".chain__link--back")).toHaveLength(2);
@@ -117,8 +120,8 @@ describe("AnimationStage", () => {
     });
 
     const nodes = wrapper.findAll(".chain__node");
-    // 末结点的 next 绕回首结点（这一帧的 LA 没有单独的头结点，所以目标就是第 1 个结点）。
-    expect(nodes[2].findAll(".chain__slot-target").map((slot) => slot.text())).toEqual(["1"]);
+    // 末结点的 next 绕回首结点（这一帧的 LA 没有单独的头结点，所以目标就是**第 1 个结点**）。
+    expect(nodes[2].findAll(".chain__slot-target").map((slot) => slot.text())).toEqual(["→ 1"]);
     expect(wrapper.findAll(".chain__wrap")).toHaveLength(1);
     expect(wrapper.get(".chain__wrap").text()).toBe("回到 head");
   });

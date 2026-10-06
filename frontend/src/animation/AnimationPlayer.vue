@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import AnimationStage from "./AnimationStage.vue";
 import LiquidMetalButton from "../admin/components/LiquidMetalButton.vue";
 import RuntimeSelect from "../shared/components/RuntimeSelect.vue";
@@ -8,7 +8,7 @@ import rightArrowIcon from "../assets/classroom/right-arrow.svg";
 import playIcon from "../assets/animation/play.svg";
 import pauseIcon from "../assets/animation/pause.svg";
 import loopIcon from "../assets/animation/loop.svg";
-import { initialFrame } from "./frame";
+import { collapseBrief, initialFrame } from "./frame";
 import { PLAYBACK_SPEEDS, useAnimationPlayback } from "./useAnimationPlayback";
 import { useI18n } from "../shared/i18n/locale";
 import type { AnimationDefinition } from "../shared/types/animation";
@@ -32,7 +32,17 @@ const props = withDefaults(defineProps<{
 }>(), { placeholder: "", compact: false, trace: null, controlsVariant: "default" });
 
 const { t } = useI18n();
-const steps = computed(() => props.definition?.steps ?? []);
+/**
+ * 两档粒度：**详细**＝一行代码一帧（像 debug 单步，默认）；**精简**＝每个阶段一帧。
+ *
+ * 分档由引擎标（`phase: "line"` 的是"中间过程帧"），所以排序/树/图这些没标 phase 的操作
+ * 两版完全一样——这个开关不会把它们压坏。
+ */
+const detail = ref<"debug" | "brief">("debug");
+const steps = computed(() => {
+  const all = props.definition?.steps ?? [];
+  return detail.value === "brief" ? collapseBrief(all) : all;
+});
 const stepCount = computed(() => steps.value.length);
 /** 这条动画的身份：标题 + 步数 + 首步标题。步数相同的两条动画也必须各自从起点开始播。 */
 const playbackIdentity = computed(() =>
@@ -49,10 +59,16 @@ const currentStep = computed(() => (playback.index.value >= 0 ? steps.value[play
  */
 const singleFrame = computed(() => stepCount.value === 1);
 /**
- * 这一帧的标题就是**一行代码**（引擎把赋值语句放在 step 的 title/note 里，phase 标成 `assign`）。
- * 代码用等宽字体显示：一眼分得出"这是一行程序"还是"这是一句解释"。
+ * 这一帧的标题就是**一行代码**（`p->next = B->next`）。
+ *
+ * 判据是引擎的约定：**代码帧的 title 与 note 都是那行代码**（解释性帧两者不同）。
+ * 早先这里看的是 `phase === "assign"`，但 phase 后来兼作"详细/精简"的分档标记（`line`），
+ * 两者混在一起会让逐行帧丢掉等宽字体——真机验收抓到的。
  */
-const headlineIsCode = computed(() => currentStep.value?.phase === "assign");
+const headlineIsCode = computed(() => {
+  const step = currentStep.value;
+  return Boolean(step && step.note && step.note === step.label);
+});
 /** Before the first step the learner sees the input, not a blank canvas. */
 const initialState = computed(() => initialFrame(props.definition, props.trace));
 /** The one big line under the title: the step's concrete outcome (note) beats its category (label),
@@ -121,6 +137,23 @@ function onKeydown(event: KeyboardEvent) {
         <button class="player__button" type="button" @click="playback.reset">{{ t("player.reset") }}</button>
         </template>
         <span class="player__position">{{ playback.positionLabel.value }}</span>
+        <!-- 详细（一行代码一帧，默认）/ 精简（每个阶段一帧）。只对引擎标了"逐行帧"的操作有区别。 -->
+        <div class="player__detail" role="group" :aria-label="t('player.detailLabel')">
+          <button
+            type="button"
+            class="player__detail-option"
+            :class="{ 'player__detail-option--on': detail === 'debug' }"
+            :aria-pressed="detail === 'debug'"
+            @click="detail = 'debug'"
+          >{{ t("player.detailDebug") }}</button>
+          <button
+            type="button"
+            class="player__detail-option"
+            :class="{ 'player__detail-option--on': detail === 'brief' }"
+            :aria-pressed="detail === 'brief'"
+            @click="detail = 'brief'"
+          >{{ t("player.detailBrief") }}</button>
+        </div>
         <label class="player__speed">
           <span>{{ t("player.speed") }}</span>
           <RuntimeSelect v-if="controlsVariant === 'silver'" v-model="playback.speed.value" class-name="player__speed-select" variant="reference" :options="PLAYBACK_SPEEDS.map(option => ({ value: option, label: `${option}×` }))" :ariaLabel="t('player.speedLabel')" />
@@ -241,6 +274,27 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 .player__speed { display: inline-flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 19px; }
+
+/* 详细 / 精简 两档。做成连体胶囊：一眼看出这是"同一件事的两档"，而不是两个按钮。 */
+.player__detail {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.player__detail-option {
+  padding: 6px 16px;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 19px;
+  cursor: pointer;
+}
+
+.player__detail-option--on { background: var(--text); color: var(--surface); }
 .player__speed select {
   min-height: 40px;
   padding: 6px 14px;
