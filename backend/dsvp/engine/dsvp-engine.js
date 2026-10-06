@@ -681,14 +681,19 @@ const COUNTED_ACTIONS = new Map([
 /** Running totals written onto each step, so a learner can see how much work the step has cost so far. */
 function attachCounters(steps) {
   const totals = { compareCount: 0, swapCount: 0 };
+  const running = [];
   for (const step of steps) {
     for (const action of step.dsvpActions || []) {
       const key = COUNTED_ACTIONS.get(String(action?.type || ""));
       if (key) totals[key] += 1;
     }
-    // Before anything has been counted, "0 comparisons" is noise; after that it is the whole point.
-    if (totals.compareCount || totals.swapCount) writeMeta(step.dsvpState, { ...totals });
+    running.push({ ...totals });
   }
+  // 只有这次演示真的数得出动作才写计数器：BFS 这类结构一个比较/交换都没有，
+  // 给它们挂一行"比较次数 0 / 交换次数 0"是噪音。反过来，能数得出的就**从第一帧起写 0**——
+  // 让"比较次数"从缺到有，胶囊行会中途冒出来一格，比从头显示 "比较 0 次" 更像界面出错。
+  if (!totals.compareCount && !totals.swapCount) return;
+  steps.forEach((step, index) => writeMeta(step.dsvpState, running[index]));
 }
 
 /**

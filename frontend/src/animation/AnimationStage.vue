@@ -724,15 +724,21 @@ const graphLayouts = computed(() => {
   position: relative;
   display: flex;
   align-items: center;
-  padding-top: 24px;
+  /* 给结点上方的具名指针留够一行的高度：`head` + `当前` 这种两枚标记必须并排在一行，
+     换行后会掉进结点框里把值盖住（2026-10-06 真机截图抓到的 `当前` 压在 `10 next` 上）。 */
+  padding-top: 26px;
 }
 
+/* 绝对定位的盒子默认宽度只从 `left:50%` 到父元素右边缘——结点宽的一半——所以 max-width 根本轮不到生效，
+   两枚标记必然换行。`width: max-content` 让盒子按内容撑开，再靠 translateX(-50%) 居中。 */
 .chain__marks {
   position: absolute;
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  max-width: 140px;
+  width: max-content;
+  max-width: 240px;
+  flex-wrap: nowrap;
 }
 
 .chain__body {
