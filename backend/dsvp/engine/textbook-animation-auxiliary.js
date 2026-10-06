@@ -700,7 +700,61 @@ function simulateTreeAux(req,api){const {makeStep,makeTrace,action}=helpers(api)
 
 function simulateForest(req,api){const {makeStep,makeTrace,action}=helpers(api),op=req.operation;const groups=Array.isArray(req.params.trees)?req.params.trees:[["A","B","C"],["D","E"],["F"]];if(!groups.length)throw new SimulationInputError("EMPTY_FOREST","森林至少需要一棵树（trees 为空）","trees");if(groups.length>8)throw new SimulationInputError("INPUT_TOO_LARGE",`森林动画最多演示 8 棵树，当前 ${groups.length} 棵`,"trees");groups.forEach((g,i)=>{if(!Array.isArray(g)||!g.length)throw new SimulationInputError("EMPTY_TREE",`第 ${i+1} 棵树为空：每棵树至少要有一个结点`,`trees[${i}]`);if(g.length>10)throw new SimulationInputError("INPUT_TOO_LARGE",`第 ${i+1} 棵树有 ${g.length} 个结点，超过单棵 10 个的上限`,`trees[${i}]`);});let sid=1;const steps=[makeStep(sid++,"init",op==="to_binary_tree"?"森林":"二叉树表示","按孩子-兄弟对应关系转换。",view("forest",[row("trees",groups),row("meta",[],{operation:op})]))];const labels=groups.flat();for(let i=0;i<groups.length;i++){steps.push(makeStep(sid++,"link",`链接第 ${i+1} 棵树（根 ${groups[i][0]}）`,groups[i].length>1?`树根 ${groups[i][0]} 的第一孩子作左孩子，其余孩子依次成为右兄弟：${groups[i].join("、")}。`:`单结点树 ${groups[i][0]}：没有孩子，只作为前一棵树的右兄弟挂接点。`,view("forest",[row("trees",groups,{focusCell:[i,0]}),row("meta",[],{operation:op,currentTree:i+1})]),[action("link","按孩子兄弟规则链接",{value:groups[i].length})]));}steps.push(makeStep(sid++,"link",op==="to_binary_tree"?"第一孩子作为左孩子，下一兄弟作为右孩子":"左链还原孩子，右链分隔兄弟",`建立孩子-兄弟链接关系：${labels.join("、")}。`,view("forest",[row("trees",groups),row("binaryRepresentation",labels),row("meta",[],{operation:op,converted:true})]),[action("link","按孩子兄弟规则转换",{value:labels.length})]));return makeTrace(req,op==="to_binary_tree"?"森林转换为二叉树":"二叉树还原为森林","孩子兄弟关系","转换完成",steps);}
 
-function simulateUnionFindAux(req,api){const {makeStep,makeTrace,action}=helpers(api),op=req.operation;const n=int(req.params.size,6,2,30,"size");if(op==="initialize"){const parent=Array(n).fill(-1);return makeTrace(req,"并查集初始化",`n=${n}`,`parent=[${parent.join(",")}]`,[makeStep(1,"init","每个元素自成一个集合","parent[i]=-1 表示每个结点都是独立根。",view("union_find",[row("parent",parent),row("meta",[],{operation:op})]))]);}const rawParent=req.params.parent!==undefined?req.params.parent:req.initial_state.data;const provided=normalizeParentArray(rawParent);const parent=provided??[-6,0,0,2,3,4];const size=parent.length;const x=int(req.params.element,Math.min(5,size-1),0,size-1,"element");let cur=x,sid=1;const path=[];const steps=[makeStep(sid++,"init","并查集父指针",`parent=[${parent.join(",")}]（负值 = 根，其绝对值为集合大小）。先沿 parent 找根，再压缩路径。`,view("union_find",[row("parent",parent),row("meta",[],{operation:op,element:x})]))];while(parent[cur]>=0){path.push(cur);steps.push(makeStep(sid++,"find","沿父指针向根移动",`${cur} → ${parent[cur]}`,view("union_find",[row("parent",parent),row("meta",[],{current:cur,path:[...path]})]),[action("move","沿 parent 向根移动",{from:cur,to:parent[cur]})]));cur=parent[cur];}for(const p of path){parent[p]=cur;steps.push(makeStep(sid++,"compress","路径压缩",`parent[${p}]=${cur}`,view("union_find",[row("parent",parent),row("meta",[],{root:cur,compressed:p})]),[action("link","直接连接根",{from:p,to:cur})]));}return makeTrace(req,"并查集路径压缩查找",`element=${x}`,`root=${cur}`,steps);}
+/* 并查集：`parent` 数组里负值是根（绝对值为集合大小）。
+   初始化 = 逐个单元写 -1；路径压缩查找 = 先走到根、再 `parent[x] = root` 把沿途结点直接接到根上。 */
+function simulateUnionFindAux(req,api){
+  const {makeStep,makeTrace,action}=helpers(api),op=req.operation;
+  const n=int(req.params.size,6,2,30,"size");
+  if(op==="initialize"){
+    /* 先把 n 个单元开出来（还不是集合），再**一格一格**写 -1——init 从 1 帧变成 n+1 帧，
+       每一帧数组都真的变一格。逐格帧标 line：精简版会把它压成"一步到位"。 */
+    const parent=Array(n).fill(null);
+    let sid=1;
+    const at=(extra={})=>view("union_find",[row("parent",parent),row("meta",[],{operation:op,size:n,...extra})]);
+    const steps=[makeStep(sid++,"init","parent[n]",`先开出 ${n} 个单元：每个元素各自成一个集合。`,at())];
+    for(let i=0;i<n;i++){
+      parent[i]=-1;
+      steps.push(makeStep(sid++,"line",`parent[${i}] = -1`,`parent[${i}] = -1`,at({current:i}),[action("assign","置为 -1（自己就是根）",{target:i,value:-1})]));
+    }
+    return makeTrace(req,"并查集初始化",`n=${n}`,`parent=[${parent.join(",")}]`,steps);
+  }
+  const rawParent=req.params.parent!==undefined?req.params.parent:req.initial_state.data;
+  const provided=normalizeParentArray(rawParent);
+  const parent=provided??[-6,0,0,2,3,4];
+  const size=parent.length;
+  const x=int(req.params.element,Math.min(5,size-1),0,size-1,"element");
+  let sid=1;
+  const at=(extra={})=>view("union_find",[row("parent",parent),row("meta",[],{operation:op,...extra})]);
+  const steps=[makeStep(sid++,"init","parent[]",`parent=[${parent.join(",")}]（负值 = 根，其绝对值为集合大小）。先沿 parent 找根，再把沿途结点直接连到根。`,at())];
+  const snap=(code,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"compress",code,code,at(extra),act?[act]:[]));
+  /* 第一段：走到根 */
+  snap(`root = ${x}`,{current:x,root:x},action("assign","先假定自己是根",{value:x}),true);
+  let root=x;
+  for(;;){
+    const up=parent[root]>=0;
+    snap(`while (parent[root] >= 0) → ${up}`,{current:root,root,"parent[root]":parent[root]},null,true);
+    if(!up)break;
+    const next=parent[root];
+    snap("root = parent[root]",{current:next,root:next},action("move",`root 上移到 ${next}`,{from:root,to:next}),true);
+    root=next;
+  }
+  /* 第二段：从出发点开始，把沿途每一个结点直接挂到根上 */
+  snap(`x = ${x}`,{current:x,x,root},action("assign","回到出发点做压缩",{value:x}),true);
+  let cur=x;
+  for(;;){
+    const more=cur!==root;
+    snap(`while (x != root) → ${more}`,{current:cur,x:cur,root,"parent[x]":parent[cur]},null,true);
+    if(!more)break;
+    const t=parent[cur];
+    snap("t = parent[x]",{current:cur,x:cur,root,t},null,true);
+    parent[cur]=root;
+    snap("parent[x] = root",{current:cur,x:cur,root,t,"parent[x]":root},action("link",`${cur} 直接连到根 ${root}`,{from:cur,to:root}),true);
+    snap("x = t",{current:t,x:t,root},action("move","x 移到原来的父亲",{value:t}),true);
+    cur=t;
+  }
+  snap("return root",{current:root,root,"return":root});
+  return makeTrace(req,"并查集路径压缩查找",`element=${x}`,`root=${root}`,steps);
+}
 
 function graphData(req,defaults={}){return normalizeGraphSpec(req,defaults);}
 function graphRows(g,extra={}){return[row("graph",[],{nodes:g.nodes.map((x,i)=>({id:x,label:x,index:i})),edges:g.edges}),row("meta",[],{directed:g.directed,...extra})];}

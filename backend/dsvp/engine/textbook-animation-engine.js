@@ -677,6 +677,9 @@ function simulateHuffman(request,api){
   return makeTrace(request,"构造哈夫曼树","权值集合",`WPL 构造完成`,steps);
 }
 
+/* 并查集：`parent` 数组里负值是根（绝对值为集合大小）。
+   代码级的两条主线——`while (parent[x] >= 0) x = parent[x];` 往根上走，
+   `parent[x] = root;` 把沿途结点直接接到根上。 */
 function simulateUnionFind(request,api){
   const {makeStep,makeTrace,action}=makeHelpers(api);
   // 用户显式传入的 parent 优先（注册表明明声明了这个参数，此前却被静默替换成 size 个单点集）。
@@ -686,18 +689,46 @@ function simulateUnionFind(request,api){
   let parent,n;
   if(provided){parent=provided;n=parent.length;}
   else{n=intParam(request.params,"size",6,2,20);parent=Array(n).fill(-1);}
-  const steps=[makeStep(1,"init","并查集森林",`parent=[${parent.join(",")}]（负值 = 根，其绝对值为集合大小）`,viewState("union_find",[row("parent",parent),row("meta",[],{operation:request.operation,size:n})]))];
-  function find(x){const path=[];while(parent[x]>=0){path.push(x);x=parent[x];}return {root:x,path};}
-  if(request.operation==="find"){const x=intParam(request.params,"element",Math.min(2,Math.max(0,n-1)),0,n-1);const r=find(x);let sid=2;for(const p of r.path)steps.push(makeStep(sid++,"follow","沿双亲指针向根移动",`${p} → ${parent[p]}`,viewState("union_find",[row("parent",parent),row("path",r.path),row("meta",[],{current:p,root:r.root,operation:request.operation})]),[action("move","沿 parent 查找根",{from:p,to:parent[p]})]));steps.push(makeStep(sid,"done","找到代表元",`元素 ${x} 的根为 ${r.root}${r.path.length?`（沿 parent 走了 ${r.path.length} 步）`:"（它本身就是根）"}。`,viewState("union_find",[row("parent",parent),row("meta",[],{root:r.root,operation:request.operation})])));return makeTrace(request,"并查集查找",`element=${x}`,`root=${r.root}`,steps);}
+  let sid=2;
+  const at=(extra={})=>viewState("union_find",[row("parent",parent),row("meta",[],{operation:request.operation,...extra})]);
+  const snap=(code,extra,act,line)=>steps.push(makeStep(sid++,line?"line":request.operation,code,code,at(extra),act?[act]:[]));
+  const steps=[makeStep(1,"init","parent[]",`parent=[${parent.join(",")}]（负值 = 根，其绝对值为集合大小）。`,at())];
+  /* 沿 parent 一路走到根：条件一行、上移一行，走到的每一步都看得见。 */
+  const walk=(name,start)=>{
+    snap(`${name} = ${start}`,{current:start,[name]:start},action("assign",`先假定 ${start} 自己是根`,{value:start}),true);
+    let cur=start;
+    for(;;){
+      const up=parent[cur]>=0;
+      snap(`while (parent[${name}] >= 0) → ${up}`,{current:cur,[name]:cur,[`parent[${name}]`]:parent[cur]},null,true);
+      if(!up)break;
+      const next=parent[cur];
+      snap(`${name} = parent[${name}]`,{current:next,[name]:next},action("move",`${name} 上移到 ${next}`,{from:cur,to:next}),true);
+      cur=next;
+    }
+    return cur;
+  };
+  if(request.operation==="find"){
+    const x=intParam(request.params,"element",Math.min(2,Math.max(0,n-1)),0,n-1);
+    const root=walk("x",x);
+    snap("return x",{current:root,x:root,root},action("visit","x 就是代表元",{value:root}));
+    return makeTrace(request,"并查集查找",`element=${x}`,`root=${root}`,steps);
+  }
   const a=intParam(request.params,"a",0,0,n-1),b=intParam(request.params,"b",Math.min(1,n-1),0,n-1);
-  const fa=find(a),fb=find(b);const ra=fa.root,rb=fb.root;let sid=2;
-  for(const p of fa.path)steps.push(makeStep(sid++,"follow",`向上找 ${a} 的集合根`,`${p} → ${parent[p]}`,viewState("union_find",[row("parent",parent),row("path",fa.path),row("meta",[],{current:p,a,b,operation:request.operation})]),[action("move","沿 parent 找 a 的根",{from:p,to:parent[p]})]));
-  steps.push(makeStep(sid++,"root",`${a} 的集合根是 ${ra}`,`${a} 沿 parent 走到根 ${ra}（集合大小 ${-parent[ra]}）。`,viewState("union_find",[row("parent",parent),row("meta",[],{root:ra,a,b,operation:request.operation})])));
-  for(const p of fb.path)steps.push(makeStep(sid++,"follow",`向上找 ${b} 的集合根`,`${p} → ${parent[p]}`,viewState("union_find",[row("parent",parent),row("path",fb.path),row("meta",[],{current:p,a,b,operation:request.operation})]),[action("move","沿 parent 找 b 的根",{from:p,to:parent[p]})]));
-  steps.push(makeStep(sid++,"root",`${b} 的集合根是 ${rb}`,`${b} 沿 parent 走到根 ${rb}（集合大小 ${-parent[rb]}）。`,viewState("union_find",[row("parent",parent),row("meta",[],{root:rb,a,b,operation:request.operation})])));
-  if(ra===rb){steps.push(makeStep(sid,"skip","两元素已在同一集合",`${a} 与 ${b} 的根都是 ${ra}，本次合并不改变 parent 数组。`,viewState("union_find",[row("parent",parent),row("meta",[],{a,b,operation:request.operation,unchanged:true})])));return makeTrace(request,"并查集合并",`a=${a},b=${b}`,"已在同一集合，parent 未改变",steps);}
-  const sizeA=-parent[ra],sizeB=-parent[rb];if(sizeA>=sizeB){parent[ra]-=sizeB;parent[rb]=ra;}else{parent[rb]-=sizeA;parent[ra]=rb;}
-  steps.push(makeStep(sid,"union","合并两棵集合树",`根 ${ra}（大小 ${sizeA}）与根 ${rb}（大小 ${sizeB}）：较小树的根挂到较大树的根上。`,viewState("union_find",[row("parent",parent),row("meta",[],{a,b,operation:request.operation})]),[action("link","较小树挂到较大树根",{from:ra,to:rb})]));
+  const ra=walk("ra",a),rb=walk("rb",b);
+  const same=ra===rb;
+  snap(`if (ra == rb) → ${same}`,{current:ra,ra,rb},null,true);
+  if(same){
+    snap("return 0",{current:ra,ra,rb,"return":0},action("skip","两元素已在同一集合，parent 不变",{value:0}));
+    return makeTrace(request,"并查集合并",`a=${a},b=${b}`,"已在同一集合，parent 未改变",steps);
+  }
+  /* 两棵树都是负数：`parent[ra] > parent[rb]` 的意思是"ra 那棵更小"，把小的挂到大的上。 */
+  const hookBToA=parent[ra]>parent[rb];
+  snap(`if (parent[ra] > parent[rb]) → ${hookBToA}`,{current:ra,ra,rb,"parent[ra]":parent[ra],"parent[rb]":parent[rb]},null,true);
+  let line;
+  if(hookBToA){parent[rb]+=parent[ra];parent[ra]=rb;line="parent[rb] += parent[ra]; parent[ra] = rb";}
+  else{parent[ra]+=parent[rb];parent[rb]=ra;line="parent[ra] += parent[rb]; parent[rb] = ra";}
+  snap(line,{current:ra,ra,rb},action("link",`${hookBToA?"ra（较小的树）挂到 rb":"rb（较小的树）挂到 ra"}`,{from:hookBToA?ra:rb,to:hookBToA?rb:ra}));
+  snap("return 1",{current:ra,ra,rb,"return":1});
   return makeTrace(request,"并查集合并",`a=${a},b=${b}`,`parent=[${parent.join(",")}]`,steps);
 }
 
