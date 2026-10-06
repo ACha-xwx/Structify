@@ -34,7 +34,7 @@ function clone(v){return v===undefined?undefined:JSON.parse(JSON.stringify(v));}
 function row(role,values,extra={}){return {role,values:clone(values),...clone(extra)};}
 function view(kind,rows,meta={}){return {kind,view:clone(rows),meta:clone(meta)};}
 function scalarArray(v,f=[]){if(!Array.isArray(v))return clone(f);return v.map((item,index)=>{if(item===null||["string","number","boolean"].includes(typeof item))return item;throw new SimulationInputError("INVALID_ELEMENT",`第 ${index+1} 个元素 ${JSON.stringify(item)} 类型不支持：只接受数字、字符串、布尔值或 null`,`data[${index}]`);});}
-function numArray(v,f=[]){if(!Array.isArray(v))return clone(f);return v.map((item,index)=>{const n=Number(item);if(!Number.isFinite(n))throw new SimulationInputError("INVALID_ELEMENT",`第 ${index+1} 个元素 ${JSON.stringify(item)} 不是有效数字`,`data[${index}]`);return n;});}
+function numArray(v,f=[]){if(!Array.isArray(v))return clone(f);return v.map((item,index)=>{const n=typeof item==="string"&&item.trim()===""?NaN:Number(item);if(!Number.isFinite(n))throw new SimulationInputError("INVALID_ELEMENT",`第 ${index+1} 个元素 ${JSON.stringify(item)} 不是有效数字`,`data[${index}]`);return n;});}
 function int(v,f,min=-1e9,max=1e9,name="参数"){if(v===undefined||v===null||v==="")return f;const n=Number(v);if(!Number.isInteger(n))throw new SimulationInputError("INVALID_PARAM",`参数 ${name}=${JSON.stringify(v)} 必须是整数`,name);if(n<min||n>max)throw new SimulationInputError("PARAM_OUT_OF_RANGE",`参数 ${name}=${n} 超出支持范围 [${min}, ${max}]`,name);return n;}
 function helpers(api){return {makeStep:api.makeStep,makeTrace:api.makeTrace,action:api.action};}
 
@@ -817,7 +817,7 @@ function simulateForest(req,api){
   const groups=Array.isArray(req.params.trees)?req.params.trees:[["A","B","C"],["D","E"],["F"]];
   if(!groups.length)throw new SimulationInputError("EMPTY_FOREST","森林至少需要一棵树（trees 为空）","trees");
   if(groups.length>8)throw new SimulationInputError("INPUT_TOO_LARGE",`森林动画最多演示 8 棵树，当前 ${groups.length} 棵`,"trees");
-  groups.forEach((g,i)=>{if(!Array.isArray(g)||!g.length)throw new SimulationInputError("EMPTY_TREE",`第 ${i+1} 棵树为空：每棵树至少要有一个结点`,`trees[${i}]`);if(g.length>10)throw new SimulationInputError("INPUT_TOO_LARGE",`第 ${i+1} 棵树有 ${g.length} 个结点，超过单棵 10 个的上限`,`trees[${i}]`);});
+  groups.forEach((g,i)=>{if(!Array.isArray(g)||!g.length)throw new SimulationInputError("EMPTY_TREE",`第 ${i+1} 棵树为空：每棵树至少要有一个结点`,`trees[${i}]`);g.forEach((v,j)=>{if(String(v).trim()==="")throw new SimulationInputError("EMPTY_NODE_LABEL",`第 ${i+1} 棵树的第 ${j+1} 个结点没有名字：请给每个结点一个标签`,`trees[${i}]`);});if(g.length>10)throw new SimulationInputError("INPUT_TOO_LARGE",`第 ${i+1} 棵树有 ${g.length} 个结点，超过单棵 10 个的上限`,`trees[${i}]`);});
   const trees=forestTreesOf(groups);
   const order=forestPreorder(trees);
   const nextRootOf=(ti)=>ti+1<trees.length?trees[ti+1].root:undefined;

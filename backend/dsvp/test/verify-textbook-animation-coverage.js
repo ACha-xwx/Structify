@@ -77,4 +77,39 @@ for (const [blank, label] of [[null, "null"], [undefined, "undefined"], ["", "�
   );
 }
 
+/* 数值数组里的空串**不能悄悄变成 0**：`Number("") === 0`，输入框里多打一个逗号
+   （`49,38,,97`）就会凭空多出一个 0，排序/图的动画会莫名其妙多一格。按非法元素报错才对。 */
+assert.throws(
+  () => simulateOperation({
+    structure: "sort",
+    operation: "bubble",
+    initial_state: { data: [49, 38, "", 97] },
+    params: {}
+  }),
+  /不是有效数字/,
+  "数值数组里的空串必须显式报错，不能静默变成 0"
+);
+
+/* 结点/顶点**必须有名字**：空标签画出来就是一个没有名字的空框/空圈，和没写一样。
+   树那边是"当成没有这个孩子"，图和森林这种"结点由列表给出"的结构则直接报错更清楚。 */
+assert.throws(
+  () => simulateOperation({
+    structure: "graph",
+    operation: "dfs",
+    initial_state: { data: { nodes: ["A", "B", ""], edges: [["A", "B", 1]] } },
+    params: { start: "A" }
+  }),
+  /顶点标签不能为空/,
+  "图的顶点标签不能是空串"
+);
+assert.throws(
+  () => simulateOperation({
+    structure: "forest",
+    operation: "to_binary_tree",
+    params: { trees: [["A", "B"], [""]] }
+  }),
+  /没有名字/,
+  "森林的每个结点都要有名字"
+);
+
 console.log(`Textbook animation coverage PASS: ${listed.length} capabilities, ${totalSteps} deterministic trace steps across canonical demos.`);

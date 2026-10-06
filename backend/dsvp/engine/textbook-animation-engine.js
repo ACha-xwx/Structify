@@ -120,7 +120,9 @@ function numberArray(value, fallback = []) {
   if (!Array.isArray(value)) return [...fallback];
   // 空数组保持为空（由各模拟器决定空表语义）；非法元素显式报错，不再静默丢弃。
   return value.map((item, index) => {
-    const n = Number(item);
+    /* `Number("")` 是 0——输入框里多打一个逗号（`10,20,,40`）就会**悄悄多出一个 0**，
+       排序/图这些动画会莫名其妙多一格。空串和 "abc" 一样按非法元素报错，别静默变 0。 */
+    const n = typeof item === "string" && item.trim() === "" ? NaN : Number(item);
     if (!Number.isFinite(n)) {
       throw new SimulationInputError("INVALID_ELEMENT", `第 ${index + 1} 个元素 ${JSON.stringify(item)} 不是有效数字`, `data[${index}]`);
     }
