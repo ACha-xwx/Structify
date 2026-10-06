@@ -41,40 +41,96 @@ function helpers(api){return {makeStep:api.makeStep,makeTrace:api.makeTrace,acti
 function simulateLinkedListAux(req,api){
   const {makeStep,makeTrace,action}=helpers(api); const op=req.operation;
   const data=scalarArray(req.initial_state.data,[10,20,30,40]); let sid=1;
-  const state=(items,extra={})=>view("linked_list",[row("L",items),row("meta",[],{operation:op,...extra})]);
-  const steps=[makeStep(sid++,"init","单链表状态",data.length?`当前结点：${data.join(" → ")}`:"当前为空表。",state(data))];
-  /* 空链表在界面上就是"一片空白"，所以这一步要把那个头结点真的画出来：
-     渲染器读的是面板的 nodes，往额外字段里塞内容它是看不见的（2026-09-23 的教训）。 */
-  if(op==="initialize"){const headEmpty=view("linked_list",[row("L",[],{nodes:[{id:"head",label:"head"}],edges:[]}),row("meta",[],{head:"head",next:"NULL",operation:op})]);steps.push(makeStep(sid,"init","建立头结点","申请头结点并令 next=NULL：表里还没有数据结点。",headEmpty,[action("allocate","申请头结点",{target:"head"})]));return makeTrace(req,"初始化单链表","未初始化","空表 L",steps);}
+  /* 代码级：一帧 = 一行赋值，帧的标题就是那行代码；槽位里写**目标结点的序号**（`next: [2,3,null]`，
+     写值遇到重复数据就分不清）；逐行帧标 `phase: "line"`（精简版把连续 line 压成最后一帧）。
+     这里用**带头结点**的模型（`head->next` 指向首数据结点）——头结点是第 1 个结点，
+     所以数据结点的序号从 2 开始，和教材的图画法一致。 */
+  const ring=(values)=>({labels:["head",...values.map(String)],next:["head",...values.map(String)].map((_,i)=>i+1<values.length+1?i+2:null)});
+  const pan=(c,extra={})=>row("L",c.labels,{next:[...c.next],...extra});
+  const plain=(values)=>({labels:values.map(String),next:values.map((_,i)=>i+1<values.length?i+2:null)});
+  const steps=[];
+  const snap=(code,rows,meta,act,line)=>steps.push(makeStep(sid++,line?"line":"assign",code,code,view("linked_list",[...rows,row("meta",[],meta)]),act?[act]:[]));
+
+  if(op==="initialize"){
+    snap("L = malloc()",[pan(ring([]),{pointers:{L:0}})],{operation:op},action("allocate","申请头结点",{value:"head"}),true);
+    snap("L->next = NULL",[pan(ring([]),{pointers:{L:0},write:0})],{operation:op},action("link","头结点的 next 置空",{to:"NULL"}));
+    return makeTrace(req,"初始化单链表","未初始化","空表 L",steps);
+  }
   if(op==="build_head"||op==="build_tail"){
-    const input=scalarArray(req.params.values??data,[1,2,3,4]); const out=[];
-    /* 每次插入分两帧：先"申请新结点"（高亮落在待插入结点面板），再"修改指针挂进链表"（高亮落到它最终的位置）。
-       早先一步到位：头插的落点永远是下标 0，整条动画高亮一动不动，看着就像卡住。 */
-    const linkState=(items,extra={})=>view("linked_list",[row("L",items,{focusIndex:op==="build_head"?0:items.length-1}),row("meta",[],{operation:op,...extra})]);
+    const input=scalarArray(req.params.values??data,[1,2,3,4]);
+    const c=ring([]);let rear=0;
+    snap("L = malloc(); L->next = NULL",[pan(c,{pointers:{L:0}})],{operation:op},action("allocate","建立头结点",{}),true);
     for(const x of input){
-      steps.push(makeStep(sid++,"allocate","申请新结点",`申请结点 s，数据域置 ${x}，next 暂为 NULL。`,view("linked_list",[row("L",out),row("new",[x],{focusIndex:0}),row("meta",[],{operation:op,input:x})]),[action("allocate","申请新结点",{value:x})]));
-      if(op==="build_head")out.unshift(x);else out.push(x);
-      steps.push(makeStep(sid++,"link",op==="build_head"?"头插新结点":"尾插新结点",op==="build_head"?`s->next = head->next，head->next = s：${x} 成为第一个数据结点。`:`rear->next = s，rear = s：${x} 成为新的尾结点。`,linkState(out,{input:x}),[action("link",op==="build_head"?"头插":"尾插",{value:x})]));
+      const idx=c.labels.length;
+      c.labels.push("");c.next.push(null);
+      snap("s = malloc()",[pan(c,{pointers:{L:0,s:idx}})],{operation:op,input:x},null,true);
+      c.labels[idx]=String(x);
+      snap(`s->data = ${x}`,[pan(c,{pointers:{L:0,s:idx}})],{operation:op,input:x},null,true);
+      if(op==="build_head"){
+        c.next[idx]=c.next[0];
+        snap("s->next = L->next",[pan(c,{pointers:{L:0,s:idx},write:idx})],{operation:op,input:x},action("link","新结点先接住原来的首结点",{to:2}));
+        c.next[0]=idx+1;
+        snap("L->next = s",[pan(c,{pointers:{L:0,s:idx},write:0})],{operation:op,input:x},action("link","头结点指向新结点",{to:idx+1}));
+      } else {
+        if(idx===1){c.next[0]=2;rear=2;}
+        else {c.next[rear-1]=idx+1;rear=idx+1;}
+        snap(idx===1?"L->next = s":"rear->next = s",[pan(c,{pointers:{L:0,rear},write:idx===1?0:rear-1})],{operation:op,input:x},action("link",idx===1?"头结点接上新结点":"尾结点指向新结点",{to:idx+1}));
+        snap("rear = s",[pan(c,{pointers:{L:0,rear:idx+1}})],{operation:op,input:x},null,true);
+      }
     }
-    return makeTrace(req,op==="build_head"?"头插法建立单链表":"尾插法建立单链表",`输入=${input.join(",")}`,`L=${out.join("→")}`,steps);
+    const out=input.slice();
+    return makeTrace(req,op==="build_head"?"头插法建立单链表":"尾插法建立单链表",`输入=${input.join(",")}`,`L=head→${out.join("→")}`,steps);
   }
   if(op==="search_position"){
     const position=int(req.params.position,2,1,Math.max(1,data.length));
-    for(let i=0;i<data.length&&i<position;i++)steps.push(makeStep(sid++,"traverse","工作指针后移",`当前到达第 ${i+1} 个结点 ${data[i]}。`,state(data,{current:i,position}),[action("move","沿 next 后移",{target:i,value:data[i]})]));
+    const c=plain(data);
+    snap("p = L",[pan(c,{pointers:{p:0}})],{operation:op,position},null,true);
+    for(let i=0;i<data.length&&i<position-1;i++){
+      snap("p = p->next",[pan(c,{focusIndex:i+1,pointers:{p:i+1}})],{operation:op,position},null,true);
+    }
     return makeTrace(req,"单链表按位置查找",`i=${position}`,position<=data.length?`找到 ${data[position-1]}`:"不存在",steps);
   }
   if(op==="search_value"){
-    const key=req.params.key??data[Math.min(2,data.length-1)]; let found=-1;
-    for(let i=0;i<data.length;i++){steps.push(makeStep(sid++,"compare","比较结点值",`${String(data[i])} ${data[i]===key?"=":"≠"} ${String(key)}`,state(data,{current:i,key}),[action("compare","比较 data 与 key",{target:i,value:key})]));if(data[i]===key){found=i;break;}}
+    const key=req.params.key??data[Math.min(2,data.length-1)]; const c=plain(data);
+    snap("p = L",[pan(c,{pointers:{p:0}})],{operation:op,key},null,true);
+    let found=-1;
+    for(let i=0;i<data.length;i++){
+      const hit=data[i]===key;
+      snap(`if (p->data == ${String(key)}) → ${hit?"true":"false"}`,[pan(c,{focusIndex:i,pointers:{p:i}})],{operation:op,key},action("compare","比较 data 与 key",{value:key}));
+      if(hit){found=i;break;}
+      if(i+1<data.length)snap("p = p->next",[pan(c,{focusIndex:i+1,pointers:{p:i+1}})],{operation:op,key},null,true);
+    }
     return makeTrace(req,"单链表按值查找",`key=${String(key)}`,found>=0?`第 ${found+1} 个结点`:`未找到`,steps);
   }
   if(op==="length"){
-    for(let i=0;i<data.length;i++)steps.push(makeStep(sid++,"count","计数并后移",`已数到第 ${i+1} 个数据结点。`,state(data,{current:i,count:i+1}),[action("count","结点计数加 1",{value:i+1})]));
+    const c=plain(data);
+    snap("n = 0; p = L",[pan(c,{pointers:{p:0}})],{operation:op,count:0},null,true);
+    for(let i=0;i<data.length;i++){
+      if(i>0)snap("p = p->next",[pan(c,{focusIndex:i,pointers:{p:i}})],{operation:op,count:i},null,true);
+      snap("n = n + 1",[pan(c,{focusIndex:i,pointers:{p:i}})],{operation:op,count:i+1},action("count","结点计数加 1",{value:i+1}));
+    }
     return makeTrace(req,"求单链表长度","从头结点后开始计数",`length=${data.length}`,steps);
   }
-  const work=[...data]; let prev=null,cur=0;
-  while(cur<work.length){steps.push(makeStep(sid++,"reverse","反转当前 next",`让结点 ${work[cur]} 的 next 指向前驱 ${prev===null?"NULL":work[prev]}。`,state(work,{current:cur,previous:prev===null?null:prev,reversedThrough:cur}),[action("link","next 指向前驱",{from:cur,to:prev})]));prev=cur;cur++;}
-  const out=[...work].reverse();steps.push(makeStep(sid,"done","头指针改指向原尾结点",`反转完成：${out.join(" → ")}`,state(out,{done:true})));return makeTrace(req,"单链表逆置",`L=${data.join("→")}`,`L=${out.join("→")}`,steps);
+  /* 逆置（算法 2.8）：把每个结点的 next 依次反转过来，四个指针 r、p、q 一路往前推。
+     每遍历一个结点报四帧：`q = p->next` → `p->next = r` → `r = p` → `p = q`——
+     断和接的顺序在画面上就是"这根旧箭头消失、那根新箭头出现"。 */
+  {
+    const c=plain(data);
+    snap("r = NULL; p = L",[pan(c,{pointers:{p:0}})],{operation:op},null,true);
+    let p=0,r=null;
+    while(p<data.length){
+      const q=p+1<data.length?p+1:null;
+      snap("q = p->next",[pan(c,{focusIndex:p,pointers:{p,r:r===null?undefined:r}})],{operation:op},null,true);
+      const before=c.next[p];
+      c.next[p]=r===null?null:r+1;
+      snap("p->next = r",[pan(c,{focusIndex:p,pointers:{p,q:q===null?undefined:q},write:p})],{operation:op},action("link","next 改指前驱",{from:before,to:c.next[p]}),true);
+      r=p;p=q===null?data.length:q;
+      snap("r = p; p = q",[pan(c,{pointers:{r:r===null?undefined:r,p:p}})],{operation:op});
+    }
+    const out=[...data].reverse();
+    snap("L = r",[pan(plain(out),{pointers:{L:0}})],{operation:op,done:true},action("link","头指针改指向原尾结点",{}));
+    return makeTrace(req,"单链表逆置",`L=${data.join("→")}`,`L=${out.join("→")}`,steps);
+  }
 }
 
 function simulateCircularList(req,api){
@@ -178,14 +234,37 @@ function simulateCircularList(req,api){
 
 function simulateStaticList(req,api){
   const {makeStep,makeTrace,action}=helpers(api),op=req.operation; const size=int(req.params.size,8,4,30,"size");let sid=1;
-  let nodes=Array.from({length:size},(_,i)=>({index:i,data:null,cursor:i+1<size?i+1:0,free:true}));
-  const st=(extra={})=>view("static_linked_list",[row("nodes",nodes),row("meta",[],{operation:op,...extra})]);
-  if(op==="initialize")return makeTrace(req,"静态单链表初始化",`空间=${size}`,"备用链建立",[makeStep(1,"init","串联备用结点","用 cursor 把未使用结点串成备用链。",st({available:0}),[action("link","建立备用链",{target:"cursor"})])]);
-  const used=Array.isArray(req.params.usedIndices)?req.params.usedIndices.map((v,i)=>{const n=Number(v);if(!Number.isInteger(n)||n<0||n>=size)throw new SimulationInputError("INVALID_INDEX",`usedIndices 第 ${i+1} 项 ${JSON.stringify(v)} 必须是 0~${size-1} 的下标`,`usedIndices[${i}]`);return n;}):[1,2,3];for(const i of used){nodes[i].free=false;nodes[i].data=`D${i}`;}
+  /* 静态链表的"指针"就是数组下标（`cursor` 栏），所以整个操作就是**逐格改写 cursor**。
+     代码级：一帧 = 一行（`space[i].cur = i+1` / `av = space[p].cur` …），
+     已用/空闲靠 free 那栏区分，备用链的走向直接从 cursor 栏读出来。 */
+  let nodes=Array.from({length:size},(_,i)=>({index:i,data:null,cursor:null,free:true}));
+  const steps=[];
+  const snap=(code,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"assign",code,code,view("static_linked_list",[row("nodes",nodes),row("meta",[],{operation:op,...extra})]),act?[act]:[]));
+  if(op==="initialize"){
+    for(let i=0;i<size-1;i++){nodes[i].cursor=i+1;snap(`space[${i}].cur = ${i+1}`,{available:0},null,true);}
+    nodes[size-1].cursor=0;
+    snap(`space[${size-1}].cur = 0`,{available:0},action("link","备用链收尾：最后一个结点指回 0",{target:"cur"}));
+    return makeTrace(req,"静态单链表初始化",`空间=${size}`,"备用链建立",steps);
+  }
+  const used=Array.isArray(req.params.usedIndices)?req.params.usedIndices.map((v,i)=>{const n=Number(v);if(!Number.isInteger(n)||n<0||n>=size)throw new SimulationInputError("INVALID_INDEX",`usedIndices 第 ${i+1} 项 ${JSON.stringify(v)} 必须是 0~${size-1} 的下标`,`usedIndices[${i}]`);return n;}):[1,2,3];
+  for(const i of used){nodes[i].free=false;nodes[i].data=`D${i}`;}
+  snap("av = 0",{used},action("assign","av 是备用链头",{}),true);
   const freeIdx=nodes.findIndex((n,i)=>i>0&&n.free);
-  const steps=[makeStep(sid++,"init","静态链表空间","显示已用结点与备用结点。",st({used}))];
-  if(op==="allocate"){if(freeIdx<0)return makeTrace(req,"静态链表申请结点","备用链","无空闲结点",steps);steps.push(makeStep(sid++,"locate","沿备用链找到空闲结点",`备用链头是下标 ${freeIdx} 的空闲结点，申请就从这里摘取。`,st({operation:op,current:freeIdx,phase:"locate"}),[action("locate","定位备用链头",{target:freeIdx})]));nodes[freeIdx].free=false;nodes[freeIdx].data=req.params.value??"NEW";steps.push(makeStep(sid,"allocate","从备用链摘下首结点",`申请下标 ${freeIdx}，备用链头移到下一空闲结点。`,st({allocated:freeIdx}),[action("allocate","摘下备用结点",{target:freeIdx,value:nodes[freeIdx].data})]));return makeTrace(req,"静态链表申请空间","备用链",`index=${freeIdx}`,steps);}
-  const target=int(req.params.index,used[0]??1,1,size-1,"index");if(nodes[target].free)throw new SimulationInputError("INVALID_INDEX",`下标 ${target} 的结点不在已用状态，无法释放（已用下标：${used.join("、")}）`,"index");steps.push(makeStep(sid++,"locate","定位待释放结点",`下标 ${target} 的结点 ${nodes[target].data} 将被归还到备用链表头。`,st({operation:op,current:target,phase:"locate"}),[action("locate","定位待释放结点",{target})]));nodes[target].free=true;nodes[target].data=null;steps.push(makeStep(sid,"free","归还结点到备用链","把被释放结点插回备用链表头。",st({freed:target}),[action("free","归还空间",{target})]));return makeTrace(req,"静态链表释放空间",`index=${target}`,"已归还备用链",steps);
+  if(op==="allocate"){
+    if(freeIdx<0)return makeTrace(req,"静态链表申请结点","备用链","无空闲结点",steps);
+    snap("p = av",{used,current:freeIdx,av:0},null,true);
+    snap("av = space[p].cur",{used,current:freeIdx,av:nodes[freeIdx].cursor},null,true);
+    nodes[freeIdx].free=false;nodes[freeIdx].data=req.params.value??"NEW";
+    snap("space[p].data = x",{used,allocated:freeIdx},action("allocate","把数据写进这个结点",{target:freeIdx,value:nodes[freeIdx].data}));
+    return makeTrace(req,"静态链表申请空间","备用链",`index=${freeIdx}`,steps);
+  }
+  const target=int(req.params.index,used[0]??1,1,size-1,"index");if(nodes[target].free)throw new SimulationInputError("INVALID_INDEX",`下标 ${target} 的结点不在已用状态，无法释放（已用下标：${used.join("、")}）`,"index");
+  snap("p = 待释放结点下标",{used,current:target},null,true);
+  nodes[target].cursor=0;
+  snap("space[p].cur = av",{used,current:target},action("link","把释放结点的 cursor 接到备用链头",{target:"cur"}));
+  nodes[target].free=true;nodes[target].data=null;
+  snap("av = p",{used,freed:target},action("assign","备用链头回到这个结点",{}));
+  return makeTrace(req,"静态链表释放空间",`index=${target}`,"已归还备用链",steps);
 }
 
 function normalizeTerms(v,f=[{coef:3,exp:3},{coef:2,exp:1},{coef:1,exp:0}]){const a=Array.isArray(v)?v:f;return a.map((t,i)=>{if(!t||typeof t!=="object"||Array.isArray(t))throw new SimulationInputError("INVALID_TERM",`第 ${i+1} 项 ${JSON.stringify(t)} 格式不正确：多项式项应为 { "coef": 数字, "exp": 数字 }（如 { "coef": 3, "exp": 4 }）`,`terms[${i}]`);const coef=Number(t.coef??t.coefficient),exp=Number(t.exp??t.exponent);if(!Number.isFinite(coef))throw new SimulationInputError("INVALID_TERM",`第 ${i+1} 项的系数必须是有限数字（当前 ${JSON.stringify(t.coef??t.coefficient)}）`,`terms[${i}]`);if(!Number.isInteger(exp)||exp<0)throw new SimulationInputError("INVALID_TERM",`第 ${i+1} 项的指数必须是非负整数（当前 ${JSON.stringify(t.exp??t.exponent)}）`,`terms[${i}]`);return {coef,exp};});}
@@ -195,7 +274,36 @@ function simulateStackAux(req,api){const {makeStep,makeTrace,action}=helpers(api
 
 function simulateDoubleStack(req,api){const {makeStep,makeTrace,action}=helpers(api),op=req.operation;const capacity=int(req.params.capacity,8,4,30,"capacity");const raw=req.initial_state.data;const left=scalarArray(req.params.left??raw?.[0],[1,2]),right=scalarArray(req.params.right??raw?.[1],[9,8]);let sid=1;const st=(extra={},focusSide=null,focusIndex=null)=>view("double_stack",[row("left",left,focusSide==="left"&&focusIndex!==null?{focusIndex}:{}),row("right",right,focusSide==="right"&&focusIndex!==null?{focusIndex}:{}),row("meta",[],{capacity,topLeft:left.length-1,topRight:capacity-right.length,free:capacity-left.length-right.length,...extra})]);const steps=[makeStep(sid++,"init","双端顺序栈",`两个栈从数组两端向中间增长。`,st({operation:op}))];if(op==="initialize")return makeTrace(req,"双端顺序栈初始化","共享数组","两端栈顶就位",steps);if(op.startsWith("push")){if(left.length+right.length>=capacity)return api.makeRuntimeError(req,"双端顺序栈进栈","STACK_OVERFLOW",`共享数组已满（capacity=${capacity}，两栈共占 ${left.length+right.length} 个单元），不能再进栈。`,st({operation:op}),"栈满");const side=op.endsWith("left")?left:right;const val=req.params.value??(side===left?3:7);steps.push(makeStep(sid++,"check","进栈前检查共享空间",`两栈共占 ${left.length+right.length}/${capacity} 个单元，${side===left?"左":"右"}栈顶将从 ${side.length-1} 移到 ${side.length}。`,st({operation:op,value:val,phase:"check"},op.endsWith("left")?"left":"right",side.length-1),[action("check","检查两栈顶是否相遇",{value:val})]));side.push(val);steps.push(makeStep(sid,"push",side===left?"左栈进栈":"右栈进栈",`${val} 从${side===left?"左":"右"}端进入共享数组。`,st({operation:op},op.endsWith("left")?"left":"right",side.length-1),[action("push","双端栈进栈",{value:val})]));}else{const side=op.endsWith("left")?left:right;if(!side.length)return api.makeRuntimeError(req,"双端顺序栈出栈","STACK_UNDERFLOW",`${op.endsWith("left")?"左":"右"}栈为空，不能出栈。`,st({operation:op}),"空栈");steps.push(makeStep(sid++,"check","栈顶元素就位",`${side===left?"左":"右"}栈顶是 ${side[side.length-1]}，出栈后栈顶指针向端点退一格。`,view("double_stack",[row(side===left?"left":"right",side,{focusIndex:side.length-1}),row(side===left?"right":"left",side===left?right:left),row("meta",[],{capacity,topLeft:left.length-1,topRight:capacity-right.length,free:capacity-left.length-right.length,operation:op,phase:"check"})]),[action("read","定位栈顶",{target:side.length-1})]));const val=side.pop();steps.push(makeStep(sid,"pop",side===left?"左栈出栈":"右栈出栈",`${String(val)} 从${side===left?"左":"右"}端退出。`,st({operation:op}),[action("pop","双端栈出栈",{value:val})]));}return makeTrace(req,"双端顺序栈操作","共享空间","操作完成",steps);}
 
-function simulateLinkedStack(req,api){const {makeStep,makeTrace,action}=helpers(api),op=req.operation;const data=scalarArray(req.initial_state.data,[2,5,7]);let sid=1;const st=(extra={})=>view("linked_stack",[row("stack",data),row("meta",[],{top:data.length?0:null,operation:op,...extra})]);const steps=[makeStep(sid++,"init","链栈状态","栈顶指针指向链表首结点。",st())];if(op==="push"){const v=req.params.value??9;steps.push(makeStep(sid++,"link","申请新结点",`申请新结点 ${v}，它的 next 将指向当前栈顶${data.length?` ${data[0]}`:"（原栈为空）"}。`,view("linked_stack",[row("stack",data),row("meta",[],{top:data.length?0:null,operation:op,value:v,phase:"prepare"})]),[action("allocate","申请结点",{value:v})]));data.unshift(v);steps.push(makeStep(sid,"link","新结点作为栈顶",`结点 ${v} 接到链首，top 改指向它。`,st({value:v}),[action("link","新结点接到链首",{value:v})]));}else{if(!data.length)return api.makeRuntimeError(req,"链栈出栈","STACK_UNDERFLOW","链栈为空，不能出栈。",st({operation:op}),"空栈");steps.push(makeStep(sid++,"unlink","栈顶结点就位",`top 指向栈顶结点 ${data[0]}，摘下它之后 top 改指向后继${data.length>1?` ${data[1]}`:"（栈变空）"}。`,view("linked_stack",[row("stack",data,{focusIndex:0}),row("meta",[],{top:0,operation:op,phase:"prepare"})]),[action("read","定位栈顶结点",{target:0})]));const v=data.shift();steps.push(makeStep(sid,"unlink","删除栈顶结点",`取出 ${String(v)}，top 改指向后继。`,st({removed:v}),[action("unlink","释放原栈顶",{value:v})]));}return makeTrace(req,op==="push"?"链栈进栈":"链栈出栈","链栈","操作完成",steps);}
+function simulateLinkedStack(req,api){
+  const {makeStep,makeTrace,action}=helpers(api),op=req.operation;const data=scalarArray(req.initial_state.data,[2,5,7]);let sid=1;
+  /* 代码级：一帧 = 一行赋值（`s->next = top` / `top = s`），槽位写**目标结点的序号**，
+     `pointers` 是"栈顶指针 top 指着第几个结点"。逐行帧标 `phase: "line"`。 */
+  const c={labels:data.map(String),next:data.map((_,i)=>i+1<data.length?i+2:null)};
+  const pan=(extra={})=>row("stack",c.labels,{next:[...c.next],...extra});
+  const steps=[];
+  const snap=(code,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"assign",code,code,view("linked_stack",[pan(extra),row("meta",[],{top:c.labels.length?0:null,operation:op})]),act?[act]:[]));
+  snap("top = head",{pointers:{top:0}},action("assign","栈顶指针指向链首",{}),true);
+  if(op==="push"){
+    const v=req.params.value??9;
+    c.labels.unshift("");
+    // unshift 之后**所有**结点序号都变了，next 必须整体重建（新结点留空，等 s->next = top 那一行接上）。
+    c.next=c.labels.map((_,i)=>(i===0?null:(i+1<c.labels.length?i+2:null)));
+    snap("s = malloc()",{pointers:{top:0,s:0}},null,true);
+    c.labels[0]=String(v);
+    snap(`s->data = ${v}`,{pointers:{top:0,s:0}},null,true);
+    c.next[0]=2;
+    snap("s->next = top",{pointers:{top:0,s:0},write:0},action("link","新结点接到链首",{to:2}));
+    snap("top = s",{pointers:{top:0,s:0}},action("assign","栈顶改指向新结点",{}));
+    return makeTrace(req,"链栈进栈","链栈",`top=${v}`,steps);
+  }
+  if(!c.labels.length)return api.makeRuntimeError(req,"链栈出栈","STACK_UNDERFLOW","链栈为空，不能出栈。",view("linked_stack",[row("stack",[]),row("meta",[],{top:null,operation:op})]),"空栈");
+  snap("q = top",{pointers:{top:0,q:0}},null,true);
+  snap("top = top->next",{pointers:{top:c.labels.length>1?1:0,q:0}},action("assign",c.labels.length>1?"top 指向下一个结点":"栈变空",{}));
+  const removed=c.labels[0];
+  const freed={labels:c.labels.slice(1),next:c.labels.slice(1).map((_,i)=>i+1<c.labels.length-1?i+2:null)};
+  steps.push(makeStep(sid++,"assign","free(q)","free(q)",view("linked_stack",[row("stack",freed.labels,{next:[...freed.next]}),row("meta",[],{top:freed.labels.length?0:null,operation:op})]),[action("free","释放原栈顶",{value:removed})]));
+  return makeTrace(req,"链栈出栈","链栈","操作完成",steps);
+}
 
 function simulateRecursionAux(req, api) {
   const { makeStep, makeTrace, action } = helpers(api);
@@ -315,11 +423,45 @@ function simulateRecursionAux(req, api) {
   return makeTrace(req, "Fibonacci 递归调用过程", `n=${n}`, `F(${n})=${result}`, steps);
 }
 
-function simulateLinkedQueue(req,api){const {makeStep,makeTrace,action}=helpers(api),op=req.operation;const data=scalarArray(req.initial_state.data,[4,7,9]);let sid=1;/* focus = 这一步高亮第几格（下标）。不传就按 front 走：队列的"动"在队尾（入队）或在队首（出队），
-   只用 front 时入队整条动画都钉在下标 0，看着就是高亮卡住。 */
-const st=(extra={},focus)=>{const panel=row("queue",data);if(typeof focus==="number")panel.focusIndex=focus;return view("linked_queue",[panel,row("meta",[],{front:data.length?0:null,rear:data.length?data.length-1:null,operation:op,...extra})]);};/* 空链队列同样只有一个头结点：把它画出来，这一步才不是一块空白画布。 */
-  if(op==="initialize")return makeTrace(req,"链队列初始化","未初始化","front=rear=head",[makeStep(1,"init","建立头结点","空链队列只剩一个头结点：front=rear=头结点，rear.next=NULL。",view("linked_queue",[row("queue",[],{nodes:[{id:"head",label:"head"}],edges:[]}),row("meta",[],{front:"head",rear:"head",operation:op})]),[action("assign","front=rear=头结点",{target:"head"})])]);
-  const steps=[makeStep(sid++,"init","链队列状态","front 指向头结点，rear 指向队尾。",st())];if(op==="enqueue"){const v=req.params.value??12;steps.push(makeStep(sid++,"link","申请新结点",`申请新结点 ${v}，rear.next 将指向它，rear 随后移到新结点。`,st({value:v,phase:"prepare"},data.length-1),[action("allocate","申请结点",{value:v})]));data.push(v);steps.push(makeStep(sid,"link","新结点接入队尾",`rear.next 指向 ${v}，rear 后移到新结点。`,st({value:v},data.length-1),[action("link","尾插新结点",{value:v})]));}else{if(!data.length)return api.makeRuntimeError(req,"链队列出队","QUEUE_UNDERFLOW","队列为空，不能出队。",st({operation:op}),"空队列");steps.push(makeStep(sid++,"unlink","队首结点就位",`front 指向队首数据结点 ${data[0]}，摘下后 front 越过它。`,view("linked_queue",[row("queue",data,{focusIndex:0}),row("meta",[],{front:0,rear:data.length-1,operation:op,phase:"prepare"})]),[action("read","定位队首结点",{target:0})]));const v=data.shift();steps.push(makeStep(sid,"unlink","队首结点出队",`头结点后的首数据结点 ${String(v)} 被摘下。`,st({removed:v}),[action("unlink","front 越过队首数据结点",{value:v})]));}return makeTrace(req,op==="enqueue"?"链队列入队":"链队列出队","链队列","操作完成",steps);}
+function simulateLinkedQueue(req,api){
+  const {makeStep,makeTrace,action}=helpers(api),op=req.operation;const data=scalarArray(req.initial_state.data,[4,7,9]);let sid=1;
+  /* **带头结点**的链队列（教材：front 指向头结点、rear 指向队尾结点）——
+     initialize 那一课把"只剩一个头结点"画出来，后面的操作也就都以它为第 1 个结点。
+     一帧 = 一行：`s->next = NULL` / `rear->next = s` / `rear = s`；槽位写目标结点的序号。 */
+  const ring=(values)=>{const labels=["head",...values.map(String)];return {labels,next:labels.map((_,i)=>i+1<labels.length?i+2:null)};};
+  const c=ring(data);
+  const pan=(extra={})=>row("queue",c.labels,{next:[...c.next],...extra});
+  const meta=()=>({front:c.labels.length?0:null,rear:c.labels.length?c.labels.length-1:null,operation:op});
+  const steps=[];
+  const snap=(code,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"assign",code,code,view("linked_queue",[pan(extra),row("meta",[],meta())]),act?[act]:[]));
+  if(op==="initialize"){
+    snap("front = rear = head",{pointers:{front:0,rear:0}},action("assign","front 与 rear 都指向头结点",{}));
+    snap("head->next = NULL",{pointers:{front:0,rear:0},write:0},action("link","头结点 next 置空：队列里没有数据结点",{to:"NULL"}));
+    return makeTrace(req,"链队列初始化","未初始化","front=rear=head，head->next=NULL",steps);
+  }
+  snap("front = head",{pointers:{front:0,rear:c.labels.length-1}},null,true);
+  if(op==="enqueue"){
+    const v=req.params.value??12;const idx=c.labels.length;
+    c.labels.push("");c.next.push(null);
+    snap("s = malloc()",{pointers:{front:0,rear:idx-1,s:idx}},null,true);
+    c.labels[idx]=String(v);
+    snap(`s->data = ${v}`,{pointers:{front:0,rear:idx-1,s:idx}},null,true);
+    snap("s->next = NULL",{pointers:{front:0,rear:idx-1,s:idx},write:idx},action("link","新结点是队尾，next 置空",{to:"NULL"}));
+    c.next[idx-1]=idx+1;
+    snap("rear->next = s",{pointers:{front:0,rear:idx-1,s:idx},write:idx-1},action("link","原队尾指向新结点",{to:idx+1}));
+    snap("rear = s",{pointers:{front:0,rear:idx}},action("assign","队尾指针后移到新结点",{}));
+    return makeTrace(req,"链队列入队","链队列",`rear=${v}`,steps);
+  }
+  if(c.labels.length<=1)return api.makeRuntimeError(req,"链队列出队","QUEUE_UNDERFLOW","队列为空（只有头结点），不能出队。",view("linked_queue",[row("queue",c.labels,{next:[...c.next]}),row("meta",[],{front:0,rear:0,operation:op})]),"空队列");
+  snap("q = front->next",{pointers:{front:0,q:1}},null,true);
+  c.next[0]=c.next[1];
+  snap("front->next = q->next",{pointers:{front:0,q:1},write:0},action("link","头结点越过队首数据结点",{to:c.next[0]}));
+  const removed=c.labels[1];
+  const rest=c.labels.slice(2);
+  const after=ring(rest);
+  steps.push(makeStep(sid++,"assign","free(q)","free(q)",view("linked_queue",[row("queue",after.labels,{next:[...after.next]}),row("meta",[],{front:0,rear:after.labels.length-1,operation:op})]),[action("free","释放队首数据结点",{value:removed})]));
+  return makeTrace(req,"链队列出队","链队列","操作完成",steps);
+}
 
 function simulateCircularQueueInit(req,api){const {makeStep,makeTrace}=helpers(api);const cap=int(req.params.capacity,6,2,30);return makeTrace(req,"循环队列初始化",`capacity=${cap}`,"front=rear=0",[makeStep(1,"init","设置队首队尾指针","令 front=rear=0，队列为空。",view("circular_queue",[row("buffer",Array(cap).fill(null)),row("meta",[],{capacity:cap,front:0,rear:0,count:0,operation:"initialize"})]))]);}
 

@@ -158,23 +158,54 @@ function makeHelpers(api) {
 function simulateLinkedList(request, api) {
   const { makeStep, makeTrace, action, emptyHighlights } = makeHelpers(api);
   const op = request.operation;
+
+  /* 单链表的"真相"是每个结点的 `next` 指向谁。按**代码级别**报帧：一帧 = 一行赋值，
+     帧的标题就是那行代码；槽位里写**目标结点的序号**（`next: [2,3,null]`，写值遇到重复数据就分不清）；
+     `pointers` 是**本面板自己**的具名指针；`write` 指出这一帧改的是哪个结点的指针。
+     逐行帧标 `phase: "line"`，精简版把一段连续的 line 压成最后一帧（= 该阶段完成态）。 */
+  const self = (values) => {
+    const labels = values.map(String);
+    return { labels, next: labels.map((_, i) => (i + 1 < labels.length ? i + 2 : null)) };
+  };
+  /* 结点插进显示序之后，**所有** next 都要按新的相邻关系重建（除开那个还没接上去的新结点）——
+     只改两个结点的话，被挤到后面的老结点还指着自己（`next=[2,3,3,null]`）。 */
+  const relink = (c, unlinked) => {
+    c.next = c.labels.map((_, i) => (i === unlinked ? null : (i + 1 < c.labels.length ? i + 2 : null)));
+  };
+  const pan = (role, c, extra = {}) => row(role, c.labels, { next: [...c.next], ...extra });
+  let sid = 1;
+  const steps = [];
+  const snap = (code, rows, meta, act, line) => {
+    steps.push(makeStep(sid++, line ? "line" : "assign", code, code, viewState("linked_list", [...rows, row("meta", [], meta)]), act ? [act] : []));
+  };
+
   if (op === "merge") {
     const raw = Array.isArray(request.initial_state.data) ? request.initial_state.data : [];
     const left = scalarArray(request.params.left ?? raw[0], [1, 3, 5]);
     const right = scalarArray(request.params.right ?? raw[1], [2, 4, 6]);
+    const A = self(left), B = self(right), C = { labels: [], next: [] };
+    const base = { operation: op, i: 0, j: 0 };
+    steps.push(makeStep(sid++, "init", "p = A, q = B, r = C", "p、q 指向两个待合并链表，r 是结果链表的尾指针",
+      viewState("linked_list", [pan("LA", A, { pointers: { p: 0 } }), pan("LB", B, { pointers: { q: 0 } }), pan("LC", C, { pointers: {} }), row("meta", [], base)])));
     let i = 0, j = 0;
-    const result = [];
-    const steps = [makeStep(1, "init", "准备两个有序链表", "两个头指针分别指向当前结点。", viewState("linked_list", [row("LA", left), row("LB", right), row("LC", []), row("meta", [], { i, j })]))];
-    let sid = 2;
     while (i < left.length || j < right.length) {
-      let source;
-      if (j >= right.length || (i < left.length && Number(left[i]) <= Number(right[j]))) source = "LA";
-      else source = "LB";
-      const value = source === "LA" ? left[i++] : right[j++];
-      result.push(value);
-      steps.push(makeStep(sid++, "link", "比较并接入结点", `把 ${String(value)} 从 ${source} 接到结果链表尾部。`, viewState("linked_list", [row("LA", left), row("LB", right), row("LC", result), row("meta", [], { i, j, source })]), [action("link", "尾指针连接到选中的结点", { from: source, to: "LC", value })]));
+      const fromA = j >= right.length || (i < left.length && Number(left[i]) <= Number(right[j]));
+      const pointerAt = (idx, len) => Math.min(idx, Math.max(0, len - 1));
+      snap(`if (p->data <= q->data) → ${fromA ? "true" : "false"}`,
+        [pan("LA", A, { pointers: { p: pointerAt(i, left.length) } }), pan("LB", B, { pointers: { q: pointerAt(j, right.length) } }), pan("LC", C, {})],
+        { ...base, i, j }, action("compare", "比较两个链表的当前结点", {}));
+      const value = fromA ? left[i++] : right[j++];
+      C.labels.push(String(value));
+      C.next = C.labels.map((_, k) => (k + 1 < C.labels.length ? k + 2 : null));
+      snap(`r->next = ${fromA ? "p" : "q"}`,
+        [pan("LA", A, { pointers: { p: pointerAt(i, left.length) } }), pan("LB", B, { pointers: { q: pointerAt(j, right.length) } }), pan("LC", C, { focusIndex: C.labels.length - 1, pointers: { r: C.labels.length - 1 } })],
+        { ...base, i, j }, action("link", "结果链尾接到选中的结点", { value }), true);
+      // 取完要**把被取的那一边的游标往前推**（取 A 才是 `p = p->next`）——写错过一次：两边都写成 p。
+      snap(fromA ? "p = p->next" : "q = q->next",
+        [pan("LA", A, { pointers: { p: pointerAt(i, left.length) } }), pan("LB", B, { pointers: { q: pointerAt(j, right.length) } }), pan("LC", C, { pointers: { r: C.labels.length - 1 } })],
+        { ...base, i, j }, null, true);
     }
-    return makeTrace(request, "有序单链表合并", `LA=[${left.join(",")}], LB=[${right.join(",")}]`, `LC=[${result.join(",")}]`, steps);
+    return makeTrace(request, "有序单链表合并", `LA=[${left.join(",")}], LB=[${right.join(",")}]`, `LC=[${C.labels.join(",")}]`, steps);
   }
 
   const items = scalarArray(request.initial_state.data, [10, 20, 30]);
@@ -183,21 +214,57 @@ function simulateLinkedList(request, api) {
   }
   const position = intParam(request.params, "position", op === "insert" ? Math.min(2, items.length + 1) : Math.min(2, items.length), 1, op === "insert" ? items.length + 1 : Math.max(1, items.length));
   const index = position - 1;
-  const initialRows = [row("L", items), row("meta", [], { position, current: 0, operation: op })];
-  const steps = [makeStep(1, "init", "从头结点开始", `沿 next 指针寻找第 ${position} 个位置。`, viewState("linked_list", initialRows))];
-  let sid = 2;
-  for (let p = 0; p < Math.max(0, index); p++) {
-    steps.push(makeStep(sid++, "traverse", "指针后移", `工作指针移动到第 ${p + 1} 个结点。`, viewState("linked_list", [row("L", items), row("meta", [], { position, current: p + 1, operation: op })]), [action("move", "沿 next 指针移动", { target: "p", value: p + 1 })]));
-  }
+  const base = { operation: op, position };
+  const cur = self(items);
+
   if (op === "insert") {
     const value = request.params.value ?? 15;
+    snap("L", [pan("L", cur, { pointers: { L: 0 } })], { ...base }, action("inspect", "L 是头指针", {}));
+    if (index > 0) {
+      snap("p = L", [pan("L", cur, { pointers: { L: 0, p: 0 } })], { ...base }, null, true);
+      for (let k = 1; k < index; k += 1) {
+        snap("p = p->next", [pan("L", cur, { focusIndex: k, pointers: { L: 0, p: k } })], { ...base }, null, true);
+      }
+    }
+    /* 新结点先以"next 还指着空"的样子出现，再一行一行接上去——教科书画的样子。 */
+    cur.labels.splice(index, 0, "");
+    relink(cur, index);
+    snap("s = malloc()", [pan("L", cur, { pointers: { L: 0, s: index } })], { ...base, value }, null, true);
+    cur.labels[index] = String(value);
+    snap(`s->data = ${value}`, [pan("L", cur, { pointers: { L: 0, s: index } })], { ...base, value }, null, true);
+    if (index === 0) {
+cur.next[0] = 2;
+      snap("s->next = L", [pan("L", cur, { pointers: { L: 1, s: 0 }, write: 0 })], { ...base, value }, action("link", "新结点 next 指向原首结点", { to: 2 }));
+      snap("L = s", [pan("L", cur, { pointers: { L: 0, s: 0 } })], { ...base, value });
+    } else {
+const successor = index + 2 <= cur.labels.length ? index + 2 : null;
+      cur.next[index] = successor;
+      snap("s->next = p->next", [pan("L", cur, { pointers: { L: 0, p: index - 1, s: index }, write: index })], { ...base, value }, action("link", "新结点先接住 p 的后继", { to: successor }));
+      cur.next[index - 1] = index + 1;
+      snap("p->next = s", [pan("L", cur, { pointers: { L: 0, p: index - 1, s: index }, write: index - 1 })], { ...base, value }, action("link", "再让 p 指向新结点", { to: index + 1 }));
+    }
     const result = [...items]; result.splice(index, 0, value);
-    steps.push(makeStep(sid++, "link", "修改指针连接", `先让新结点 ${String(value)} 指向原第 ${position} 个结点，再让前驱结点指向新结点。`, viewState("linked_list", [row("L", result), row("meta", [], { position, current: index, operation: op, value })]), [action("link", "先接后继，再改前驱 next", { target: "next", value })], { ...emptyHighlights(), pointers: [{ role: "changed", name: "next" }] }));
     return makeTrace(request, "单链表插入", `L=[${items.join(",")}]`, `L=[${result.join(",")}]`, steps);
   }
+
+  /* 删除：q 指向待删结点，让前驱直接指向 q 的后继，再释放 q。 */
   const removed = items[index];
+  snap("L", [pan("L", cur, { pointers: { L: 0 } })], { ...base }, action("inspect", "L 是头指针", {}));
+  if (index === 0) {
+    snap("q = L", [pan("L", cur, { pointers: { L: 0, q: 0 } })], { ...base }, null, true);
+    snap("L = L->next", [pan("L", cur, { pointers: { L: 1, q: 0 } })], { ...base }, null, true);
+  } else {
+    snap("p = L", [pan("L", cur, { pointers: { L: 0, p: 0 } })], { ...base }, null, true);
+    for (let k = 1; k < index - 1; k += 1) {
+      snap("p = p->next", [pan("L", cur, { focusIndex: k, pointers: { L: 0, p: k } })], { ...base }, null, true);
+    }
+    snap("q = p->next", [pan("L", cur, { focusIndex: index, pointers: { L: 0, p: index - 1, q: index } })], { ...base }, null, true);
+    cur.next[index - 1] = cur.next[index];
+    snap("p->next = q->next", [pan("L", cur, { pointers: { L: 0, p: index - 1, q: index }, write: index - 1 })], { ...base }, action("link", "前驱直接指向 q 的后继", { to: cur.next[index] }));
+  }
+  const freed = self(items.filter((_, k) => k !== index));
+  snap("free(q)", [pan("L", freed, { pointers: { L: 0 } })], { ...base }, action("free", "释放待删结点", { value: removed }));
   const result = [...items]; result.splice(index, 1);
-  steps.push(makeStep(sid++, "unlink", "越过待删结点", `让前驱结点直接指向 ${String(removed)} 的后继结点，然后释放该结点。`, viewState("linked_list", [row("L", result), row("meta", [], { position, current: Math.max(0,index-1), operation: op, removed })]), [action("unlink", "修改前驱 next，跳过待删结点", { target: "next", value: removed })], { ...emptyHighlights(), pointers: [{ role: "changed", name: "next" }] }));
   return makeTrace(request, "单链表删除", `L=[${items.join(",")}]`, `L=[${result.join(",")}]`, steps);
 }
 
@@ -237,10 +304,11 @@ function simulateDoublyList(request, api) {
     /* 先把新结点插进显示序（它最终就落在 position 这个位置），但**两个指针都还空着**——
        旁边两个结点也还互相指着，这就是"还没接上去"的样子。 */
     const cur = { labels: [...base.labels], prior: [...base.prior], next: [...base.next] };
-    cur.labels.splice(index, 0, String(value));
+    cur.labels.splice(index, 0, "");
     cur.prior.splice(index, 0, null);
     cur.next.splice(index, 0, null);
     snap("s = malloc()", cur, { pointers: { L: 0, s: index } }, null, true);
+    cur.labels[index] = String(value);
     snap(`s->data = ${value}`, cur, { pointers: { L: 0, s: index } }, null, true);
     /* 改完再报帧：每个画面显示的是这一行**执行之后**的状态——学生点一次看到一行代码的效果。 */
     if (index === 0) {
