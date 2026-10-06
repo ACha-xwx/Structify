@@ -145,7 +145,7 @@
 | `linked_stack.push` / `pop` | ✅ 代码级 | → 4 / 3（精简 3 / 3） |
 | `linked_queue.initialize` / `enqueue` / `dequeue` | ✅ 代码级 | → 2 / 5 / 3（**带头结点**模型） |
 | `static_linked_list.*` | ✅ 代码级 | 初始化 7、申请 3、回收 3（`space[i].cur = i+1` 逐格） |
-| 树/图 | ⬜ 待定 | 它们的"一行代码"是另一套（递归调用 / 松弛），要单独定 |
+| 树/图 | ⚠️ **分批做中** | ✅ 已做 `bst.search/insert/delete`（比较一行 `if (p->key == key) → true/false` + 下沉一行 `p = p->left`；删除的三种情况各报对应那一行）。⬜ 剩：遍历（前/中/后/层序、线索）、AVL 旋转、B 树、哈夫曼、森林、图（建图/DFS/BFS/连通分量/Prim/Kruskal/Dijkstra/拓扑/关键路径）、并查集 |
 | **排序** | ✅ **两档都做了** | 交换拆成 `temp = a[i]` / `a[i] = a[j]` / `a[j] = temp` 三帧（标 line）；比较帧就是 `if (…) → true/false`。实测：冒泡 详细 **22** → 精简 **14**、堆 26 → 12、插入 13 → 11；7 元素的默认数据 详细 **64** → 精简 **40** |
 
 ---
