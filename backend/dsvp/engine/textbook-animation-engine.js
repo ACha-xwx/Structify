@@ -562,7 +562,23 @@ function simulateTree(request,api){
     let prev=-1;const threads=[];for(const idx of order){const[l]=treeChildren(arr,idx);if(l<0&&prev>=0)threads.push([idx,prev,"predecessor"]);if(prev>=0){const[,pr]=treeChildren(arr,prev);if(pr<0)threads.push([prev,idx,"successor"]);}visited.push(idx);steps.push(makeStep(sid++,"thread","建立中序线索",`访问 ${arr[idx]}，把空孩子指针改作前驱/后继线索。`,treeView(arr,visited,idx,{operation:op,threads:[...threads]}),[action("link","建立线索",{value:arr[idx]})]));prev=idx;}
   } else if(op==="thread_predecessor"||op==="thread_successor"){
     const target=String(request.params.target??arr[order[Math.floor(order.length/2)] ]);const pos=order.findIndex(i=>String(arr[i])===target);const neighbor=op==="thread_predecessor"?order[pos-1]:order[pos+1];steps.push(makeStep(sid++,"locate","定位给定结点",`在线索中序序列中定位 ${target}。`,treeView(arr,order.slice(0,Math.max(0,pos+1)),pos>=0?order[pos]:-1,{operation:op,target})));steps.push(makeStep(sid++,"follow","沿线索找到相邻结点",neighbor===undefined?`${target} 没有对应的${op.endsWith("predecessor")?"前驱":"后继"}。`:`${target} 的${op.endsWith("predecessor")?"前驱":"后继"}是 ${arr[neighbor]}。`,treeView(arr,order.slice(0,Math.max(0,pos+1)),neighbor??-1,{operation:op,target,neighbor:neighbor===undefined?null:arr[neighbor]}),[action("move","沿线索指针移动",{from:target,to:neighbor===undefined?null:arr[neighbor]})]));return makeTrace(request,op==="thread_predecessor"?"中序线索树求前驱":"中序线索树求后继",`target=${target}`,neighbor===undefined?"不存在":String(arr[neighbor]),steps);
-  } else {for(const idx of order){visited.push(idx);steps.push(makeStep(sid++,"visit","访问结点",`访问 ${arr[idx]}。`,treeView(arr,visited,idx,{operation:op}),[action("visit","按遍历次序访问",{value:arr[idx]})]));}}
+  } else {
+    /* 递归遍历的"一行"：`visit(p)` 一格，**再走到下一个结点一格**。
+       下一个结点是当前结点的左/右孩子，那一行就是 `p = p->left` / `p = p->right`；
+       否则说明这一支走完了要**回溯**（`return`），此时 p 停在"下一个结点的父亲"上——
+       两帧的高亮因此总是不同的，不会出现"点一下什么都没动"。 */
+    for(let k=0;k<order.length;k++){
+      const idx=order[k];visited.push(idx);
+      steps.push(makeStep(sid++,op==="levelorder"?"line":"assign","visit(p)","visit(p)",treeView(arr,visited,idx,{operation:op}),[action("visit","按遍历次序访问",{value:arr[idx]})]));
+      const next=k+1<order.length?order[k+1]:-1;
+      if(next<0||op==="levelorder")continue;
+      const l=2*idx+1,r=2*idx+2;
+      const isChild=next===l||next===r;
+      const code=next===l?"p = p->left":next===r?"p = p->right":"return";
+      const at=isChild?next:Math.floor((next-1)/2);
+      steps.push(makeStep(sid++,"line",code,code,treeView(arr,visited,at,{operation:op}),[]));
+    }
+  }
   return makeTrace(request,{preorder:"先序遍历",inorder:"中序遍历",postorder:"后序遍历",levelorder:"层序遍历",inorder_stack:"非递归中序遍历",postorder_stack:"非递归后序遍历",thread_inorder:"中序线索化"}[op]||"二叉树遍历","二叉树",`访问序列=${order.map(i=>arr[i]).join(" ")}`,steps);
 }
 
