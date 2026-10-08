@@ -6,6 +6,7 @@ import CCodeEditor from "./CCodeEditor.vue";
 import { setLocale } from "../shared/i18n/locale";
 import { createRouter, createWebHistory, RouterView } from "vue-router";
 import ChatCodeBlock from "../user/components/ChatCodeBlock.vue";
+import { ApiClientError } from "../shared/api";
 import { CHAT_CODE_STATE_KEY } from "../shared/compiler/chat-code-import";
 
 vi.mock("../user/chat-code", () => ({ highlightChatCode: vi.fn().mockResolvedValue("") }));
@@ -19,6 +20,8 @@ const startCodeSession = vi.fn();
 const streamCodeSession = vi.fn();
 const typeInCodeSession = vi.fn();
 const stopCodeSession = vi.fn();
+const analyzeCode = vi.fn();
+const searchKnowledge = vi.fn();
 
 vi.mock("../user/runtime", () => ({
   userApi: {
@@ -29,6 +32,8 @@ vi.mock("../user/runtime", () => ({
     streamCodeSession: (...args: unknown[]) => streamCodeSession(...args),
     typeInCodeSession: (...args: unknown[]) => typeInCodeSession(...args),
     stopCodeSession: (...args: unknown[]) => stopCodeSession(...args),
+    analyzeCode: (...args: unknown[]) => analyzeCode(...args),
+    searchKnowledge: (...args: unknown[]) => searchKnowledge(...args),
   },
 }));
 
@@ -418,6 +423,59 @@ describe("code library page", () => {
     expect(wrapper.text()).toContain("输出和示例的预期一致");
   });
 
+  it("explains the code it was asked about, and offers the textbook that backs it", async () => {
+    analyzeCode.mockResolvedValue({ analysis: "这段代码构造了一个空的顺序栈。" });
+    searchKnowledge.mockResolvedValue({
+      ok: true,
+      query: "3.1 · 构造一个空栈S",
+      results: [{
+        id: "chunk-1", chapterId: "03-stack-queue", lessonId: null, title: "栈的存储结构",
+        lessonNumber: "03-01", kind: "lesson",
+        source: "textbook/lessons/03-01-栈与队列-栈的存储结构-已核验页62-68.md",
+        pageLabel: "第 62 页", sourceLabel: "教材", locationLabel: "3.1",
+        reviewStatus: "已核验", publicationStatus: "PUBLISHED", excerpt: "", score: 1,
+      }],
+    });
+    const wrapper = await mountView();
+
+    const region = await openStructure(wrapper, "examples", "03", "顺序栈");
+    await region.get('[data-entry-id="ch03-3.1"]').trigger("click");
+    await wrapper.get(".library__chip").trigger("click");
+    await flush();
+
+    const explain = wrapper.findAll(".library__chip").find((node) => node.text() === "解释这段代码");
+    await explain!.trigger("click");
+    await flush();
+
+    expect(analyzeCode).toHaveBeenCalledWith(expect.objectContaining({ language: "c", code: expect.stringContaining("main(void)") }));
+    expect(wrapper.get(".analysis__text").text()).toBe("这段代码构造了一个空的顺序栈。");
+    // The passage carries its lesson number, so the link opens that lesson's courseware.
+    const links = wrapper.findAllComponents(RouterLinkStub).map((link) => link.props("to"));
+    expect(links).toContainEqual({ path: "/courseware", query: { courseware: "03-01" } });
+    expect(searchKnowledge).toHaveBeenCalledWith(expect.objectContaining({ query: "3.1 · 构造一个空栈S" }));
+    wrapper.unmount();
+  });
+
+  it("reports a refusal to explain instead of an empty panel", async () => {
+    analyzeCode.mockRejectedValue(new ApiClientError({
+      status: 401, code: "AI_QUOTA_AUTHENTICATION_REQUIRED", requestId: "req-1", message: "请先登录", details: [],
+    }));
+    const wrapper = await mountView();
+
+    const region = await openStructure(wrapper, "examples", "03", "顺序栈");
+    await region.get('[data-entry-id="ch03-3.1"]').trigger("click");
+    await wrapper.get(".library__chip").trigger("click");
+    await flush();
+
+    const explain = wrapper.findAll(".library__chip").find((node) => node.text() === "解释这段代码");
+    await explain!.trigger("click");
+    await flush();
+
+    expect(wrapper.get(".analysis__text").text()).toBe("登录后才能让模型解释代码");
+    expect(wrapper.find(".analysis__link").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("says why a listing has no example instead of offering a button that cannot work", async () => {
     const wrapper = await mountView();
 
@@ -425,7 +483,8 @@ describe("code library page", () => {
     await region.get('[data-entry-id="ch03-3.15"]').trigger("click");
 
     expect(wrapper.text()).toContain("不是可编译的代码");
-    expect(wrapper.find(".library__chip").exists()).toBe(false);
+    // No example is offered for a listing that cannot run; explaining it is still on offer.
+    expect(wrapper.findAll(".library__chip").map((node) => node.text())).toEqual(["解释这段代码"]);
   });
 
   it("filters the whole library from one search box", async () => {
