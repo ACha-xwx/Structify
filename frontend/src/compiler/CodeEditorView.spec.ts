@@ -476,6 +476,31 @@ describe("code library page", () => {
     wrapper.unmount();
   });
 
+  it("names the reason it failed, instead of one sentence for every failure", async () => {
+    const wrapper = await mountView();
+    const region = await openStructure(wrapper, "examples", "03", "顺序栈");
+    await region.get('[data-entry-id="ch03-3.1"]').trigger("click");
+    await wrapper.get(".library__chip").trigger("click");
+    await flush();
+    const explain = wrapper.findAll(".library__chip").find((node) => node.text() === "解释这段代码")!;
+
+    const fail = (status: number, code: string) => new ApiClientError({ status, code, requestId: "req-x", message: "x", details: [] });
+    const cases: Array<[Error, string]> = [
+      [fail(0, "NETWORK_TIMEOUT"), "模型这次回得太慢，再点一次试试"],
+      [fail(429, "MODEL_FEATURE_RATE_LIMITED"), "问得太快了，等一会儿再试"],
+      [fail(502, "MODEL_UPSTREAM_ERROR"), "解释服务暂时不可用，稍后再试"],
+      // Anything unmapped still says what happened, so a screenshot names the reason.
+      [fail(400, "COMPILER_CODE_REQUIRED"), "解释没能生成，请稍后再试（COMPILER_CODE_REQUIRED）"],
+    ];
+    for (const [error, expected] of cases) {
+      analyzeCode.mockRejectedValueOnce(error);
+      await explain.trigger("click");
+      await flush();
+      expect(wrapper.get(".analysis__text").text()).toBe(expected);
+    }
+    wrapper.unmount();
+  });
+
   it("says why a listing has no example instead of offering a button that cannot work", async () => {
     const wrapper = await mountView();
 

@@ -34,6 +34,15 @@ describe("用户端 API 边界", () => {
     expect(request).toHaveBeenNthCalledWith(3, "/learning/events", expect.objectContaining({ method: "POST" }));
   });
 
+  it("解释代码给模型足够时间，不用默认的 20 秒超时", async () => {
+    const request = vi.fn().mockResolvedValue({ kind: "json", data: { analysis: "ok" } });
+    const api = createUserApi({ request } as never);
+
+    await api.analyzeCode({ language: "c", code: "int main(void){return 0;}" });
+
+    expect(request).toHaveBeenCalledWith("/code/analyze", expect.objectContaining({ method: "POST", timeoutMs: 90_000 }));
+  });
+
   it("收藏按用户自己的路径读写，删除不带请求体", async () => {
     const request = vi.fn()
       .mockResolvedValueOnce({ kind: "json", data: [] })

@@ -339,6 +339,20 @@ async function loadRelated() {
 }
 
 /**
+ * Why the explanation is not here. Naming the reason is the difference between a learner trying again
+ * and a learner giving up: a slow answer, a burst of requests and an unavailable service are three
+ * different things, and "please try later" tells none of them.
+ */
+function analysisFailure(error: unknown): string {
+  if (!(error instanceof ApiClientError)) return t("compiler.analysisFailed");
+  if (error.code === "AI_QUOTA_AUTHENTICATION_REQUIRED") return t("compiler.analysisLogin");
+  if (error.code === "NETWORK_TIMEOUT" || error.status === 504) return t("compiler.analysisSlow");
+  if (error.status === 429) return t("compiler.analysisBusy");
+  if (error.status === 502 || error.status === 503) return t("compiler.analysisOffline");
+  return `${t("compiler.analysisFailed")}（${error.code || error.status}）`;
+}
+
+/**
  * Explaining the code is the one place the editor asks the model. A run that was already persisted is
  * sent as a run id, so the explanation is about the code that actually ran; otherwise the code and what
  * the console shows are sent as they are.
@@ -372,9 +386,7 @@ async function explain() {
     analysis.value = response.analysis;
     void loadRelated();
   } catch (error) {
-    analysisError.value = error instanceof ApiClientError && error.code === "AI_QUOTA_AUTHENTICATION_REQUIRED"
-      ? t("compiler.analysisLogin")
-      : t("compiler.analysisFailed");
+    analysisError.value = analysisFailure(error);
   } finally {
     analyzing.value = false;
   }

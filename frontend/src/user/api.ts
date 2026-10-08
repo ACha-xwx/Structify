@@ -36,6 +36,12 @@ import type {
 } from "../shared/types/contracts";
 import type { Chapter, KnowledgeSearchResponse } from "../shared/types/course";
 
+/**
+ * A code explanation is a model answer, so it outlives the default request budget (20s): the same
+ * question answered in 25 seconds is a slow answer, not a failure, and aborting it wastes the call.
+ */
+const ANALYZE_TIMEOUT_MS = 90_000;
+
 interface JsonResponse<T> { kind: "json"; data: T }
 interface EmptyResponse { kind: "empty"; data: undefined }
 type UserRequest = ApiRequest;
@@ -208,7 +214,7 @@ export function createUserApi(client: { request: UserRequest }): UserApi {
       return jsonData(await request<ClassroomCodeSamplesResponse>(`/code/samples${query}`));
     },
     async getCodeLibrary() { return jsonData(await request<TextbookCodeLibraryResponse>("/code/library")); },
-    async analyzeCode(input) { return jsonData(await request<CodeAnalysisResponse>("/code/analyze", { method: "POST", body: input })); },
+    async analyzeCode(input) { return jsonData(await request<CodeAnalysisResponse>("/code/analyze", { method: "POST", body: input, timeoutMs: ANALYZE_TIMEOUT_MS })); },
     async getLearningProgress() { return jsonData(await request<LearningProgress>("/learning/progress")); },
     async getLearningWorkbench() { return jsonData(await request<LearningWorkbenchProjection>("/learning/workbench")); },
     async recordLearningEvent(input) { return jsonData(await request<LearningEvent>("/learning/events", { method: "POST", body: input })); },
