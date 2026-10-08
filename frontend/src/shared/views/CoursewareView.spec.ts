@@ -7,6 +7,7 @@ enableAutoUnmount(afterEach);
 const listPresentationDecks = vi.fn();
 const listDeckSlides = vi.fn();
 const getCoursewareSlides = vi.fn();
+const getLessonSlides = vi.fn();
 const navigation = vi.hoisted(() => ({ push: vi.fn() }));
 const catalogSession = vi.hoisted(() => ({ identity: 0 }));
 const route = vi.hoisted(() => ({ query: {} as Record<string, string> }));
@@ -22,6 +23,7 @@ vi.mock("../../user/runtime", async () => {
     listPresentationDecks: (...args: unknown[]) => listPresentationDecks(...args),
     listDeckSlides: (...args: unknown[]) => listDeckSlides(...args),
     getCoursewareSlides: (...args: unknown[]) => getCoursewareSlides(...args),
+    getLessonSlides: (...args: unknown[]) => getLessonSlides(...args),
   }, () => catalogSession.identity) };
 });
 
@@ -33,6 +35,7 @@ beforeEach(() => {
   listPresentationDecks.mockReset();
   listDeckSlides.mockReset();
   getCoursewareSlides.mockReset();
+  getLessonSlides.mockReset();
   listDeckSlides.mockResolvedValue([slide("a", 1), slide("b", 2)]);
 });
 
@@ -100,6 +103,17 @@ describe("courseware browser", () => {
     const wrapper = await mountView();
     expect(getCoursewareSlides).toHaveBeenCalledWith("06-06");
     expect(listDeckSlides).toHaveBeenCalledWith("ch03-deck01");
+    expect(wrapper.get(".courseware__caption").text()).toBe("第 2 页");
+  });
+
+  it("opens the page a saved bookmark names, addressed by lesson id", async () => {
+    route.query = { lesson: "textbook-abc", slide: "b" };
+    getLessonSlides.mockResolvedValue({
+      lessonId: "textbook-abc", coursewareKey: "06-06", title: "哈夫曼树", source: "", ready: true, builtAt: "",
+      slides: [slide("a", 1), slide("b", 2)],
+    });
+    const wrapper = await mountView();
+    expect(getLessonSlides).toHaveBeenCalledWith("textbook-abc");
     expect(wrapper.get(".courseware__caption").text()).toBe("第 2 页");
   });
 

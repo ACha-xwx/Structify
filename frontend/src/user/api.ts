@@ -19,6 +19,7 @@ import type {
   CodeRunResponse,
   CodeSessionChunk,
   CodeSessionStart,
+  ClassroomBookmark,
   DsvpRequest,
   DsvpResolution,
   DsvpSimulationResponse,
@@ -79,6 +80,11 @@ export interface UserApi {
   getLessonCourseware(lessonId: string): Promise<LessonCourseware>;
   /** The courseware of one lesson number (06-06), which is how a textbook citation addresses its deck. */
   getCoursewareSlides(coursewareKey: string): Promise<LessonCourseware>;
+  /** The courseware of one prepared lesson, addressed by the lesson id a classroom step carries. */
+  getLessonSlides(lessonId: string): Promise<LessonCourseware>;
+  listBookmarks(): Promise<ClassroomBookmark[]>;
+  saveBookmark(sessionId: string, stepIndex: number): Promise<ClassroomBookmark>;
+  deleteBookmark(id: number): Promise<void>;
   listPresentationDecks(): Promise<PresentationDeck[]>;
   listDeckSlides(deckId: string): Promise<PresentationSlide[]>;
   coursewareImageUrl(slideId: string): string;
@@ -167,6 +173,10 @@ export function createUserApi(client: { request: UserRequest }): UserApi {
     async getPresentationMeta() { return jsonData(await request<PresentationMeta>("/presentation/meta")); },
     async getLessonCourseware(lessonId) { return jsonData(await request<LessonCourseware>(`/presentation/lessons/${encoded(lessonId)}/slides`)); },
     async getCoursewareSlides(coursewareKey) { return jsonData(await request<LessonCourseware>(`/presentation/courseware/${encoded(coursewareKey)}/slides`)); },
+    async getLessonSlides(lessonId) { return jsonData(await request<LessonCourseware>(`/presentation/lessons/${encoded(lessonId)}/slides`)); },
+    async listBookmarks() { return jsonData(await request<ClassroomBookmark[]>("/users/bookmarks")); },
+    async saveBookmark(sessionId, stepIndex) { return jsonData(await request<ClassroomBookmark>("/users/bookmarks", { method: "POST", body: { sessionId, stepIndex } })); },
+    async deleteBookmark(id) { await request(`/users/bookmarks/${encoded(String(id))}`, { method: "DELETE" }); },
     async listPresentationDecks() { return jsonData(await request<PresentationDeck[]>("/presentation/decks")); },
     async listDeckSlides(deckId) { return jsonData(await request<PresentationSlide[]>(`/presentation/decks/${encoded(deckId)}/slides`)); },
     coursewareImageUrl(slideId) { return `/api/v1/presentation/slides/${encoded(slideId)}/image`; },

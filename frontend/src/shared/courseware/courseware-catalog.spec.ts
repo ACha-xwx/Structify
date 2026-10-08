@@ -11,6 +11,9 @@ function setup() {
     getCoursewareSlides: vi.fn(async (_key: string): Promise<LessonCourseware> => ({
       lessonId: "", coursewareKey: "", title: "", source: "", ready: true, builtAt: "", slides: [],
     })),
+    getLessonSlides: vi.fn(async (_id: string): Promise<LessonCourseware> => ({
+      lessonId: "", coursewareKey: "", title: "", source: "", ready: true, builtAt: "", slides: [],
+    })),
   };
   return { api, catalog: createCoursewareCatalog(api) };
 }

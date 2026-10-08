@@ -34,6 +34,22 @@ describe("用户端 API 边界", () => {
     expect(request).toHaveBeenNthCalledWith(3, "/learning/events", expect.objectContaining({ method: "POST" }));
   });
 
+  it("收藏按用户自己的路径读写，删除不带请求体", async () => {
+    const request = vi.fn()
+      .mockResolvedValueOnce({ kind: "json", data: [] })
+      .mockResolvedValueOnce({ kind: "json", data: { id: 7 } })
+      .mockResolvedValueOnce({ kind: "empty", data: undefined });
+    const api = createUserApi({ request } as never);
+
+    await api.listBookmarks();
+    await api.saveBookmark("session-1", 3);
+    await api.deleteBookmark(7);
+
+    expect(request).toHaveBeenNthCalledWith(1, "/users/bookmarks");
+    expect(request).toHaveBeenNthCalledWith(2, "/users/bookmarks", { method: "POST", body: { sessionId: "session-1", stepIndex: 3 } });
+    expect(request).toHaveBeenNthCalledWith(3, "/users/bookmarks/7", { method: "DELETE" });
+  });
+
   it("取教材片段库", async () => {
     const request = vi.fn().mockResolvedValue({ kind: "json", data: { chapters: [], fragmentCount: 99 } });
     const api = createUserApi({ request } as never);

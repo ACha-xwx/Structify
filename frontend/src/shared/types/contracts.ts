@@ -360,6 +360,18 @@ export interface PresentationDeck {
   slideCount: number;
   coverSlideId: string;
 }
+/** One step of a lesson a learner saved; the labels are the ones that step carried when it was saved. */
+export interface ClassroomBookmark {
+  id: number;
+  sessionId: string;
+  lessonId: string;
+  lessonTitle: string;
+  chapterId: string;
+  stepIndex: number;
+  slideId: string;
+  title: string;
+  createdAt: string;
+}
 export interface LessonCourseware {
   lessonId: string;
   coursewareKey: string;

@@ -123,6 +123,61 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/User'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+  /users/bookmarks:
+    get:
+      tags: [Classroom]
+      summary: List the authenticated learner's saved lesson steps
+      description: >-
+        Newest first. Each row carries the labels the step had when it was saved, so the list
+        reads without reloading the lesson.
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      responses:
+        '200':
+          description: Saved steps owned by the caller
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ClassroomBookmark'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    post:
+      tags: [Classroom]
+      summary: Save one step of a lesson the caller is in
+      description: >-
+        The caller names a session and a step; the server reads the lesson and the courseware page
+        that step shows. Saving the same step twice returns the bookmark that already exists.
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ClassroomBookmarkRequest'}
+      responses:
+        '201':
+          description: The bookmark, created or already present
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ClassroomBookmark'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404':
+          description: The session is not the caller's, or does not exist
+  /users/bookmarks/{id}:
+    delete:
+      tags: [Classroom]
+      summary: Remove one of the caller's saved steps
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: integer, format: int64}
+      responses:
+        '204':
+          description: Bookmark removed
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404':
+          description: No such bookmark for this caller
   /chapters:
     get:
       tags: [Resources]
@@ -1503,6 +1558,27 @@ components:
       properties:
         token: {type: string}
         user: {$ref: '#/components/schemas/User'}
+    ClassroomBookmarkRequest:
+      type: object
+      required: [sessionId, stepIndex]
+      properties:
+        sessionId: {type: string, minLength: 1, maxLength: 64}
+        stepIndex: {type: integer, minimum: 0}
+    ClassroomBookmark:
+      type: object
+      required: [id, sessionId, lessonId, lessonTitle, chapterId, stepIndex, slideId, title, createdAt]
+      properties:
+        id: {type: integer, format: int64}
+        sessionId: {type: string}
+        lessonId: {type: string}
+        lessonTitle: {type: string}
+        chapterId: {type: string}
+        stepIndex: {type: integer, minimum: 0}
+        slideId:
+          type: string
+          description: The courseware page that step showed; empty when the lesson has no courseware for it.
+        title: {type: string}
+        createdAt: {type: string, format: date-time}
     User:
       type: object
       required: [id, email, roles]

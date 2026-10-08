@@ -98,8 +98,11 @@ function queryValue(name: string): string {
 async function requestedDeck(): Promise<{ deckId: string; slideId: string } | null> {
   const slideId = queryValue("slide");
   const coursewareKey = queryValue("courseware");
-  if (coursewareKey) {
-    const lesson = await coursewareCatalog.getLessonCourseware(coursewareKey);
+  const lessonId = queryValue("lesson");
+  if (coursewareKey || lessonId) {
+    const lesson = coursewareKey
+      ? await coursewareCatalog.getLessonCourseware(coursewareKey)
+      : await coursewareCatalog.getLessonSlides(lessonId);
     const first = lesson.slides[0];
     return first ? { deckId: first.deckId, slideId: slideId || first.id } : null;
   }

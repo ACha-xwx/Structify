@@ -14,6 +14,9 @@ const api = vi.hoisted(() => ({
   simulateAnimation: vi.fn(),
   getLessonCourseware: vi.fn(),
   pinClassroomSlide: vi.fn(),
+  listBookmarks: vi.fn(),
+  saveBookmark: vi.fn(),
+  deleteBookmark: vi.fn(),
 }));
 
 vi.mock("../user/runtime", () => ({ userApi: api }));
@@ -70,6 +73,7 @@ beforeEach(() => {
   api.prepareClassroom.mockResolvedValue({ id: "job-1", state: "ready", phase: "ready", session: opening });
   api.getLessonCourseware.mockResolvedValue(noCourseware);
   api.pinClassroomSlide.mockResolvedValue(opening);
+  api.listBookmarks.mockResolvedValue([]);
 });
 
 describe("minimal classroom", () => {
@@ -268,6 +272,58 @@ describe("minimal classroom", () => {
 
     expect(wrapper.get(".classroom__chapter-select .runtime-select__trigger").text()).toBe("查找");
     expect(wrapper.get(".classroom__lesson-select .runtime-select__trigger").text()).toBe("二叉排序树");
+    wrapper.unmount();
+  });
+
+  it("saves the step on screen and takes the bookmark back", async () => {
+    // The bookmark lives on the slide pane, so this lesson has courseware - as a lesson being taught does.
+    api.getLessonCourseware.mockResolvedValue({
+      ...noCourseware,
+      coursewareKey: "03-01",
+      slides: [{
+        id: "slide-1", deckId: "deck-1", deckTitle: "栈与队列", slideNumber: 1, chapter: "03",
+        title: "栈的存取", rawText: "", speakerNotes: "", semanticSummary: "栈只在顶端进出",
+        teachingRole: "concept", teachingFocus: "", concepts: [], visualAnchors: [], shouldShow: true,
+        lessonIds: ["lesson-1"], imageUrl: "/api/v1/presentation/slides/slide-1/image",
+        section: "3.1", role: "定义", terms: [],
+      }],
+    });
+    api.actInClassroom.mockResolvedValue({
+      ...opening,
+      state: "EXPLAIN",
+      stage: {
+        content: "栈只在顶端进出，最后放进去的元素最先出来。",
+        stepIndex: 0,
+        stepCount: 3,
+        revision: 1,
+        chapterId: "03-stack-queue",
+        lessonId: "lesson-1",
+      },
+    });
+    api.saveBookmark.mockResolvedValue({
+      id: 11, sessionId: "session-1", lessonId: "lesson-1", lessonTitle: "栈与队列基础",
+      chapterId: "03-stack-queue", stepIndex: 0, slideId: "slide-9",
+      title: "栈只在顶端进出，最后放进去的元素最先出来。", createdAt: "2026-10-08T00:00:00Z",
+    });
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+    // Opening the lesson puts the deck on screen; the step to save is the one after the opening.
+    await wrapper.get(".classroom__silver-start .liquid-metal-button__native").trigger("click");
+    await flushPromises();
+    await wrapper.get(".classroom__silver-start .liquid-metal-button__native").trigger("click");
+    await flushPromises();
+
+    // The client names the step; the server decides which page it is, so no slide id is sent.
+    await wrapper.get('[aria-label="收藏这一步"]').trigger("click");
+    await flushPromises();
+    expect(api.saveBookmark).toHaveBeenCalledWith("session-1", 0);
+    expect(wrapper.get('[aria-label="取消收藏"]').attributes("aria-pressed")).toBe("true");
+
+    await wrapper.get('[aria-label="取消收藏"]').trigger("click");
+    await flushPromises();
+    expect(api.deleteBookmark).toHaveBeenCalledWith(11);
+    expect(wrapper.get('[aria-label="收藏这一步"]').attributes("aria-pressed")).toBe("false");
     wrapper.unmount();
   });
 

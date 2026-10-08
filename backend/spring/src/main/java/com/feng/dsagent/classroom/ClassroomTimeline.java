@@ -104,6 +104,40 @@ public class ClassroomTimeline {
         }
         return new ClassroomSessionView(session.id(), session.userId(), session.scriptId(), session.state(), session.paused(), session.summary(), stage, evaluation);
     }
+
+    /**
+     * One step of a saved lesson, for features that look a lesson up out of band (bookmarks): its page and
+     * the labels it carried. It reads the same alignment the live view reads, so what a learner saved and
+     * what that step shows cannot disagree.
+     */
+    public record StepPage(String sessionId, String lessonId, String lessonTitle, String chapterId,
+                           int stepIndex, int stepCount, String slideId, String title) {
+    }
+
+    @Transactional
+    public StepPage stepPage(long userId, String sessionId, int stepIndex) {
+        ClassroomSessionRecord session = owned(userId, sessionId);
+        List<JsonNode> steps = steps(session);
+        if (stepIndex < 0 || stepIndex >= steps.size()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "CLASSROOM_STEP_OUT_OF_RANGE", "这一步不在这节课里");
+        }
+        JsonNode step = steps.get(stepIndex);
+        JsonNode root = mapper.readTree(session.scriptJson());
+        String lessonId = root.path("lessonId").asText("");
+        ClassroomSlideAlignment.StepSlide slide =
+            slides.forStep(session.scriptId(), session.scriptJson(), lessonId, stepIndex, step);
+        String title = slide == null || slide.slideTitle() == null ? "" : slide.slideTitle().strip();
+        if (title.isBlank()) title = excerpt(step.path("content").asText(step.path("prompt").asText("")));
+        if (title.isBlank()) title = "第 " + (stepIndex + 1) + " 步";
+        return new StepPage(session.id(), lessonId, root.path("title").asText(""), session.chapterId(),
+            stepIndex, steps.size(), slide == null ? "" : slide.slideId(), title);
+    }
+
+    /** The first words of a step, which is all one bookmark row can carry of it. */
+    private static String excerpt(String text) {
+        String flat = text.replaceAll("\\s+", " ").strip();
+        return flat.length() <= 60 ? flat : flat.substring(0, 60) + "…";
+    }
     @Transactional
     public ClassroomSessionView apply(long userId, String id, ClassroomAction action, String content, Integer expectedRevision) {
         ClassroomSessionRecord session = owned(userId, id); Cursor current = cursor(id); List<JsonNode> steps = steps(session);

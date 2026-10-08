@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { Bookmark, BookmarkCheck } from "@lucide/vue";
 import BrandStage from "../shared/components/BrandStage.vue";
 import AiTitle from "../shared/components/AiTitle.vue";
 import AnimationPlayer from "../animation/AnimationPlayer.vue";
-import type { ClassroomAction, ClassroomSession, ClassroomSlideMatch, DsvpRequest, DsvpSimulationResponse, LessonCourseware } from "../shared/types/contracts";
+import type { ClassroomAction, ClassroomBookmark, ClassroomSession, ClassroomSlideMatch, DsvpRequest, DsvpSimulationResponse, LessonCourseware } from "../shared/types/contracts";
 import { useI18n } from "../shared/i18n/locale";
 import { userApi } from "../user/runtime";
 import type { ClassroomLesson, ClassroomPreparationStatus } from "../user/api";
@@ -325,6 +326,46 @@ function recallLastSessionId() {
   lastSessionId.value = localStorage.getItem(LAST_KEY) ?? "";
 }
 
+const bookmarks = ref<ClassroomBookmark[]>([]);
+const bookmarkBusy = ref(false);
+/** The step on screen; -1 is the opening, which is not a step and so has nothing to save. */
+const stepIndex = computed(() => Number(stage.value.stepIndex ?? -1));
+const currentBookmark = computed(() => bookmarks.value.find((item) =>
+  item.sessionId === session.value?.id && item.stepIndex === stepIndex.value) ?? null);
+
+async function loadBookmarks() {
+  try {
+    bookmarks.value = await userApi.listBookmarks();
+  } catch {
+    // A list that cannot be read must not disturb the lesson; the button simply starts unmarked.
+    bookmarks.value = [];
+  }
+}
+
+/**
+ * Saving is about the step on screen: the server decides which courseware page that step shows and what
+ * it is about, so the client only names the session and the step. Pressing it again takes it back.
+ */
+async function toggleBookmark() {
+  const saved = currentBookmark.value;
+  if (bookmarkBusy.value || !session.value || stepIndex.value < 0) return;
+  bookmarkBusy.value = true;
+  error.value = "";
+  try {
+    if (saved) {
+      await userApi.deleteBookmark(saved.id);
+      bookmarks.value = bookmarks.value.filter((item) => item.id !== saved.id);
+      return;
+    }
+    const created = await userApi.saveBookmark(session.value.id, stepIndex.value);
+    bookmarks.value = [created, ...bookmarks.value.filter((item) => item.id !== created.id)];
+  } catch (cause) {
+    error.value = failureMessage(cause);
+  } finally {
+    bookmarkBusy.value = false;
+  }
+}
+
 async function loadLessons() {
   lessonsLoading.value = true;
   busy.value = true;
@@ -402,6 +443,7 @@ async function bootstrap() {
   await loadLessons();
   const requested = typeof route.query.session === "string" ? route.query.session.trim() : "";
   if (requested) await resume(requested, true);
+  void loadBookmarks();
 }
 
 /** Continue the session left behind by 退出课堂; a session the server forgot is simply dropped. */
@@ -622,6 +664,19 @@ onBeforeUnmount(() => {
       >
         <template #headerActions>
           <template v-if="session">
+            <button
+              v-if="stepIndex >= 0"
+              class="classroom__icon-button classroom__icon-button--glass"
+              type="button"
+              :aria-pressed="Boolean(currentBookmark)"
+              :aria-label="currentBookmark ? t('classroom.unbookmark') : t('classroom.bookmark')"
+              :title="currentBookmark ? t('classroom.unbookmark') : t('classroom.bookmark')"
+              :disabled="bookmarkBusy"
+              @click="toggleBookmark"
+            >
+              <BookmarkCheck v-if="currentBookmark" class="classroom__bookmark" aria-hidden="true" />
+              <Bookmark v-else class="classroom__bookmark" aria-hidden="true" />
+            </button>
             <button class="classroom__icon-button classroom__icon-button--glass" type="button" :aria-label="t('classroom.exit')" :title="t('classroom.exit')" @click="exitClassroom">
               <img class="classroom__icon" :src="exitIcon" alt="" aria-hidden="true">
               <span class="classroom__icon-label">{{ t("classroom.exit") }}</span>
@@ -958,6 +1013,9 @@ onBeforeUnmount(() => {
 }
 
 .classroom__actions--end { justify-content: flex-end; }
+
+/* One bookmark control per step: outlined until this step is saved, then filled. */
+.classroom__bookmark { width: 22px; height: 22px; color: var(--text); }
 
 /* The player sizes itself; only its action row shares the card, so no 1fr track here. */
 .classroom__lesson--animation {

@@ -6,7 +6,7 @@ const TTL_MS = 60_000;
 
 /** Reuse metadata within a login session; private courseware never goes into persistent storage. */
 export function createCoursewareCatalog(
-  api: Pick<UserApi, "listPresentationDecks" | "listDeckSlides" | "getCoursewareSlides">,
+  api: Pick<UserApi, "listPresentationDecks" | "listDeckSlides" | "getCoursewareSlides" | "getLessonSlides">,
   sessionIdentity: () => unknown = () => api,
 ) {
   type Entry<T> = { value?: T; expiresAt: number; pending?: Promise<T> };
@@ -15,6 +15,7 @@ export function createCoursewareCatalog(
   let decks: Entry<PresentationDeck[]> | undefined;
   const slides = new Map<string, Entry<PresentationSlide[]>>();
   const lessons = new Map<string, Entry<LessonCourseware>>();
+  const lessonsById = new Map<string, Entry<LessonCourseware>>();
 
   function checkSession() {
     const next = sessionIdentity();
@@ -24,6 +25,7 @@ export function createCoursewareCatalog(
     decks = undefined;
     slides.clear();
     lessons.clear();
+    lessonsById.clear();
   }
 
   function load<T>(entry: Entry<T>, request: () => Promise<T>): Promise<T> {
@@ -64,6 +66,15 @@ export function createCoursewareCatalog(
       lessons.set(coursewareKey, entry);
       while (lessons.size > MAX_DECKS) lessons.delete(lessons.keys().next().value!);
       return load(entry, () => api.getCoursewareSlides(coursewareKey));
+    },
+    /** The same pages addressed by the lesson id a classroom step carries, which is what a bookmark holds. */
+    getLessonSlides(lessonId: string): Promise<LessonCourseware> {
+      checkSession();
+      const entry = lessonsById.get(lessonId) ?? { expiresAt: 0 };
+      lessonsById.delete(lessonId);
+      lessonsById.set(lessonId, entry);
+      while (lessonsById.size > MAX_DECKS) lessonsById.delete(lessonsById.keys().next().value!);
+      return load(entry, () => api.getLessonSlides(lessonId));
     },
   };
 }
