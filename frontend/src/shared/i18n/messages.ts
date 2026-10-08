@@ -359,6 +359,7 @@ export const messages = {
   "chat.reasoningComplete": { zh: "已思考", en: "Thought" },
   "chat.retrieved": { zh: "已检索本地知识库", en: "Searched the local knowledge base" },
   "chat.noSources": { zh: "没有匹配的知识库内容", en: "No matching knowledge base content" },
+  "chat.openCourseware": { zh: "打开这一课的课件", en: "Open this lesson's courseware" },
   "chat.uploadFile": { zh: "上传文件", en: "Upload file" },
   "chat.uploadPhoto": { zh: "上传照片", en: "Upload photo" },
   "chat.skill": { zh: "技能", en: "Skill" },

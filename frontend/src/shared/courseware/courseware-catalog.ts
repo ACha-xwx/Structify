@@ -1,12 +1,12 @@
 import type { UserApi } from "../../user/api";
-import type { PresentationDeck, PresentationSlide } from "../types/contracts";
+import type { LessonCourseware, PresentationDeck, PresentationSlide } from "../types/contracts";
 
 const MAX_DECKS = 16;
 const TTL_MS = 60_000;
 
 /** Reuse metadata within a login session; private courseware never goes into persistent storage. */
 export function createCoursewareCatalog(
-  api: Pick<UserApi, "listPresentationDecks" | "listDeckSlides">,
+  api: Pick<UserApi, "listPresentationDecks" | "listDeckSlides" | "getCoursewareSlides">,
   sessionIdentity: () => unknown = () => api,
 ) {
   type Entry<T> = { value?: T; expiresAt: number; pending?: Promise<T> };
@@ -14,6 +14,7 @@ export function createCoursewareCatalog(
   let generation = 0;
   let decks: Entry<PresentationDeck[]> | undefined;
   const slides = new Map<string, Entry<PresentationSlide[]>>();
+  const lessons = new Map<string, Entry<LessonCourseware>>();
 
   function checkSession() {
     const next = sessionIdentity();
@@ -22,6 +23,7 @@ export function createCoursewareCatalog(
     generation += 1;
     decks = undefined;
     slides.clear();
+    lessons.clear();
   }
 
   function load<T>(entry: Entry<T>, request: () => Promise<T>): Promise<T> {
@@ -53,6 +55,15 @@ export function createCoursewareCatalog(
       slides.set(deckId, entry);
       while (slides.size > MAX_DECKS) slides.delete(slides.keys().next().value!);
       return load(entry, () => api.listDeckSlides(deckId));
+    },
+    /** The pages of one lesson number (06-06), which is how a citation knows which deck to open. */
+    getLessonCourseware(coursewareKey: string): Promise<LessonCourseware> {
+      checkSession();
+      const entry = lessons.get(coursewareKey) ?? { expiresAt: 0 };
+      lessons.delete(coursewareKey);
+      lessons.set(coursewareKey, entry);
+      while (lessons.size > MAX_DECKS) lessons.delete(lessons.keys().next().value!);
+      return load(entry, () => api.getCoursewareSlides(coursewareKey));
     },
   };
 }

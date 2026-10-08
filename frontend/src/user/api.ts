@@ -77,6 +77,8 @@ export interface UserApi {
   pinClassroomSlide(sessionId: string, stepIndex: number, slideId: string): Promise<ClassroomSession>;
   getPresentationMeta(): Promise<PresentationMeta>;
   getLessonCourseware(lessonId: string): Promise<LessonCourseware>;
+  /** The courseware of one lesson number (06-06), which is how a textbook citation addresses its deck. */
+  getCoursewareSlides(coursewareKey: string): Promise<LessonCourseware>;
   listPresentationDecks(): Promise<PresentationDeck[]>;
   listDeckSlides(deckId: string): Promise<PresentationSlide[]>;
   coursewareImageUrl(slideId: string): string;
@@ -164,6 +166,7 @@ export function createUserApi(client: { request: UserRequest }): UserApi {
     async pinClassroomSlide(sessionId, stepIndex, slideId) { return jsonData(await request<ClassroomSession>(`/classroom/sessions/${encoded(sessionId)}/slides`, { method: "PUT", body: { stepIndex, slideId } })); },
     async getPresentationMeta() { return jsonData(await request<PresentationMeta>("/presentation/meta")); },
     async getLessonCourseware(lessonId) { return jsonData(await request<LessonCourseware>(`/presentation/lessons/${encoded(lessonId)}/slides`)); },
+    async getCoursewareSlides(coursewareKey) { return jsonData(await request<LessonCourseware>(`/presentation/courseware/${encoded(coursewareKey)}/slides`)); },
     async listPresentationDecks() { return jsonData(await request<PresentationDeck[]>("/presentation/decks")); },
     async listDeckSlides(deckId) { return jsonData(await request<PresentationSlide[]>(`/presentation/decks/${encoded(deckId)}/slides`)); },
     coursewareImageUrl(slideId) { return `/api/v1/presentation/slides/${encoded(slideId)}/image`; },

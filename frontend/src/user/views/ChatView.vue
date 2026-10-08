@@ -25,6 +25,7 @@ import { auth } from "../../app/providers/runtime";
 import { userApi } from "../runtime";
 import { ApiClientError } from "../../shared/api/client";
 import { chatErrorKey, deltaOf, doneOf, errorOf, pendingOf, sourcesOf, type ChatWireEvent } from "../chat-stream";
+import { coursewareTarget } from "../../shared/courseware/lesson-key";
 
 const chatAddIconStyle = { "--chat-add-icon": `url("${chatAddIcon}")` };
 
@@ -256,6 +257,13 @@ function update(id: number, patch: Partial<ConversationMessage>) {
 
 let scrollFrame: number | undefined;
 let viewDisposed = false;
+
+/** A retrieved source opens the courseware of its own lesson, so the answer can be checked on the slides. */
+function openSource(source: ChatSource) {
+  const target = coursewareTarget(source.source);
+  if (target) void router.push(target);
+}
+
 async function scrollToLatest() {
   await nextTick();
   if (viewDisposed) return;
@@ -1105,6 +1113,7 @@ onBeforeUnmount(() => {
                   :seconds="message.seconds"
                   :reasoning-seconds="message.reasoningSeconds"
                   @resize="scrollToLatest"
+                  @open-source="openSource"
                 />
                 <ChatAnswer v-if="message.role === 'assistant' && message.content" class="message__body message__body--answer" :text="message.content" :streaming="message.state === 'streaming'" />
                 <p v-else class="message__body">{{ message.content }}</p>

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
-import { Brain, ChevronDown, Database } from "@lucide/vue";
+import { BookOpen, Brain, ChevronDown, Database } from "@lucide/vue";
 import type { ChatSource } from "../../shared/types";
+import { coursewareKeyOf } from "../../shared/courseware/lesson-key";
 import { useI18n } from "../../shared/i18n/locale";
 
 const props = defineProps<{
@@ -13,7 +14,12 @@ const props = defineProps<{
   seconds?: number;
   reasoningSeconds?: number;
 }>();
-const emit = defineEmits<{ resize: [] }>();
+const emit = defineEmits<{ resize: []; openSource: [source: ChatSource] }>();
+
+/** A source whose lesson number can be read opens that lesson's courseware; the rest stay plain text. */
+function openable(source: ChatSource) {
+  return Boolean(coursewareKeyOf(source.source));
+}
 const { t } = useI18n();
 const manualOpen = ref<boolean | null>(null);
 const thinkingOpen = ref<boolean | null>(null);
@@ -112,7 +118,19 @@ onBeforeUnmount(clearTimer);
           <div v-if="retrieved" class="reasoning__channel reasoning__sources-channel" :class="{ 'reasoning__channel--open': sourcesOpen }" :inert="!sourcesOpen || undefined">
             <div class="reasoning__clip">
               <ul v-if="sources.length" class="reasoning__sources">
-                <li v-for="source in sources" :key="source.id">{{ source.title }}</li>
+                <li v-for="source in sources" :key="source.id">
+                  <button
+                    v-if="openable(source)"
+                    class="reasoning__source"
+                    type="button"
+                    :title="t('chat.openCourseware')"
+                    @click="emit('openSource', source)"
+                  >
+                    <BookOpen :size="15" aria-hidden="true" />
+                    <span>{{ source.title }}</span>
+                  </button>
+                  <span v-else class="reasoning__source-plain">{{ source.title }}</span>
+                </li>
               </ul>
               <p v-else class="reasoning__source-note">{{ t('chat.noSources') }}</p>
             </div>
@@ -156,7 +174,13 @@ onBeforeUnmount(clearTimer);
 .reasoning__timeline { display: grid; gap: 3px; margin: 5px 0 2px 7px; padding: 2px 0 3px 10px; border-left: 1px solid color-mix(in srgb, var(--text) 14%, transparent); }
 .reasoning .reasoning__row { min-height: 30px; padding: 0 5px; border-radius: 5px; font-size: 16px; }
 .reasoning__count { padding: 0 5px; border-radius: 4px; background: color-mix(in srgb, var(--text) 6%, transparent); font-variant-numeric: tabular-nums; }
-.reasoning__sources { margin: 0 0 5px 24px; padding: 0; list-style: none; font-size: 16px; }
+.reasoning__sources { margin: 0 0 5px 24px; padding: 0; list-style: none; font-size: 19px; }
+.reasoning__sources li { margin: 0 0 3px; }
+.reasoning__source { gap: 7px; align-items: flex-start; font-size: 19px; line-height: 1.5; text-align: left; }
+.reasoning__source > svg { margin-top: 5px; opacity: .55; }
+.reasoning__source span { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--text) 30%, transparent); text-underline-offset: 3px; }
+.reasoning__source:hover span { text-decoration-color: currentColor; }
+.reasoning__source-plain { font-size: 19px; line-height: 1.5; }
 .reasoning__source-note { margin: 0 0 5px 24px; font-size: 16px; }
 .reasoning__text { margin: 3px 0 5px 12px; padding: 3px 10px 5px; border-left: 1px solid color-mix(in srgb, var(--text) 14%, transparent); max-height: 260px; overflow-y: auto; font-size: 16px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; scrollbar-width: thin; }
 .reasoning__text--live { max-height: 160px; scrollbar-width: none; mask-image: linear-gradient(transparent, #000 12px, #000 calc(100% - 8px), transparent); }
