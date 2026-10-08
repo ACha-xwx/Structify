@@ -94,7 +94,7 @@ const skipsLeft = computed(() => Math.max(0, skipLimit.value - skipsUsed.value))
 const canHint = computed(() => canAnswer.value && !hinted.value);
 const canSkip = computed(() => canAnswer.value && hinted.value && skipsLeft.value > 0);
 const skipNote = computed(() => t("classroom.skipsLeft", { count: skipsLeft.value }));
-const canType = computed(() => !finished.value && !responseAnswered.value && !interruption.value);
+const canType = computed(() => !finished.value && !responseAnswered.value);
 const canAnswer = computed(() => questionOpen.value && !interruption.value);
 const placeholder = computed(() => (canAnswer.value ? t("classroom.placeholderAnswer") : t("classroom.placeholderAsk")));
 const continueLabel = computed(() => session.value?.state === "OPENING" ? t("classroom.start") : t("classroom.next"));
@@ -327,6 +327,14 @@ function recallLastSessionId() {
 }
 
 const bookmarks = ref<ClassroomBookmark[]>([]);
+/**
+ * What the learner asked in this lesson and what came back, per step. The server keeps one answer per
+ * session, so asking again replaces the last one there; keeping them here is what lets a learner ask a
+ * second question without losing the first answer.
+ */
+const asks = ref<Array<{ id: number; stepIndex: number; question: string; answer: string }>>([]);
+let askId = 0;
+const currentAsks = computed(() => asks.value.filter((item) => item.stepIndex === stepIndex.value));
 const bookmarkBusy = ref(false);
 /** The step on screen; -1 is the opening, which is not a step and so has nothing to save. */
 const stepIndex = computed(() => Number(stage.value.stepIndex ?? -1));
@@ -515,7 +523,19 @@ async function apply(action: ClassroomAction, content?: string) {
 async function submit(action: "ASK" | "ANSWER") {
   const content = input.value.trim();
   if (!content) return;
+  const asked = stepIndex.value;
   await apply(action, content);
+  // An answer to a question the learner asked is something to read, not a verdict: keep the exchange so
+  // it can be asked about again - and so the previous answer does not disappear when the next one arrives.
+  const reply = response.value;
+  if (action === "ASK" && asked >= 0 && reply?.kind === "question") {
+    asks.value.push({
+      id: ++askId,
+      stepIndex: asked,
+      question: content,
+      answer: typeof reply.feedback === "string" ? reply.feedback : "",
+    });
+  }
 }
 
 async function openAnimation() {
@@ -538,6 +558,7 @@ function resetClassroom() {
   coursewareError.value = "";
   input.value = "";
   error.value = "";
+  asks.value = [];
   recallLastSessionId();
   void loadLessons();
 }
@@ -630,6 +651,12 @@ onBeforeUnmount(() => {
           <p v-if="failedAttempt" class="classroom__verdict" :aria-label="t('classroom.verdict')">{{ t("classroom.answerWrong") }}</p>
 
           <div class="classroom__composer">
+            <ol v-if="currentAsks.length" class="classroom__asks" :aria-label="t('classroom.askHistory')">
+              <li v-for="ask in currentAsks" :key="ask.id">
+                <p class="classroom__ask-question">{{ ask.question }}</p>
+                <p class="classroom__ask-answer">{{ ask.answer }}</p>
+              </li>
+            </ol>
             <textarea v-if="canType" v-model="input" class="classroom__input" :placeholder="placeholder" :aria-label="t('classroom.input')" rows="1" :disabled="busy" />
 
             <div class="classroom__actions classroom__actions--end">
@@ -931,6 +958,11 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 12px;
 }
+
+/* The exchanges of this step, newest last, so asking again never erases what the teacher just said. */
+.classroom__asks { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.classroom__ask-question { margin: 0; color: var(--text-muted); font-size: 19px; line-height: 1.6; }
+.classroom__ask-answer { margin: 4px 0 0; padding-left: 12px; border-left: 2px solid color-mix(in srgb, var(--text) 18%, transparent); font-size: 19px; line-height: 1.6; }
 
 /* One register for the narration, at a fixed size: the copy used to switch between a large centred
    variant and a smaller reading variant depending on how long the text was, and the size itself was

@@ -228,6 +228,7 @@ export const messages = {
   "classroom.bookmark": { zh: "收藏这一步", en: "Save this step" },
   "classroom.unbookmark": { zh: "取消收藏", en: "Remove bookmark" },
   "classroom.ask": { zh: "提问", en: "Ask" },
+  "classroom.askHistory": { zh: "这一步提过的问题", en: "Questions asked in this step" },
   "classroom.answer": { zh: "回答", en: "Answer" },
   "classroom.answerAgain": { zh: "再答一次", en: "Try again" },
   "classroom.answerWrong": { zh: "回答不正确，再想想。", en: "Not quite. Think it through and try again." },
@@ -242,7 +243,7 @@ export const messages = {
   "classroom.demo": { zh: "演示", en: "Show it" },
   "classroom.backToLesson": { zh: "返回课堂", en: "Back to class" },
   "classroom.toLab": { zh: "去动画实验室", en: "Open the animation lab" },
-  "classroom.continue": { zh: "回到课堂", en: "Back to class" },
+  "classroom.continue": { zh: "继续上课", en: "Continue the lesson" },
   "classroom.changeLesson": { zh: "换课", en: "Change lesson" },
   "classroom.prepareFailed": { zh: "备课失败", en: "The lesson could not be prepared" },
 

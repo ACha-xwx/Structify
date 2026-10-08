@@ -693,7 +693,47 @@ describe("minimal classroom", () => {
       expectedRevision: 4,
     });
     expect(wrapper.get(".classroom__speech").text()).toBe("叶子结点没有孩子");
-    expect(wrapper.findAll("button").find((button) => button.text() === "回到课堂")?.text()).toBe("回到课堂");
+    // The answer to a question the learner asked is something to read and ask about again, so the box
+    // stays where it was - and what was already said stays on screen next to it.
+    expect(wrapper.find("textarea").exists()).toBe(true);
+    expect(wrapper.get(".classroom__ask-question").text()).toBe("什么是叶子结点？");
+    expect(wrapper.get(".classroom__ask-answer").text()).toBe("叶子结点没有孩子");
+    expect(wrapper.findAll("button").find((button) => button.text() === "继续上课")).toBeTruthy();
+    expect(wrapper.findAll("button").find((button) => button.text() === "提问")).toBeTruthy();
+    wrapper.unmount();
+  });
+
+  it("lets the learner ask again without losing the previous answer", async () => {
+    const explain: ClassroomSession = {
+      ...opening,
+      state: "EXPLAIN",
+      stage: { content: "树由结点和边组成", stepIndex: 0, stepCount: 3, revision: 4, chapterId: "06-tree" },
+    };
+    openSession(explain.id);
+    api.getClassroomSession.mockResolvedValue(explain);
+    api.actInClassroom
+      .mockResolvedValueOnce({
+        ...explain,
+        stage: { ...explain.stage, revision: 5, teacherResponse: { feedback: "叶子结点没有孩子", answered: false, kind: "question" } },
+      })
+      .mockResolvedValueOnce({
+        ...explain,
+        stage: { ...explain.stage, revision: 6, teacherResponse: { feedback: "边表示结点之间的父子关系", answered: false, kind: "question" } },
+      });
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+    await wrapper.get("textarea").setValue("什么是叶子结点？");
+    await wrapper.findAll("button").find((button) => button.text() === "提问")!.trigger("click");
+    await flushPromises();
+    await wrapper.get("textarea").setValue("那边是什么？");
+    await wrapper.findAll("button").find((button) => button.text() === "提问")!.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.findAll(".classroom__ask-question").map((node) => node.text()))
+      .toEqual(["什么是叶子结点？", "那边是什么？"]);
+    expect(wrapper.findAll(".classroom__ask-answer").map((node) => node.text()))
+      .toEqual(["叶子结点没有孩子", "边表示结点之间的父子关系"]);
     wrapper.unmount();
   });
 
