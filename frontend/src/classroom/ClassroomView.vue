@@ -4,6 +4,7 @@ import { useRoute, useRouter } from "vue-router";
 import { Bookmark, BookmarkCheck } from "@lucide/vue";
 import BrandStage from "../shared/components/BrandStage.vue";
 import AiTitle from "../shared/components/AiTitle.vue";
+import AiBall from "../shared/components/AiBall.vue";
 import AnimationPlayer from "../animation/AnimationPlayer.vue";
 import type { ClassroomAction, ClassroomBookmark, ClassroomSession, ClassroomSlideMatch, DsvpRequest, DsvpSimulationResponse, LessonCourseware } from "../shared/types/contracts";
 import { useI18n } from "../shared/i18n/locale";
@@ -328,13 +329,18 @@ function recallLastSessionId() {
 
 const bookmarks = ref<ClassroomBookmark[]>([]);
 /**
- * What the learner asked in this lesson and what came back, per step. The server keeps one answer per
- * session, so asking again replaces the last one there; keeping them here is what lets a learner ask a
- * second question without losing the first answer.
+ * What the learner asked at this step and what came back, as the server keeps it. The session itself only
+ * holds its latest response, so this list is what makes the exchange readable again after a refresh.
  */
-const asks = ref<Array<{ id: number; stepIndex: number; question: string; answer: string }>>([]);
-let askId = 0;
-const currentAsks = computed(() => asks.value.filter((item) => item.stepIndex === stepIndex.value));
+const currentAsks = computed<Array<{ id: string; question: string; answer: string }>>(() => {
+  const asked = stage.value.asks;
+  if (!Array.isArray(asked)) return [];
+  return asked.map((item, position) => ({
+    id: `${stepIndex.value}-${position}`,
+    question: text((item as Record<string, unknown>)?.question),
+    answer: text((item as Record<string, unknown>)?.answer),
+  }));
+});
 const bookmarkBusy = ref(false);
 /** The step on screen; -1 is the opening, which is not a step and so has nothing to save. */
 const stepIndex = computed(() => Number(stage.value.stepIndex ?? -1));
@@ -523,19 +529,7 @@ async function apply(action: ClassroomAction, content?: string) {
 async function submit(action: "ASK" | "ANSWER") {
   const content = input.value.trim();
   if (!content) return;
-  const asked = stepIndex.value;
   await apply(action, content);
-  // An answer to a question the learner asked is something to read, not a verdict: keep the exchange so
-  // it can be asked about again - and so the previous answer does not disappear when the next one arrives.
-  const reply = response.value;
-  if (action === "ASK" && asked >= 0 && reply?.kind === "question") {
-    asks.value.push({
-      id: ++askId,
-      stepIndex: asked,
-      question: content,
-      answer: typeof reply.feedback === "string" ? reply.feedback : "",
-    });
-  }
 }
 
 async function openAnimation() {
@@ -558,7 +552,6 @@ function resetClassroom() {
   coursewareError.value = "";
   input.value = "";
   error.value = "";
-  asks.value = [];
   recallLastSessionId();
   void loadLessons();
 }
@@ -652,9 +645,12 @@ onBeforeUnmount(() => {
 
           <div class="classroom__composer">
             <ol v-if="currentAsks.length" class="classroom__asks" :aria-label="t('classroom.askHistory')">
-              <li v-for="ask in currentAsks" :key="ask.id">
+              <li v-for="ask in currentAsks" :key="ask.id" class="classroom__exchange">
                 <p class="classroom__ask-question">{{ ask.question }}</p>
-                <p class="classroom__ask-answer">{{ ask.answer }}</p>
+                <div class="classroom__answer">
+                  <AiBall class="classroom__ask-mascot" size="message" :follow-pointer="false" />
+                  <p class="classroom__ask-answer">{{ ask.answer }}</p>
+                </div>
               </li>
             </ol>
             <textarea v-if="canType" v-model="input" class="classroom__input" :placeholder="placeholder" :aria-label="t('classroom.input')" rows="1" :disabled="busy" />
@@ -959,10 +955,37 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 
-/* The exchanges of this step, newest last, so asking again never erases what the teacher just said. */
-.classroom__asks { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
-.classroom__ask-question { margin: 0; color: var(--text-muted); font-size: 19px; line-height: 1.6; }
-.classroom__ask-answer { margin: 4px 0 0; padding-left: 12px; border-left: 2px solid color-mix(in srgb, var(--text) 18%, transparent); font-size: 19px; line-height: 1.6; }
+/* The learner talks to the mascot, not to the page: the question sits right, the answer comes back from
+   a small version of the same ball that greets them on the entry pages. */
+.classroom__asks { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
+.classroom__exchange { display: grid; gap: 8px; }
+.classroom__ask-question {
+  justify-self: end;
+  max-width: 78%;
+  margin: 0;
+  padding: 10px 18px;
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border-radius: 20px 20px 6px 20px;
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  font-size: 19px;
+  line-height: 1.55;
+}
+.classroom__answer { display: flex; max-width: 88%; align-items: flex-start; gap: 10px; justify-self: start; }
+.classroom__ask-mascot { flex: 0 0 auto; }
+.classroom__ask-answer {
+  margin: 0;
+  padding: 12px 18px;
+  border: 1px double color-mix(in srgb, var(--text) 15%, transparent);
+  border-radius: 20px 20px 20px 6px;
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
+  -webkit-backdrop-filter: blur(7px) saturate(1.08);
+  backdrop-filter: blur(7px) saturate(1.08);
+  font-size: 19px;
+  line-height: 1.65;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .classroom__ask-answer { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
 
 /* One register for the narration, at a fixed size: the copy used to switch between a large centred
    variant and a smaller reading variant depending on how long the text was, and the size itself was

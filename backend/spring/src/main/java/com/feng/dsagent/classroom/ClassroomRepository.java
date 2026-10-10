@@ -15,5 +15,12 @@ interface ClassroomRepository {
 
     ClassroomSessionRecord updateSession(ClassroomSessionRecord session, ClassroomStatus status, String summary);
 
+    /** One question the learner asked at one step, kept so the next answer knows what was already said. */
+    void recordAsk(String sessionId, int stepIndex, String question, String answer);
+
+    /** The questions asked at one step, oldest first. */
+    List<ClassroomAskExchange> asksAt(String sessionId, int stepIndex);
+
     void appendEvent(ClassroomEventRecord event);
+
 }

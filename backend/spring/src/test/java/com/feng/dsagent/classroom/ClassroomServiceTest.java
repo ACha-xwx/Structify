@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 import com.feng.dsagent.common.ApiException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -42,6 +43,27 @@ class ClassroomServiceTest {
                 : "{\"feedback\":\"先直接回答你的插问\"}");
         });
     }
+    @Test void keepsTheQuestionsAskedAtAStepAndTellsTheNextAnswerAboutThem() {
+        String id = service.create(user, "timeline-test").id();
+
+        ClassroomSessionView first = service.apply(user, id, ClassroomAction.ASK, "这个例子我不懂");
+        assertThat(first.stage().path("asks")).hasSize(1);
+        assertThat(first.stage().path("asks").get(0).path("question").asText()).isEqualTo("这个例子我不懂");
+        assertThat(first.stage().path("asks").get(0).path("answer").asText()).isEqualTo("先直接回答你的插问");
+
+        // The session keeps only its latest response, so the second question has to be told what the first
+        // one already said - otherwise the answer repeats an example the learner has just been given.
+        service.apply(user, id, ClassroomAction.ASK, "那再举一个");
+        ArgumentCaptor<String> context = ArgumentCaptor.forClass(String.class);
+        verify(model, atLeastOnce()).generate(eq(user), anyString(), context.capture(), anyInt(), any());
+        assertThat(context.getAllValues()).anySatisfy(sent -> assertThat(sent)
+            .contains("askedInThisStep")
+            .contains("这个例子我不懂"));
+
+        // And the whole exchange is readable again, not only the last one.
+        assertThat(service.get(user, id).stage().path("asks")).hasSize(2);
+    }
+
     @Test void preservesAllStepsAndBothQuestions() {
         String id = service.create(user, "timeline-test").id();
         assertThat(service.get(user,id).state()).isEqualTo(ClassroomState.OPENING);

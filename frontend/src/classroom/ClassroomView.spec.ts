@@ -678,6 +678,7 @@ describe("minimal classroom", () => {
         ...explain.stage,
         revision: 5,
         teacherResponse: { feedback: "叶子结点没有孩子", answered: false, kind: "question" },
+        asks: [{ question: "什么是叶子结点？", answer: "叶子结点没有孩子" }],
       },
     });
 
@@ -698,6 +699,8 @@ describe("minimal classroom", () => {
     expect(wrapper.find("textarea").exists()).toBe(true);
     expect(wrapper.get(".classroom__ask-question").text()).toBe("什么是叶子结点？");
     expect(wrapper.get(".classroom__ask-answer").text()).toBe("叶子结点没有孩子");
+    // The answer comes from the mascot, the way the learner asked it: as a reply, not as another paragraph.
+    expect(wrapper.find(".classroom__answer .ai-ball").exists()).toBe(true);
     expect(wrapper.findAll("button").find((button) => button.text() === "继续上课")).toBeTruthy();
     expect(wrapper.findAll("button").find((button) => button.text() === "提问")).toBeTruthy();
     wrapper.unmount();
@@ -714,11 +717,24 @@ describe("minimal classroom", () => {
     api.actInClassroom
       .mockResolvedValueOnce({
         ...explain,
-        stage: { ...explain.stage, revision: 5, teacherResponse: { feedback: "叶子结点没有孩子", answered: false, kind: "question" } },
+        stage: {
+          ...explain.stage,
+          revision: 5,
+          teacherResponse: { feedback: "叶子结点没有孩子", answered: false, kind: "question" },
+          asks: [{ question: "什么是叶子结点？", answer: "叶子结点没有孩子" }],
+        },
       })
       .mockResolvedValueOnce({
         ...explain,
-        stage: { ...explain.stage, revision: 6, teacherResponse: { feedback: "边表示结点之间的父子关系", answered: false, kind: "question" } },
+        stage: {
+          ...explain.stage,
+          revision: 6,
+          teacherResponse: { feedback: "边表示结点之间的父子关系", answered: false, kind: "question" },
+          asks: [
+            { question: "什么是叶子结点？", answer: "叶子结点没有孩子" },
+            { question: "那边是什么？", answer: "边表示结点之间的父子关系" },
+          ],
+        },
       });
 
     const wrapper = mountClassroom();

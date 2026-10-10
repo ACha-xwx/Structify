@@ -15,6 +15,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** A durable cursor over the complete lesson; responses never silently advance it. */
 @Service
 public class ClassroomTimeline {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ClassroomTimeline.class);
     private final ClassroomRepository repository;
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
@@ -95,6 +96,15 @@ public class ClassroomTimeline {
             stage.set("slideRefs", references);
             stage.set("slideMatch", slides.describe(slide));
         }
+        // What was asked at this step, so the pane shows the exchange back after a refresh instead of
+        // forgetting it the moment the next answer replaces the last one.
+        var asks = mapper.createArrayNode();
+        for (ClassroomAskExchange exchange : repository.asksAt(session.id(), cursor.index())) {
+            ObjectNode ask = asks.addObject();
+            ask.put("question", exchange.question());
+            ask.put("answer", exchange.answer() == null ? "" : exchange.answer());
+        }
+        stage.set("asks", asks);
         ClassroomAnswerEvaluation evaluation = null;
         if (cursor.response() != null) {
             JsonNode response = mapper.readTree(cursor.response());
@@ -138,6 +148,12 @@ public class ClassroomTimeline {
         String flat = text.replaceAll("\\s+", " ").strip();
         return flat.length() <= 60 ? flat : flat.substring(0, 60) + "…";
     }
+
+    /** The first words of something long, kept on one line, for context that is background rather than the point. */
+    private static String truncate(String text, int limit) {
+        String flat = text.replaceAll("\\s+", " ").strip();
+        return flat.length() <= limit ? flat : flat.substring(0, limit) + "…";
+    }
     @Transactional
     public ClassroomSessionView apply(long userId, String id, ClassroomAction action, String content, Integer expectedRevision) {
         ClassroomSessionRecord session = owned(userId, id); Cursor current = cursor(id); List<JsonNode> steps = steps(session);
@@ -178,11 +194,38 @@ public class ClassroomTimeline {
                 }
                 context.set("currentStep", stepContext); context.set("lesson", lessonContext); context.put("studentInput", input);
                 if (response != null) context.set("previousResponse", mapper.readTree(response));
+                // The session keeps only its latest response, so without this the second question at a step
+                // has no idea what the first one already said - and the class hears the same example twice.
+                List<ClassroomAskExchange> answeredAsks = repository.asksAt(id, index);
+                if (!answeredAsks.isEmpty()) {
+                    var conversation = context.putArray("askedInThisStep");
+                    for (ClassroomAskExchange exchange : answeredAsks.subList(Math.max(0, answeredAsks.size() - 6), answeredAsks.size())) {
+                        ObjectNode turn = conversation.addObject();
+                        turn.put("question", exchange.question());
+                        turn.put("answer", exchange.answer() == null ? "" : exchange.answer());
+                    }
+                }
+                // The page on screen is what the learner is asking about: send its own words, not just its id,
+                // and keep the step before it in reach for "what did the last page say".
+                String lessonId = lesson.path("lessonId").asText("");
+                String page = slides.pageText(session.scriptId(), session.scriptJson(), lessonId, index, active);
+                if (!page.isBlank()) context.put("currentSlideText", page);
+                if (index > 0) {
+                    String previousNarration = steps.get(index - 1).path("content").asText("");
+                    if (!previousNarration.isBlank()) context.put("previousStepNarration", truncate(previousNarration, 400));
+                }
+                log.info(
+                    "classroom ask: session={} step={} pageChars={} askedBefore={}",
+                    id,
+                    index,
+                    page.length(),
+                    answeredAsks.size()
+                );
                 // The grader knows which attempt this is, so its hint can tighten instead of repeating itself.
                 if (grading) context.put("attempt", attempts + 1);
                 JsonNode generated = model.generate(userId,
                     grading ? "你是数据结构老师。依据所给教材教案，对学生回答做语义判断，识别同义表达、否定和误区，不用关键词命中判分。返回 {\"status\":\"CORRECT|MISCONCEPTION|INCORRECT\",\"feedback\":\"针对学生回答的解释\",\"misconception\":null}。判为错误时 feedback 要指出答案偏离在哪，并给出能让学生自己纠正的提示，让他重新作答；不要直接把完整答案念出来，也不要说本课已经结束。若 attempt 大于 1，提示要更具体，可以点出关键结论。"
-                        : "你是数据结构老师。先直接回答学生此刻的插问，不要复述主线、不要求先答原题。只依据教案提供的教材事实，资料不足时明确说明；最多两小段。返回 {\"feedback\":\"老师的回答\",\"animationRef\":null}。如果学生希望看动画，由你理解其意图并生成或复用当前例子的 animationRef，不能忽略这个请求。格式 {\"protocol\":\"dsvp/1.0\",\"request\":{\"version\":\"1.0\",\"structure\":\"...\",\"operation\":\"...\",\"params\":{},\"initial_state\":{\"data\":[]}}}。\n"
+                        : "你是数据结构老师。先直接回答学生此刻的插问，不要复述主线、不要求先答原题。只依据下面给的材料回答：currentSlideText 是学生眼前这一页课件上的原话，currentStep 是这一步的讲稿与关键词，askedInThisStep 是这一步已经问过与答过的内容（**已经讲过的例子和结论不要再说一遍，要在此基础上往下讲**），previousStepNarration 是上一步的讲稿。资料不足时明确说明；最多两小段。返回 {\"feedback\":\"老师的回答\",\"animationRef\":null}。如果学生希望看动画，由你理解其意图并生成或复用当前例子的 animationRef，不能忽略这个请求。格式 {\"protocol\":\"dsvp/1.0\",\"request\":{\"version\":\"1.0\",\"structure\":\"...\",\"operation\":\"...\",\"params\":{},\"initial_state\":{\"data\":[]}}}。\n"
                             + animations.animationRules(session.chapterId())
                             + "无法执行的算法说明限制，不编造轨迹。",
                     context.toString() + "\n动画字段约束：\n" + com.feng.dsagent.animation.DsvpModelContract.INSTRUCTIONS, 1800, json -> {
@@ -213,6 +256,11 @@ public class ClassroomTimeline {
                 reply.put("answered", answered); reply.put("question", input); reply.put("kind", grading ? "answer" : "question");
                 if (attempts > 0) reply.put("attempts", attempts);
                 response = reply.toString();
+                if (!grading) {
+                    // Kept so the next question at this step knows what was already answered, and so the
+                    // learner can read back what they asked.
+                    repository.recordAsk(id, index, input, reply.path("feedback").asText(""));
+                }
                 if (grading) {
                     // A wrong answer keeps the cursor on the very same question and leaves it unanswered,
                     // so CONTINUE cannot walk past it: the learner has to answer again to move on.

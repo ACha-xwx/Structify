@@ -108,6 +108,32 @@ class JdbcClassroomRepository implements ClassroomRepository {
     }
 
     @Override
+    public void recordAsk(String sessionId, int stepIndex, String question, String answer) {
+        jdbc.update(
+            "INSERT INTO classroom_ask_exchanges (session_id, step_index, question, answer) VALUES (?, ?, ?, ?)",
+            sessionId,
+            stepIndex,
+            question,
+            answer
+        );
+    }
+
+    @Override
+    public List<ClassroomAskExchange> asksAt(String sessionId, int stepIndex) {
+        return jdbc.query(
+            "SELECT question, answer, created_at FROM classroom_ask_exchanges "
+                + "WHERE session_id = ? AND step_index = ? ORDER BY id",
+            (row, number) -> new ClassroomAskExchange(
+                row.getString("question"),
+                row.getString("answer"),
+                row.getTimestamp("created_at").toInstant().toString()
+            ),
+            sessionId,
+            stepIndex
+        );
+    }
+
+    @Override
     public void appendEvent(ClassroomEventRecord event) {
         jdbc.update(
             "INSERT INTO classroom_events "
