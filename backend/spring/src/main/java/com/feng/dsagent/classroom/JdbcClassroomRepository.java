@@ -119,17 +119,17 @@ class JdbcClassroomRepository implements ClassroomRepository {
     }
 
     @Override
-    public List<ClassroomAskExchange> asksAt(String sessionId, int stepIndex) {
+    public List<ClassroomAskExchange> asksOf(String sessionId) {
         return jdbc.query(
-            "SELECT question, answer, created_at FROM classroom_ask_exchanges "
-                + "WHERE session_id = ? AND step_index = ? ORDER BY id",
+            "SELECT step_index, question, answer, created_at FROM classroom_ask_exchanges "
+                + "WHERE session_id = ? ORDER BY id",
             (row, number) -> new ClassroomAskExchange(
+                row.getInt("step_index"),
                 row.getString("question"),
                 row.getString("answer"),
                 row.getTimestamp("created_at").toInstant().toString()
             ),
-            sessionId,
-            stepIndex
+            sessionId
         );
     }
 

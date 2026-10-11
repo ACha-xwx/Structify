@@ -96,11 +96,12 @@ public class ClassroomTimeline {
             stage.set("slideRefs", references);
             stage.set("slideMatch", slides.describe(slide));
         }
-        // What was asked at this step, so the pane shows the exchange back after a refresh instead of
-        // forgetting it the moment the next answer replaces the last one.
+        // The lesson's questions, so the pane shows the conversation back - and shows it as one conversation,
+        // not one per page: a question asked at step 3 is still part of what is being discussed at step 5.
         var asks = mapper.createArrayNode();
-        for (ClassroomAskExchange exchange : repository.asksAt(session.id(), cursor.index())) {
+        for (ClassroomAskExchange exchange : repository.asksOf(session.id())) {
             ObjectNode ask = asks.addObject();
+            ask.put("stepIndex", exchange.stepIndex());
             ask.put("question", exchange.question());
             ask.put("answer", exchange.answer() == null ? "" : exchange.answer());
         }
@@ -194,15 +195,17 @@ public class ClassroomTimeline {
                 }
                 context.set("currentStep", stepContext); context.set("lesson", lessonContext); context.put("studentInput", input);
                 if (response != null) context.set("previousResponse", mapper.readTree(response));
-                // The session keeps only its latest response, so without this the second question at a step
-                // has no idea what the first one already said - and the class hears the same example twice.
-                List<ClassroomAskExchange> answeredAsks = repository.asksAt(id, index);
-                if (!answeredAsks.isEmpty()) {
-                    var conversation = context.putArray("askedInThisStep");
-                    for (ClassroomAskExchange exchange : answeredAsks.subList(Math.max(0, answeredAsks.size() - 6), answeredAsks.size())) {
+                // The session keeps only its latest response, so without this the next question has no idea what
+                // the lesson already answered - even when it was asked three pages ago, which is exactly when a
+                // learner expects the conversation to carry on.
+                List<ClassroomAskExchange> askedBefore = repository.asksOf(id);
+                if (!askedBefore.isEmpty()) {
+                    var conversation = context.putArray("askedSoFar");
+                    for (ClassroomAskExchange exchange : askedBefore.subList(Math.max(0, askedBefore.size() - 6), askedBefore.size())) {
                         ObjectNode turn = conversation.addObject();
+                        turn.put("step", exchange.stepIndex() + 1);
                         turn.put("question", exchange.question());
-                        turn.put("answer", exchange.answer() == null ? "" : exchange.answer());
+                        turn.put("answer", truncate(exchange.answer() == null ? "" : exchange.answer(), 500));
                     }
                 }
                 // The page on screen is what the learner is asking about: send its own words, not just its id,
@@ -219,13 +222,13 @@ public class ClassroomTimeline {
                     id,
                     index,
                     page.length(),
-                    answeredAsks.size()
+                    askedBefore.size()
                 );
                 // The grader knows which attempt this is, so its hint can tighten instead of repeating itself.
                 if (grading) context.put("attempt", attempts + 1);
                 JsonNode generated = model.generate(userId,
                     grading ? "你是数据结构老师。依据所给教材教案，对学生回答做语义判断，识别同义表达、否定和误区，不用关键词命中判分。返回 {\"status\":\"CORRECT|MISCONCEPTION|INCORRECT\",\"feedback\":\"针对学生回答的解释\",\"misconception\":null}。判为错误时 feedback 要指出答案偏离在哪，并给出能让学生自己纠正的提示，让他重新作答；不要直接把完整答案念出来，也不要说本课已经结束。若 attempt 大于 1，提示要更具体，可以点出关键结论。"
-                        : "你是数据结构老师。先直接回答学生此刻的插问，不要复述主线、不要求先答原题。只依据下面给的材料回答：currentSlideText 是学生眼前这一页课件上的原话，currentStep 是这一步的讲稿与关键词，askedInThisStep 是这一步已经问过与答过的内容（**已经讲过的例子和结论不要再说一遍，要在此基础上往下讲**），previousStepNarration 是上一步的讲稿。资料不足时明确说明；最多两小段。返回 {\"feedback\":\"老师的回答\",\"animationRef\":null}。如果学生希望看动画，由你理解其意图并生成或复用当前例子的 animationRef，不能忽略这个请求。格式 {\"protocol\":\"dsvp/1.0\",\"request\":{\"version\":\"1.0\",\"structure\":\"...\",\"operation\":\"...\",\"params\":{},\"initial_state\":{\"data\":[]}}}。\n"
+                        : "你是数据结构老师。先直接回答学生此刻的插问，不要复述主线、不要求先答原题。只依据下面给的材料回答：currentSlideText 是学生眼前这一页课件上的原话，currentStep 是这一步的讲稿与关键词，askedSoFar 是这节课到现在为止问过与答过的内容（每条形如 {step, question, answer}，可能发生在别的页上），previousStepNarration 是上一步的讲稿。追问答不上来时先看 askedSoFar：学生常在前一页问过、这一页接着问，要顺着那条线往下讲，**已经讲过的例子和结论不要再说一遍**。资料不足时明确说明；最多两小段。返回 {\"feedback\":\"老师的回答\",\"animationRef\":null}。如果学生希望看动画，由你理解其意图并生成或复用当前例子的 animationRef，不能忽略这个请求。格式 {\"protocol\":\"dsvp/1.0\",\"request\":{\"version\":\"1.0\",\"structure\":\"...\",\"operation\":\"...\",\"params\":{},\"initial_state\":{\"data\":[]}}}。\n"
                             + animations.animationRules(session.chapterId())
                             + "无法执行的算法说明限制，不编造轨迹。",
                     context.toString() + "\n动画字段约束：\n" + com.feng.dsagent.animation.DsvpModelContract.INSTRUCTIONS, 1800, json -> {

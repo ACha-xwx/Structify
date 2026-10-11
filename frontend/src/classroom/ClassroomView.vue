@@ -329,17 +329,22 @@ function recallLastSessionId() {
 
 const bookmarks = ref<ClassroomBookmark[]>([]);
 /**
- * What the learner asked at this step and what came back, as the server keeps it. The session itself only
- * holds its latest response, so this list is what makes the exchange readable again after a refresh.
+ * Everything asked during this lesson, as the server keeps it - one conversation, not one per page. A
+ * question asked three pages ago is still part of what is being discussed now, so the step each exchange
+ * happened on is carried along and shown next to it.
  */
-const currentAsks = computed<Array<{ id: string; question: string; answer: string }>>(() => {
+const lessonAsks = computed<Array<{ id: string; stepIndex: number; question: string; answer: string }>>(() => {
   const asked = stage.value.asks;
   if (!Array.isArray(asked)) return [];
-  return asked.map((item, position) => ({
-    id: `${stepIndex.value}-${position}`,
-    question: text((item as Record<string, unknown>)?.question),
-    answer: text((item as Record<string, unknown>)?.answer),
-  }));
+  return asked.map((item, position) => {
+    const row = item as Record<string, unknown>;
+    return {
+      id: `${position}-${text(row?.question).slice(0, 12)}`,
+      stepIndex: typeof row?.stepIndex === "number" ? row.stepIndex : -1,
+      question: text(row?.question),
+      answer: text(row?.answer),
+    };
+  });
 });
 /** Whether the row shows the conversation with the mascot instead of the narration. */
 const conversationOpen = ref(false);
@@ -657,9 +662,10 @@ onBeforeUnmount(() => {
         <section v-else class="classroom__lesson">
           <!-- One reading surface at a time: the narration and the conversation with the mascot take the same
                row, so neither is squeezed or covered - a long answer needs the whole height to be readable. -->
-          <div v-if="conversationOpen && currentAsks.length" class="classroom__asks" :aria-label="t('classroom.askHistory')" ref="bubble">
+          <div v-if="conversationOpen && lessonAsks.length" class="classroom__asks" :aria-label="t('classroom.askHistory')" ref="bubble">
             <ol class="classroom__exchange-list">
-              <li v-for="ask in currentAsks" :key="ask.id" class="classroom__exchange">
+              <li v-for="ask in lessonAsks" :key="ask.id" class="classroom__exchange">
+                <p v-if="ask.stepIndex >= 0 && ask.stepIndex !== stepIndex" class="classroom__ask-step">{{ t("classroom.askStep", { index: ask.stepIndex + 1 }) }}</p>
                 <p class="classroom__ask-question">{{ ask.question }}</p>
                 <div class="classroom__answer">
                   <AiBall class="classroom__ask-mascot" size="message" :follow-pointer="false" />
@@ -680,8 +686,8 @@ onBeforeUnmount(() => {
             <textarea v-if="canType" v-model="input" class="classroom__input" :placeholder="placeholder" :aria-label="t('classroom.input')" rows="1" :disabled="busy" />
 
             <div class="classroom__actions classroom__actions--end">
-              <button v-if="currentAsks.length" class="classroom__toggle" type="button" @click="conversationOpen = !conversationOpen">
-                {{ conversationOpen ? t("classroom.backToNarration") : t("classroom.openAsks", { count: currentAsks.length }) }}
+              <button v-if="lessonAsks.length" class="classroom__toggle" type="button" @click="conversationOpen = !conversationOpen">
+                {{ conversationOpen ? t("classroom.backToNarration") : t("classroom.openAsks", { count: lessonAsks.length }) }}
               </button>
               <LiquidMetalButton v-if="animationRequest" class="classroom__silver-action" :disabled="busy" @click="openAnimation">{{ t("classroom.demo") }}</LiquidMetalButton>
               <LiquidMetalButton v-if="canType" class="classroom__silver-action" :disabled="busy || !input.trim()" :aria-label="t('classroom.ask')" @click="submit('ASK')">{{ t("classroom.ask") }}</LiquidMetalButton>
@@ -988,6 +994,7 @@ onBeforeUnmount(() => {
 .classroom__asks { min-height: 0; overflow-y: auto; }
 .classroom__exchange-list { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
 .classroom__exchange { display: grid; gap: 8px; }
+.classroom__ask-step { margin: 0; color: var(--text-muted); font-size: 19px; }
 .classroom__toggle {
   min-height: 44px;
   padding: 0 18px;

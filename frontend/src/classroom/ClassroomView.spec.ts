@@ -678,7 +678,7 @@ describe("minimal classroom", () => {
         ...explain.stage,
         revision: 5,
         teacherResponse: { feedback: "叶子结点没有孩子", answered: false, kind: "question" },
-        asks: [{ question: "什么是叶子结点？", answer: "叶子结点没有孩子" }],
+        asks: [{ stepIndex: 0, question: "什么是叶子结点？", answer: "叶子结点没有孩子" }],
       },
     });
 
@@ -711,6 +711,39 @@ describe("minimal classroom", () => {
     wrapper.unmount();
   });
 
+  it("keeps the lesson's conversation across pages, marking where each question was asked", async () => {
+    const later: ClassroomSession = {
+      ...opening,
+      state: "EXPLAIN",
+      stage: {
+        content: "这一页讲中序遍历",
+        stepIndex: 2,
+        stepCount: 3,
+        revision: 9,
+        chapterId: "06-tree",
+        asks: [
+          { stepIndex: 0, question: "什么是叶子结点？", answer: "叶子结点没有孩子" },
+          { stepIndex: 2, question: "中序先走哪边？", answer: "先左子树" },
+        ],
+      },
+    };
+    openSession(later.id);
+    api.getClassroomSession.mockResolvedValue(later);
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+
+    // The counter is about the lesson, not the page: turning a page does not start a new conversation.
+    expect(wrapper.findAll("button").find((button) => button.text() === "我问的（2）")).toBeTruthy();
+    await wrapper.findAll("button").find((button) => button.text() === "我问的（2）")!.trigger("click");
+
+    expect(wrapper.findAll(".classroom__ask-question").map((node) => node.text()))
+      .toEqual(["什么是叶子结点？", "中序先走哪边？"]);
+    // Only the exchange from another page carries a step label; the one asked here needs no reminder.
+    expect(wrapper.findAll(".classroom__ask-step").map((node) => node.text())).toEqual(["第 1 步"]);
+    wrapper.unmount();
+  });
+
   it("switches between the narration and the conversation without losing either", async () => {
     const explain: ClassroomSession = {
       ...opening,
@@ -721,7 +754,7 @@ describe("minimal classroom", () => {
         stepCount: 3,
         revision: 4,
         chapterId: "06-tree",
-        asks: [{ question: "什么是叶子结点？", answer: "叶子结点没有孩子" }],
+        asks: [{ stepIndex: 0, question: "什么是叶子结点？", answer: "叶子结点没有孩子" }],
       },
     };
     openSession(explain.id);
@@ -761,7 +794,7 @@ describe("minimal classroom", () => {
           ...explain.stage,
           revision: 5,
           teacherResponse: { feedback: "叶子结点没有孩子", answered: false, kind: "question" },
-          asks: [{ question: "什么是叶子结点？", answer: "叶子结点没有孩子" }],
+          asks: [{ stepIndex: 0, question: "什么是叶子结点？", answer: "叶子结点没有孩子" }],
         },
       })
       .mockResolvedValueOnce({
@@ -771,8 +804,8 @@ describe("minimal classroom", () => {
           revision: 6,
           teacherResponse: { feedback: "边表示结点之间的父子关系", answered: false, kind: "question" },
           asks: [
-            { question: "什么是叶子结点？", answer: "叶子结点没有孩子" },
-            { question: "那边是什么？", answer: "边表示结点之间的父子关系" },
+            { stepIndex: 0, question: "什么是叶子结点？", answer: "叶子结点没有孩子" },
+            { stepIndex: 0, question: "那边是什么？", answer: "边表示结点之间的父子关系" },
           ],
         },
       });

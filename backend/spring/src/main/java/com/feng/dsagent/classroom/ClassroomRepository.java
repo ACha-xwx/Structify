@@ -18,8 +18,8 @@ interface ClassroomRepository {
     /** One question the learner asked at one step, kept so the next answer knows what was already said. */
     void recordAsk(String sessionId, int stepIndex, String question, String answer);
 
-    /** The questions asked at one step, oldest first. */
-    List<ClassroomAskExchange> asksAt(String sessionId, int stepIndex);
+    /** Everything asked during one lesson, oldest first, across all of its steps. */
+    List<ClassroomAskExchange> asksOf(String sessionId);
 
     void appendEvent(ClassroomEventRecord event);
 

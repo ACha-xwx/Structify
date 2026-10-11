@@ -43,7 +43,7 @@ class ClassroomServiceTest {
                 : "{\"feedback\":\"先直接回答你的插问\"}");
         });
     }
-    @Test void keepsTheQuestionsAskedAtAStepAndTellsTheNextAnswerAboutThem() {
+    @Test void keepsTheQuestionsAskedDuringTheLessonAndTellsTheNextAnswerAboutThem() {
         String id = service.create(user, "timeline-test").id();
 
         ClassroomSessionView first = service.apply(user, id, ClassroomAction.ASK, "这个例子我不懂");
@@ -51,16 +51,18 @@ class ClassroomServiceTest {
         assertThat(first.stage().path("asks").get(0).path("question").asText()).isEqualTo("这个例子我不懂");
         assertThat(first.stage().path("asks").get(0).path("answer").asText()).isEqualTo("先直接回答你的插问");
 
-        // The session keeps only its latest response, so the second question has to be told what the first
-        // one already said - otherwise the answer repeats an example the learner has just been given.
+        // A question asked before turning the page is still what the next answer has to build on: the session
+        // keeps only its latest response, so the lesson's questions are the only thread there is.
+        service.apply(user, id, ClassroomAction.CONTINUE, null);
         service.apply(user, id, ClassroomAction.ASK, "那再举一个");
         ArgumentCaptor<String> context = ArgumentCaptor.forClass(String.class);
         verify(model, atLeastOnce()).generate(eq(user), anyString(), context.capture(), anyInt(), any());
         assertThat(context.getAllValues()).anySatisfy(sent -> assertThat(sent)
-            .contains("askedInThisStep")
-            .contains("这个例子我不懂"));
+            .contains("askedSoFar")
+            .contains("这个例子我不懂")
+            .contains("\"step\""));
 
-        // And the whole exchange is readable again, not only the last one.
+        // And the whole lesson's exchange is readable again, not only the latest one.
         assertThat(service.get(user, id).stage().path("asks")).hasSize(2);
     }
 
