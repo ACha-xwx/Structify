@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Bookmark, BookmarkCheck } from "@lucide/vue";
 import BrandStage from "../shared/components/BrandStage.vue";
@@ -341,6 +341,16 @@ const currentAsks = computed<Array<{ id: string; question: string; answer: strin
     answer: text((item as Record<string, unknown>)?.answer),
   }));
 });
+/** Whether the row shows the conversation with the mascot instead of the narration. */
+const conversationOpen = ref(false);
+const bubble = ref<HTMLElement | null>(null);
+
+/** The newest answer is the one being waited for, so keep it in view rather than the start of the history. */
+async function showNewestAnswer() {
+  await nextTick();
+  const pane = bubble.value;
+  if (pane) pane.scrollTop = pane.scrollHeight;
+}
 const bookmarkBusy = ref(false);
 /** The step on screen; -1 is the opening, which is not a step and so has nothing to save. */
 const stepIndex = computed(() => Number(stage.value.stepIndex ?? -1));
@@ -529,7 +539,10 @@ async function apply(action: ClassroomAction, content?: string) {
 async function submit(action: "ASK" | "ANSWER") {
   const content = input.value.trim();
   if (!content) return;
+  // Asking opens the conversation: the answer is what the learner is waiting for.
+  if (action === "ASK") conversationOpen.value = true;
   await apply(action, content);
+  if (action === "ASK") void showNewestAnswer();
 }
 
 async function openAnimation() {
@@ -552,6 +565,7 @@ function resetClassroom() {
   coursewareError.value = "";
   input.value = "";
   error.value = "";
+  conversationOpen.value = false;
   recallLastSessionId();
   void loadLessons();
 }
@@ -577,6 +591,8 @@ watch(lessonId, (id) => {
 watch(() => text(stage.value.lessonId), (id) => {
   if (id && id !== courseware.value?.lessonId) void loadCourseware(id);
 });
+// A new step is a new page: the reading surface goes back to the narration being taught.
+watch(stepIndex, () => { conversationOpen.value = false; });
 onMounted(() => void bootstrap());
 onBeforeUnmount(() => {
   if (pollTimer !== null) window.clearTimeout(pollTimer);
@@ -587,7 +603,9 @@ onBeforeUnmount(() => {
 <template>
   <BrandStage wide fixed>
     <div class="classroom-page">
-      <AiTitle><h1 class="workbench-title">{{ t("classroom.title") }}</h1></AiTitle>
+      <div class="classroom-page__head">
+        <AiTitle><h1 class="workbench-title">{{ t("classroom.title") }}</h1></AiTitle>
+      </div>
     <div class="classroom" :class="{ 'classroom--split': showSlides && session, 'classroom--courseware': showSlides && !session }" aria-live="polite">
       <div v-if="session || !showSlides" class="classroom__conversation" :class="{ 'classroom__conversation--active': session }">
         <header v-if="session" class="classroom__topbar">
@@ -637,14 +655,10 @@ onBeforeUnmount(() => {
         </section>
 
         <section v-else class="classroom__lesson">
-          <p class="classroom__speech" aria-hidden="true">
-            {{ displayedMessage }}<span v-if="messageTyping" class="classroom__typing-cursor" aria-hidden="true"></span>
-          </p>
-          <p class="classroom__speech-announcement" role="status">{{ messageTyping ? "" : message }}</p>
-          <p v-if="failedAttempt" class="classroom__verdict" :aria-label="t('classroom.verdict')">{{ t("classroom.answerWrong") }}</p>
-
-          <div class="classroom__composer">
-            <ol v-if="currentAsks.length" class="classroom__asks" :aria-label="t('classroom.askHistory')">
+          <!-- One reading surface at a time: the narration and the conversation with the mascot take the same
+               row, so neither is squeezed or covered - a long answer needs the whole height to be readable. -->
+          <div v-if="conversationOpen && currentAsks.length" class="classroom__asks" :aria-label="t('classroom.askHistory')" ref="bubble">
+            <ol class="classroom__exchange-list">
               <li v-for="ask in currentAsks" :key="ask.id" class="classroom__exchange">
                 <p class="classroom__ask-question">{{ ask.question }}</p>
                 <div class="classroom__answer">
@@ -653,9 +667,22 @@ onBeforeUnmount(() => {
                 </div>
               </li>
             </ol>
+          </div>
+          <template v-else>
+          <p class="classroom__speech" aria-hidden="true">
+            {{ displayedMessage }}<span v-if="messageTyping" class="classroom__typing-cursor" aria-hidden="true"></span>
+          </p>
+          <p class="classroom__speech-announcement" role="status">{{ messageTyping ? "" : message }}</p>
+          </template>
+          <p v-if="failedAttempt" class="classroom__verdict" :aria-label="t('classroom.verdict')">{{ t("classroom.answerWrong") }}</p>
+
+          <div class="classroom__composer">
             <textarea v-if="canType" v-model="input" class="classroom__input" :placeholder="placeholder" :aria-label="t('classroom.input')" rows="1" :disabled="busy" />
 
             <div class="classroom__actions classroom__actions--end">
+              <button v-if="currentAsks.length" class="classroom__toggle" type="button" @click="conversationOpen = !conversationOpen">
+                {{ conversationOpen ? t("classroom.backToNarration") : t("classroom.openAsks", { count: currentAsks.length }) }}
+              </button>
               <LiquidMetalButton v-if="animationRequest" class="classroom__silver-action" :disabled="busy" @click="openAnimation">{{ t("classroom.demo") }}</LiquidMetalButton>
               <LiquidMetalButton v-if="canType" class="classroom__silver-action" :disabled="busy || !input.trim()" :aria-label="t('classroom.ask')" @click="submit('ASK')">{{ t("classroom.ask") }}</LiquidMetalButton>
               <LiquidMetalButton v-if="interruption" class="classroom__silver-action" :disabled="busy" @click="apply('CONTINUE')">{{ t("classroom.continue") }}</LiquidMetalButton>
@@ -956,7 +983,24 @@ onBeforeUnmount(() => {
 }
 
 /* The learner talks to the mascot, not to the page: the question sits right, the answer comes back from
-   a small version of the same ball that greets them on the entry pages. */
+   a small version of the same ball that greets them on the entry pages. Both live in the lesson's own
+   reading row, so a long answer gets the whole height and the narration is never squeezed or covered. */
+.classroom__asks { min-height: 0; overflow-y: auto; }
+.classroom__exchange-list { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
+.classroom__exchange { display: grid; gap: 8px; }
+.classroom__toggle {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px double var(--panel-line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 19px;
+  cursor: pointer;
+}
+.classroom__toggle:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.classroom__toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .classroom__asks { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
 .classroom__exchange { display: grid; gap: 8px; }
 .classroom__ask-question {

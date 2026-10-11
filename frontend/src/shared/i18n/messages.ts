@@ -229,6 +229,8 @@ export const messages = {
   "classroom.unbookmark": { zh: "取消收藏", en: "Remove bookmark" },
   "classroom.ask": { zh: "提问", en: "Ask" },
   "classroom.askHistory": { zh: "这一步提过的问题", en: "Questions asked in this step" },
+  "classroom.openAsks": { zh: "我问的（{count}）", en: "My questions ({count})" },
+  "classroom.backToNarration": { zh: "回到讲稿", en: "Back to the lesson" },
   "classroom.answer": { zh: "回答", en: "Answer" },
   "classroom.answerAgain": { zh: "再答一次", en: "Try again" },
   "classroom.answerWrong": { zh: "回答不正确，再想想。", en: "Not quite. Think it through and try again." },

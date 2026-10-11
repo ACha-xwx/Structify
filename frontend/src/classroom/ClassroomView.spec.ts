@@ -693,7 +693,8 @@ describe("minimal classroom", () => {
       content: "什么是叶子结点？",
       expectedRevision: 4,
     });
-    expect(wrapper.get(".classroom__speech").text()).toBe("叶子结点没有孩子");
+    // The reply is the answer bubble now, not the lesson narration: asking opens the conversation.
+    expect(wrapper.get(".classroom__ask-answer").text()).toBe("叶子结点没有孩子");
     // The answer to a question the learner asked is something to read and ask about again, so the box
     // stays where it was - and what was already said stays on screen next to it.
     expect(wrapper.find("textarea").exists()).toBe(true);
@@ -701,8 +702,47 @@ describe("minimal classroom", () => {
     expect(wrapper.get(".classroom__ask-answer").text()).toBe("叶子结点没有孩子");
     // The answer comes from the mascot, the way the learner asked it: as a reply, not as another paragraph.
     expect(wrapper.find(".classroom__answer .ai-ball").exists()).toBe(true);
+    // One reading surface at a time: the conversation takes the narration's row instead of covering it or
+    // squeezing it into a scrolling sliver.
+    expect(wrapper.find(".classroom__lesson .classroom__asks").exists()).toBe(true);
+    expect(wrapper.find(".classroom__lesson .classroom__speech").exists()).toBe(false);
     expect(wrapper.findAll("button").find((button) => button.text() === "继续上课")).toBeTruthy();
     expect(wrapper.findAll("button").find((button) => button.text() === "提问")).toBeTruthy();
+    wrapper.unmount();
+  });
+
+  it("switches between the narration and the conversation without losing either", async () => {
+    const explain: ClassroomSession = {
+      ...opening,
+      state: "EXPLAIN",
+      stage: {
+        content: "树由结点和边组成",
+        stepIndex: 0,
+        stepCount: 3,
+        revision: 4,
+        chapterId: "06-tree",
+        asks: [{ question: "什么是叶子结点？", answer: "叶子结点没有孩子" }],
+      },
+    };
+    openSession(explain.id);
+    api.getClassroomSession.mockResolvedValue(explain);
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+
+    // A step with questions opens on the narration; the exchange is one tap away.
+    expect(wrapper.find(".classroom__speech").exists()).toBe(true);
+    expect(wrapper.find(".classroom__asks").exists()).toBe(false);
+    expect(wrapper.findAll("button").find((button) => button.text() === "我问的（1）")).toBeTruthy();
+
+    await wrapper.findAll("button").find((button) => button.text() === "我问的（1）")!.trigger("click");
+    expect(wrapper.find(".classroom__asks").exists()).toBe(true);
+    expect(wrapper.find(".classroom__ask-question").text()).toBe("什么是叶子结点？");
+    expect(wrapper.find(".classroom__speech").exists()).toBe(false);
+
+    await wrapper.findAll("button").find((button) => button.text() === "回到讲稿")!.trigger("click");
+    expect(wrapper.find(".classroom__speech").exists()).toBe(true);
+    expect(wrapper.find(".classroom__asks").exists()).toBe(false);
     wrapper.unmount();
   });
 
