@@ -327,7 +327,10 @@ public class ClassroomTimeline {
         int changed = jdbc.update("UPDATE classroom_sessions SET runtime_index = ?, runtime_revision = runtime_revision + 1, runtime_response = ? WHERE id = ? AND user_id = ? AND runtime_revision = ?", index, response, id, userId, current.revision());
         if (changed != 1) throw conflict("课堂进度已改变，请刷新后重试");
         ClassroomSessionRecord updated = repository.updateSession(session, new ClassroomStatus(nextState, paused), session.summary());
-        repository.appendEvent(new ClassroomEventRecord(id, action, input, session.state(), nextState, evaluation));
+        // Which try this was and whether a hint came first: what makes the line evidence of learning.
+        ClassroomRepository.StepAttempts attempts = repository.attemptsAt(id, index);
+        repository.appendEvent(new ClassroomEventRecord(id, action, input, session.state(), nextState, evaluation,
+            index, null, attempts.answers() + 1, attempts.hints() > 0));
         return view(updated);
     }
     /** A hint or a skip only makes sense while this question is still waiting for an answer. */
@@ -384,4 +387,5 @@ public class ClassroomTimeline {
         return view(session);
     }
     private ApiException conflict(String message) { return new ApiException(HttpStatus.CONFLICT, "CLASSROOM_ACTION_INVALID", message); }
+
 }

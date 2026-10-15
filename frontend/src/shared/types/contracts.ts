@@ -372,6 +372,23 @@ export interface ClassroomBookmark {
   title: string;
   createdAt: string;
 }
+/** The raw activity behind one node of the learning map, per module. */
+export interface LearningMapSignals {
+  classroomSteps: number; classroomAnswered: number; classroomCorrect: number; classroomHints: number;
+  classroomSkips: number; classroomAsks: number; animations: number; animationRepeats: number;
+  chatSessions: number; chatQuestions: number; codeRuns: number; codePassed: number; codeFailed: number;
+}
+/** Each dimension 0-1, or null when that module recorded nothing here. */
+export interface LearningMapComponents {
+  classroom: number | null; animation: number | null; chat: number | null; code: number | null;
+}
+/** The course, a chapter, or a reviewed lesson inside a chapter. */
+export interface LearningMapNode {
+  id: string; parentId: string | null; level: number; title: string;
+  mastery: number | null; confidence: number; status: "NOT_STARTED" | "LOW_EVIDENCE" | "ESTIMATED";
+  components: LearningMapComponents; signals: LearningMapSignals;
+}
+export interface LearningMap { generatedAt: string; nodes: LearningMapNode[]; }
 export interface LessonCourseware {
   lessonId: string;
   coursewareKey: string;

@@ -73,6 +73,7 @@ onMounted(async () => {
     <section class="profile" aria-labelledby="profile-title">
       <h1 id="profile-title" class="workbench-title">{{ t("home.profile") }}</h1>
 
+      <RouterLink class="profile__map" to="/learning-map">{{ t("map.title") }}</RouterLink>
       <p v-if="loading" class="profile__status">{{ t("profile.loading") }}</p>
       <p v-else-if="!bookmarks.length && !error" class="profile__status">{{ t("profile.empty") }}</p>
       <p v-if="error" class="profile__status" role="alert">{{ error }}</p>
@@ -142,6 +143,19 @@ onMounted(async () => {
 .profile__action:hover { transform: translateY(-1px); background: color-mix(in srgb, var(--text) 8%, transparent); }
 .profile__action:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .profile__action--quiet { display: inline-grid; width: 40px; padding: 0; place-items: center; border-color: transparent; background: transparent; }
+.profile__map {
+  display: inline-flex;
+  min-height: 48px;
+  align-items: center;
+  padding: 0 22px;
+  border: 1px double color-mix(in srgb, var(--text) 15%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
+  color: var(--text);
+  font-size: 19px;
+  text-decoration: none;
+}
+.profile__map:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
 .profile__back { color: var(--text); font-size: 19px; }
 .profile__back:focus-visible { outline: 2px solid var(--text); outline-offset: 4px; }
 @media (prefers-reduced-motion: reduce) { .profile__action { transition: none; } }

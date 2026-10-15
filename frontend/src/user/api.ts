@@ -27,6 +27,7 @@ import type {
   LearningEventRequest,
   LearningProgress,
   LearningWorkbenchProjection,
+  LearningMap,
   LessonCourseware,
   PresentationDeck,
   PresentationMeta,
@@ -88,6 +89,8 @@ export interface UserApi {
   getCoursewareSlides(coursewareKey: string): Promise<LessonCourseware>;
   /** The courseware of one prepared lesson, addressed by the lesson id a classroom step carries. */
   getLessonSlides(lessonId: string): Promise<LessonCourseware>;
+  /** The caller's own learning map: every chapter and lesson with what the four modules recorded. */
+  getLearningMap(): Promise<LearningMap>;
   listBookmarks(): Promise<ClassroomBookmark[]>;
   saveBookmark(sessionId: string, stepIndex: number): Promise<ClassroomBookmark>;
   deleteBookmark(id: number): Promise<void>;
@@ -180,6 +183,7 @@ export function createUserApi(client: { request: UserRequest }): UserApi {
     async getLessonCourseware(lessonId) { return jsonData(await request<LessonCourseware>(`/presentation/lessons/${encoded(lessonId)}/slides`)); },
     async getCoursewareSlides(coursewareKey) { return jsonData(await request<LessonCourseware>(`/presentation/courseware/${encoded(coursewareKey)}/slides`)); },
     async getLessonSlides(lessonId) { return jsonData(await request<LessonCourseware>(`/presentation/lessons/${encoded(lessonId)}/slides`)); },
+    async getLearningMap() { return jsonData(await request<LearningMap>("/users/learning-map")); },
     async listBookmarks() { return jsonData(await request<ClassroomBookmark[]>("/users/bookmarks")); },
     async saveBookmark(sessionId, stepIndex) { return jsonData(await request<ClassroomBookmark>("/users/bookmarks", { method: "POST", body: { sessionId, stepIndex } })); },
     async deleteBookmark(id) { await request(`/users/bookmarks/${encoded(String(id))}`, { method: "DELETE" }); },
