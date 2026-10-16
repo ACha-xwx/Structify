@@ -85,7 +85,7 @@ function breakdown(spec: MapNodeSpec): string[] {
   const named: string[] = [];
   if (parts.classroom !== null) named.push(`课堂 ${percent(parts.classroom)}`);
   if (parts.code !== null) named.push(`代码 ${percent(parts.code)}`);
-  if (parts.animation !== null) named.push(`动画 ${percent(parts.animation)}`);
+  if (parts.animation !== null) named.push(`动画 ${percent(parts.animation)}（只记到章）`);
   // What the chapter counted minus what reached a lesson: the part no lesson can be blamed for.
   // The lessons this node stands for, however the taxonomy reaches them (directly or through drawn nodes).
   const lessons = spec.chapters.length > 0

@@ -91,9 +91,10 @@ public class LearningMapService {
         Instant now = Instant.now();
         Map<String, Bucket> buckets = new HashMap<>();
         collectClassroom(userId, now, buckets, chunkToLesson(), stepToLesson(userId));
-        collectAnimation(userId, now, buckets);
-        collectCode(userId, now, buckets);
-        collectChat(userId, buckets);
+        java.util.List<String> lessons = lessonIndex();
+        collectAnimation(userId, now, buckets, lessons);
+        collectCode(userId, now, buckets, lessons);
+        collectChat(userId, buckets, lessons);
 
         List<LearningMapNode> nodes = new ArrayList<>();
         Evidence totalEvidence = Evidence.none();
@@ -258,8 +259,8 @@ public class LearningMapService {
     }
 
     /** The animation lab: repeats of the identical request are one act of learning, counted for a fifth. */
-    private void collectAnimation(long userId, Instant now, Map<String, Bucket> buckets) {
-        jdbc.query("SELECT chapter_id, payload_json, created_at FROM animation_records WHERE user_id = ?", row -> {
+    private void collectAnimation(long userId, Instant now, Map<String, Bucket> buckets, java.util.List<String> lessons) {
+        jdbc.query("SELECT chapter_id, title, payload_json, created_at FROM animation_records WHERE user_id = ?", row -> {
             Bucket bucket = bucketFor(buckets, row.getString("chapter_id"));
             if (bucket == null) return;
             bucket.raw[6]++;
@@ -271,11 +272,20 @@ public class LearningMapService {
             });
             double[] group = bucket.animationGroups.get(payload);
             group[0] += group[0] == 0 ? recency : recency * REPEAT_CREDIT;
+            // The record names only a chapter; the lesson is inferred from what the animation is called.
+            Bucket lessonBucket = lessonBucket(buckets, lessons, row.getString("title") + " " + payload);
+            if (lessonBucket != null) {
+                lessonBucket.raw[6]++;
+                String animationKey = payload == null ? "" : payload;
+                lessonBucket.animationGroups.computeIfAbsent(animationKey, ignored -> { lessonBucket.raw[7]++; return new double[] { 0, 0 }; });
+                double[] lessonGroup = lessonBucket.animationGroups.get(animationKey);
+                lessonGroup[0] += lessonGroup[0] == 0 ? recency : recency * REPEAT_CREDIT;
+            }
         }, userId);
     }
 
     /** The editor: byte-identical code run again is the same attempt, not a new one. */
-    private void collectCode(long userId, Instant now, Map<String, Bucket> buckets) {
+    private void collectCode(long userId, Instant now, Map<String, Bucket> buckets, java.util.List<String> lessons) {
         jdbc.query("SELECT chapter_id, source_code, status, created_at FROM code_runs WHERE user_id = ?", row -> {
             Bucket bucket = bucketFor(buckets, row.getString("chapter_id"));
             if (bucket == null) return;
@@ -288,11 +298,24 @@ public class LearningMapService {
             double credit = group[0] == 0 ? recency : recency * REPEAT_CREDIT;
             group[0] += credit;
             if (passed) group[1] += credit;
+            // The code itself often says which topic it is about; anything silent stays on the chapter.
+            String sourceText = row.getString("source_code");
+            Bucket lessonBucket = lessonBucket(buckets, lessons, sourceText == null ? "" : sourceText.substring(0, Math.min(4000, sourceText.length())));
+            if (lessonBucket != null) {
+                lessonBucket.raw[10]++;
+                if (passed) lessonBucket.raw[11]++; else lessonBucket.raw[12]++;
+                String lessonCodeKey = digest(sourceText);
+                lessonBucket.codeGroups.computeIfAbsent(lessonCodeKey, ignored -> new double[] { 0, 0 });
+                double[] lessonGroup = lessonBucket.codeGroups.get(lessonCodeKey);
+                double lessonCredit = lessonGroup[0] == 0 ? recency : recency * REPEAT_CREDIT;
+                lessonGroup[0] += lessonCredit;
+                if (passed) lessonGroup[1] += lessonCredit;
+            }
         }, userId);
     }
 
     /** The dialogue: asking is participation, so it feeds confidence; identical questions asked twice count once. */
-    private void collectChat(long userId, Map<String, Bucket> buckets) {
+    private void collectChat(long userId, Map<String, Bucket> buckets, java.util.List<String> lessons) {
         jdbc.query("""
             SELECT s.chapter_id, m.content
             FROM chat_sessions s
@@ -306,6 +329,12 @@ public class LearningMapService {
             if (bucket.chatSeen.add(text)) {
                 bucket.chat += 1;
                 bucket.raw[9]++;
+                // What was asked about is a decent clue to which lesson the learner was working on.
+                Bucket lessonBucket = lessonBucket(buckets, lessons, text);
+                if (lessonBucket != null) {
+                    lessonBucket.raw[8] = lessonBucket.raw[8] == 0 ? 1 : lessonBucket.raw[8];
+                    if (lessonBucket.chatSeen.add(text)) { lessonBucket.chat += 1; lessonBucket.raw[9]++; }
+                }
             }
         }, userId);
     }
@@ -338,6 +367,45 @@ public class LearningMapService {
     }
 
     // ---------------------------------------------------------------- layout, unchanged
+
+    /** The words a lesson title is made of, used to place a record that only names a chapter. */
+    private static String keywordsOf(String title) {
+        StringBuilder words = new StringBuilder();
+        for (String part : title.replaceAll("（已核验[^）]*）", "").split("[\\-、，,与和的及 ]+")) {
+            if (part.trim().length() >= 2) words.append(part.trim()).append(" ");
+        }
+        return words.toString().trim();
+    }
+
+    /** Every reviewed lesson of every chapter, as chapterId|lessonKey|keywords. */
+    private java.util.List<String> lessonIndex() {
+        java.util.List<String> index = new java.util.ArrayList<>();
+        for (ChapterRow chapter : jdbc.query("SELECT id, title FROM chapters ORDER BY chapter_number",
+            (row, i) -> new ChapterRow(row.getString("id"), row.getString("title")))) {
+            for (LessonRow lesson : lessonsOf(chapter.id())) {
+                index.add(chapter.id() + "|" + lesson.key() + "|" + keywordsOf(lesson.title()));
+            }
+        }
+        return index;
+    }
+
+    /** The bucket of the lesson a record most likely belongs to, or null when nothing matches well enough. */
+    private static Bucket lessonBucket(java.util.Map<String, Bucket> buckets, java.util.List<String> index, String text) {
+        if (text == null || text.isBlank()) return null;
+        String best = null;
+        int bestScore = 0;
+        for (String entry : index) {
+            int score = 0;
+            for (String word : entry.split("\\|")[2].split(" ")) {
+                if (!word.isEmpty() && text.contains(word)) score += word.length() * word.length();
+            }
+            if (score > bestScore) { bestScore = score; best = entry; }
+        }
+        // Two matching characters is the floor: below that a match is coincidence, not meaning.
+        if (best == null || bestScore < 4) return null;
+        String[] parts = best.split("\\|");
+        return bucketFor(buckets, parts[0] + ":" + parts[1]);
+    }
 
     private record ChapterRow(String id, String title) {
     }
