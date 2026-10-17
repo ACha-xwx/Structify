@@ -378,7 +378,7 @@ public class LearningMapService {
     private static String structureWords(String payload) {
         if (payload == null) return "";
         java.util.regex.Matcher matcher = java.util.regex.Pattern
-            .compile("\"structure\"\\s*:\\s*\"([^\"]+)\"").matcher(payload);
+            .compile("\"(?:structure|type)\"\\s*:\\s*\"([^\"]+)\"").matcher(payload);
         if (!matcher.find()) return "";
         String structure = matcher.group(1).toLowerCase();
         if (structure.contains("binary_tree") || structure.contains("bst")) return "二叉树 二叉排序树 遍历";
