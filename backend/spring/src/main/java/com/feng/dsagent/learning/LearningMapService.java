@@ -273,7 +273,7 @@ public class LearningMapService {
             double[] group = bucket.animationGroups.get(payload);
             group[0] += group[0] == 0 ? recency : recency * REPEAT_CREDIT;
             // The record names only a chapter; the lesson is inferred from what the animation is called.
-            Bucket lessonBucket = lessonBucket(buckets, lessons, row.getString("title") + " " + payload);
+            Bucket lessonBucket = lessonBucket(buckets, lessons, row.getString("title") + " " + payload + " " + structureWords(payload));
             if (lessonBucket != null) {
                 lessonBucket.raw[6]++;
                 String animationKey = payload == null ? "" : payload;
@@ -367,6 +367,35 @@ public class LearningMapService {
     }
 
     // ---------------------------------------------------------------- layout, unchanged
+
+    /**
+     * The words a learner would recognise for an animation's structure.
+     *
+     * <p>An animation is recorded with an English structure identifier (binary_tree, linked_list, ...) while a
+     * lesson title is written in Chinese, so the two never share a word and the animation could not be placed.
+     * This maps the identifier to what the course calls the same thing. It is a translation, not a guess.
+     */
+    private static String structureWords(String payload) {
+        if (payload == null) return "";
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+            .compile("\"structure\"\\s*:\\s*\"([^\"]+)\"").matcher(payload);
+        if (!matcher.find()) return "";
+        String structure = matcher.group(1).toLowerCase();
+        if (structure.contains("binary_tree") || structure.contains("bst")) return "二叉树 二叉排序树 遍历";
+        if (structure.contains("avl")) return "平衡二叉排序树 旋转";
+        if (structure.contains("thread")) return "线索二叉树 遍历";
+        if (structure.contains("tree") || structure.contains("forest")) return "树 二叉树 遍历 森林";
+        if (structure.contains("linked")) return "链表 线性表";
+        if (structure.contains("stack")) return "栈 队列";
+        if (structure.contains("queue")) return "队列 栈";
+        if (structure.contains("graph")) return "图 遍历";
+        if (structure.contains("hash")) return "哈希 散列";
+        if (structure.contains("sort")) return "排序";
+        if (structure.contains("array")) return "数组";
+        if (structure.contains("string")) return "串";
+        if (structure.contains("heap")) return "堆";
+        return "";
+    }
 
     /** The words a lesson title is made of, used to place a record that only names a chapter. */
     private static String keywordsOf(String title) {
