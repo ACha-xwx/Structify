@@ -158,6 +158,37 @@ class SlideSpinePlanTest {
         assertThat(steps).allSatisfy(step -> assertThat(step.path("slideRefs")).isNotEmpty());
     }
 
+    /**
+     * The line the prompt carries for one page has to say what the page is. The deck's own title is the
+     * master's text box on 96 of the 1210 pages, so a line built from it leaves the model to narrate the
+     * section instead: the reported symptom was a lesson explaining {@code int} while the screen showed
+     * another page entirely.
+     */
+    @Test
+    void thePromptSaysWhatThePageShowsRatherThanItsTemplateTitle() {
+        SlideSpinePlan.Slide slide = new SlideSpinePlan.Slide("s1", 1, "学校简介",
+            "学校简介 1.1 数据结构的基础概念 数据对象（ Data Object ）定义：数据对象是性质相同的数据元素的集合",
+            "给出数据对象的定义。", "定义", "1.1", "01-01A", "数据、数据元素与数据对象", "concept", List.of("数据对象"));
+
+        String label = SlideSpinePlan.promptLabel(slide);
+
+        assertThat(label).startsWith("给出数据对象的定义。");
+        assertThat(label).contains("页面文字：");
+        assertThat(label).contains("数据对象");
+        assertThat(label).doesNotContain("学校简介");
+    }
+
+    /** A page with no annotation still gets its own wording, and a blank page says so honestly. */
+    @Test
+    void aPageWithoutAnAnnotationFallsBackToItsOwnWording() {
+        SlideSpinePlan.Slide withText = new SlideSpinePlan.Slide("s2", 2, "学校简介",
+            "学校简介 按存储方式分为顺序存储和非顺序存储两种", "", "定义", "1.2", "01-02", "", "concept", List.of());
+        assertThat(SlideSpinePlan.promptLabel(withText)).startsWith("页面文字：按存储方式分为");
+
+        SlideSpinePlan.Slide bare = new SlideSpinePlan.Slide("s3", 3, "学校简介", "", "", "", "", "", "", "", List.of());
+        assertThat(SlideSpinePlan.promptLabel(bare)).isEqualTo("（本页没有文字，只有图）");
+    }
+
     @Test
     void producesAScriptTheClassroomContractAccepts() {
         String json = SlideSpinePlan.build(mapper, "textbook-abc", "查找-二叉排序树", "第 271–278 页",

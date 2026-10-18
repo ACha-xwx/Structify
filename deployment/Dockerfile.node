@@ -19,6 +19,8 @@ RUN npm ci --ignore-scripts=false \
 COPY frontend/src ./src
 COPY frontend/tsconfig.json frontend/vite.config.ts frontend/vite-routing.ts frontend/vitest.config.ts ./
 COPY frontend/prototype.html ./prototype.html
+COPY backend/spring/src/main/resources/classroom-code/lessons.json /app/backend/spring/src/main/resources/classroom-code/lessons.json
+COPY backend/spring/src/main/resources/classroom-code/textbook/library.json /app/backend/spring/src/main/resources/classroom-code/textbook/library.json
 RUN npm test \
     && npm run typecheck \
     && npm run build

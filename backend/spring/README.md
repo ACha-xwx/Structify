@@ -47,7 +47,7 @@ Use [`deployment/.env.spring.example`](../../deployment/.env.spring.example) as 
 | `BOOTSTRAP_ADMIN_EMAIL` | Leave empty in production. Static administrator elevation is intentionally disabled. |
 | `TEACHER_EMAILS` | Leave empty in production; role changes require an audited operator workflow. |
 | `MODEL_PROVIDER`, `MODEL_API_KEY`, `MODEL_BASE_URL`, `MODEL_NAME` | OpenAI-compatible model configuration. DeepSeek/OpenAI-compatible providers use Bearer auth; `azure` / `azure-openai` use the `api-key` header. |
-| `MODEL_MAX_RESPONSE_BYTES` | Maximum buffered or streamed model response size; defaults to 1 MiB. |
+| `MODEL_MAX_RESPONSE_BYTES` | Maximum buffered or streamed model response size; defaults to 32 MiB, including SSE envelopes. Set existing deployments to `33554432` if their environment explicitly retains the old 1 MiB value. |
 | `KNOWLEDGE_DIR` | Private textbook directory containing `lessons/*.md`. |
 | `KNOWLEDGE_AUTO_PUBLISH_LOCAL` | Keep `false` in production so only database-reviewed chunks enter retrieval. |
 | `RESOURCE_DIR` | Private root for published PDF, PPT, code, and exercise files. |

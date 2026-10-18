@@ -207,6 +207,7 @@ class AiQuotaExecutionApiIntegrationTest {
 
         doAnswer(invocation -> {
             ModelStreamHandler handler = invocation.getArgument(1, ModelStreamHandler.class);
+            handler.onReasoning("Consider the top.");
             handler.onContent("Stack ");
             handler.onContent("answers");
             return null;
@@ -229,7 +230,8 @@ class AiQuotaExecutionApiIntegrationTest {
 
         assertThat(completed.getResponse().getContentType()).startsWith(MediaType.TEXT_EVENT_STREAM_VALUE);
         assertThat(completed.getResponse().getContentAsString())
-            .contains("event:sources", "event:delta", "Stack ", "answers", "event:done");
+            .contains("event:sources", "event:reasoning", "Consider the top.", "event:delta", "Stack ", "answers", "event:done")
+            .contains("\"answer\":\"Stack answers\"", "\"reasoning\":\"Consider the top.\"");
         assertThat(jdbc.queryForObject(
             "SELECT usage_source FROM ai_quota_reservations WHERE status = 'SETTLED'",
             String.class
@@ -253,7 +255,7 @@ class AiQuotaExecutionApiIntegrationTest {
             ModelStreamHandler handler = invocation.getArgument(1, ModelStreamHandler.class);
             handler.onContent("Stack ");
             handler.onContent("answers");
-            handler.onUsage(5_000L);
+            handler.onUsage(9_000L);
             return null;
         }).when(model).stream(any(), any());
 
@@ -274,11 +276,11 @@ class AiQuotaExecutionApiIntegrationTest {
         assertThat(jdbc.queryForObject(
             "SELECT actual_tokens FROM ai_quota_reservations WHERE status = 'SETTLED'",
             Long.class
-        )).isEqualTo(5_000L);
+        )).isEqualTo(9_000L);
         assertThat(jdbc.queryForObject(
             "SELECT estimated_tokens FROM ai_quota_reservations WHERE status = 'SETTLED'",
             Long.class
-        )).isLessThan(5_000L);
+        )).isLessThan(9_000L);
         assertThat(jdbc.queryForObject(
             "SELECT usage_source FROM ai_quota_reservations WHERE status = 'SETTLED'",
             String.class
@@ -296,10 +298,10 @@ class AiQuotaExecutionApiIntegrationTest {
     }
 
     @Test
-    void upstreamStreamingFailureEmitsControlledErrorAndReleasesTheReservation() throws Exception {
+    void reasoningOnlyFailureEmitsControlledErrorAndSettlesProducedOutput() throws Exception {
         doAnswer(invocation -> {
             ModelStreamHandler handler = invocation.getArgument(1, ModelStreamHandler.class);
-            handler.onContent("partial answer");
+            handler.onReasoning("partial thought");
             throw new ModelClientException(ModelErrorCode.MODEL_STREAM_IDLE_TIMEOUT);
         }).when(model).stream(any(), any());
 
@@ -319,7 +321,8 @@ class AiQuotaExecutionApiIntegrationTest {
             .andReturn();
 
         assertThat(completed.getResponse().getContentAsString())
-            .contains("event:delta", "partial answer", "event:error", "MODEL_STREAM_IDLE_TIMEOUT");
+            .contains("event:reasoning", "partial thought", "event:error", "MODEL_STREAM_IDLE_TIMEOUT")
+            .doesNotContain("event:delta", "event:done");
         assertThat(jdbc.queryForObject(
             "SELECT status FROM ai_quota_reservations",
             String.class
@@ -328,6 +331,7 @@ class AiQuotaExecutionApiIntegrationTest {
             "SELECT usage_source FROM ai_quota_reservations",
             String.class
         )).isEqualTo("RESERVATION_ESTIMATE");
+        assertThat(jdbc.queryForObject("SELECT actual_tokens FROM ai_quota_reservations", Long.class)).isPositive();
         assertThat(jdbc.queryForObject(
             "SELECT reserved_tokens FROM ai_quota_buckets WHERE user_id = ?",
             Long.class,

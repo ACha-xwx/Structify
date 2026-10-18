@@ -124,6 +124,58 @@ class PinnedOpenAiCompatibleModelClientTest {
     }
 
     @Test
+    void completesLongReasoningStreamsBeyondOneMiBWithTheFullThinkingBudget() {
+        String frame = """
+            data: {"id":"chatcmpl-long-reasoning","object":"chat.completion.chunk","created":1791090000,"model":"deepseek-flash","choices":[{"index":0,"delta":{"reasoning_content":"Consider "},"finish_reason":null}]}
+
+            """;
+        String body = frame.repeat(8192) + """
+            data: {"choices":[{"delta":{"content":"Complete answer."},"finish_reason":"stop"}]}
+
+            data: [DONE]
+
+            """;
+        assertThat(body.getBytes(StandardCharsets.UTF_8).length).isGreaterThan(1_048_576);
+        RecordingConnections connections = new RecordingConnections(body);
+        PinnedOpenAiCompatibleModelClient client = new PinnedOpenAiCompatibleModelClient(
+            settings("deepseek", 65_536), defaults(), new ObjectMapper(), new PinnedHttpsTransport(connections));
+        StringBuilder answer = new StringBuilder();
+        List<String> thoughts = new ArrayList<>();
+
+        client.stream(new ModelRequest(List.of(new ModelMessage("user", "Explain Huffman trees.")),
+            0.35, 65_536, false, false, true, "max", "deepseek-flash"), new com.feng.dsagent.model.ModelStreamHandler() {
+            @Override
+            public void onContent(String content) { answer.append(content); }
+            @Override
+            public void onReasoning(String content) { thoughts.add(content); }
+        });
+
+        assertThat(thoughts).hasSize(8192);
+        assertThat(answer.toString()).isEqualTo("Complete answer.");
+        assertThat(connections.request()).contains("\"max_tokens\":65536", "\"thinking\":{\"type\":\"enabled\"}");
+    }
+
+    @Test
+    void stillRejectsReasoningStreamsAboveAnExplicitByteLimit() {
+        RecordingConnections connections = new RecordingConnections("""
+            data: {"choices":[{"delta":{"reasoning_content":"%s"}}]}
+
+            data: [DONE]
+
+            """.formatted("x".repeat(256)));
+        ModelProperties original = defaults();
+        ModelProperties limited = new ModelProperties(original.provider(), original.apiKey(), original.baseUrl(),
+            original.name(), original.timeout(), original.streamIdleTimeout(), 64, original.disableThinking());
+        PinnedOpenAiCompatibleModelClient client = new PinnedOpenAiCompatibleModelClient(
+            settings("deepseek", 65_536), limited, new ObjectMapper(), new PinnedHttpsTransport(connections));
+
+        var error = catchThrowableOfType(() -> client.stream(new ModelRequest(List.of(new ModelMessage("user", "hello"))),
+            ignored -> {}), com.feng.dsagent.model.ModelClientException.class);
+
+        assertThat(error.code()).isEqualTo("MODEL_RESPONSE_TOO_LARGE");
+    }
+
+    @Test
     void retriesAConnectionFailureAccordingToThePersistedRetryCount() {
         RecordingConnections connections = new RecordingConnections("""
             {"choices":[{"message":{"content":"retried"}}]}
@@ -159,7 +211,9 @@ class PinnedOpenAiCompatibleModelClientTest {
     @Test
     void streamsProviderUsageFromTheFinalSseChunkBeforeDone() {
         RecordingConnections connections = new RecordingConnections("""
-            data: {"choices":[{"delta":{"content":"stack"}}]}
+            data: {"choices":[{"delta":{"reasoning_content":"Consider "}}]}
+
+            data: {"choices":[{"delta":{"reasoning_content":"the top.","content":"stack"}}]}
 
             data: {"choices":[],"usage":{"total_tokens":53}}
 
@@ -173,6 +227,7 @@ class PinnedOpenAiCompatibleModelClientTest {
         );
         List<String> fragments = new ArrayList<>();
         List<Long> usages = new ArrayList<>();
+        List<String> reasoning = new ArrayList<>();
 
         client.stream(
             new ModelRequest(List.of(new ModelMessage("user", "hello"))),
@@ -186,10 +241,16 @@ class PinnedOpenAiCompatibleModelClientTest {
                 public void onUsage(Long totalTokens) {
                     usages.add(totalTokens);
                 }
+
+                @Override
+                public void onReasoning(String content) {
+                    reasoning.add(content);
+                }
             }
         );
 
         assertThat(fragments).containsExactly("stack");
+        assertThat(reasoning).containsExactly("Consider ", "the top.");
         assertThat(usages).containsExactly(53L);
         assertThat(connections.request()).contains("\"stream_options\":{\"include_usage\":true}");
     }
@@ -227,14 +288,18 @@ class PinnedOpenAiCompatibleModelClientTest {
             "environment-model",
             Duration.ofSeconds(2),
             Duration.ofSeconds(1),
-            1_048_576,
+            0,
             disableThinking
         );
     }
 
     private ModelConfigRuntimeSettings settings() {
+        return settings("custom", 1024);
+    }
+
+    private ModelConfigRuntimeSettings settings(String provider, int maxTokens) {
         return new ModelConfigRuntimeSettings(
-            "custom",
+            provider,
             new ModelConfigResolvedTarget(
                 URI.create("https://model.example/v1"),
                 "model.example",
@@ -242,7 +307,7 @@ class PinnedOpenAiCompatibleModelClientTest {
                 List.of(ip(1, 1, 1, 1))
             ),
             "model-a",
-            "opaque-key"
+            "opaque-key", 0.2, maxTokens, Duration.ofSeconds(2), 0, 1_000_000
         );
     }
 

@@ -48,15 +48,15 @@ describe("App bootstrap", () => {
 
     await router.isReady();
     await flushPromises();
-    expect(document.title).toBe("登录 | Structify");
+    expect(document.title).toBe("登录 | 数筑 · Structify");
 
     setLocale("en-US");
     await flushPromises();
-    expect(document.title).toBe("Sign in | Structify");
+    expect(document.title).toBe("Sign in | 数筑 · Structify");
 
     await router.push("/user/code");
     await flushPromises();
-    expect(document.title).toBe("C Compiler | Structify");
+    expect(document.title).toBe("C Compiler | 数筑 · Structify");
     wrapper.unmount();
   });
 });

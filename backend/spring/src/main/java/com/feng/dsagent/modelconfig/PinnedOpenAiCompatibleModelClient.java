@@ -169,20 +169,12 @@ final class PinnedOpenAiCompatibleModelClient implements ModelClient {
     }
 
     private String serialize(ModelRequest request, boolean stream) {
-        List<Map<String, String>> messages = new ArrayList<>(request.messages().size());
-        for (ModelMessage message : request.messages()) {
-            Map<String, String> item = new LinkedHashMap<>();
-            item.put("role", message.role());
-            item.put("content", message.content());
-            messages.add(item);
-        }
-
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", requiredModelName());
-        payload.put("messages", messages);
+        payload.put("messages", com.feng.dsagent.model.ModelPayload.messages(request));
         if (request.jsonObject()) payload.put("response_format", Map.of("type", "json_object"));
-        if (disablesThinking(request) && "deepseek".equalsIgnoreCase(settings.provider())) payload.put("thinking", Map.of("type", "disabled"));
-        payload.put("temperature", request.temperature() == null ? settings.temperature() : request.temperature());
+        boolean thinking = com.feng.dsagent.model.ModelPayload.thinking(payload, request, settings.provider(), Boolean.TRUE.equals(defaults.disableThinking()));
+        if (!thinking) payload.put("temperature", request.temperature() == null ? settings.temperature() : request.temperature());
         int configuredMaxTokens = settings.maxOutputTokens();
         int requestedMaxTokens = request.maxTokens() == null || request.maxTokens() < 1
             ? configuredMaxTokens
@@ -225,6 +217,10 @@ final class PinnedOpenAiCompatibleModelClient implements ModelClient {
                 Long totalTokens = reportedTotalTokens(event);
                 if (totalTokens != null) {
                     handler.onUsage(totalTokens);
+                }
+                JsonNode reasoning = event.path("choices").path(0).path("delta").path("reasoning_content");
+                if (reasoning.isString() && !reasoning.asText().isEmpty()) {
+                    handler.onReasoning(reasoning.asText());
                 }
                 String content = streamContent(event);
                 if (content == null || content.isEmpty()) {
@@ -297,7 +293,7 @@ final class PinnedOpenAiCompatibleModelClient implements ModelClient {
     }
 
     private int maximumResponseBytes() {
-        return defaults.maximumResponseBytes() > 0 ? defaults.maximumResponseBytes() : 1_048_576;
+        return defaults.maximumResponseBytes() > 0 ? defaults.maximumResponseBytes() : ModelProperties.DEFAULT_MAX_RESPONSE_BYTES;
     }
 
     private String readResponseBody(InputStream input) {

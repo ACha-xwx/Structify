@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import ThemeToggle from "../design/ThemeToggle.vue";
+import BrandName from "./BrandName.vue";
+import brandIcon from "../../favicon.svg";
 import { useI18n } from "../i18n/locale";
 
 /**
  * The one stage every signed-in surface stands on.
  *
- * Sign-in sets the visual language - blueprint grid paper, the S lockup, a theme switch in the corner -
+ * Sign-in sets the visual language - blueprint grid paper, the brand, a theme switch in the corner -
  * and the pages behind it used to each invent their own backdrop (a dark video for the classroom and the
  * courseware browser). This component owns that backdrop once, so a learner moving from sign-in to the
  * entry page to a lesson never sees the product change clothes on the way.
@@ -16,17 +18,19 @@ import { useI18n } from "../i18n/locale";
 const props = withDefaults(defineProps<{
   /** Wide pages (a lesson beside its courseware, the lab grid) fill the stage instead of centring in it. */
   wide?: boolean;
-}>(), { wide: false });
+  fixed?: boolean;
+  showBrand?: boolean;
+}>(), { wide: false, fixed: false, showBrand: true });
 
 const { t } = useI18n();
 </script>
 
 <template>
-  <div class="stage" :class="{ 'stage--wide': props.wide }">
-    <div class="stage__brand">
+  <div class="stage" :class="{ 'stage--wide': props.wide, 'stage--fixed': props.fixed }">
+    <div v-if="props.showBrand" class="stage__brand">
       <RouterLink class="stage__brand-link" to="/" :aria-label="t('common.brand')">
-        <span class="stage__mark" aria-hidden="true">S</span>
-        <span class="stage__name">Structify</span>
+        <img class="stage__mark" :src="brandIcon" width="32" height="32" alt="" aria-hidden="true" />
+        <BrandName class="stage__name" />
       </RouterLink>
     </div>
     <div class="stage__theme"><ThemeToggle /></div>
@@ -37,6 +41,7 @@ const { t } = useI18n();
 <style scoped>
 /* The exact recipe of the sign-in screen: page background, 58px grid, ink from the theme tokens. */
 .stage {
+  --workbench-width: 1320px;
   position: relative;
   display: grid;
   width: 100%;
@@ -67,18 +72,11 @@ const { t } = useI18n();
 }
 
 .stage__mark {
-  display: grid;
+  display: block;
   width: 32px;
   height: 32px;
-  place-items: center;
-  border: 1px solid var(--text);
-  border-radius: 9px;
-  background: var(--text);
-  box-shadow: inset 1px 1px color-mix(in srgb, var(--surface) 18%, transparent), 0 5px 12px color-mix(in srgb, var(--text) 13%, transparent);
-  color: var(--surface);
-  font-family: var(--font-ui);
-  font-size: 18px;
-  font-weight: 700;
+  flex: none;
+  object-fit: contain;
 }
 
 .stage__name { font-variant-numeric: lining-nums; }
@@ -98,6 +96,19 @@ const { t } = useI18n();
 
 .stage--wide .stage__body { align-content: stretch; justify-items: stretch; }
 
+.stage--fixed { height: 100dvh; min-height: 0; overflow: hidden; }
+.stage--fixed .stage__body { min-height: 0; margin-block: 0; align-content: stretch; }
+
+.stage :deep(.workbench-title) {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 46px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.06;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .stage__brand-link:hover .stage__mark { transform: translateY(-1px); }
 }
@@ -105,6 +116,7 @@ const { t } = useI18n();
 @media (min-width: 640px) { .stage__brand { left: 50%; transform: translateX(-50%); } }
 
 @media (max-width: 520px) {
+  .stage :deep(.workbench-title) { font-size: 30px; }
   .stage { padding: 76px 14px 22px; }
   .stage__brand { top: 18px; left: 18px; }
   .stage__theme { top: 18px; right: 16px; }

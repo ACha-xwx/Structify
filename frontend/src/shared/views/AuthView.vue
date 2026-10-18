@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { CheckCircle2 } from "@lucide/vue";
 import LiquidMetalButton from "../../admin/components/LiquidMetalButton.vue";
 import ThemeToggle from "../design/ThemeToggle.vue";
 import DirectionalArrowIcon from "../components/DirectionalArrowIcon.vue";
+import BrandName from "../components/BrandName.vue";
+import brandIcon from "../../favicon.svg";
 import { ApiClientError } from "../api";
 import { classifyAuthError } from "../auth";
 import { useI18n } from "../i18n/locale";
@@ -71,7 +74,7 @@ const subtitle = computed(() => {
     return props.mode === "register" ? t("auth.subtitle.register") : t("auth.subtitle.reset");
   }
   if (props.mode === "login") return t("auth.subtitle.password");
-  return t("auth.subtitle.verify");
+  return "";
 });
 
 function clearCooldown() {
@@ -134,11 +137,11 @@ async function sendVerificationCode() {
   feedback.value = "";
   error.value = "";
   try {
-    const delivery = await auth.requestCode({
+    await auth.requestCode({
       email: email.value.trim(),
       purpose: props.mode === "register" ? "register" : "reset",
     });
-    feedback.value = delivery.message;
+    feedback.value = t("auth.code.sent");
     startCooldown();
   } catch (cause) {
     error.value = userFacingError(cause);
@@ -174,7 +177,7 @@ async function submit() {
     }
     if (props.mode === "register") await auth.register({ email: email.value.trim(), code: code.value.trim(), password: password.value });
     if (props.mode === "reset") await auth.resetPassword({ email: email.value.trim(), code: code.value.trim(), password: password.value });
-    await router.replace(typeof route.query.redirect === "string" ? route.query.redirect : "/");
+    await router.replace(typeof route.query.redirect === "string" ? route.query.redirect : "/begin");
   } catch (cause) {
     error.value = userFacingError(cause);
   } finally {
@@ -196,8 +199,8 @@ onBeforeUnmount(clearCooldown);
   <main class="auth-stage auth-screen" :class="{ 'auth-stage--admin': isAdminEntry, 'auth-screen--admin': isAdminEntry }" aria-labelledby="auth-title">
     <header class="auth-brand">
       <RouterLink class="auth-brand__link" to="/" :aria-label="t('common.brand')">
-        <span class="auth-brand__mark" aria-hidden="true">S</span>
-        <span class="auth-brand__name">Structify</span>
+        <img class="auth-brand__mark" :src="brandIcon" width="32" height="32" alt="" aria-hidden="true" />
+        <BrandName class="auth-brand__name" />
       </RouterLink>
     </header>
     <div class="auth-stage__theme"><ThemeToggle /></div>
@@ -206,7 +209,7 @@ onBeforeUnmount(clearCooldown);
       <Transition name="auth-copy" mode="out-in">
         <div :key="`${props.mode}-${authStep}`" class="auth-flow__heading">
           <h1 id="auth-title">{{ title }}</h1>
-          <p>{{ subtitle }}</p>
+          <p v-if="subtitle">{{ subtitle }}</p>
         </div>
       </Transition>
 
@@ -308,7 +311,10 @@ onBeforeUnmount(clearCooldown);
         </Transition>
 
         <p v-if="error" class="form-feedback form-feedback--error" role="alert">{{ error }}</p>
-        <p v-if="feedback" class="form-feedback" role="status">{{ feedback }}</p>
+        <p v-if="feedback" class="form-feedback form-feedback--success" data-testid="verification-sent" role="status">
+          <CheckCircle2 class="form-feedback__icon" :size="20" :stroke-width="2.2" aria-hidden="true" />
+          <span>{{ feedback }}</span>
+        </p>
 
         <button v-if="isCredentialsStep" class="auth-back" type="button" :disabled="pending" @click="goBack"><DirectionalArrowIcon direction="left" /> {{ t("auth.back") }}</button>
       </form>
@@ -364,18 +370,11 @@ onBeforeUnmount(clearCooldown);
 }
 
 .auth-brand__mark {
-  display: grid;
+  display: block;
   width: 32px;
   height: 32px;
-  place-items: center;
-  border: 1px solid var(--text);
-  border-radius: 9px;
-  background: var(--text);
-  box-shadow: inset 1px 1px color-mix(in srgb, var(--surface) 18%, transparent), 0 5px 12px color-mix(in srgb, var(--text) 13%, transparent);
-  color: var(--surface);
-  font-family: var(--font-ui);
-  font-size: 18px;
-  font-weight: 700;
+  flex: none;
+  object-fit: contain;
 }
 
 .auth-brand__name { font-variant-numeric: lining-nums; }
@@ -472,6 +471,8 @@ onBeforeUnmount(clearCooldown);
 
 .form-feedback { margin: 0; padding: 9px 11px; border: 1px solid color-mix(in srgb, var(--text) 18%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--surface) 35%, transparent); color: var(--text); font-size: 12px; line-height: 1.5; text-align: left; }
 .form-feedback--error { border-color: color-mix(in srgb, var(--text) 34%, transparent); color: var(--text); }
+.form-feedback--success { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 16px; font-weight: 700; text-align: center; }
+.form-feedback__icon { flex: 0 0 auto; }
 
 .auth-back { display: inline-flex; align-items: center; justify-self: start; gap: 6px; min-height: 30px; padding: 0; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; font: inherit; font-size: 13px; font-weight: 650; transition: color 150ms ease, transform 150ms var(--auth-ease); }
 .auth-back .directional-arrow-icon { width: 17px; height: 17px; }

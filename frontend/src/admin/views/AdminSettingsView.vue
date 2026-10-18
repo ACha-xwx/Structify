@@ -99,8 +99,8 @@ async function load(): Promise<boolean> {
   }
 }
 
-function numberValue(value: string, label: string, min: number, max: number, integer = false): number | undefined {
-  const trimmed = value.trim();
+function numberValue(value: string | number, label: string, min: number, max: number, integer = false): number | undefined {
+  const trimmed = String(value).trim();
   if (!trimmed) return undefined;
   const parsed = Number(trimmed);
   if (!Number.isFinite(parsed) || (integer && !Number.isInteger(parsed)) || parsed < min || parsed > max) {
@@ -125,7 +125,7 @@ function payloadFromForm(): Record<string, unknown> | null {
       enabled: form.enabled,
     };
     const temperature = numberValue(form.temperature, "温度", 0, 2);
-    const maxOutputTokens = numberValue(form.maxOutputTokens, "最大输出令牌数", 1, 32768, true);
+    const maxOutputTokens = numberValue(form.maxOutputTokens, "最大输出令牌数", 1, 65536, true);
     const requestTimeoutMs = numberValue(form.requestTimeoutMs, "请求超时", 1000, 120000, true);
     const retryCount = numberValue(form.retryCount, "重试次数", 0, 5, true);
     const dailyTokenQuota = numberValue(form.dailyTokenQuota, "每日令牌额度", 0, 10000000, true);
@@ -275,7 +275,7 @@ onBeforeUnmount(() => window.removeEventListener("beforeunload", warnBeforeUnloa
             </header>
             <div class="admin-form__grid model-settings-grid model-settings-grid--runtime">
               <label class="admin-field"><span>温度（Temperature）</span><input v-model="form.temperature" type="number" min="0" max="2" step="0.01" /></label>
-              <label class="admin-field"><span>最大输出令牌数</span><input v-model="form.maxOutputTokens" type="number" min="1" max="32768" step="1" /></label>
+              <label class="admin-field"><span>最大输出令牌数</span><input v-model="form.maxOutputTokens" type="number" min="1" max="65536" step="1" /></label>
             </div>
           </section>
 

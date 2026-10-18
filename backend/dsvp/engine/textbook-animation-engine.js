@@ -120,7 +120,9 @@ function numberArray(value, fallback = []) {
   if (!Array.isArray(value)) return [...fallback];
   // 空数组保持为空（由各模拟器决定空表语义）；非法元素显式报错，不再静默丢弃。
   return value.map((item, index) => {
-    const n = Number(item);
+    /* `Number("")` 是 0——输入框里多打一个逗号（`10,20,,40`）就会**悄悄多出一个 0**，
+       排序/图这些动画会莫名其妙多一格。空串和 "abc" 一样按非法元素报错，别静默变 0。 */
+    const n = typeof item === "string" && item.trim() === "" ? NaN : Number(item);
     if (!Number.isFinite(n)) {
       throw new SimulationInputError("INVALID_ELEMENT", `第 ${index + 1} 个元素 ${JSON.stringify(item)} 不是有效数字`, `data[${index}]`);
     }
@@ -158,23 +160,54 @@ function makeHelpers(api) {
 function simulateLinkedList(request, api) {
   const { makeStep, makeTrace, action, emptyHighlights } = makeHelpers(api);
   const op = request.operation;
+
+  /* 单链表的"真相"是每个结点的 `next` 指向谁。按**代码级别**报帧：一帧 = 一行赋值，
+     帧的标题就是那行代码；槽位里写**目标结点的序号**（`next: [2,3,null]`，写值遇到重复数据就分不清）；
+     `pointers` 是**本面板自己**的具名指针；`write` 指出这一帧改的是哪个结点的指针。
+     逐行帧标 `phase: "line"`，精简版把一段连续的 line 压成最后一帧（= 该阶段完成态）。 */
+  const self = (values) => {
+    const labels = values.map(String);
+    return { labels, next: labels.map((_, i) => (i + 1 < labels.length ? i + 2 : null)) };
+  };
+  /* 结点插进显示序之后，**所有** next 都要按新的相邻关系重建（除开那个还没接上去的新结点）——
+     只改两个结点的话，被挤到后面的老结点还指着自己（`next=[2,3,3,null]`）。 */
+  const relink = (c, unlinked) => {
+    c.next = c.labels.map((_, i) => (i === unlinked ? null : (i + 1 < c.labels.length ? i + 2 : null)));
+  };
+  const pan = (role, c, extra = {}) => row(role, c.labels, { next: [...c.next], ...extra });
+  let sid = 1;
+  const steps = [];
+  const snap = (code, rows, meta, act, line) => {
+    steps.push(makeStep(sid++, line ? "line" : "assign", code, code, viewState("linked_list", [...rows, row("meta", [], meta)]), act ? [act] : []));
+  };
+
   if (op === "merge") {
     const raw = Array.isArray(request.initial_state.data) ? request.initial_state.data : [];
     const left = scalarArray(request.params.left ?? raw[0], [1, 3, 5]);
     const right = scalarArray(request.params.right ?? raw[1], [2, 4, 6]);
+    const A = self(left), B = self(right), C = { labels: [], next: [] };
+    const base = { operation: op, i: 0, j: 0 };
+    steps.push(makeStep(sid++, "init", "p = A, q = B, r = C", "p、q 指向两个待合并链表，r 是结果链表的尾指针",
+      viewState("linked_list", [pan("LA", A, { pointers: { p: 0 } }), pan("LB", B, { pointers: { q: 0 } }), pan("LC", C, { pointers: {} }), row("meta", [], base)])));
     let i = 0, j = 0;
-    const result = [];
-    const steps = [makeStep(1, "init", "准备两个有序链表", "两个头指针分别指向当前结点。", viewState("linked_list", [row("LA", left), row("LB", right), row("LC", []), row("meta", [], { i, j })]))];
-    let sid = 2;
     while (i < left.length || j < right.length) {
-      let source;
-      if (j >= right.length || (i < left.length && Number(left[i]) <= Number(right[j]))) source = "LA";
-      else source = "LB";
-      const value = source === "LA" ? left[i++] : right[j++];
-      result.push(value);
-      steps.push(makeStep(sid++, "link", "比较并接入结点", `把 ${String(value)} 从 ${source} 接到结果链表尾部。`, viewState("linked_list", [row("LA", left), row("LB", right), row("LC", result), row("meta", [], { i, j, source })]), [action("link", "尾指针连接到选中的结点", { from: source, to: "LC", value })]));
+      const fromA = j >= right.length || (i < left.length && Number(left[i]) <= Number(right[j]));
+      const pointerAt = (idx, len) => Math.min(idx, Math.max(0, len - 1));
+      snap(`if (p->data <= q->data) → ${fromA ? "true" : "false"}`,
+        [pan("LA", A, { pointers: { p: pointerAt(i, left.length) } }), pan("LB", B, { pointers: { q: pointerAt(j, right.length) } }), pan("LC", C, {})],
+        { ...base, i, j }, action("compare", "比较两个链表的当前结点", {}));
+      const value = fromA ? left[i++] : right[j++];
+      C.labels.push(String(value));
+      C.next = C.labels.map((_, k) => (k + 1 < C.labels.length ? k + 2 : null));
+      snap(`r->next = ${fromA ? "p" : "q"}`,
+        [pan("LA", A, { pointers: { p: pointerAt(i, left.length) } }), pan("LB", B, { pointers: { q: pointerAt(j, right.length) } }), pan("LC", C, { focusIndex: C.labels.length - 1, pointers: { r: C.labels.length - 1 } })],
+        { ...base, i, j }, action("link", "结果链尾接到选中的结点", { value }), true);
+      // 取完要**把被取的那一边的游标往前推**（取 A 才是 `p = p->next`）——写错过一次：两边都写成 p。
+      snap(fromA ? "p = p->next" : "q = q->next",
+        [pan("LA", A, { pointers: { p: pointerAt(i, left.length) } }), pan("LB", B, { pointers: { q: pointerAt(j, right.length) } }), pan("LC", C, { pointers: { r: C.labels.length - 1 } })],
+        { ...base, i, j }, null, true);
     }
-    return makeTrace(request, "有序单链表合并", `LA=[${left.join(",")}], LB=[${right.join(",")}]`, `LC=[${result.join(",")}]`, steps);
+    return makeTrace(request, "有序单链表合并", `LA=[${left.join(",")}], LB=[${right.join(",")}]`, `LC=[${C.labels.join(",")}]`, steps);
   }
 
   const items = scalarArray(request.initial_state.data, [10, 20, 30]);
@@ -183,21 +216,57 @@ function simulateLinkedList(request, api) {
   }
   const position = intParam(request.params, "position", op === "insert" ? Math.min(2, items.length + 1) : Math.min(2, items.length), 1, op === "insert" ? items.length + 1 : Math.max(1, items.length));
   const index = position - 1;
-  const initialRows = [row("L", items), row("meta", [], { position, current: 0, operation: op })];
-  const steps = [makeStep(1, "init", "从头结点开始", `沿 next 指针寻找第 ${position} 个位置。`, viewState("linked_list", initialRows))];
-  let sid = 2;
-  for (let p = 0; p < Math.max(0, index); p++) {
-    steps.push(makeStep(sid++, "traverse", "指针后移", `工作指针移动到第 ${p + 1} 个结点。`, viewState("linked_list", [row("L", items), row("meta", [], { position, current: p + 1, operation: op })]), [action("move", "沿 next 指针移动", { target: "p", value: p + 1 })]));
-  }
+  const base = { operation: op, position };
+  const cur = self(items);
+
   if (op === "insert") {
     const value = request.params.value ?? 15;
+    snap("L", [pan("L", cur, { pointers: { L: 0 } })], { ...base }, action("inspect", "L 是头指针", {}));
+    if (index > 0) {
+      snap("p = L", [pan("L", cur, { pointers: { L: 0, p: 0 } })], { ...base }, null, true);
+      for (let k = 1; k < index; k += 1) {
+        snap("p = p->next", [pan("L", cur, { focusIndex: k, pointers: { L: 0, p: k } })], { ...base }, null, true);
+      }
+    }
+    /* 新结点先以"next 还指着空"的样子出现，再一行一行接上去——教科书画的样子。 */
+    cur.labels.splice(index, 0, "");
+    relink(cur, index);
+    snap("s = malloc()", [pan("L", cur, { pointers: { L: 0, s: index } })], { ...base, value }, null, true);
+    cur.labels[index] = String(value);
+    snap(`s->data = ${value}`, [pan("L", cur, { pointers: { L: 0, s: index } })], { ...base, value }, null, true);
+    if (index === 0) {
+cur.next[0] = 2;
+      snap("s->next = L", [pan("L", cur, { pointers: { L: 1, s: 0 }, write: 0 })], { ...base, value }, action("link", "新结点 next 指向原首结点", { to: 2 }));
+      snap("L = s", [pan("L", cur, { pointers: { L: 0, s: 0 } })], { ...base, value });
+    } else {
+const successor = index + 2 <= cur.labels.length ? index + 2 : null;
+      cur.next[index] = successor;
+      snap("s->next = p->next", [pan("L", cur, { pointers: { L: 0, p: index - 1, s: index }, write: index })], { ...base, value }, action("link", "新结点先接住 p 的后继", { to: successor }));
+      cur.next[index - 1] = index + 1;
+      snap("p->next = s", [pan("L", cur, { pointers: { L: 0, p: index - 1, s: index }, write: index - 1 })], { ...base, value }, action("link", "再让 p 指向新结点", { to: index + 1 }));
+    }
     const result = [...items]; result.splice(index, 0, value);
-    steps.push(makeStep(sid++, "link", "修改指针连接", `先让新结点 ${String(value)} 指向原第 ${position} 个结点，再让前驱结点指向新结点。`, viewState("linked_list", [row("L", result), row("meta", [], { position, current: index, operation: op, value })]), [action("link", "先接后继，再改前驱 next", { target: "next", value })], { ...emptyHighlights(), pointers: [{ role: "changed", name: "next" }] }));
     return makeTrace(request, "单链表插入", `L=[${items.join(",")}]`, `L=[${result.join(",")}]`, steps);
   }
+
+  /* 删除：q 指向待删结点，让前驱直接指向 q 的后继，再释放 q。 */
   const removed = items[index];
+  snap("L", [pan("L", cur, { pointers: { L: 0 } })], { ...base }, action("inspect", "L 是头指针", {}));
+  if (index === 0) {
+    snap("q = L", [pan("L", cur, { pointers: { L: 0, q: 0 } })], { ...base }, null, true);
+    snap("L = L->next", [pan("L", cur, { pointers: { L: 1, q: 0 } })], { ...base }, null, true);
+  } else {
+    snap("p = L", [pan("L", cur, { pointers: { L: 0, p: 0 } })], { ...base }, null, true);
+    for (let k = 1; k < index - 1; k += 1) {
+      snap("p = p->next", [pan("L", cur, { focusIndex: k, pointers: { L: 0, p: k } })], { ...base }, null, true);
+    }
+    snap("q = p->next", [pan("L", cur, { focusIndex: index, pointers: { L: 0, p: index - 1, q: index } })], { ...base }, null, true);
+    cur.next[index - 1] = cur.next[index];
+    snap("p->next = q->next", [pan("L", cur, { pointers: { L: 0, p: index - 1, q: index }, write: index - 1 })], { ...base }, action("link", "前驱直接指向 q 的后继", { to: cur.next[index] }));
+  }
+  const freed = self(items.filter((_, k) => k !== index));
+  snap("free(q)", [pan("L", freed, { pointers: { L: 0 } })], { ...base }, action("free", "释放待删结点", { value: removed }));
   const result = [...items]; result.splice(index, 1);
-  steps.push(makeStep(sid++, "unlink", "越过待删结点", `让前驱结点直接指向 ${String(removed)} 的后继结点，然后释放该结点。`, viewState("linked_list", [row("L", result), row("meta", [], { position, current: Math.max(0,index-1), operation: op, removed })]), [action("unlink", "修改前驱 next，跳过待删结点", { target: "next", value: removed })], { ...emptyHighlights(), pointers: [{ role: "changed", name: "next" }] }));
   return makeTrace(request, "单链表删除", `L=[${items.join(",")}]`, `L=[${result.join(",")}]`, steps);
 }
 
@@ -211,18 +280,92 @@ function simulateDoublyList(request, api) {
   const maxPos = op === "insert" ? items.length + 1 : items.length;
   const position = intParam(request.params, "position", Math.min(2,maxPos), 1, Math.max(1,maxPos));
   const index = position - 1;
-  const steps = [makeStep(1,"init","定位位置","沿 next 指针定位操作位置，同时保留前驱关系。",viewState("doubly_linked_list",[row("L",items),row("meta",[],{position,operation:op})]))];
+
+  /* 双向链表的"真相"是每个结点的**两个**指针：`prior` 指向前驱、`next` 指向后继。
+     按**代码级别**报帧：一帧 = 一行赋值（`s->prior = p;` → `s->next = p->next;` → `p->next->prior = s;`
+     → `p->next = s;`），每格槽位写"它此刻指向谁"（`prior` 那格和 `next` 那格各写各的），
+     这一帧在改哪一格就把哪一格点亮——"next/pre 到底怎么改的"就是画面本身，不需要旁白。
+     新结点先以"两个指针都空"的样子出现，再一行一行接上去，正是教科书画的样子。 */
+  const self = (labels) => ({
+    labels,
+    prior: labels.map((_, i) => (i === 0 ? null : i)),
+    next: labels.map((_, i) => (i + 1 < labels.length ? i + 2 : null)),
+  });
+  const pan = (c, extra = {}) => row("L", c.labels, { prior: [...c.prior], next: [...c.next], ...extra });
+  const steps = [];
+  let sid = 1;
+  const snap = (code, cur, extra, act, line = false) => {
+    steps.push(makeStep(sid++, line ? "line" : "assign", code, code,
+      viewState("doubly_linked_list", [pan(cur, extra), row("meta", [], { operation: op, position, ...(extra?.meta || {}) })]),
+      act ? [act] : []));
+  };
+
   if (op === "insert") {
     const value = request.params.value ?? 15;
-    const result=[...items]; result.splice(index,0,value);
-    steps.push(makeStep(2,"link","连接新结点的前后指针",`设置新结点 ${value} 的 prior 和 next。`,viewState("doubly_linked_list",[row("L",result),row("meta",[],{position,operation:op,value,phase:"new-links"})]),[action("link","new.prior=p; new.next=p.next",{target:"prior,next"})],{...emptyHighlights(),pointers:[{role:"changed",name:"prior"},{role:"changed",name:"next"}]}));
-    steps.push(makeStep(3,"link","修改相邻结点指针","让前驱和后继分别指向新结点。",viewState("doubly_linked_list",[row("L",result),row("meta",[],{position,operation:op,value,phase:"neighbor-links"})]),[action("link","同步修改两侧指针",{target:"neighbors"})]));
-    return makeTrace(request,"双向链表插入",`L=[${items.join(",")}]`,`L=[${result.join(",")}]`,steps);
+    const base = self(items.map(String));
+    /* 先把新结点插进显示序（它最终就落在 position 这个位置），但**两个指针都还空着**——
+       旁边两个结点也还互相指着，这就是"还没接上去"的样子。 */
+    const cur = { labels: [...base.labels], prior: [...base.prior], next: [...base.next] };
+    /* 第 0 帧必须是**操作之前**的样子：播放器的"起点"显示的就是它。
+       少了这一帧，起点上那个"还没申请的新结点"（∅）就已经在表里了（Rrd 2026-10-06 一眼看出来的）。 */
+    snap("L", cur, { pointers: { L: 0 } }, action("inspect", "L 是头指针", {}));
+    cur.labels.splice(index, 0, "");
+    cur.prior.splice(index, 0, null);
+    cur.next.splice(index, 0, null);
+    snap("s = malloc()", cur, { pointers: { L: 0, s: index } }, null, true);
+    cur.labels[index] = String(value);
+    snap(`s->data = ${value}`, cur, { pointers: { L: 0, s: index } }, null, true);
+    /* 改完再报帧：每个画面显示的是这一行**执行之后**的状态——学生点一次看到一行代码的效果。 */
+    if (index === 0) {
+      cur.next[index] = 2;
+      snap("s->next = L", cur, { pointers: { L: 0, s: index }, write: index }, action("link", "新结点 next 指向原首结点", { to: cur.labels[1] }));
+      cur.prior[1] = 1;
+      snap("L->prior = s", cur, { pointers: { L: 1, s: index }, write: 1, writeSlot: "prior" }, action("link", "原首结点 prior 指向新结点", { to: value }), true);
+      snap("L = s", cur, { pointers: { L: 0, s: index } }, null, true);
+    } else {
+      snap("p = L", cur, { pointers: { L: 0, p: 0 } });
+      for (let i = 1; i < index; i += 1) {
+        snap("p = p->next", cur, { focusIndex: i, pointers: { L: 0, p: i, s: index } }, null, true);
+      }
+      cur.prior[index] = index;
+      snap("s->prior = p", cur, { pointers: { L: 0, p: index - 1, s: index }, write: index, writeSlot: "prior" }, action("link", "新结点 prior 指向 p", { to: cur.labels[index - 1] }), true);
+      cur.next[index] = cur.next[index - 1];
+      snap("s->next = p->next", cur, { pointers: { L: 0, p: index - 1, s: index }, write: index }, action("link", "新结点 next 指向 p 的后继", { to: cur.next[index - 1] }), true);
+      cur.prior[index + 1] = index + 1;
+      snap("p->next->prior = s", cur, { pointers: { L: 0, p: index - 1, s: index }, write: index + 1, writeSlot: "prior" }, action("link", "后继的 prior 改指新结点", { to: value }), true);
+      cur.next[index - 1] = index + 1;
+      snap("p->next = s", cur, { pointers: { L: 0, p: index - 1, s: index }, write: index - 1 }, action("link", "p 的 next 改指新结点", { to: value }), true);
+    }
+    const result = [...items]; result.splice(index, 0, value);
+    return makeTrace(request, "双向链表插入", `L=[${items.join(",")}]`, `L=[${result.join(",")}]`, steps);
   }
-  const removed=items[index]; const result=[...items]; result.splice(index,1);
-  steps.push(makeStep(2,"unlink","前驱越过待删结点","修改前驱 next 指向后继。",viewState("doubly_linked_list",[row("L",result),row("meta",[],{position,operation:op,removed,phase:"forward"})]),[action("unlink","p.prior.next=p.next",{target:"next"})]));
-  steps.push(makeStep(3,"unlink","后继越过待删结点","修改后继 prior 指向前驱。",viewState("doubly_linked_list",[row("L",result),row("meta",[],{position,operation:op,removed,phase:"backward"})]),[action("unlink","p.next.prior=p.prior",{target:"prior"})]));
-  return makeTrace(request,"双向链表删除",`L=[${items.join(",")}]`,`L=[${result.join(",")}]`,steps);
+
+  /* 删除：先 q 指向待删结点，再让前后两个结点互相指对方，最后释放 q。 */
+  const removed = items[index];
+  const cur = self(items.map(String));
+  snap("q = L", cur, { pointers: { L: 0, q: 0 } }, null, true);
+  if (index === 0) {
+    snap("L = L->next", cur, { pointers: { L: 1, q: 0 } }, null, true);
+    cur.prior[1] = null;
+    snap("L->prior = NULL", cur, { pointers: { L: 1, q: 0 }, write: 1, writeSlot: "prior" }, action("link", "新首结点没有前驱", { to: "NULL" }), true);
+  } else {
+    snap("p = L", cur, { pointers: { L: 0, p: 0, q: index } });
+    for (let i = 1; i < index; i += 1) {
+      snap("p = p->next", cur, { focusIndex: i, pointers: { L: 0, p: i, q: index } }, null, true);
+    }
+    snap("q = p->next", cur, { pointers: { L: 0, p: index - 1, q: index }, focusIndex: index });
+    const successor = cur.next[index];
+    cur.next[index - 1] = successor;
+    snap("p->next = q->next", cur, { pointers: { L: 0, p: index - 1, q: index }, write: index - 1 }, action("link", "p 直接指向 q 的后继", { to: successor }), true);
+    if (index + 1 < cur.labels.length) {
+      cur.prior[index + 1] = index;
+      snap("q->next->prior = p", cur, { pointers: { L: 0, p: index - 1, q: index }, write: index + 1, writeSlot: "prior" }, action("link", "后继的 prior 改指 p", { to: cur.labels[index - 1] }), true);
+    }
+  }
+  const freed = self(items.filter((_, i) => i !== index).map(String));
+  snap("free(q)", freed, { pointers: { L: 0 } }, action("free", "释放待删结点", { value: removed }));
+  const result = [...items]; result.splice(index, 1);
+  return makeTrace(request, "双向链表删除", `L=[${items.join(",")}]`, `L=[${result.join(",")}]`, steps);
 }
 
 function normalizeTerms(value, fallback) {
@@ -393,13 +536,56 @@ function simulateGeneralizedList(request,api){
   {const copy=deepClone(data);for(let i=0;i<data.length;i++){copy[i]=deepClone(data[i]);steps.push(makeStep(2+i,"copy",`复制第 ${i+1} 个表元素`,`为 ${JSON.stringify(data[i])} 创建对应的新结点（原子照抄、子表递归）。`,viewState("generalized_list",[row("list",data),row("copy",deepClone(copy.slice(0,i+1))),row("meta",[],{operation:op,current:i})]),[action("copy","递归复制结点",{target:i})]));}steps.push(makeStep(2+data.length,"copy","复制完成","新表与原表结构完全一致。",viewState("generalized_list",[row("list",data),row("copy",copy),row("meta",[],{operation:op})])));return makeTrace(request,"复制广义表","原广义表","复制完成",steps);}
 }
 
-function normalizeTreeArray(value){const arr=Array.isArray(value)&&value.length?value:["A","B","C","D","E","F","G"];return arr.slice(0,31).map(v=>v===undefined?null:v);}
+/* 空串不是结点：渲染器把空值画成空槽（`isEmptyValue`），真给它建一个结点，树里就会多出一个空心框、
+   遍历还会多"访问"它一次（`visited` 面板第一位是空的）。空串/纯空白和 `null` 一样当"没有这个孩子"。 */
+function normalizeTreeArray(value){const arr=Array.isArray(value)&&value.length?value:["A","B","C","D","E","F","G"];return arr.slice(0,31).map(v=>v===undefined||(typeof v==="string"&&v.trim()==="")?null:v);}
 function treeChildren(arr,i){const l=2*i+1,r=2*i+2;return [l<arr.length&&arr[l]!==null?l:-1,r<arr.length&&arr[r]!==null?r:-1];}
-function treeView(arr,visited=[],current=-1,extra={}){const nodes=arr.map((v,i)=>v===null?null:{id:i,label:String(v),index:i}).filter(Boolean);const edges=[];nodes.forEach(n=>{const [l,r]=treeChildren(arr,n.index);if(l>=0)edges.push([n.index,l,"L"]);if(r>=0)edges.push([n.index,r,"R"]);});return viewState("tree",[row("tree",[],{nodes,edges}),row("visited",visited.map(i=>arr[i])),row("meta",[],{currentValue:current>=0?arr[current]:null,currentIndex:current,...extra})]);}
+function treeView(arr,visited=[],current=-1,extra={}){const nodes=arr.map((v,i)=>v===null?null:{id:i,label:String(v),index:i}).filter(Boolean);const edges=[];nodes.forEach(n=>{const [l,r]=treeChildren(arr,n.index);if(l>=0)edges.push([n.index,l,"L"]);if(r>=0)edges.push([n.index,r,"R"]);});return viewState("tree",[row("tree",[],{nodes,edges}),row("visited",visited.map(i=>arr[i])),row("meta",[],{...(current>=0?{currentValue:arr[current],currentIndex:current}:{}),...extra})]);}
 function traversalOrder(arr,mode){const out=[];function rec(i){if(i<0||i>=arr.length||arr[i]===null)return;const[l,r]=treeChildren(arr,i);if(mode==="pre")out.push(i);rec(l);if(mode==="in")out.push(i);rec(r);if(mode==="post")out.push(i);}if(mode==="level"){const q=[0];while(q.length){const i=q.shift();if(i<0||i>=arr.length||arr[i]===null)continue;out.push(i);const[l,r]=treeChildren(arr,i);if(l>=0)q.push(l);if(r>=0)q.push(r);}}else rec(0);return out;}
+/* 线索二叉树：线索画成虚线（树面板的 `threads`），`ltag`/`rtag` 落在结点上——
+   空孩子指针改指前驱/后继，正是线索树区别于普通二叉树的那两个特征位，
+   所以它们必须出现在画面上，而不是只写在旁白里。 */
+function threadAll(arr){const threads=[],tags={};let pre=-1;for(const idx of traversalOrder(arr,"in")){if(treeChildren(arr,idx)[0]<0){if(pre>=0)threads.push([idx,pre,"L"]);tags[idx]={...(tags[idx]||{}),ltag:1};}if(pre>=0&&treeChildren(arr,pre)[1]<0){threads.push([pre,idx,"R"]);tags[pre]={...(tags[pre]||{}),rtag:1};}pre=idx;}return {threads,tags};}
+function threadView(arr,visited,current,threads,tags,extra={}){
+  const nodes=arr.map((v,i)=>v===null?null:{id:i,label:String(v),index:i,...(tags[i]||{})}).filter(Boolean);
+  const edges=[];
+  for(const n of nodes){const[l,r]=treeChildren(arr,n.index);if(l>=0)edges.push([n.index,l,"L"]);if(r>=0)edges.push([n.index,r,"R"]);}
+  const treeRow=row("tree",[],{nodes,edges});
+  treeRow.threads=threads.map((t)=>[t[0],t[1],t[2]]);
+  const rows=[treeRow];
+  if(visited.length)rows.push(row("visited",visited.map((i)=>arr[i])));
+  rows.push(row("meta",[],{currentValue:current>=0?arr[current]:null,currentIndex:current,...extra}));
+  return viewState("tree",rows);
+}
+
+/* 树面板 + 几块辅助行（栈/队列/已访问）：非递归遍历与层序遍历要把"容器里现在有什么"画出来。 */
+function treeViewExtra(arr,visited,current,rows,extra={}){
+  const nodes=arr.map((v,i)=>v===null?null:{id:i,label:String(v),index:i}).filter(Boolean);
+  const edges=[];
+  for(const n of nodes){const[l,r]=treeChildren(arr,n.index);if(l>=0)edges.push([n.index,l,"L"]);if(r>=0)edges.push([n.index,r,"R"]);}
+  const all=[row("tree",[],{nodes,edges})];
+  if(visited.length)all.push(row("visited",visited.map((i)=>arr[i])));
+  all.push(...rows);
+  all.push(row("meta",[],{currentValue:current>=0?arr[current]:null,currentIndex:current,...extra}));
+  return viewState("tree",all);
+}
+
 function simulateTree(request,api){
   const {makeStep,makeTrace,action}=makeHelpers(api);const arr=normalizeTreeArray(request.initial_state.data);const op=request.operation;
-  if(op==="build"){const partial=Array(arr.length).fill(null);let sid=1;const steps=[makeStep(sid++,"init","开始建立二叉树","按层次序列逐个建立非空结点并连接孩子。",treeView(partial,[],-1,{operation:op}))];for(let i=0;i<arr.length;i++){if(arr[i]===null)continue;partial[i]=arr[i];steps.push(makeStep(sid++,"insert","建立结点并连接",`建立结点 ${arr[i]}${i?`，连接到父结点 ${arr[Math.floor((i-1)/2)]}`:"，作为根结点"}。`,treeView(partial,[],i,{operation:op}),[action("link","建立父子关系",{target:i,value:arr[i]})]));}return makeTrace(request,"建立二叉树","层次序列",`结点数=${arr.filter(x=>x!==null).length}`,steps);}
+  if(op==="build"){
+    /* 按层次序列建树：`s = malloc(); s->data = 'B'` 一行、接到父结点上再一行。 */
+    const partial=Array(arr.length).fill(null);
+    let sid=1;const steps=[makeStep(sid++,"init","空二叉树",`按层次序列 ${arr.map((x)=>x===null?"#":x).join("")} 逐个建立非空结点。`,treeView(partial,[],-1,{operation:op}))];
+    const step=(code,current,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"build",code,code,treeView(partial,[],current,{operation:op,...extra}),act?[act]:[]));
+    for(let i=0;i<arr.length;i++){
+      if(arr[i]===null)continue;
+      const label=String(arr[i]);
+      step(`s = malloc(); s->data = '${label}'`,-1,{s:label,i},action("allocate","申请一个结点",{value:label}),true);
+      partial[i]=arr[i];
+      step(i===0?"root = s":`p->${i%2?"rchild":"lchild"} = s`,i,{i,parent:i?Math.floor((i-1)/2):null},action("link",i===0?"作为根结点":"接到父结点上",{target:i,value:label}));
+    }
+    return makeTrace(request,"建立二叉树","层次序列",`结点数=${arr.filter((x)=>x!==null).length}`,steps);
+  }
   // 核心契约的 tree visit/highlight（params.node 为层次下标）：单步定位并高亮一个结点。
   if(op==="visit"||op==="highlight"){
     const rawNode=request.params.node;
@@ -414,29 +600,215 @@ function simulateTree(request,api){
   if(op==="preorder")order=traversalOrder(arr,"pre");else if(["inorder","inorder_stack","thread_inorder","thread_predecessor","thread_successor"].includes(op))order=traversalOrder(arr,"in");else if(op==="postorder"||op==="postorder_stack")order=traversalOrder(arr,"post");else order=traversalOrder(arr,"level");
   const visited=[];let sid=1;const steps=[makeStep(sid++,"init","二叉树初始状态","准备按教材规定的次序访问结点。",treeView(arr,visited,-1,{operation:op}))];
   if(op==="inorder_stack"){
-    const stack=[];let cur=0;while(cur>=0||stack.length){while(cur>=0&&arr[cur]!==null){stack.push(cur);steps.push(makeStep(sid++,"push","左链进栈",`${arr[cur]} 进栈，继续访问左孩子。`,treeView(arr,visited,cur,{operation:op,stack:stack.map(i=>arr[i])}),[action("push","结点指针进栈",{value:arr[cur]})]));cur=treeChildren(arr,cur)[0];}if(!stack.length)break;cur=stack.pop();visited.push(cur);steps.push(makeStep(sid++,"visit","退栈并访问",`访问 ${arr[cur]}。`,treeView(arr,visited,cur,{operation:op,stack:stack.map(i=>arr[i])}),[action("visit","访问结点",{value:arr[cur]})]));cur=treeChildren(arr,cur)[1];}
+    /* 非递归中序：`s.push(p)` 一行、`p = p->lchild` 一行、`p = s.pop()` 一行、`p = p->rchild` 一行。 */
+    const stack=[];let cur=0;const visited=[];
+    const step=(code,current,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"push",code,code,treeViewExtra(arr,visited,current,[row("stack",stack.map((i)=>arr[i]))],{operation:op,...extra}),act?[act]:[]));
+    step("p = root",0,{s:""},null,true);
+    while(cur>=0||stack.length){
+      const down=cur>=0&&arr[cur]!==null;
+      step(`while (p != NULL) → ${down}`,cur,{s:stack.length?stack.map((i)=>arr[i]).join(","):"(空)"},null,true);
+      if(down){
+        stack.push(cur);
+        step("s.push(p)",cur,{s:stack.map((i)=>arr[i]).join(",")},action("push",`${arr[cur]} 进栈`,{value:arr[cur]}),true);
+        cur=treeChildren(arr,cur)[0];
+        step("p = p->lchild",cur,{s:stack.length?stack.map((i)=>arr[i]).join(","):"(空)",p:cur>=0?arr[cur]:"NULL"},null,true);
+        continue;
+      }
+      const out=stack.pop();visited.push(out);
+      cur=treeChildren(arr,out)[1];
+      step("p = s.pop(); visit(p)",out,{s:stack.map((i)=>arr[i]).join(","),visit:arr[out]},action("visit",`退栈并访问 ${arr[out]}`,{value:arr[out]}));
+      step("p = p->rchild",cur,{s:stack.length?stack.map((i)=>arr[i]).join(","):"(空)",p:cur>=0?arr[cur]:"NULL"},null,true);
+    }
+    return makeTrace(request,"非递归中序遍历","二叉树",`访问序列=${visited.map((i)=>arr[i]).join(" ")}`,steps);
   } else if(op==="postorder_stack"){
-    const stack=[[0,false]];while(stack.length){const [idx,expanded]=stack.pop();if(idx<0||idx>=arr.length||arr[idx]===null)continue;if(expanded){visited.push(idx);steps.push(makeStep(sid++,"visit","第二次退栈访问",`左右子树处理完毕，访问 ${arr[idx]}。`,treeView(arr,visited,idx,{operation:op,stack:stack.map(x=>arr[x[0]]).filter(Boolean)}),[action("visit","后序访问",{value:arr[idx]})]));continue;}stack.push([idx,true]);const[l,r]=treeChildren(arr,idx);if(r>=0)stack.push([r,false]);if(l>=0)stack.push([l,false]);steps.push(makeStep(sid++,"push","结点及孩子进栈",`记录 ${arr[idx]}，先处理左、右子树。`,treeView(arr,visited,idx,{operation:op,stack:stack.map(x=>arr[x[0]]).filter(Boolean)}),[action("push","保存待回访结点",{value:arr[idx]})]));}
-  } else if(op==="thread_inorder"){
-    let prev=-1;const threads=[];for(const idx of order){const[l]=treeChildren(arr,idx);if(l<0&&prev>=0)threads.push([idx,prev,"predecessor"]);if(prev>=0){const[,pr]=treeChildren(arr,prev);if(pr<0)threads.push([prev,idx,"successor"]);}visited.push(idx);steps.push(makeStep(sid++,"thread","建立中序线索",`访问 ${arr[idx]}，把空孩子指针改作前驱/后继线索。`,treeView(arr,visited,idx,{operation:op,threads:[...threads]}),[action("link","建立线索",{value:arr[idx]})]));prev=idx;}
+    /* 非递归后序（结点带"已展开"标志）：第一次退栈把它和两个孩子压回去，第二次退栈才访问。 */
+    const stack=[[0,false]];const visited=[];
+    const label=()=>stack.map((pair)=>`${arr[pair[0]]}${pair[1]?"*":""}`).join(",");
+    const step=(code,current,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"push",code,code,treeViewExtra(arr,visited,current,[row("stack",stack.map((pair)=>`${arr[pair[0]]}${pair[1]?"*":""}`))],{operation:op,...extra}),act?[act]:[]));
+    while(stack.length){
+      const [idx,expanded]=stack.pop();
+      if(idx<0||idx>=arr.length||arr[idx]===null){
+        step("if (p == NULL) continue",-1,{s:label()},null,true);
+        continue;
+      }
+      if(expanded){
+        visited.push(idx);
+        step("visit(p)",idx,{s:label(),visit:arr[idx]},action("visit",`第二次退栈，访问 ${arr[idx]}`,{value:arr[idx]}));
+        continue;
+      }
+      step("if (p 已展开) → false",idx,{s:label()},null,true);
+      const [l,r]=treeChildren(arr,idx);
+      stack.push([idx,true]);
+      if(r>=0)stack.push([r,false]);
+      if(l>=0)stack.push([l,false]);
+      step("s.push(p, 已展开); s.push(p->rchild); s.push(p->lchild)",idx,{s:label(),pushed:arr[idx]},action("push",`${arr[idx]} 与两个孩子重新入栈`,{value:arr[idx]}),true);
+    }
+    return makeTrace(request,"非递归后序遍历","二叉树",`访问序列=${visited.map((i)=>arr[i]).join(" ")}`,steps);
+  } else if(op==="levelorder"){
+    /* 层序：队列进出一个顶点一行，它的两个孩子入队各一行。 */
+    const q=[0];const visited=[];
+    const step=(code,current,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"queue",code,code,treeViewExtra(arr,visited,current,[row("queue",q.map((i)=>arr[i]))],{operation:op,...extra}),act?[act]:[]));
+    step("q.push(root)",0,{q:arr[0]},action("push",`根 ${arr[0]} 入队`,{value:arr[0]}),true);
+    while(q.length){
+      const v=q.shift();visited.push(v);
+      step("v = q.pop(); visit(v)",v,{q:q.map((i)=>arr[i]).join(",")},action("visit",`访问 ${arr[v]}`,{value:arr[v]}));
+      const [l,r]=treeChildren(arr,v);
+      if(l>=0){q.push(l);step("q.push(v->lchild)",v,{q:q.map((i)=>arr[i]).join(","),pushed:arr[l]},action("push",`左孩子 ${arr[l]} 入队`,{value:arr[l]}),true);}
+      if(r>=0){q.push(r);step("q.push(v->rchild)",v,{q:q.map((i)=>arr[i]).join(","),pushed:arr[r]},action("push",`右孩子 ${arr[r]} 入队`,{value:arr[r]}),true);}
+    }
+    step("while (!q.empty()) → false",-1,{q:"(空)"});
+    return makeTrace(request,"层序遍历","二叉树",`访问序列=${visited.map((i)=>arr[i]).join(" ")}`,steps);
+} else if(op==="thread_inorder"){
+    /* 中序线索化：`if (p->lchild == NULL)` → `p->lchild = pre; p->ltag = 1` →
+       `if (pre && pre->rchild == NULL)` → `pre->rchild = p; pre->rtag = 1` → `pre = p`，**一行一帧**。
+       空孩子指针改成前驱/后继线索，画面上就多一根虚线（指不出去的就是一个吊在结点下方的 NULL 线头）。 */
+    const threads=[],tags={};let pre=-1;
+    const step=(code,current,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"thread",code,code,threadView(arr,visited,current,threads,tags,{operation:op,...extra}),act?[act]:[]));
+    for(const idx of order){
+      visited.push(idx);
+      const noLeft=treeChildren(arr,idx)[0]<0;
+      step(`if (p->lchild == NULL) → ${noLeft}`,idx,null,null,true);
+      if(noLeft){
+        if(pre>=0)threads.push([idx,pre,"L"]);
+        tags[idx]={...(tags[idx]||{}),ltag:1};
+        step("p->lchild = pre; p->ltag = 1",idx,{},action("link","左指针改作前驱线索",{value:pre>=0?arr[pre]:null}));
+      }
+      const preNoRight=pre>=0&&treeChildren(arr,pre)[1]<0;
+      step(`if (pre && pre->rchild == NULL) → ${preNoRight}`,pre>=0?pre:idx,{pre:pre>=0?arr[pre]:"NULL"},null,true);
+      if(preNoRight){
+        threads.push([pre,idx,"R"]);
+        tags[pre]={...(tags[pre]||{}),rtag:1};
+        step("pre->rchild = p; pre->rtag = 1",pre,{pre:arr[pre]},action("link","前驱的右指针改作后继线索",{value:arr[idx]}));
+      }
+      step("pre = p",idx,{pre:arr[idx]},null,true);
+      pre=idx;
+    }
+    return makeTrace(request,"中序线索化","二叉树",`线索 ${threads.length} 条`,steps);
   } else if(op==="thread_predecessor"||op==="thread_successor"){
-    const target=String(request.params.target??arr[order[Math.floor(order.length/2)] ]);const pos=order.findIndex(i=>String(arr[i])===target);const neighbor=op==="thread_predecessor"?order[pos-1]:order[pos+1];steps.push(makeStep(sid++,"locate","定位给定结点",`在线索中序序列中定位 ${target}。`,treeView(arr,order.slice(0,Math.max(0,pos+1)),pos>=0?order[pos]:-1,{operation:op,target})));steps.push(makeStep(sid++,"follow","沿线索找到相邻结点",neighbor===undefined?`${target} 没有对应的${op.endsWith("predecessor")?"前驱":"后继"}。`:`${target} 的${op.endsWith("predecessor")?"前驱":"后继"}是 ${arr[neighbor]}。`,treeView(arr,order.slice(0,Math.max(0,pos+1)),neighbor??-1,{operation:op,target,neighbor:neighbor===undefined?null:arr[neighbor]}),[action("move","沿线索指针移动",{from:target,to:neighbor===undefined?null:arr[neighbor]})]));return makeTrace(request,op==="thread_predecessor"?"中序线索树求前驱":"中序线索树求后继",`target=${target}`,neighbor===undefined?"不存在":String(arr[neighbor]),steps);
-  } else {for(const idx of order){visited.push(idx);steps.push(makeStep(sid++,"visit","访问结点",`访问 ${arr[idx]}。`,treeView(arr,visited,idx,{operation:op}),[action("visit","按遍历次序访问",{value:arr[idx]})]));}}
+    /* 求前驱/后继：**先看 tag**——标记为线索就直接沿线索走一步；不是线索才走子树，
+       找"左子树的最右"（前驱）或"右子树的最左"（后继）。 */
+    const {threads,tags}=threadAll(arr);
+    const target=String(request.params.target??arr[order[Math.floor(order.length/2)]]);
+    const pos=order.findIndex(i=>String(arr[i])===target);
+    if(pos<0)return api.makeRuntimeError(request,"中序线索树求前驱/后继","TARGET_NOT_FOUND",`目标 ${target} 不在这棵二叉树中（结点：${arr.filter(x=>x!==null).join("、")}），请检查 target 参数。`,threadView(arr,[],-1,threads,tags,{operation:op,target}),`target=${target}`);
+    const idx=order[pos];
+    const successor=op==="thread_successor";
+    const tagName=successor?"rtag":"ltag";
+    const step=(code,current,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"thread",code,code,threadView(arr,[],current,threads,tags,{operation:op,target,...extra}),act?[act]:[]));
+    /* 起点就是**已经线索化**的那棵树：线索本来就是这个结构的一部分。 */
+    steps[0]=makeStep(1,"init","线索二叉树",`${successor?"求后继":"求前驱"}：先看 ${tagName}，是线索就直接沿它走。`,threadView(arr,[],-1,threads,tags,{operation:op,target}));
+    step(`p = ${target}`,idx,null,null,true);
+    const threaded=Number((tags[idx]||{})[tagName])===1;
+    step(`if (p->${tagName} == 1) → ${threaded}`,idx,{[tagName]:threaded?1:0},null,true);
+    if(threaded){
+      /* 那根指针就是线索：一步走到前驱/后继。 */
+      const t=threads.find(x=>x[0]===idx&&x[2]===(successor?"R":"L"));
+      const answer=t?t[1]:-1;
+      step(`q = p->${successor?"rchild":"lchild"}`,answer,{q:answer>=0?arr[answer]:"NULL"},action("move",`沿${successor?"后继":"前驱"}线索直接走到 ${answer>=0?arr[answer]:"NULL"}`,{value:answer>=0?arr[answer]:null}));
+      step("return q",idx,{q:answer>=0?arr[answer]:"NULL"});
+      return makeTrace(request,successor?"中序线索树求后继":"中序线索树求前驱",`target=${target}`,answer>=0?String(arr[answer]):"NULL",steps);
+    }
+    const first=treeChildren(arr,idx)[successor?1:0];
+    step(`q = p->${successor?"rchild":"lchild"}`,first,{},action("move","不是线索，先走进子树",{value:first>=0?arr[first]:null}),true);
+    if(first<0){
+      step("if (q == NULL) return NULL",idx,{q:"NULL"});
+      return makeTrace(request,successor?"中序线索树求后继":"中序线索树求前驱",`target=${target}`,"NULL",steps);
+    }
+    let q=first;
+    /* 后继：一路**向左**走到底；前驱：一路**向右**走到底。走到 tag=1 就停——那一步就是答案。 */
+    for(;;){
+      const stop=Number((tags[q]||{})[tagName])===1;
+      step(`if (q->${tagName} == 0) → ${!stop}`,q,{[tagName]:stop?1:0},null,true);
+      if(stop)break;
+      const gone=treeChildren(arr,q)[successor?0:1];
+      step(`q = q->${successor?"lchild":"rchild"}`,gone,{},action("move",`沿${successor?"左":"右"}链走到 ${gone>=0?arr[gone]:"NULL"}`,{value:gone>=0?arr[gone]:null}),true);
+      if(gone<0)break;
+      q=gone;
+    }
+    step("return q",idx,{q:arr[q]});
+    return makeTrace(request,successor?"中序线索树求后继":"中序线索树求前驱",`target=${target}`,String(arr[q]),steps);
+  } else {
+    /* 递归遍历的"一行"：`visit(p)` 一格，**再走到下一个结点一格**。
+       下一个结点是当前结点的左/右孩子，那一行就是 `p = p->left` / `p = p->right`；
+       否则说明这一支走完了要**回溯**（`return`），此时 p 停在"下一个结点的父亲"上——
+       两帧的高亮因此总是不同的，不会出现"点一下什么都没动"。 */
+    for(let k=0;k<order.length;k++){
+      const idx=order[k];visited.push(idx);
+      steps.push(makeStep(sid++,"assign","visit(p)","visit(p)",treeView(arr,visited,idx,{operation:op}),[action("visit","按遍历次序访问",{value:arr[idx]})]));
+      const next=k+1<order.length?order[k+1]:-1;
+      if(next<0)continue;
+      const l=2*idx+1,r=2*idx+2;
+      const isChild=next===l||next===r;
+      const code=next===l?"p = p->left":next===r?"p = p->right":"return";
+      const at=isChild?next:Math.floor((next-1)/2);
+      steps.push(makeStep(sid++,"line",code,code,treeView(arr,visited,at,{operation:op}),[]));
+    }
+  }
   return makeTrace(request,{preorder:"先序遍历",inorder:"中序遍历",postorder:"后序遍历",levelorder:"层序遍历",inorder_stack:"非递归中序遍历",postorder_stack:"非递归后序遍历",thread_inorder:"中序线索化"}[op]||"二叉树遍历","二叉树",`访问序列=${order.map(i=>arr[i]).join(" ")}`,steps);
 }
 
 function simulateHuffman(request,api){
-  const {makeStep,makeTrace,action}=makeHelpers(api);const weights=numberArray(request.params.weights??request.initial_state.data,[2,3,4,7]);
+  const {makeStep,makeTrace,action}=makeHelpers(api);
+  const weights=numberArray(request.params.weights??request.initial_state.data,[2,3,4,7]);
   if(weights.length===0) throw new SimulationInputError("EMPTY_WEIGHTS","权值列表为空：哈夫曼树至少需要一个权值","weights");
   if(weights.length>12) throw new SimulationInputError("INPUT_TOO_LARGE",`哈夫曼动画最多演示 12 个权值，当前 ${weights.length} 个`,"weights");
   if(Array.isArray(request.params.symbols)&&request.params.symbols.length!==weights.length) throw new SimulationInputError("SYMBOL_MISMATCH",`symbols 数量（${request.params.symbols.length}）必须与 weights 数量（${weights.length}）一致`,"symbols");
   const symbols=Array.isArray(request.params.symbols)&&request.params.symbols.length===weights.length?request.params.symbols.map(String):weights.map((_,i)=>String.fromCharCode(65+i));
-  let nodes=weights.map((w,i)=>({id:i,label:symbols[i],weight:w,left:null,right:null,parent:null}));let active=nodes.map(n=>n.id),nextId=nodes.length,sid=1;/* currentId = 这一步要突出的结点（新建的父结点/编码时的根）：不发它整棵树一格高亮都没有。 */const rows=(currentId)=>[row("tree",[],{nodes:deepClone(nodes),edges:nodes.flatMap(n=>[[n.id,n.left],[n.id,n.right]].filter(e=>e[1]!==null))}),row("active",active.map(id=>nodes.find(n=>n.id===id)?.weight)),row("meta",[],{operation:request.operation,...(currentId===undefined?{}:{current:String(currentId)})})];const steps=[makeStep(sid++,"init","初始权值集合",`权值：${weights.join(", ")}`,viewState("huffman",rows()))];
-  while(active.length>1){active.sort((a,b)=>nodes.find(n=>n.id===a).weight-nodes.find(n=>n.id===b).weight);const a=active.shift(),b=active.shift(),na=nodes.find(n=>n.id===a),nb=nodes.find(n=>n.id===b);const parent={id:nextId++,label:String(na.weight+nb.weight),weight:na.weight+nb.weight,left:a,right:b,parent:null};na.parent=parent.id;nb.parent=parent.id;nodes.push(parent);active.push(parent.id);steps.push(makeStep(sid++,"merge","选两个最小权值合并",`${na.weight}+${nb.weight}=${parent.weight}，生成新结点。`,viewState("huffman",rows(parent.id)),[action("merge","合并两个最小权值",{from:`${na.weight},${nb.weight}`,to:parent.weight})]));}
-  if(request.operation==="encode"){
-    const root=active[0];const codes={};function walk(id,prefix){const n=nodes.find(x=>x.id===id);if(n.left===null&&n.right===null){codes[n.label]=prefix||"0";return;}if(n.left!==null)walk(n.left,prefix+"0");if(n.right!==null)walk(n.right,prefix+"1");}walk(root,"");steps.push(makeStep(sid++,"encode","沿左 0 右 1 生成编码",Object.entries(codes).map(([s,c])=>`${s}:${c}`).join("，"),viewState("huffman",[...rows(root),row("codes",Object.entries(codes).map(([symbol,code])=>({label:symbol,value:code})))])));return makeTrace(request,"哈夫曼编码","权值集合",JSON.stringify(codes),steps);
+  let nodes=weights.map((w,i)=>({id:i,label:symbols[i],weight:w,left:null,right:null,parent:null}));
+  let active=nodes.map(n=>n.id),nextId=nodes.length,sid=1;
+  const find=(id)=>nodes.find((n)=>n.id===id);
+  const treeRow=()=>row("tree",[],{nodes:deepClone(nodes),edges:nodes.flatMap((n)=>[[n.id,n.left],[n.id,n.right]].filter((e)=>e[1]!==null))});
+  const base=(extra={})=>viewState("huffman",[treeRow(),row("active",active.map((id)=>find(id).weight)),row("meta",[],{operation:request.operation,...extra})]);
+  const steps=[makeStep(sid++,"init","权值集合",`每个权值先看成一棵只有根结点的树：${weights.map((w,i)=>`${symbols[i]}=${w}`).join("、")}。`,base())];
+  const snap=(code,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"merge",code,code,base(extra),act?[act]:[]));
+  /* 合并：`a = 最小的树` → `b = 次小的树` → `s = malloc(); s->weight = …` → `s->left = a; s->right = b` → 放回森林。
+     取走的两棵、新结点、新边、森林的变化，各报一帧。 */
+  while(active.length>1){
+    active.sort((a,b)=>find(a).weight-find(b).weight);
+    const a=active.shift(),wa=find(a).weight;
+    snap(`a = 最小的一棵（${find(a).label} = ${wa}）`,{current:String(a),a:wa},action("select","取权值最小的树",{value:wa}),true);
+    const b=active.shift(),wb=find(b).weight;
+    snap(`b = 次小的一棵（${find(b).label} = ${wb}）`,{current:String(b),a:wa,b:wb},action("select","取次小的树",{value:wb}),true);
+    const parent={id:nextId++,label:String(wa+wb),weight:wa+wb,left:null,right:null,parent:null};
+    find(a).parent=parent.id;find(b).parent=parent.id;
+    nodes.push(parent);
+    snap(`s = malloc(); s->weight = ${wa} + ${wb} = ${wa+wb}`,{current:String(parent.id),sum:wa+wb},action("merge","新建父结点",{value:wa+wb}));
+    parent.left=a;parent.right=b;
+    snap("s->left = a; s->right = b",{current:String(parent.id),sum:wa+wb},action("link","两棵最小的树挂到 s 下面",{value:wa+wb}),true);
+    active.push(parent.id);
+    snap("把 s 放回森林",{current:String(parent.id),n:active.length},action("insert","新树放回森林",{value:wa+wb}),true);
   }
-  return makeTrace(request,"构造哈夫曼树","权值集合",`WPL 构造完成`,steps);
+  if(request.operation!=="encode"){
+    const root=active[0];
+    snap("return root",{current:String(root),root:find(root).weight},action("visit",`森林里只剩一棵树，根权值 ${find(root).weight}`,{value:find(root).weight}));
+    return makeTrace(request,"构造哈夫曼树","权值集合",`根权值=${find(root).weight}`,steps);
+  }
+  /* encode：从根往下递归，`左 0 右 1`；每到一个叶子就定下一个编码。 */
+  const root=active[0];
+  const codes=[];
+  const at=(extra={},withCodes=true)=>viewState("huffman",[treeRow(),...(withCodes&&codes.length?[row("codes",codes.map((c)=>({label:c.label,value:c.value})))]:[]),row("meta",[],{operation:request.operation,...extra})]);
+  const enc=(code,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"encode",code,code,at(extra),act?[act]:[]));
+  steps[0]=makeStep(1,"init","哈夫曼树",`树建好了：从根往下走，向左收 0、向右收 1。`,at());
+  const visit=(id,prefix,parentId)=>{
+    const node=find(id);
+    const leaf=node.left===null&&node.right===null;
+    enc(`if (p 是叶子) → ${leaf}`,{current:String(id),code:prefix||'""'},null,true);
+    if(leaf){
+      codes.push({label:node.label,value:prefix||"0"});
+      enc(`codes[${node.label}] = "${prefix||"0"}"`,{current:String(id),code:prefix||"0"},action("visit",`${node.label} 的编码是 ${prefix||"0"}`,{value:prefix||"0"}));
+      if(parentId!==null)enc("return",{current:String(parentId),code:prefix||"0"},null,true);
+      return;
+    }
+    enc(`Encode(p->left, code + "0")`,{current:String(node.left),code:prefix+"0",call:/left/},action("move","向左走一步（收 0）",{value:prefix+"0"}),true);
+    visit(node.left,prefix+"0",id);
+    enc(`Encode(p->right, code + "1")`,{current:String(node.right),code:prefix+"1",call:/right/},action("move","向右走一步（收 1）",{value:prefix+"1"}),true);
+    visit(node.right,prefix+"1",id);
+    if(parentId!==null)enc("return",{current:String(parentId),code:prefix||'""'},null,true);
+  };
+  visit(root,"",null);
+  enc("return codes",{current:String(root),root:find(root).weight},action("visit",`得到 ${codes.length} 个编码`,{value:codes.length}));
+  const map={};for(const c of codes)map[c.label]=c.value;
+  return makeTrace(request,"哈夫曼编码","权值集合",JSON.stringify(map),steps);
 }
 
 function simulateUnionFind(request,api){
@@ -448,18 +820,46 @@ function simulateUnionFind(request,api){
   let parent,n;
   if(provided){parent=provided;n=parent.length;}
   else{n=intParam(request.params,"size",6,2,20);parent=Array(n).fill(-1);}
-  const steps=[makeStep(1,"init","并查集森林",`parent=[${parent.join(",")}]（负值 = 根，其绝对值为集合大小）`,viewState("union_find",[row("parent",parent),row("meta",[],{operation:request.operation,size:n})]))];
-  function find(x){const path=[];while(parent[x]>=0){path.push(x);x=parent[x];}return {root:x,path};}
-  if(request.operation==="find"){const x=intParam(request.params,"element",Math.min(2,Math.max(0,n-1)),0,n-1);const r=find(x);let sid=2;for(const p of r.path)steps.push(makeStep(sid++,"follow","沿双亲指针向根移动",`${p} → ${parent[p]}`,viewState("union_find",[row("parent",parent),row("path",r.path),row("meta",[],{current:p,root:r.root,operation:request.operation})]),[action("move","沿 parent 查找根",{from:p,to:parent[p]})]));steps.push(makeStep(sid,"done","找到代表元",`元素 ${x} 的根为 ${r.root}${r.path.length?`（沿 parent 走了 ${r.path.length} 步）`:"（它本身就是根）"}。`,viewState("union_find",[row("parent",parent),row("meta",[],{root:r.root,operation:request.operation})])));return makeTrace(request,"并查集查找",`element=${x}`,`root=${r.root}`,steps);}
+  let sid=2;
+  const at=(extra={})=>viewState("union_find",[row("parent",parent),row("meta",[],{operation:request.operation,...extra})]);
+  const snap=(code,extra,act,line)=>steps.push(makeStep(sid++,line?"line":request.operation,code,code,at(extra),act?[act]:[]));
+  const steps=[makeStep(1,"init","parent[]",`parent=[${parent.join(",")}]（负值 = 根，其绝对值为集合大小）。`,at())];
+  /* 沿 parent 一路走到根：条件一行、上移一行，走到的每一步都看得见。 */
+  const walk=(name,start)=>{
+    snap(`${name} = ${start}`,{current:start,[name]:start},action("assign",`先假定 ${start} 自己是根`,{value:start}),true);
+    let cur=start;
+    for(;;){
+      const up=parent[cur]>=0;
+      snap(`while (parent[${name}] >= 0) → ${up}`,{current:cur,[name]:cur,[`parent[${name}]`]:parent[cur]},null,true);
+      if(!up)break;
+      const next=parent[cur];
+      snap(`${name} = parent[${name}]`,{current:next,[name]:next},action("move",`${name} 上移到 ${next}`,{from:cur,to:next}),true);
+      cur=next;
+    }
+    return cur;
+  };
+  if(request.operation==="find"){
+    const x=intParam(request.params,"element",Math.min(2,Math.max(0,n-1)),0,n-1);
+    const root=walk("x",x);
+    snap("return x",{current:root,x:root,root},action("visit","x 就是代表元",{value:root}));
+    return makeTrace(request,"并查集查找",`element=${x}`,`root=${root}`,steps);
+  }
   const a=intParam(request.params,"a",0,0,n-1),b=intParam(request.params,"b",Math.min(1,n-1),0,n-1);
-  const fa=find(a),fb=find(b);const ra=fa.root,rb=fb.root;let sid=2;
-  for(const p of fa.path)steps.push(makeStep(sid++,"follow",`向上找 ${a} 的集合根`,`${p} → ${parent[p]}`,viewState("union_find",[row("parent",parent),row("path",fa.path),row("meta",[],{current:p,a,b,operation:request.operation})]),[action("move","沿 parent 找 a 的根",{from:p,to:parent[p]})]));
-  steps.push(makeStep(sid++,"root",`${a} 的集合根是 ${ra}`,`${a} 沿 parent 走到根 ${ra}（集合大小 ${-parent[ra]}）。`,viewState("union_find",[row("parent",parent),row("meta",[],{root:ra,a,b,operation:request.operation})])));
-  for(const p of fb.path)steps.push(makeStep(sid++,"follow",`向上找 ${b} 的集合根`,`${p} → ${parent[p]}`,viewState("union_find",[row("parent",parent),row("path",fb.path),row("meta",[],{current:p,a,b,operation:request.operation})]),[action("move","沿 parent 找 b 的根",{from:p,to:parent[p]})]));
-  steps.push(makeStep(sid++,"root",`${b} 的集合根是 ${rb}`,`${b} 沿 parent 走到根 ${rb}（集合大小 ${-parent[rb]}）。`,viewState("union_find",[row("parent",parent),row("meta",[],{root:rb,a,b,operation:request.operation})])));
-  if(ra===rb){steps.push(makeStep(sid,"skip","两元素已在同一集合",`${a} 与 ${b} 的根都是 ${ra}，本次合并不改变 parent 数组。`,viewState("union_find",[row("parent",parent),row("meta",[],{a,b,operation:request.operation,unchanged:true})])));return makeTrace(request,"并查集合并",`a=${a},b=${b}`,"已在同一集合，parent 未改变",steps);}
-  const sizeA=-parent[ra],sizeB=-parent[rb];if(sizeA>=sizeB){parent[ra]-=sizeB;parent[rb]=ra;}else{parent[rb]-=sizeA;parent[ra]=rb;}
-  steps.push(makeStep(sid,"union","合并两棵集合树",`根 ${ra}（大小 ${sizeA}）与根 ${rb}（大小 ${sizeB}）：较小树的根挂到较大树的根上。`,viewState("union_find",[row("parent",parent),row("meta",[],{a,b,operation:request.operation})]),[action("link","较小树挂到较大树根",{from:ra,to:rb})]));
+  const ra=walk("ra",a),rb=walk("rb",b);
+  const same=ra===rb;
+  snap(`if (ra == rb) → ${same}`,{current:ra,ra,rb},null,true);
+  if(same){
+    snap("return 0",{current:ra,ra,rb,"return":0},action("skip","两元素已在同一集合，parent 不变",{value:0}));
+    return makeTrace(request,"并查集合并",`a=${a},b=${b}`,"已在同一集合，parent 未改变",steps);
+  }
+  /* 两棵树都是负数：`parent[ra] > parent[rb]` 的意思是"ra 那棵更小"，把小的挂到大的上。 */
+  const hookBToA=parent[ra]>parent[rb];
+  snap(`if (parent[ra] > parent[rb]) → ${hookBToA}`,{current:ra,ra,rb,"parent[ra]":parent[ra],"parent[rb]":parent[rb]},null,true);
+  let line;
+  if(hookBToA){parent[rb]+=parent[ra];parent[ra]=rb;line="parent[rb] += parent[ra]; parent[ra] = rb";}
+  else{parent[ra]+=parent[rb];parent[rb]=ra;line="parent[ra] += parent[rb]; parent[rb] = ra";}
+  snap(line,{current:ra,ra,rb},action("link",`${hookBToA?"ra（较小的树）挂到 rb":"rb（较小的树）挂到 ra"}`,{from:hookBToA?ra:rb,to:hookBToA?rb:ra}));
+  snap("return 1",{current:ra,ra,rb,"return":1});
   return makeTrace(request,"并查集合并",`a=${a},b=${b}`,`parent=[${parent.join(",")}]`,steps);
 }
 
@@ -485,72 +885,614 @@ function simulateGraph(request,api){
   else start=g.nodes[0];
   if(op==="path_search"){const target=String(request.params.target??g.nodes[g.nodes.length-1]);requireVertex(g,target,"终点 target");}
   if(op==="dijkstra"){for(const [a,b,w] of g.edges){if(w<0) throw new SimulationInputError("NEGATIVE_WEIGHT",`Dijkstra 不支持负权边：边 ${a}→${b} 的权值为 ${w}。带负权时请改用 Floyd 等算法`,"edges");}}
-  let sid=1;const steps=[makeStep(sid++,"init","图的初始状态",`顶点 ${g.nodes.join(", ")}；${g.edges.length} 条边；${directed?"有向图":"无向图"}${undirectedByDefault.has(op)?"（最小生成树按无向图处理）":""}。`,viewState("graph",graphRows(g,{operation:op,visited:[],current:null})))];
+  let sid=1;
+  /* 代码级：每一步都是那行代码执行**之后**的图 —— `visited[v] = 1`、`q.push(邻居)`、
+     `dist[v] = dist[u] + w`、`indegree[w] = indegree[w] - 1`……一行一帧。
+     辅助结构（栈/队列/入度/距离/矩阵）各占一块面板，写得动的那一帧它就会变。 */
+  const gRow=(extra={})=>row("graph",[],{nodes:g.nodes,edges:g.edges,...extra});
+  /* `visited` 要放进 **meta** 行：渲染器的"已处理"淡显只从 meta 面板里读（放在图面板上没人读）。 */
+  const at=(extraRows,extra={},visited=[])=>viewState("graph",[gRow(),...extraRows,row("meta",[],{operation:op,directed,...extra,...(visited&&visited.length?{visited}:{})})]);
+  const steps=[makeStep(sid++,"init","图的初始状态",`顶点 ${g.nodes.join(", ")}；${g.edges.length} 条边；${directed?"有向图":"无向图"}${undirectedByDefault.has(op)?"（最小生成树按无向图处理）":""}。`,at([],{}))];
+  const snap=(code,extraRows,extra,act,line,visited)=>steps.push(makeStep(sid++,line?"line":"visit",code,code,at(extraRows,extra,visited),act?[act]:[]));
+  const graphRowWith=(extra={})=>gRow(extra);
+
   // 核心契约的 graph visit/highlight：单步定位并高亮起点顶点。
   if(op==="visit"||op==="highlight"){
-    steps.push(makeStep(sid++,op,`${op==="visit"?"访问":"高亮"}顶点 ${start}`,`定位到顶点 ${start}。`,viewState("graph",graphRows(g,{operation:op,visited:[start],current:start})),[action("visit",op==="visit"?"访问顶点":"高亮顶点",{value:start})]));
+    snap(`${op==="visit"?"visit":"highlight"}(${start})`,[],{current:start},action("visit",`${op==="visit"?"访问":"高亮"}顶点 ${start}`,{value:start}),false,[start]);
     return makeTrace(request,op==="visit"?"访问指定顶点":"高亮指定顶点",`start=${start}`,start,steps);
   }
-  if(op==="dfs"||op==="bfs"||op==="path_search"){
-    const visited=[],seen=new Set();const target=String(request.params.target??g.nodes[g.nodes.length-1]);const parent={};const work=[start];
-    while(work.length){const v=op==="bfs"?work.shift():work.pop();if(seen.has(v))continue;seen.add(v);visited.push(v);steps.push(makeStep(sid++,"visit","访问顶点",`访问 ${v}。`,viewState("graph",graphRows(g,{operation:op,visited:[...visited],current:v,frontier:[...work]})),[action("visit","访问顶点",{value:v})]));if(op==="path_search"&&v===target)break;const ns=(adj.get(v)||[]).map(x=>x[0]).filter(n=>!seen.has(n));if(op==="dfs")ns.reverse();for(const n of ns){if(parent[n]===undefined)parent[n]=v;work.push(n);}}
-    let result=visited.join("→");if(op==="path_search"&&!seen.has(target)){steps.push(makeStep(sid++,"done","不存在可达路径",`从 ${start} 出发${directed?"沿有向边":"经过各条边"}无法到达 ${target}：两者之间没有路径。`,viewState("graph",graphRows(g,{operation:op,visited:[...visited],start,target})),[action("miss","无法到达目标",{from:start,to:target})]));return makeTrace(request,"图中简单路径搜索",`start=${start},target=${target}`,"不可达",steps);}if(op==="path_search"&&seen.has(target)){const path=[];let x=target;while(x!==undefined){path.push(x);if(x===start)break;x=parent[x];}result=path.reverse().join("→");steps.push(makeStep(sid++,"done","找到简单路径",result,viewState("graph",graphRows(g,{operation:op,visited:[...visited],path:result.split("→")}))));}
-    return makeTrace(request,op==="dfs"?"图的深度优先遍历":op==="bfs"?"图的广度优先遍历":"图中简单路径搜索",`start=${start}`,result,steps);
+
+  if(op==="dfs"){
+    /* 递归 DFS：`visited[v] = 1` → 逐个邻居 `if (!visited[w])` → `DFS(w)`。 */
+    const seen=new Set(),order=[];
+    const walk=(v)=>{
+      seen.add(v);order.push(v);
+      snap(`visited[${v}] = 1`,[],{current:v,v},action("visit",`访问 ${v}`,{value:v}),false,[...order]);
+      for(const [w] of adj.get(v)||[]){
+        const skip=seen.has(w);
+        snap(`if (!visited[${w}]) → ${!skip}`,[],{current:v,w,visited:skip?1:0},null,true,[...order]);
+        if(skip)continue;
+        snap(`DFS(${w})`,[],{current:w,w,from:v},action("move",`从 ${v} 深入 ${w}`,{from:v,to:w}),true,[...order]);
+        walk(w);
+      }
+    };
+    walk(start);
+    snap("return",[],{current:start,done:"遍历结束"},null,false,[...order]);
+    return makeTrace(request,"图的深度优先遍历",`start=${start}`,order.join("→"),steps);
   }
+
+  if(op==="bfs"){
+    /* 队列 BFS：`q.push(start); visited[start] = 1` → `v = q.pop()` → 邻居 `visited[w] = 1; q.push(w)`。 */
+    const seen=new Set([start]),order=[];
+    const q=[start];
+    snap(`q.push(${start}); visited[${start}] = 1`,[row("queue",[...q])],{v:start,q:q.join(",")},action("push","起点入队并标记",{value:start}),false,[start]);
+    while(q.length){
+      snap("while (!q.empty()) → true",[row("queue",[...q])],{q:q.join(",")},null,true,[...order]);
+      const v=q.shift();order.push(v);
+      snap("v = q.pop()",[row("queue",[...q])],{current:v,v},action("visit",`访问 ${v}`,{value:v}),false,[...order]);
+      for(const [w] of adj.get(v)||[]){
+        const skip=seen.has(w);
+        snap(`if (!visited[${w}]) → ${!skip}`,[row("queue",[...q])],{current:v,w,visited:skip?1:0},null,true,[...order]);
+        if(skip)continue;
+        seen.add(w);q.push(w);
+        snap(`visited[${w}] = 1`,[row("queue",[...q])],{current:w,w},action("visit",`${w} 第一次被访问`,{value:w}),true,[...order]);
+        snap(`q.push(${w})`,[row("queue",[...q])],{current:w,q:q.join(","),pushed:w},action("push",`${w} 入队`,{value:w}),true,[...order]);
+      }
+    }
+    snap("while (!q.empty()) → false",[row("queue",[])],{q:"(空)"},null,false,[...order]);
+    return makeTrace(request,"图的广度优先遍历",`start=${start}`,order.join("→"),steps);
+  }
+
+  if(op==="path_search"){
+    /* 带父指针的 DFS：`parent[w] = v` 记下是怎么走到 w 的，找到 target 后顺着 parent 倒推路径。 */
+    const target=String(request.params.target??g.nodes[g.nodes.length-1]);
+    const seen=new Set(),parent={},order=[];
+    let found=false;
+    const walk=(v)=>{
+      seen.add(v);order.push(v);
+      snap(`visited[${v}] = 1`,[],{current:v,v},action("visit",`访问 ${v}`,{value:v}),false,[...order]);
+      if(v===target){found=true;return;}
+      for(const [w] of adj.get(v)||[]){
+        const skip=seen.has(w);
+        snap(`if (!visited[${w}]) → ${!skip}`,[],{current:v,w,visited:skip?1:0},null,true,[...order]);
+        if(skip)continue;
+        parent[w]=v;
+        snap(`parent[${w}] = ${v}`,[],{current:v,w,parent:v},action("link",`记下 ${w} 是从 ${v} 来的`,{from:v,to:w}),true,[...order]);
+        walk(w);
+        if(found)return;
+      }
+    };
+    walk(start);
+    if(!found){
+      snap("return NULL",[],{current:start,found:"NULL"},action("miss",`从 ${start} 出发到不了 ${target}`,{from:start,to:target}),false,[...order]);
+      return makeTrace(request,"图中简单路径搜索",`start=${start},target=${target}`,"不可达",steps);
+    }
+    const path=[target];
+    let x=target;
+    while(x!==start){
+      x=parent[x];
+      if(x===undefined)break;
+      path.push(x);
+      snap(`p = parent[p]`, [], {current:x,p:x}, action("move",`沿 parent 退到 ${x}`,{value:x}), true, [...order]);
+    }
+    const route=path.reverse();
+    snap("return 路径",[],{current:start,path:route.join("→")},action("visit",`路径 ${route.join("→")}`,{value:route.length}),false,[...order]);
+    return makeTrace(request,"图中简单路径搜索",`start=${start},target=${target}`,route.join("→"),steps);
+  }
+
   if(op==="prim"){
-    const selected=new Set([start]);const mst=[];let total=0;while(selected.size<g.nodes.length){let best=null;for(const [a,b,w]of g.edges){if(selected.has(a)&&!selected.has(b)||selected.has(b)&&!selected.has(a)){if(!best||w<best[2])best=[a,b,w];}}if(!best){const unreached=g.nodes.filter(x=>!selected.has(x));steps.push(makeStep(sid++,"error","图不连通",`已覆盖顶点 ${[...selected].join("、")}；剩余顶点 ${unreached.join("、")} 与已选部分之间没有边，Prim 无法继续，无法生成最小生成树。`,viewState("graph",graphRows(g,{operation:op,selected:[...selected],chosenEdges:[...mst],total}))));return makeTrace(request,"Prim 最小生成树",`start=${start}`,"图不连通，无法生成最小生成树",steps,[{code:"DISCONNECTED_GRAPH",message:`图不连通：只覆盖了 ${selected.size}/${g.nodes.length} 个顶点`,detail:unreached.join(","),recoverable:false}]);}const [a,b,w]=best;selected.add(selected.has(a)?b:a);mst.push(best);total+=w;steps.push(makeStep(sid++,"select","选择当前最小跨边",`${a}-${b}(${w}) 加入生成树。`,viewState("graph",graphRows(g,{operation:op,selected:[...selected],chosenEdges:[...mst],total})),[action("select","加入最小生成树边",{from:a,to:b,value:w})]));}return makeTrace(request,"Prim 最小生成树",`start=${start}`,`总权值=${total}`,steps);
+    /* Prim：每一轮扫一遍所有边，挑"一端已在 U 里、另一端不在"的最小边。 */
+    const inU=new Set([start]);const mst=[];let total=0;
+    const inURow=()=>row("inU",[...inU]);
+    while(inU.size<g.nodes.length){
+      let best=null;
+      for(const e of g.edges){
+        const [u,v,w]=e;
+        const crosses=(inU.has(u)&&!inU.has(v))||(inU.has(v)&&!inU.has(u));
+        const better=crosses&&(best===null||w<best[2]);
+        snap(`if (一端在 U 内、另一端不在 且 w < min) → ${better}`,[inURow(),...(mst.length?[row("chosen",mst.map((m)=>`${m[0]}-${m[1]}`))]:[])],{edge:`${u}-${v}`,w,min:best?best[2]:null},null,true);
+        if(better)best=e;
+      }
+      if(!best){
+        const unreached=g.nodes.filter((x)=>!inU.has(x));
+        snap("没找到跨边 → 图不连通",[inURow()],{left:unreached.join("、")},null,false);
+        return makeTrace(request,"Prim 最小生成树",`start=${start}`,"图不连通，无法生成最小生成树",steps,[{code:"DISCONNECTED_GRAPH",message:`图不连通：只覆盖了 ${inU.size}/${g.nodes.length} 个顶点`,detail:unreached.join(","),recoverable:false}]);
+      }
+      const [a,b,w]=best;
+      const add=inU.has(a)?b:a;
+      inU.add(add);mst.push(best);total+=w;
+      snap(`U = U ∪ {${add}}`,[inURow(),row("chosen",mst.map((m)=>`${m[0]}-${m[1]}`))],{current:add,edge:`${a}-${b}`,total},action("select",`把 ${add} 并进 U（边 ${a}-${b} 权 ${w}）`,{from:a,to:b,value:w}));
+    }
+    return makeTrace(request,"Prim 最小生成树",`start=${start}`,`总权值=${total}`,steps);
   }
+
   if(op==="kruskal"){
-    const parent=Object.fromEntries(g.nodes.map(n=>[n,n]));function find(x){while(parent[x]!==x){parent[x]=parent[parent[x]];x=parent[x];}return x;}const mst=[];let total=0;for(const e of [...g.edges].sort((a,b)=>a[2]-b[2])){const[a,b,w]=e,ra=find(a),rb=find(b);if(ra!==rb){parent[rb]=ra;mst.push(e);total+=w;steps.push(makeStep(sid++,"select","按权从小到大选边",`${a}-${b}(${w}) 不构成环，加入。`,viewState("graph",graphRows(g,{operation:op,chosenEdges:[...mst],total})),[action("select","加入边",{from:a,to:b,value:w})]));}else steps.push(makeStep(sid++,"skip","跳过成环边",`${a}-${b}(${w}) 会形成环，跳过。`,viewState("graph",graphRows(g,{operation:op,chosenEdges:[...mst],skipped:e,total}))));}
-    if(mst.length<g.nodes.length-1){steps.push(makeStep(sid,"done","图不连通，得到生成森林",`连通的 ${g.nodes.length} 个顶点需要 ${g.nodes.length-1} 条边构成树，但只选出 ${mst.length} 条不构成环的边：图不连通，结果是生成森林而不是最小生成树。`,viewState("graph",graphRows(g,{operation:op,chosenEdges:[...mst],total,forest:true}))));return makeTrace(request,"Kruskal 最小生成树","边按权排序",`图不连通：生成森林，总权值=${total}`,steps,[],[{message:"图不连通，无法得到最小生成树，所选边构成生成森林"}]);}
+    /* Kruskal：先把边按权排序，然后一条条看它会不会成环（并查集判环）。 */
+    const parent=Object.fromEntries(g.nodes.map((n)=>[n,n]));
+    const find=(x)=>{let r=x;while(parent[r]!==r)r=parent[r];return r;};
+    const mst=[];let total=0;
+    const sorted=[...g.edges].sort((a,b)=>a[2]-b[2]);
+    for(const e of sorted){
+      const [a,b,w]=e,ra=find(a),rb=find(b);
+      const ok=ra!==rb;
+      snap(`if (Find(${a}) != Find(${b})) → ${ok}`,[row("chosen",mst.map((m)=>`${m[0]}-${m[1]}`))],{edge:`${a}-${b}`,w,ra,rb},null,true);
+      if(ok){
+        parent[rb]=ra;mst.push(e);total+=w;
+        snap(`Union(${a}, ${b})：${a}-${b} 加入`,[row("chosen",mst.map((m)=>`${m[0]}-${m[1]}`))],{chain:`${a}-${b}`,total},action("select","不构成环，加入",{from:a,to:b,value:w}));
+      }else{
+        snap(`${a}-${b} 已经在同一棵树上 → 跳过`,[row("chosen",mst.map((m)=>`${m[0]}-${m[1]}`))],{chain:`${a}-${b}`,skipped:true},action("skip","会构成环，跳过",{from:a,to:b,value:w}));
+      }
+    }
+    if(mst.length<g.nodes.length-1){
+      snap("边数不足以连通 → 生成森林",[row("chosen",mst.map((m)=>`${m[0]}-${m[1]}`))],{forest:true},null,false);
+      return makeTrace(request,"Kruskal 最小生成树","边按权排序",`图不连通：生成森林，总权值=${total}`,steps,[],[{message:"图不连通，无法得到最小生成树，所选边构成生成森林"}]);
+    }
     return makeTrace(request,"Kruskal 最小生成树","边按权排序",`总权值=${total}`,steps);
   }
+
   if(op==="topological_sort"||op==="critical_path"){
-    const indeg=Object.fromEntries(g.nodes.map(n=>[n,0]));for(const[a,b]of g.edges)indeg[b]++;const q=g.nodes.filter(n=>indeg[n]===0);const topo=[];const ve=Object.fromEntries(g.nodes.map(n=>[n,0]));while(q.length){const v=q.shift();topo.push(v);steps.push(makeStep(sid++,"output","输出入度为 0 的顶点",`输出 ${v}，删除其出边并更新入度。`,viewState("graph",graphRows(g,{operation:op,topo:[...topo],indegree:{...indeg},current:v})),[action("output","输出顶点",{value:v})]));for(const [to,w]of adj.get(v)||[]){indeg[to]--;ve[to]=Math.max(ve[to],ve[v]+w);if(indeg[to]===0)q.push(to);}}
-    if(topo.length<g.nodes.length){const remaining=g.nodes.filter(x=>!topo.includes(x));steps.push(makeStep(sid++,"error","检测到回路",`剩余顶点 ${remaining.join("、")} 的入度都不为 0，说明图中存在回路，拓扑排序无法完成。`,viewState("graph",graphRows(g,{operation:op,topo:[...topo],indegree:{...indeg},current:null}))));return makeTrace(request,"拓扑排序","AOV 网","存在回路，无法拓扑排序",steps,[{code:"CYCLE_DETECTED",message:`图中存在回路（卡住的顶点：${remaining.join("、")}）`,detail:remaining.join(","),recoverable:false}]);}
+    /* 拓扑排序：`indegree[w] = indegree[w] - 1` 一行、`if (indegree[w] == 0) q.push(w)` 一行。 */
+    const indeg=Object.fromEntries(g.nodes.map((n)=>[n,0]));
+    for(const [,b] of g.edges)indeg[b]++;
+    const indegRow=()=>row("indegree",g.nodes.map((x)=>({vertex:x,value:indeg[x]})));
+    const q=g.nodes.filter((n)=>indeg[n]===0);
+    const topo=[];const ve=Object.fromEntries(g.nodes.map((n)=>[n,0]));
+    while(q.length){
+      const v=q.shift();topo.push(v);
+      snap(`v = q.pop() → 输出 ${v}`,[indegRow(),row("topo",[...topo])],{current:v,indegree:indeg[v]},action("output",`输出 ${v}（入度已为 0）`,{value:v}));
+      for(const [to,w] of adj.get(v)||[]){
+        indeg[to]-=1;
+        ve[to]=Math.max(ve[to],ve[v]+w);
+        snap(`indegree[${to}] = indegree[${to}] - 1`,[indegRow(),row("topo",[...topo])],{current:to,indegree:indeg[to]},action("move",`删掉 ${v}→${to}，入度减一`,{from:v,to}),true);
+        const zero=indeg[to]===0;
+        snap(`if (indegree[${to}] == 0) → ${zero}`,[indegRow(),row("topo",[...topo])],{current:to,indegree:indeg[to],zero:zero?"入队":"继续"},null,true);
+        if(zero)q.push(to);
+      }
+    }
+    if(topo.length<g.nodes.length){
+      const remaining=g.nodes.filter((x)=>!topo.includes(x));
+      snap("剩余顶点入度都不为 0 → 有环",[indegRow(),row("topo",[...topo])],{current:null,left:remaining.join("、")},null,false);
+      return makeTrace(request,"拓扑排序","AOV 网","存在回路，无法拓扑排序",steps,[{code:"CYCLE_DETECTED",message:`图中存在回路（卡住的顶点：${remaining.join("、")}）`,detail:remaining.join(","),recoverable:false}]);
+    }
     if(op==="topological_sort")return makeTrace(request,"拓扑排序","AOV 网",topo.join("→"),steps);
-    const maxTime=Math.max(...Object.values(ve));const vl=Object.fromEntries(g.nodes.map(n=>[n,maxTime]));for(let k=topo.length-1;k>=0;k--){const v=topo[k];for(const[to,w]of adj.get(v)||[])vl[v]=Math.min(vl[v],vl[to]-w);}const critical=[];for(const[a,b,w]of g.edges){const e=ve[a],l=vl[b]-w;if(e===l)critical.push([a,b,w]);}steps.push(makeStep(sid++,"critical","计算活动最早/最迟开始时间",`关键活动：${critical.map(e=>`${e[0]}→${e[1]}`).join("，")}`,viewState("graph",graphRows(g,{operation:op,topo,ve,vl,criticalEdges:critical}))));return makeTrace(request,"关键路径","AOE 网",`工期=${maxTime}`,steps);
+    /* 关键路径：按拓扑序正推 ve（最早发生时间），再逆推 vl（最迟发生时间），ve == vl 的活动就是关键活动。 */
+    const maxTime=Math.max(...Object.values(ve));
+    const veRow=()=>row("ve",g.nodes.map((x)=>({vertex:x,value:ve[x]})));
+    snap(`ve = 拓扑序正推（工期 ${maxTime}）`,[veRow(),row("topo",[...topo])],{maxTime},action("compute","最早发生时间正推完成",{value:maxTime}));
+    const vl=Object.fromEntries(g.nodes.map((n)=>[n,maxTime]));
+    const vlRow=()=>row("vl",g.nodes.map((x)=>({vertex:x,value:vl[x]})));
+    for(let k=topo.length-1;k>=0;k--){
+      const v=topo[k];
+      for(const [to,w] of adj.get(v)||[]){
+        if(vl[to]-w<vl[v]){
+          vl[v]=vl[to]-w;
+          snap(`vl[${v}] = min(vl[${v}], vl[${to}] - ${w})`,[vlRow(),veRow()],{current:v,vl:vl[v]},action("compute","最迟发生时间逆推",{value:vl[v]}),true);
+        }
+      }
+    }
+    const critical=[];
+    for(const [a,b,w] of g.edges){
+      const isCritical=ve[a]===vl[b]-w;
+      snap(`if (ve[${a}] == vl[${b}] - ${w}) → ${isCritical}`,[vlRow(),veRow()],{edge:`${a}-${b}`,e:ve[a],l:vl[b]-w},null,true);
+      if(isCritical){critical.push([a,b,w]);snap(`${a}→${b} 是关键活动`,[vlRow(),veRow(),...(critical.length?[row("critical",critical.map((c)=>`${c[0]}→${c[1]}`))]:[])],{edge:`${a}-${b}`,critical:critical.length},action("mark","关键活动",{from:a,to:b}),false);}
+    }
+    snap("return 关键路径",[vlRow(),veRow(),row("critical",critical.map((c)=>`${c[0]}→${c[1]}`))],{maxTime,count:critical.length},action("visit",`工期 ${maxTime}`,{value:maxTime}),false);
+    return makeTrace(request,"关键路径","AOE 网",`工期=${maxTime}`,steps);
   }
+
   if(op==="dijkstra"){
-    const dist=Object.fromEntries(g.nodes.map(n=>[n,Infinity]));dist[start]=0;const done=new Set();const prev={};while(done.size<g.nodes.length){let u=null,best=Infinity;for(const n of g.nodes)if(!done.has(n)&&dist[n]<best){best=dist[n];u=n;}if(u===null)break;done.add(u);steps.push(makeStep(sid++,"select","确定当前最短顶点",`${u} 的最短距离确定为 ${dist[u]}。`,viewState("graph",graphRows(g,{operation:op,start,dist:{...dist},settled:[...done],current:u})),[action("select","加入已确定集合",{value:u})]));for(const[v,w]of adj.get(u)||[]){if(dist[u]+w<dist[v]){dist[v]=dist[u]+w;prev[v]=u;steps.push(makeStep(sid++,"relax","松弛边",`${u}→${v} 后 dist[${v}]=${dist[v]}。`,viewState("graph",graphRows(g,{operation:op,start,dist:{...dist},settled:[...done],current:v,relax:[u,v,w]})),[action("relax","更新最短距离",{from:u,to:v,value:dist[v]})]));}}}return makeTrace(request,"Dijkstra 单源最短路径",`start=${start}`,JSON.stringify(dist),steps);
+    /* Dijkstra：`u = 未确定里 dist 最小的` → 对每条出边 `if (dist[u] + w < dist[v]) → dist[v] = dist[u] + w`。 */
+    const dist=Object.fromEntries(g.nodes.map((n)=>[n,Infinity]));dist[start]=0;
+    const done=new Set();const prev={};
+    const distRow=()=>row("dist",g.nodes.map((x)=>({vertex:x,value:Number.isFinite(dist[x])?dist[x]:"∞"})));
+    while(done.size<g.nodes.length){
+      let u=null;let best=Infinity;
+      for(const n of g.nodes)if(!done.has(n)&&dist[n]<best){best=dist[n];u=n;}
+      if(u===null)break;
+      snap(`u = 未确定中 dist 最小的（min = ${Number.isFinite(best)?best:"∞"}）`,[distRow()],{current:u,min:Number.isFinite(best)?best:"∞"},action("select",`确定 ${u} 的最短距离`,{value:best}),true);
+      done.add(u);
+      snap(`S = S ∪ {${u}}`,[distRow()],{current:u,settled:done.size},action("select","加入已确定集合",{value:u}));
+      for(const [v,w] of adj.get(u)||[]){
+        const via=dist[u]+w;
+        const better=via<dist[v];
+        snap(`if (dist[${u}] + ${w} < dist[${v}]) → ${better}`,[distRow()],{current:u,edge:`${u}-${v}`,dist_u:dist[u],dist_v:Number.isFinite(dist[v])?dist[v]:"∞"},null,true);
+        if(!better)continue;
+        dist[v]=via;prev[v]=u;
+        snap(`dist[${v}] = dist[${u}] + ${w} = ${via}`,[distRow()],{current:v,relax:[u,v,w],dist_v:via},action("relax",`${u}→${v} 松弛到 ${via}`,{from:u,to:v,value:via}),true);
+      }
+    }
+    snap("return dist[]",[distRow()],{start},action("visit","求各顶点最短距离完成",{value:dist[start]}));
+    return makeTrace(request,"Dijkstra 单源最短路径",`start=${start}`,JSON.stringify(dist),steps);
   }
-  const n=g.nodes.length;const idx=Object.fromEntries(g.nodes.map((x,i)=>[x,i]));const d=Array.from({length:n},(_,i)=>Array.from({length:n},(_,j)=>i===j?0:Infinity));for(const[a,b,w]of g.edges){d[idx[a]][idx[b]]=Math.min(d[idx[a]][idx[b]],w);if(!directed)d[idx[b]][idx[a]]=Math.min(d[idx[b]][idx[a]],w);}// 距离矩阵里 A[i][j] 的数字就是 d[i][j]，∞ 表示当前还没有路径。每一帧都要交代"正踩在哪一格"：
-// 允许中间顶点时高亮该顶点所在的列（矩阵面板的 focusIndex 落在列上），发生缩短时高亮被改写的那一格，
-// 并在图上点亮 A[i]→A[k]→A[j] 这条边。此前只发一帧矩阵、没有任何指针，整条 Floyd 动画一格高亮都没有
-// （2026-09-24 用户反馈「你的高亮，不行」）。
-const cells=()=>d.map(r=>r.map(x=>Number.isFinite(x)?x:"∞"));
-for(let k=0;k<n;k++){
-  steps.push(makeStep(sid++,"intermediate","加入中间顶点",`允许 ${g.nodes[k]} 作为中间点，检查所有经过它的路径。`,
-    viewState("graph",[...graphRows(g,{operation:op,current:g.nodes[k]}),row("matrix",cells(),{focusIndex:k})]),
-    [action("visit","允许中间顶点",{value:g.nodes[k]})]));
-  for(let i=0;i<n;i++)for(let j=0;j<n;j++){
-    if(i===k||j===k||i===j)continue;
-    const via=d[i][k]+d[k][j];
-    if(via<d[i][j]){
+
+  /* Floyd：三层循环，每一对 (i,j) 都真的比较一次，能缩短就写进矩阵。 */
+  const n=g.nodes.length;const idx=Object.fromEntries(g.nodes.map((x,i)=>[x,i]));
+  const d=Array.from({length:n},(_,i)=>Array.from({length:n},(_,j)=>i===j?0:Infinity));
+  for(const [a,b,w] of g.edges){d[idx[a]][idx[b]]=Math.min(d[idx[a]][idx[b]],w);if(!directed)d[idx[b]][idx[a]]=Math.min(d[idx[b]][idx[a]],w);}
+  const cells=()=>d.map((r)=>r.map((x)=>Number.isFinite(x)?x:"∞"));
+  for(let k=0;k<n;k++){
+    snap(`k = ${k}：允许 ${g.nodes[k]} 作中间点`,[row("matrix",cells(),{focusIndex:k})],{current:g.nodes[k]},action("visit","允许中间顶点",{value:g.nodes[k]}),true);
+    for(let i=0;i<n;i++)for(let j=0;j<n;j++){
+      if(i===k||j===k||i===j)continue;
+      const via=d[i][k]+d[k][j];
+      const better=via<d[i][j];
+      snap(`if (d[${i}][${k}] + d[${k}][${j}] < d[${i}][${j}]) → ${better}`,[row("matrix",cells(),{focusCell:[i,j]})],{current:g.nodes[k],pair:`${g.nodes[i]}→${g.nodes[j]}`},null,true);
+      if(!better)continue;
       const before=d[i][j];d[i][j]=via;
-      steps.push(makeStep(sid++, "relax", `经 ${g.nodes[k]} 缩短 ${g.nodes[i]}→${g.nodes[j]}`,
-        `${g.nodes[i]}→${g.nodes[k]}→${g.nodes[j]} = ${via}，比原来的 ${Number.isFinite(before)?before:"∞"} 更短，写进矩阵。`,
-        viewState("graph",[...graphRows(g,{operation:op,current:g.nodes[k],relax:[g.nodes[i],g.nodes[j]]}),row("matrix",cells(),{focusCell:[i,j]})]),
-        [action("relax","更新距离矩阵",{from:g.nodes[i],to:g.nodes[j],value:via})]));
+      snap(`d[${i}][${j}] = ${via}`,[row("matrix",cells(),{focusCell:[i,j]})],{current:g.nodes[k],relax:[g.nodes[i],g.nodes[j]],before:Number.isFinite(before)?before:"∞"},action("relax","更新距离矩阵",{from:g.nodes[i],to:g.nodes[j],value:via}));
     }
   }
-}
-return makeTrace(request,"Floyd 各对顶点最短路径","初始距离矩阵","最终距离矩阵",steps);
+  snap("return d[][]",[row("matrix",cells())],{done:"各对顶点最短距离"},null,false);
+  return makeTrace(request,"Floyd 各对顶点最短路径","初始距离矩阵","最终距离矩阵",steps);
 }
 
 function simulateSearch(request,api){const {makeStep,makeTrace,action}=makeHelpers(api);const arr=numberArray(request.initial_state.data,[7,13,18,24,31,42,55]);if(request.params.key!==undefined&&!Number.isFinite(Number(request.params.key)))throw new SimulationInputError("INVALID_PARAM",`参数 key=${JSON.stringify(request.params.key)} 必须是数字`,"key");const key=Number(request.params.key??24);let sid=1;const steps=[makeStep(sid++,"init","准备查找",`查找关键字 ${key}。`,viewState("sequence",[row("array",arr),row("meta",[],{operation:request.operation,key})]))];if(request.operation==="sequential"){if(!arr.length){steps.push(makeStep(sid,"done","查找表为空","查找表中没有任何元素，顺序查找结束。",viewState("sequence",[row("array",[]),row("meta",[],{operation:request.operation,key})])));return makeTrace(request,"顺序查找",`key=${key}`,"未找到",steps);}for(let i=0;i<arr.length;i++){steps.push(makeStep(sid++,"compare","逐个比较",`${key} ${arr[i]===key?"=":"≠"} ${arr[i]}`,viewState("sequence",[row("array",arr),row("meta",[],{operation:request.operation,key,current:i})]),[action("compare","比较关键字",{target:i,value:arr[i]})]));if(arr[i]===key)return makeTrace(request,"顺序查找",`key=${key}`,`位置=${i+1}`,steps);}return makeTrace(request,"顺序查找",`key=${key}`,"未找到",steps);}if(request.operation==="binary"){if(!arr.length)return api.makeRuntimeError(request,"折半查找","EMPTY_TABLE","查找表为空：折半查找需要至少一个元素。",viewState("sequence",[row("array",[]),row("meta",[],{operation:request.operation,key})]),`key=${key}`);for(let i=1;i<arr.length;i++){if(arr[i-1]>arr[i])return api.makeRuntimeError(request,"折半查找","UNSORTED_INPUT",`折半查找要求有序表：a[${i-1}]=${arr[i-1]} > a[${i}]=${arr[i]}，当前输入不是非递减序列。请先排序，或改用顺序查找。`,viewState("sequence",[row("array",arr),row("meta",[],{operation:request.operation,key,violated:i})]),`key=${key}`);}const a=arr;let low=0,high=a.length-1;while(low<=high){const mid=Math.floor((low+high)/2);steps.push(makeStep(sid++,"compare","比较中间记录",`low=${low}, mid=${mid}, high=${high}，比较 ${key} 与 ${a[mid]}。`,viewState("sequence",[row("array",a),row("meta",[],{operation:request.operation,key,low,mid,high,current:mid})]),[action("compare","比较中间关键字",{target:mid,value:a[mid]})]));if(a[mid]===key)return makeTrace(request,"折半查找",`key=${key}`,`位置=${mid+1}`,steps);if(key<a[mid])high=mid-1;else low=mid+1;}return makeTrace(request,"折半查找",`key=${key}`,"未找到",steps);}if(!arr.length)return api.makeRuntimeError(request,"分块查找","EMPTY_TABLE","查找表为空：分块查找需要至少一个元素。",viewState("sequence",[row("array",[]),row("meta",[],{operation:request.operation,key})]),`key=${key}`);const blockSize=intParam(request.params,"blockSize",3,1,10);const blocks=[];for(let i=0;i<arr.length;i+=blockSize){const part=arr.slice(i,i+blockSize);blocks.push({start:i,end:i+part.length-1,max:Math.max(...part)});}for(let b=1;b<blocks.length;b++){const curMin=Math.min(...arr.slice(blocks[b].start,blocks[b].end+1));if(blocks[b-1].max>curMin)return api.makeRuntimeError(request,"分块查找","UNBLOCKED_ORDER",`分块查找要求“分块有序”：第 ${b} 块的最小值 ${curMin} 小于第 ${b} 块前一块的最大值 ${blocks[b-1].max}。请先排序或调整块划分。`,viewState("sequence",[row("array",arr),row("blocks",blocks),row("meta",[],{operation:request.operation,key,block:b})]),`key=${key}`);}let b=blocks.findIndex(x=>key<=x.max);steps.push(makeStep(sid++,"block","先查索引表",b>=0?`关键字应落在第 ${b+1} 块。`:"索引表中没有候选块。",viewState("sequence",[row("array",arr),row("blocks",blocks),row("meta",[],{operation:request.operation,key,block:b})])));if(b>=0)for(let i=blocks[b].start;i<=blocks[b].end;i++){steps.push(makeStep(sid++,"compare","块内顺序查找",`比较 ${key} 与 ${arr[i]}。`,viewState("sequence",[row("array",arr),row("blocks",blocks),row("meta",[],{operation:request.operation,key,block:b,current:i})])));if(arr[i]===key)return makeTrace(request,"分块查找",`key=${key}`,`位置=${i+1}`,steps);}return makeTrace(request,"分块查找",`key=${key}`,"未找到",steps);}
 
 function bstBuild(values){let root=null;function insert(node,key){if(!node)return{key,left:null,right:null};if(key<node.key)node.left=insert(node.left,key);else if(key>node.key)node.right=insert(node.right,key);return node;}for(const k of values)root=insert(root,k);return root;}function bstRows(root,extra={}){const nodes=[],edges=[];let id=0;function walk(n,parent=null){if(!n)return null;const my=id++;nodes.push({id:my,label:String(n.key),key:n.key});if(parent!==null)edges.push([parent,my]);const l=walk(n.left,my),r=walk(n.right,my);return my;}walk(root);return [row("tree",[],{nodes,edges}),row("meta",[],extra)];}
-function simulateBST(request,api){const {makeStep,makeTrace,action}=makeHelpers(api);const values=numberArray(request.initial_state.data,[45,24,53,12,28,90]);if(request.params.key!==undefined&&!Number.isFinite(Number(request.params.key)))throw new SimulationInputError("INVALID_PARAM",`参数 key=${JSON.stringify(request.params.key)} 必须是数字`,"key");const key=Number(request.params.key??request.params.value??35);let root=bstBuild(values);let sid=1;const steps=[makeStep(sid++,"init","二叉排序树",`由 ${values.join(",")} 建树。`,viewState("tree",bstRows(root,{operation:request.operation,key})))];if(request.operation==="search"){let n=root;while(n){steps.push(makeStep(sid++,"compare","与当前结点比较",`${key} 与 ${n.key} 比较。`,viewState("tree",bstRows(root,{operation:request.operation,key,current:n.key})),[action("compare","比较关键字",{value:n.key})]));if(key===n.key)return makeTrace(request,"二叉排序树查找",`key=${key}`,"查找成功",steps);n=key<n.key?n.left:n.right;}return makeTrace(request,"二叉排序树查找",`key=${key}`,"未找到",steps);}if(request.operation==="insert"){let n=root;while(n){steps.push(makeStep(sid++,"compare","寻找插入位置",`${key} ${key<n.key?"<":key>n.key?">":"="} ${n.key}${key===n.key?"":`，转向${key<n.key?"左":"右"}子树`}。`,viewState("tree",bstRows(root,{operation:request.operation,key,current:n.key}))));if(key===n.key){steps.push(makeStep(sid,"skip","关键字已存在",`${key} 已在树中：二叉排序树不允许重复关键字，本次插入不改变树。`,viewState("tree",bstRows(root,{operation:request.operation,key,current:n.key})),[action("skip","重复关键字不插入",{value:key})]));return makeTrace(request,"二叉排序树插入",`key=${key}`,"未插入：关键字已存在",steps);}n=key<n.key?n.left:n.right;}function ins(node){if(!node)return{key,left:null,right:null};if(key<node.key)node.left=ins(node.left);else if(key>node.key)node.right=ins(node.right);return node;}root=ins(root);steps.push(makeStep(sid++,"insert","插入叶结点",`把 ${key} 插入空位置。`,viewState("tree",bstRows(root,{operation:request.operation,key,current:key})),[action("insert","新结点作为叶子插入",{value:key})]));return makeTrace(request,"二叉排序树插入",`key=${key}`,"插入完成",steps);}function del(node,k){if(!node)return null;if(k<node.key)node.left=del(node.left,k);else if(k>node.key)node.right=del(node.right,k);else if(!node.left)return node.right;else if(!node.right)return node.left;else{let s=node.right;while(s.left)s=s.left;node.key=s.key;node.right=del(node.right,s.key);}return node;}{let n=root;while(n){steps.push(makeStep(sid++,"compare","查找待删关键字",`${key} 与 ${n.key} 比较。`,viewState("tree",bstRows(root,{operation:request.operation,key,current:n.key})),[action("compare","比较关键字",{value:n.key})]));if(key===n.key)break;n=key<n.key?n.left:n.right;}if(!n){steps.push(makeStep(sid,"miss","未找到待删关键字",`树中没有 ${key}，删除操作不改变树。`,viewState("tree",bstRows(root,{operation:request.operation,key})),[action("miss","查找失败",{value:key})]));return makeTrace(request,"二叉排序树删除",`key=${key}`,"未找到关键字，未删除",steps);}const caseDesc=!n.left&&!n.right?"叶子结点，直接删除":(n.left&&n.right)?"双子树，用中序后继替代后删除":"单子树，孩子顶替被删结点";root=del(root,key);steps.push(makeStep(sid++,"delete","按删除情况调整",`被删关键字 ${key}：${caseDesc}。`,viewState("tree",bstRows(root,{operation:request.operation,key})),[action("delete","删除目标结点并保持中序有序",{value:key})]));return makeTrace(request,"二叉排序树删除",`key=${key}`,"删除完成",steps);}}
+function simulateBST(request,api){
+  const {makeStep,makeTrace,action}=makeHelpers(api);
+  const values=numberArray(request.initial_state.data,[45,24,53,12,28,90]);
+  if(request.params.key!==undefined&&!Number.isFinite(Number(request.params.key)))throw new SimulationInputError("INVALID_PARAM",`参数 key=${JSON.stringify(request.params.key)} 必须是数字`,"key");
+  const key=Number(request.params.key??request.params.value??35);
+  let root=bstBuild(values);let sid=1;
+  /* 代码级：**比较一行、下沉一行**。一次比较报一帧（`if (p->key == key) → true/false`），
+     转左/右子树再报一帧（`p = p->left`）——查找/插入/删除的走向在画面上就是这一对一对的箭头。 */
+  const steps=[makeStep(sid++,"init","p = root","从根开始",viewState("tree",bstRows(root,{operation:request.operation,key})))];
+  const treeStep=(code,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"assign",code,code,viewState("tree",bstRows(root,{operation:request.operation,key,...extra})),act?[act]:[]));
+  /** 走到 key 该在的位置：返回 {node, parent}。一路报"比较一行 + 下沉一行"。 */
+  const walk=(stopOnHit)=>{
+    let n=root,q=null;
+    while(n){
+      const hit=key===n.key;
+      treeStep(`if (p->key == ${key}) → ${hit}`,{current:n.key},action("compare","比较关键字",{value:n.key}));
+      if(hit&&stopOnHit)return {node:n,parent:q,hit:true};
+      if(hit)return {node:n,parent:q,hit:true};
+      const dir=key<n.key?"left":"right";
+      const next=dir==="left"?n.left:n.right;
+      treeStep(`p = p->${dir}`,{current:next?next.key:null},null,true);
+      q=n;n=next;
+    }
+    return {node:null,parent:q,hit:false};
+  };
+  if(request.operation==="search"){
+    const {node}=walk(true);
+    return makeTrace(request,"二叉排序树查找",`key=${key}`,node?"查找成功":"未找到",steps);
+  }
+  if(request.operation==="insert"){
+    const {node,parent}=walk(true);
+    if(node){treeStep("return",{current:node.key},action("skip","关键字已存在，不插入",{value:key}));return makeTrace(request,"二叉排序树插入",`key=${key}`,"未插入：关键字已存在",steps);}
+    const dir=parent===null?null:(key<parent.key?"left":"right");
+    treeStep("s = malloc()",{current:parent?parent.key:null},action("allocate","申请新结点 s",{value:key}),true);
+    function ins(n){if(!n)return{key,left:null,right:null};if(key<n.key)n.left=ins(n.left);else if(key>n.key)n.right=ins(n.right);return n;}
+    root=ins(root);
+    treeStep(parent===null?"root = s":`q->${dir} = s`,{current:key},action("link","把 s 接到空位置",{value:key}));
+    return makeTrace(request,"二叉排序树插入",`key=${key}`,"插入完成",steps);
+  }
+  const {node,parent}=walk(true);
+  if(!node){treeStep("p == NULL",{},action("miss","树里没有这个关键字",{value:key}));return makeTrace(request,"二叉排序树删除",`key=${key}`,"未找到关键字，未删除",steps);}
+  const dir=parent===null?null:(key<parent.key?"left":"right");
+  function del(n,k){if(!n)return null;if(k<n.key)n.left=del(n.left,k);else if(k>n.key)n.right=del(n.right,k);else if(!n.left)return n.right;else if(!n.right)return n.left;else{let t=n.right;while(t.left)t=t.left;n.key=t.key;n.right=del(n.right,t.key);}return n;}
+  const child=node.left?"left":node.right?"right":null;
+  if(child===null){
+    root=del(root,key);
+    treeStep(parent===null?"root = NULL":`q->${dir} = NULL`,{},action("delete","叶子结点直接摘掉",{value:key}));
+  } else if(!(node.left&&node.right)){
+    root=del(root,key);
+    treeStep(parent===null?`root = p->${child}`:`q->${dir} = p->${child}`,{},action("delete","唯一的孩子顶替被删结点",{value:key}));
+  } else {
+    let t=node.right;while(t.left)t=t.left;
+    treeStep("s = p->right; while (s->left) s = s->left",{current:t.key},null,true);
+    root=del(root,key);
+    treeStep("p->key = s->key; free(s)",{current:t.key},action("delete","用中序后继替代后删掉它",{value:key}));
+  }
+  return makeTrace(request,"二叉排序树删除",`key=${key}`,"删除完成",steps);
+}
 
-function h(n){return n?1+Math.max(h(n.left),h(n.right)):0;}function rotR(y){const x=y.left,t=x.right;x.right=y;y.left=t;return x;}function rotL(x){const y=x.right,t=y.left;y.left=x;x.right=t;return y;}function avlInsert(node,key,events){if(!node){events.push({type:"insert",key});return{key,left:null,right:null};}if(key<node.key)node.left=avlInsert(node.left,key,events);else if(key>node.key)node.right=avlInsert(node.right,key,events);else return node;const bf=h(node.left)-h(node.right);if(bf>1&&key<node.left.key){events.push({type:"LL",at:node.key});return rotR(node);}if(bf<-1&&key>node.right.key){events.push({type:"RR",at:node.key});return rotL(node);}if(bf>1&&key>node.left.key){events.push({type:"LR",at:node.key});node.left=rotL(node.left);return rotR(node);}if(bf<-1&&key<node.right.key){events.push({type:"RL",at:node.key});node.right=rotR(node.right);return rotL(node);}return node;}
-function simulateAVL(request,api){const {makeStep,makeTrace,action}=makeHelpers(api);const values=numberArray(request.initial_state.data,[30,20,40,10]);const key=Number(request.params.key??request.params.value??5);if(!Number.isFinite(key))throw new SimulationInputError("INVALID_PARAM",`参数 key=${JSON.stringify(request.params.key)} 必须是数字`,"key");let root=null;for(const v of values)root=avlInsert(root,v,[]);const events=[];let sid=1;const steps=[makeStep(sid++,"init","初始 AVL 树",`准备插入 ${key}。`,viewState("tree",bstRows(root,{operation:"avl_insert",key})))];if(values.includes(key)){steps.push(makeStep(sid,"skip","关键字已存在",`${key} 已在树中：AVL 插入不允许重复关键字，树保持不变。`,viewState("tree",bstRows(root,{operation:"avl_insert",key})),[action("skip","重复关键字不插入",{value:key})]));return makeTrace(request,"AVL 树插入与平衡调整",`key=${key}`,"未插入：关键字已存在",steps);}root=avlInsert(root,key,events);for(const e of events){if(e.type==="insert")steps.push(makeStep(sid++,"insert","按 BST 规则插入",`${key} 先作为叶结点插入。`,viewState("tree",bstRows(root,{operation:"avl_insert",key,phase:e.type}))));else steps.push(makeStep(sid++,"rotate",`${e.type} 型失衡调整`,`在结点 ${e.at} 附近执行 ${e.type} 调整恢复平衡。`,viewState("tree",bstRows(root,{operation:"avl_insert",key,rotation:e.type,current:e.at})),[action("rotate","执行平衡旋转",{target:e.at,value:e.type})]));}return makeTrace(request,"AVL 树插入与平衡调整",`key=${key}`,"保持平衡",steps);}
+function h(n){return n?1+Math.max(h(n.left),h(n.right)):0;}
+/* AVL 的树形行：结点 id 用**关键字本身**、边带 "L"/"R"——旋转后结点会换位置，只有 id 稳定才看得出"谁上去了"。
+   这里**按当前真实存在的指针**画（不是从根遍历）：旋转中途会出现"两个父结点都指着同一个结点"
+   的瞬间（`q->right = p` 之后、父结点还没改指之前），那一刻画面上就该是两根箭头——
+   紧跟着的 `parent->left = q` 再把旧的那根撤掉。从根遍历会把整支摘掉的子树画没。 */
+function avlRowsOf(nodes,extra={}){const list=[],edges=[];for(const n of nodes){list.push({id:String(n.key),label:String(n.key),key:n.key});if(n.left)edges.push([String(n.key),String(n.left.key),"L"]);if(n.right)edges.push([String(n.key),String(n.right.key),"R"]);}return [row("tree",[],{nodes:list,edges}),row("meta",[],extra)];}
 
-function simpleBTree(keys,order=3){const maxKeys=order-1;const sorted=[...new Set(keys)].sort((a,b)=>a-b);const leaves=[];for(let i=0;i<sorted.length;i+=maxKeys)leaves.push({keys:sorted.slice(i,i+maxKeys),children:[]});if(leaves.length<=1)return{keys:leaves[0]?.keys||[],children:[]};return{keys:leaves.slice(1).map(x=>x.keys[0]),children:leaves};}
+function simulateAVL(request,api){
+  const {makeStep,makeTrace,action}=makeHelpers(api);
+  const values=numberArray(request.initial_state.data,[30,20,40,10]);
+  const key=Number(request.params.key??request.params.value??5);
+  if(!Number.isFinite(key))throw new SimulationInputError("INVALID_PARAM",`参数 key=${JSON.stringify(request.params.key)} 必须是数字`,"key");
+  /* 建树（同时记下所有结点：画树要按"当前指针"画，不能只从根遍历）。 */
+  const all=[];let root=null;
+  for(const v of values){
+    const node={key:v,left:null,right:null};
+    if(all.some(x=>x.key===v))continue;
+    all.push(node);
+    if(root===null){root=node;continue;}
+    for(let x=root;;){if(v<x.key){if(x.left===null){x.left=node;break;}x=x.left;}else if(v>x.key){if(x.right===null){x.right=node;break;}x=x.right;}else break;}
+  }
+  const tree={root};
+  let sid=1;
+  /* 代码级：**比较一行、下沉一行**找插入位置，插入后**回看平衡因子**，谁失衡就转谁——
+     每一帧都是那行代码执行**之后**的树。`bf` 作为胶囊显示出来，平衡因子不再只是旁白。 */
+  const at=(extra={})=>viewState("tree",avlRowsOf(all,{operation:"avl_insert",key,...extra}));
+  const steps=[makeStep(sid++,"init","p = root","从根开始按 BST 规则找插入位置；插完再回头检查哪一步失衡。",at())];
+  const snap=(phase,text,extra,act)=>steps.push(makeStep(sid++,phase,text,text,at(extra),act?[act]:[]));
+  const line=(text,extra,act)=>snap("line",text,extra,act);
+  const hold=(text,extra,act)=>snap("insert",text,extra,act);
+
+  const path=[];let n=tree.root,parent=null;
+  while(n){
+    const hit=key===n.key;
+    snap("assign",`if (p->key == ${key}) → ${hit}`,{current:String(n.key)},action("compare","比较关键字",{value:n.key}));
+    if(hit){snap("insert","return",{current:String(n.key)},action("skip","关键字已存在，不插入",{value:key}));return makeTrace(request,"AVL 树插入与平衡调整",`key=${key}`,"未插入：关键字已存在",steps);}
+    const dir=key<n.key?"left":"right";
+    const next=dir==="left"?n.left:n.right;
+    path.push({node:n,dir});
+    parent=n;
+    line(`p = p->${dir}`,{current:next?String(next.key):null});
+    n=next;
+  }
+  line("s = malloc()",{current:parent?String(parent.key):null},action("allocate","申请新结点 s",{value:key}));
+  const leaf={key,left:null,right:null};
+  all.push(leaf);
+  const side=parent===null?null:(key<parent.key?"left":"right");
+  if(parent===null)tree.root=leaf;else parent[side]=leaf;
+  hold(parent===null?"root = s":`q->${side} = s`,{current:String(key)},action("link","把 s 接到空位置",{value:key}));
+
+  for(let i=path.length-1;i>=0;i--){
+    const p=path[i].node;
+    const bf=h(p.left)-h(p.right);
+    const grand=i>0?path[i-1].node:null;
+    const grandDir=i>0?path[i-1].dir:null;
+    const relink=(newRoot)=>{if(grand===null)tree.root=newRoot;else grand[grandDir]=newRoot;};
+    const parentLine=(name)=>grand===null?`root = ${name}`:`parent->${grandDir} = ${name}`;
+    /* 沿插入路径**自下而上**逐层复核平衡因子：每一层都报一行，不失衡就继续往上。 */
+    snap("assign","bf = h(p->left) - h(p->right)",{current:String(p.key),bf},action("check_condition",`结点 ${p.key} 的平衡因子是 ${bf}`,{value:bf}));
+    if(Math.abs(bf)<=1)continue;
+    if(bf>1){
+      const q=p.left;
+      line("q = p->left",{current:String(q.key),bf},action("move","q 指向 p 的左孩子",{value:q.key}));
+      if(key<q.key){
+        /* LL：对 p 做一次右旋 */
+        p.left=q.right;
+        hold("p->left = q->right",{current:String(p.key),bf},action("link","p 的左子树改挂 q 的右子树",{value:q.right?q.right.key:null}));
+        q.right=p;
+        hold("q->right = p",{current:String(q.key),bf},action("rotate","p 降为 q 的右孩子",{value:p.key}));
+        relink(q);
+        line(parentLine("q"),{current:String(q.key)},action("move","子树的新根是 q",{value:q.key}));
+      }else{
+        /* LR：先对 q 左旋，再对 p 右旋。挂回父结点在挂 q 之前——中途不会出现"一个结点两个父亲"。 */
+        const r=q.right;
+        line("r = q->right",{current:String(r.key),bf},action("move","r 指向 q 的右孩子",{value:r.key}));
+        q.right=r.left;
+        hold("q->right = r->left",{current:String(q.key),bf},action("link","q 的右子树改挂 r 的左子树",{value:r.left?r.left.key:null}));
+        p.left=r;
+        hold("p->left = r",{current:String(p.key),bf},action("link","p 的左孩子换成 r",{value:r.key}));
+        r.left=q;
+        hold("r->left = q",{current:String(q.key),bf},action("link","q 降为 r 的左孩子",{value:q.key}));
+        p.left=r.right;
+        hold("p->left = r->right",{current:String(p.key),bf},action("link","p 的左子树改挂 r 的右子树",{value:r.right?r.right.key:null}));
+        r.right=p;
+        hold("r->right = p",{current:String(p.key),bf},action("rotate","p 降为 r 的右孩子",{value:p.key}));
+        relink(r);
+        line(parentLine("r"),{current:String(r.key)},action("move","子树的新根是 r",{value:r.key}));
+      }
+    }else{
+      const q=p.right;
+      line("q = p->right",{current:String(q.key),bf},action("move","q 指向 p 的右孩子",{value:q.key}));
+      if(key>q.key){
+        /* RR：对 p 做一次左旋 */
+        p.right=q.left;
+        hold("p->right = q->left",{current:String(p.key),bf},action("link","p 的右子树改挂 q 的左子树",{value:q.left?q.left.key:null}));
+        q.left=p;
+        hold("q->left = p",{current:String(q.key),bf},action("rotate","p 降为 q 的左孩子",{value:p.key}));
+        relink(q);
+        line(parentLine("q"),{current:String(q.key)},action("move","子树的新根是 q",{value:q.key}));
+      }else{
+        /* RL：先对 q 右旋，再对 p 左旋 */
+        const r=q.left;
+        line("r = q->left",{current:String(r.key),bf},action("move","r 指向 q 的左孩子",{value:r.key}));
+        q.left=r.right;
+        hold("q->left = r->right",{current:String(q.key),bf},action("link","q 的左子树改挂 r 的右子树",{value:r.right?r.right.key:null}));
+        p.right=r;
+        hold("p->right = r",{current:String(p.key),bf},action("link","p 的右孩子换成 r",{value:r.key}));
+        r.right=q;
+        hold("r->right = q",{current:String(q.key),bf},action("link","q 降为 r 的右孩子",{value:q.key}));
+        p.right=r.left;
+        hold("p->right = r->left",{current:String(p.key),bf},action("link","p 的右子树改挂 r 的左子树",{value:r.left?r.left.key:null}));
+        r.left=p;
+        hold("r->left = p",{current:String(p.key),bf},action("rotate","p 降为 r 的左孩子",{value:p.key}));
+        relink(r);
+        line(parentLine("r"),{current:String(r.key)},action("move","子树的新根是 r",{value:r.key}));
+      }
+    }
+    break;
+  }
+  return makeTrace(request,"AVL 树插入与平衡调整",`key=${key}`,"保持平衡",steps);
+}
+
+/* B 树：先按插入顺序建成**真正的** m 阶 B 树。
+   （原来那个 simpleBTree 是"把关键字每 m-1 个切一刀"的示意形状：m=3 时根有 2 个关键字、
+   孩子里却含分隔关键字本身，孩子区间与分隔符对不上。真正的 B 树在这里，查找/插入/删除才是对的。） */
+/* B 树：先按插入顺序建成**真正的** m 阶 B 树。
+   （原来那个 simpleBTree 是"把关键字每 m-1 个切一刀"的示意形状：m=3 时根有 2 个关键字、
+   孩子里却含分隔关键字本身，孩子区间与分隔符对不上。真正的 B 树在这里，查找/插入/删除才是对的。） */
+/* B 树：先按插入顺序建成**真正的** m 阶 B 树。
+   （原来那个 simpleBTree 是"把关键字每 m-1 个切一刀"的示意形状：m=3 时根有 2 个关键字、
+   孩子里却含分隔关键字本身，孩子区间与分隔符对不上。真正的 B 树在这里，查找/插入/删除才是对的。） */
+function btreeNode(keys,children){return {keys:[...keys],children:children?[...children]:[]};}
+function btreeSplitInPlace(parent,i,maxKeys){
+  const child=parent.children[i];
+  const mid=Math.floor(child.keys.length/2);
+  const promote=child.keys[mid];
+  const left=btreeNode(child.keys.slice(0,mid),child.children.slice(0,mid+1));
+  const right=btreeNode(child.keys.slice(mid+1),child.children.slice(mid+1));
+  parent.keys.splice(i,0,promote);
+  parent.children.splice(i,1,left,right);
+  return promote;
+}
+function btreeInsertKey(node,k,maxKeys){
+  let i=0;while(i<node.keys.length&&k>node.keys[i])i++;
+  if(node.keys[i]===k)return;
+  if(!node.children.length){node.keys.splice(i,0,k);return;}
+  btreeInsertKey(node.children[i],k,maxKeys);
+  if(node.children[i].keys.length>maxKeys)btreeSplitInPlace(node,i,maxKeys);
+}
+function btreeBuildAll(keys,order){
+  const maxKeys=order-1;
+  let root=btreeNode([],[]);
+  for(const k of keys){
+    btreeInsertKey(root,k,maxKeys);
+    /* 根也会满：每插一个都要看一眼，满了就把根劈成两个孩子、长高一层。 */
+    if(root.keys.length>maxKeys){
+      const holder=btreeNode([],[root]);
+      btreeSplitInPlace(holder,0,maxKeys);
+      root=holder;
+    }
+  }
+  return root;
+}
 function btreeRows(tree,extra={}){const nodes=[],edges=[];let id=0;function walk(n,parent=null,depth=0){const my=id++;nodes.push({id:my,label:(n.keys||[]).join(" | "),keys:n.keys||[],depth});if(parent!==null)edges.push([parent,my]);for(const c of n.children||[])walk(c,my,depth+1);}walk(tree);return[row("tree",[],{nodes,edges,multiKey:true}),row("meta",[],extra)];}
-function simulateBTree(request,api){const {makeStep,makeTrace,action}=makeHelpers(api);const keys=numberArray(request.initial_state.data,[10,20,30,40,50,60]);const key=Number(request.params.key??35);if(!Number.isFinite(key))throw new SimulationInputError("INVALID_PARAM",`参数 key=${JSON.stringify(request.params.key)} 必须是数字`,"key");const order=intParam(request.params,"order",3,3,6);if(request.operation!=="insert"&&keys.length===0)return api.makeRuntimeError(request,"B 树"+(request.operation==="search"?"查找":request.operation==="delete"?"删除":"操作"),"EMPTY_TREE","B 树为空：请先在 initialData 中提供关键字。",viewState("btree",btreeRows({keys:[],children:[]},{operation:request.operation,key,order})),`key=${key}`);let tree=simpleBTree(keys,order);const steps=[makeStep(1,"init","B 树初始状态",`${order} 阶 B 树。`,viewState("btree",btreeRows(tree,{operation:request.operation,key,order})))];if(request.operation==="search"){let candidates=[tree],sid=2;while(candidates.length){const n=candidates.shift();steps.push(makeStep(sid++,"compare","在结点内查找区间",`比较关键字 ${key} 与 [${n.keys.join(",")}]。`,viewState("btree",btreeRows(tree,{operation:request.operation,key,current:n.keys})),[action("compare","结点内顺序/折半比较",{value:key})]));if(n.keys.includes(key))return makeTrace(request,"B 树查找",`key=${key}`,"查找成功",steps);if(n.children?.length){let idx=n.keys.findIndex(k=>key<k);if(idx<0)idx=n.children.length-1;candidates.push(n.children[Math.min(idx,n.children.length-1)]);}}return makeTrace(request,"B 树查找",`key=${key}`,"未找到",steps);}let next=[...keys];if(request.operation==="insert"&&!next.includes(key))next.push(key);if(request.operation==="delete")next=next.filter(x=>x!==key);const nextTree=simpleBTree(next,order);
-let probe=[tree],sid=2,hit=null;while(probe.length){const n=probe.shift();steps.push(makeStep(sid++,"compare","自根向下定位结点",`比较关键字 ${key} 与结点 [${n.keys.join(",")}]。`,viewState("btree",btreeRows(tree,{operation:request.operation,key,current:n.keys})),[action("compare","结点内比较",{value:key})]));if(n.keys.includes(key)){hit=n;break;}if(n.children?.length){let idx=n.keys.findIndex(k=>key<k);if(idx<0)idx=n.children.length-1;probe.push(n.children[Math.min(idx,n.children.length-1)]);}}
-steps.push(makeStep(sid++,request.operation,"执行结点调整",request.operation==="insert"?"插入后若结点关键字过多则分裂并向上提升中间关键字。":"删除后若关键字过少则借关键字或合并兄弟结点。",viewState("btree",btreeRows(nextTree,{operation:request.operation,key,order,adjusted:true})),[action(request.operation,request.operation==="insert"?"插入/分裂":"删除/借位/合并",{value:key})]));return makeTrace(request,request.operation==="insert"?"B 树插入":"B 树删除",`key=${key}`,"调整完成",steps);}
+
+function simulateBTree(request,api){
+  const {makeStep,makeTrace,action}=makeHelpers(api);
+  const keys=numberArray(request.initial_state.data,[10,20,30,40,50,60]);
+  const key=Number(request.params.key??45);
+  if(!Number.isFinite(key))throw new SimulationInputError("INVALID_PARAM",`参数 key=${JSON.stringify(request.params.key)} 必须是数字`,"key");
+  const order=intParam(request.params,"order",3,3,6);
+  const maxKeys=order-1,minKeys=Math.max(1,Math.ceil(order/2)-1);
+  const op=request.operation;
+  if(op!=="insert"&&keys.length===0)return api.makeRuntimeError(request,`B 树${op==="search"?"查找":"删除"}`,"EMPTY_TREE","B 树为空：请先在 initialData 中提供关键字。",viewState("btree",btreeRows(btreeNode([],[]),{operation:op,key,order})),`key=${key}`);
+  const tree={root:btreeBuildAll(keys,order)};
+  let sid=1;
+  /* 一行一帧：`i++`、`p = p->child[i]`、`mid = n / 2`、`parent->key[i] = s`……
+     当前结点用 `current`（结点内关键字组）点亮，当前下标/当前值走胶囊。 */
+  const at=(extra={})=>viewState("btree",btreeRows(tree.root,{operation:op,key,order,...extra}));
+  const steps=[makeStep(sid++,"init","B 树",`${order} 阶 B 树：每个结点最多 ${maxKeys} 个关键字（根最少 1 个，其余最少 ${minKeys} 个）。`,at())];
+  const snap=(code,extra,act,line)=>steps.push(makeStep(sid++,line?"line":"compare",code,code,at(extra),act?[act]:[]));
+  const path=[]; /* 下降时记下每一层：{parent, pos}，pos 是"从父结点第几个孩子下来的"。 */
+  const descend=()=>{
+    let p=tree.root;
+    snap("p = root",{current:p.keys},null,true);
+    for(;;){
+      snap("i = 0",{current:p.keys,i:0},null,true);
+      let i=0;
+      for(;;){
+        const cont=i<p.keys.length&&key>p.keys[i];
+        snap(`while (i < n && k > key[i]) → ${cont}`,{current:p.keys,i,"key[i]":i<p.keys.length?p.keys[i]:null,n:p.keys.length},null,true);
+        if(!cont)break;
+        i++;
+        snap("i++",{current:p.keys,i},null,true);
+      }
+      const hit=i<p.keys.length&&key===p.keys[i];
+      snap(`if (i < n && k == key[i]) → ${hit}`,{current:p.keys,i,k:key},null,true);
+      if(hit)return {node:p,pos:i,found:true};
+      if(!p.children.length)return {node:p,pos:i,found:false};
+      path.push({parent:p,pos:i});
+      const child=p.children[i];
+      snap("p = p->child[i]",{current:child.keys,i,child:child.keys.join(",")},action("move","沿第 i 个孩子下降",{value:child.keys.join(",")}),true);
+      p=child;
+    }
+  };
+
+  if(op==="search"){
+    const {node,pos,found}=descend();
+    if(found){
+      snap("return p->key[i]",{current:node.keys,i:pos,found:key},action("visit",`在第 ${pos+1} 个位置找到 ${key}`,{value:key}));
+      return makeTrace(request,"B 树查找",`key=${key}`,"查找成功",steps);
+    }
+    snap("return NULL",{current:node.keys,i:pos,found:"NULL"},action("miss","到达叶结点仍未命中，查找失败",{value:null}));
+    return makeTrace(request,"B 树查找",`key=${key}`,"未找到",steps);
+  }
+
+  if(op==="insert"){
+    const {node,pos,found}=descend();
+    if(found){
+      snap("return 0",{current:node.keys,i:pos,"return":0},action("skip","关键字已存在，不再插入",{value:0}));
+      return makeTrace(request,"B 树插入",`key=${key}`,"未插入：关键字已存在",steps);
+    }
+    node.keys.splice(pos,0,key);
+    snap("p->key[i] = k; p->n = p->n + 1",{current:node.keys,i:pos},action("insert","关键字写进叶结点",{value:key}));
+    snap(`if (p->n > m-1) → ${node.keys.length>maxKeys}`,{current:node.keys,i:pos,n:node.keys.length},null,true);
+    /* 溢出就分裂：中间关键字提升给父结点，父结点也可能跟着溢出，一层层往上，直到根。 */
+    let cur=node,li=path.length-1;
+    while(cur.keys.length>maxKeys){
+      const parent=li>=0?path[li].parent:null;
+      const idx=li>=0?path[li].pos:0;
+      const mid=Math.floor(cur.keys.length/2);
+      const promote=cur.keys[mid];
+      snap("mid = n / 2",{current:cur.keys,mid,n:cur.keys.length},null,true);
+      snap("s = p->key[mid]",{current:cur.keys,mid,s:promote},action("read","中间那个关键字要提升",{value:promote}),true);
+      const left=btreeNode(cur.keys.slice(0,mid),cur.children.slice(0,mid+1));
+      const right=btreeNode(cur.keys.slice(mid+1),cur.children.slice(mid+1));
+      if(parent===null){
+        tree.root=btreeNode([promote],[left,right]);
+        snap("r = malloc(); r->key[0] = s; r->child[0] = p; r->child[1] = q; root = r",{current:tree.root.keys,s:promote},action("split","根结点分裂：树长高一层",{value:promote}));
+        break;
+      }
+      parent.keys.splice(idx,0,promote);
+      parent.children.splice(idx,1,left,right);
+      snap("parent->key[i] = s; parent->child[i+1] = q",{current:parent.keys,i:idx,s:promote},action("split",`${promote} 提升到父结点，${left.keys.join(",")||"空"} 与 ${right.keys.join(",")||"空"} 分成两个孩子`,{value:promote}));
+      snap(`if (parent->n > m-1) → ${parent.keys.length>maxKeys}`,{current:parent.keys,n:parent.keys.length},null,true);
+      cur=parent;li--;
+    }
+    return makeTrace(request,"B 树插入",`key=${key}`,"插入完成",steps);
+  }
+
+  /* delete：先找到关键字并删掉；关键字数掉到下限以下时，先找兄弟借一个，借不到就与兄弟合并。 */
+  const {node,pos,found}=descend();
+  if(!found){
+    snap("return 0",{current:node.keys,i:pos,"return":0},action("miss","树里没有这个关键字",{value:0}));
+    return makeTrace(request,"B 树删除",`key=${key}`,"未找到关键字，未删除",steps);
+  }
+  const parent=path.length?path[path.length-1].parent:null;
+  const idx=path.length?path[path.length-1].pos:0;
+  for(let j=pos;j<node.keys.length-1;j++){
+    node.keys[j]=node.keys[j+1];
+    snap(`key[${j}] = key[${j+1}]`,{current:node.keys,i:j},null,true);
+  }
+  node.keys.pop();
+  snap("p->n = p->n - 1",{current:node.keys,i:Math.min(pos,node.keys.length-1),n:node.keys.length},action("delete",`从结点里删掉 ${key}`,{value:key}));
+  snap(`if (p->n < ${minKeys}) → ${node.keys.length<minKeys}`,{current:node.keys,n:node.keys.length},null,true);
+  let cur=node,li=path.length-1;
+  while(cur.keys.length<minKeys&&li>=0){
+    const par=path[li].parent,ci=path[li].pos;
+    const left=ci>0?par.children[ci-1]:null;
+    const right=ci+1<par.children.length?par.children[ci+1]:null;
+    snap(`if (brother->n > ${minKeys}) → ${Boolean((left&&left.keys.length>minKeys)||(right&&right.keys.length>minKeys))}`,{current:par.keys,n:cur.keys.length},null,true);
+    if(left&&left.keys.length>minKeys){
+      cur.keys.unshift(par.keys[ci-1]);
+      par.keys[ci-1]=left.keys.pop();
+      if(left.children.length)cur.children.unshift(left.children.pop());
+      snap("p->key[0] = parent->key[i-1]",{current:cur.keys,from:"left"},action("move","左兄弟最大的关键字借过来（分隔关键字先下来）",{value:par.keys[ci-1]}));
+      snap("parent->key[i-1] = brother->key[n-1]",{current:par.keys,from:"left"},action("move","分隔关键字被兄弟最大关键字顶替",{value:par.keys[ci-1]}));
+      break;
+    }
+    if(right&&right.keys.length>minKeys){
+      cur.keys.push(par.keys[ci]);
+      par.keys[ci]=right.keys.shift();
+      if(right.children.length)cur.children.push(right.children.shift());
+      snap("p->key[p->n] = parent->key[i]",{current:cur.keys,from:"right"},action("move","右兄弟最小的关键字借过来（分隔关键字先下来）",{value:par.keys[ci]}));
+      snap("parent->key[i] = brother->key[0]",{current:par.keys,from:"right"},action("move","分隔关键字被兄弟最小关键字顶替",{value:par.keys[ci]}));
+      break;
+    }
+    /* 两边兄弟都只剩下限：把关键字并到一起，父结点少一个关键字，再往上看父结点够不够。 */
+    const target=left||right;
+    if(!target){
+      cur=par;li--;continue;
+    }
+    const down=left?par.keys[ci-1]:par.keys[ci];
+    cur.keys.unshift(down);
+    cur.keys.push(...target.keys);
+    cur.children.push(...target.children);
+    par.keys.splice(left?ci-1:ci,1);
+    par.children.splice(left?ci-1:ci+1,1);
+    snap(left?"q = p; 与左兄弟合并，分隔关键字 parent->key[i-1] 下来":"q = p; 与右兄弟合并，分隔关键字 parent->key[i] 下来",{current:cur.keys,merged:true},action("split","兄弟不足，合并成一个结点",{value:down}));
+    cur=par;li--;
+  }
+  if(li<0&&tree.root.keys.length===0&&tree.root.children.length)tree.root=tree.root.children[0];
+  snap("return 1",{current:tree.root.keys,"return":1});
+  return makeTrace(request,"B 树删除",`key=${key}`,"删除完成",steps);
+}
 
 function hashIndex(key,m){const n=typeof key==="number"?key:[...String(key)].reduce((h,c)=>h*31+c.charCodeAt(0),0);return Math.abs(n)%m;}
 function simulateHash(request,api){
@@ -567,30 +1509,51 @@ function simulateHash(request,api){
   const steps=[makeStep(sid++,"init","哈希表初始状态",`表长 ${m}。`,viewState("hash_table",rows()))];
   if(op==="chaining_insert"){const h=hashIndex(key,m);steps.push(makeStep(sid++,"hash","计算散列地址",`H(${key}) = ${key} mod ${m} = ${h}，冲突的同义词存进同一条链。`,viewState("hash_table",[...rows({focusIndex:h}),row("probe",[],{bucket:h})]),[action("hash","计算散列地址",{target:h,value:key})]));chains[h].push(key);steps.push(makeStep(sid++,"insert","链地址法插入",`把关键字 ${key} 接入第 ${h} 个同义词链。`,viewState("hash_table",rows({focusIndex:h,focusCell:[h,chains[h].length-1]})),[action("insert","接入同义词链",{target:h,value:key})]));return makeTrace(request,"链地址法处理冲突",`key=${key}`,`bucket=${h}`,steps);}
   if(op==="chaining_search"){const h=hashIndex(key,m);steps.push(makeStep(sid++,"hash","计算散列地址",`H(${key}) = ${key} mod ${m} = ${h}，只需在第 ${h} 条同义词链里找。`,viewState("hash_table",[...rows({focusIndex:h}),row("probe",[],{bucket:h})]),[action("hash","计算散列地址",{target:h,value:key})]));for(let i=0;i<chains[h].length;i++){steps.push(makeStep(sid++,"compare","桶内比较",`比较 ${key} 与 ${chains[h][i]}。`,viewState("hash_table",[...rows({focusIndex:h,focusCell:[h,i]}),row("probe",[],{bucket:h,index:i})])));if(chains[h][i]===key)return makeTrace(request,"链地址哈希查找",`key=${key}`,"查找成功",steps);}steps.push(makeStep(sid,"done","同义词链走完","链上没有该关键字，查找失败。",viewState("hash_table",[...rows({focusIndex:h}),row("probe",[],{bucket:h})])));return makeTrace(request,"链地址哈希查找",`key=${key}`,"未找到",steps);}
-  const search=op.endsWith("_search");const seq=probeSequence(key,mode);const h0=seq[0];steps.push(makeStep(sid++,"hash","计算散列地址",`H(${key}) = ${h0}${search?"，从散列地址开始逐个比较":"，被占用时按规则探测下一地址"}。`,viewState("hash_table",[...rows(),row("probe",[],{index:h0,attempt:0,mode})]),[action("hash","计算散列地址",{target:h0,value:key})]));
+  const search=op.endsWith("_search");const seq=probeSequence(key,mode);const h0=seq[0];/* 这一帧只算地址，**不指任何格子**：它是算术（H(69)=3），而"第 1 次探测"才把指针放到那个格子上。
+     两帧都指 3 号格时，界面上一模一样——学生点「下一步」什么都没发生。 */steps.push(makeStep(sid++,"hash","计算散列地址",`H(${key}) = ${h0}${search?"，从散列地址开始逐个比较":"，被占用时按规则探测下一地址"}。`,viewState("hash_table",[...rows(),row("probe",[],{mode})]),[action("hash","计算散列地址",{target:h0,value:key})]));
 for(let t=0;t<seq.length;t++){const idx=seq[t];steps.push(makeStep(sid++,"probe","探测哈希地址",`第 ${t+1} 次探测地址 ${idx}。`,viewState("hash_table",[...rows(),row("probe",[],{index:idx,attempt:t,mode})]),[action("probe","按冲突处理规则计算下一地址",{target:idx})]));if(search){if(table[idx]===key)return makeTrace(request,`${mode} 探测哈希查找`,`key=${key}`,"查找成功",steps);if(table[idx]===null)return makeTrace(request,`${mode} 探测哈希查找`,`key=${key}`,"未找到",steps);}else if(table[idx]===null){table[idx]=key;/* 写入帧也要带上 probe 面板：只发 rows() 时表格没有任何指针，新关键字落在哪一格看不出来。 */steps.push(makeStep(sid++,"insert","写入空单元",`${key} 写入地址 ${idx}。`,viewState("hash_table",[...rows(),row("probe",[],{index:idx,attempt:t,mode,stored:key})]),[action("insert","写入哈希表",{target:idx,value:key})]));const title={linear:"线性探测再散列",quadratic:"二次探测再散列",random:"伪随机探测再散列",rehash:"再哈希法"}[mode];return makeTrace(request,title,`key=${key}`,`address=${idx}`,steps);}}
   return makeTrace(request,"哈希探测",`key=${key}`,"探测结束",steps);
 }
 
 function sequenceRows(a,extra={}){return[row("array",a),row("meta",[],extra)];}
-function simulateSort(request,api){const {makeStep,makeTrace,action}=makeHelpers(api);const a=numberArray(request.initial_state.data,[49,38,65,97,76,13,27,49]);const initialText=`[${a.join(",")}]`;const op=request.operation;let sid=1;const steps=[makeStep(sid++,"init","待排序序列",`[${a.join(", ")}]`,viewState("sort",sequenceRows(a,{operation:op})))];if(!a.length){steps.push(makeStep(sid,"done","序列为空","没有待排序记录，排序结束。",viewState("sort",sequenceRows(a,{operation:op,done:true}))));return makeTrace(request,`教材排序演示：${op}`,initialText,"[]",steps);}function snap(title,note,extra={},act=null){steps.push(makeStep(sid++,extra.phase||"sort",title,note,viewState("sort",sequenceRows(a,{operation:op,...extra})),act?[action(act,"排序操作",extra)]:[]));}
+/* 不变式里"已排好的区间"在开头必须是**空**的，不能写成倒序区间：第一趟的 end 就等于 a.length-1，
+   直接拼 `下标 ${end+1} 到 ${a.length-1}` 会得到"下标 4 到 3 已经排好"——一句读不通的话。 */
+function sortedTail(a,end){return end>=a.length-1?"还没有任何元素就位":`下标 ${end+1} 到 ${a.length-1} 已经排好`;}
+function sortedHead(i){return i<=0?"还没有任何元素就位":`下标 0 到 ${i-1} 已经排好`;}
+function simulateSort(request,api){const {makeStep,makeTrace,action}=makeHelpers(api);const a=numberArray(request.initial_state.data,[49,38,65,97,76,13,27,49]);const initialText=`[${a.join(",")}]`;const op=request.operation;let sid=1;let invariant="";const steps=[makeStep(sid++,"init","待排序序列",`[${a.join(", ")}]`,viewState("sort",sequenceRows(a,{operation:op,invariant:"整个序列都还是待排序区，没有任何记录就位"})))];if(!a.length){steps.push(makeStep(sid,"done","序列为空","没有待排序记录，排序结束。",viewState("sort",sequenceRows(a,{operation:op,done:true}))));return makeTrace(request,`教材排序演示：${op}`,initialText,"[]",steps);}function snap(title,note,extra={},act=null,line=false){const acts=Array.isArray(act)?act:(act?[act]:[]);const meta={operation:op,...(invariant?{invariant}:{}),...extra};steps.push(makeStep(sid++,line?"line":(extra.phase||"sort"),title,note,viewState("sort",sequenceRows(a,meta)),acts.map(t=>action(t,t==="compare"?"比较关键字":"排序操作",extra))));}
+  /* 交换的三步**逐行**报帧：`temp = a[i]` → `a[i] = a[j]` → `a[j] = temp`。
+     "为什么需要一个临时变量"就画在中间那一帧上（同一个值出现两份，学生自己看得见）；
+     `temp` 本身在胶囊里显示，所以第一步（数组没变）也不会和上一帧长得一样。
+     这三帧都标 line ⇒ **精简版只留最后一步**，于是精简版正好是"比较一帧、交换一帧"。
+     代码帧的约定：**title 与 note 都是那行代码**（解释性帧两者不同，前端靠这个决定用不用等宽字体）。 */
+  const swapFrames=(x,y,extra={})=>{const tx=a[x],ty=a[y];
+    snap(`temp = a[${x}]`,`temp = a[${x}]`,{...extra,temp:tx},"temp",true);
+    a[x]=ty;
+    snap(`a[${x}] = a[${y}]`,`a[${x}] = a[${y}]`,{...extra,temp:tx},"move",true);
+    a[y]=tx;
+    snap(`a[${y}] = temp`,`a[${y}] = temp`,{...extra,temp:tx},"swap",true);
+  };
+  /* 一次比较报一帧，是「比较次数」这个计数器的唯一来源：计数器只数引擎真正报出来的动作，
+     所以只要比较没有自己的帧，冒泡排序就会显示「比较 0 次、交换 5 次」——比不显示更误导。
+     每帧只讲这一步在比较谁、结果如何；真的发生交换时把 swap 动作挂在同一帧上，帧数就等于比较次数，
+     不会因为"先比较再交换"而翻倍。 */
   if(op==="direct_insertion"||op==="binary_insertion"){
-    for(let i=1;i<a.length;i++){const key=a[i];let pos=i;if(op==="binary_insertion"){let l=0,r=i-1;while(l<=r){const m=Math.floor((l+r)/2);snap("折半定位",`比较待插记录 ${key} 与 a[${m}]=${a[m]}。`,{current:m,low:l,high:r});if(key<a[m])r=m-1;else l=m+1;}pos=l;}else{while(pos>0&&a[pos-1]>key)pos--;}
-      for(let j=i;j>pos;j--)a[j]=a[j-1];a[pos]=key;snap("插入到有序区",`把 ${key} 插入位置 ${pos}。`,{current:pos,sortedEnd:i},"insert");}
+    for(let i=1;i<a.length;i++){const key=a[i];let pos=i;invariant=`下标 0 到 ${i-1} 是已排好的有序区；现在把 a[${i}]=${key} 插进有序区`;if(op==="binary_insertion"){let l=0,r=i-1;while(l<=r){const m=Math.floor((l+r)/2);snap(`if (key < a[${m}]) → ${key<a[m]?"true":"false"}`,`if (key < a[${m}]) → ${key<a[m]?"true":"false"}`,{current:m,low:l,high:r},"compare");if(key<a[m])r=m-1;else l=m+1;}pos=l;}else{while(pos>0){if(!(a[pos-1]>key)){snap(`if (a[${pos-1}] > key) → false`,`if (a[${pos-1}] > key) → false`,{current:pos-1,sortedEnd:i},"compare");break;}const before=a[pos-1];pos--;snap(`if (a[${pos}] > key) → true`,`if (a[${pos}] > key) → true`,{current:pos,sortedEnd:i},"compare");}}
+      for(let j=i;j>pos;j--){a[j]=a[j-1];snap(`a[${j}] = a[${j-1}]`,`a[${j}] = a[${j-1}]`,{current:j,sortedEnd:i},"move",true);}a[pos]=key;snap("插入到有序区",`把 ${key} 插入位置 ${pos}。`,{current:pos,sortedEnd:i},"insert");}
   } else if(op==="shell"){
     /* 每个子序列插入各报一帧（以前整趟只有一帧，画面既没有过程也没有高亮）。 */
-    const gaps=Array.isArray(request.params.gaps)?request.params.gaps.map(Number).filter(x=>Number.isInteger(x)&&x>0):[Math.floor(a.length/2),1];for(const gap0 of gaps){const gap=Math.min(gap0,a.length-1);if(gap<1)continue;for(let i=gap;i<a.length;i++){const temp=a[i];let j=i;while(j>=gap&&a[j-gap]>temp){a[j]=a[j-gap];j-=gap;}a[j]=temp;snap("子序列插入",`gap=${gap}：把 ${temp} 插到位置 ${j}。`,{gap,i,j,phase:"group_sort"},"insert");}}
+    const gaps=Array.isArray(request.params.gaps)?request.params.gaps.map(Number).filter(x=>Number.isInteger(x)&&x>0):[Math.floor(a.length/2),1];for(const gap0 of gaps){const gap=Math.min(gap0,a.length-1);if(gap<1)continue;invariant=`当前增量 gap=${gap}：每隔 ${gap} 个位置取一条子序列，子序列内部做插入排序`;for(let i=gap;i<a.length;i++){const temp=a[i];let j=i;let shifted=false;while(j>=gap){if(!(a[j-gap]>temp)){snap(`if (a[${j-gap}] > temp) → false`,`if (a[${j-gap}] > temp) → false`,{gap,i,j,phase:"group_sort"},shifted?"compare":["compare","insert"]);break;}const before=a[j-gap];a[j]=before;j-=gap;shifted=true;snap(`a[${j}] = a[${j-gap}]`,`a[${j}] = a[${j-gap}]`,{gap,i,j,phase:"group_sort"},["compare","move"]);}a[j]=temp;/* 一步都没后移时插入是空操作，再报一帧只会让画面和上一帧一模一样。 */if(shifted)snap("子序列插入",`gap=${gap}：把 ${temp} 插到位置 ${j}。`,{gap,i,j,phase:"group_sort"},"insert");}}
   } else if(op==="bubble"){
-    for(let end=a.length-1;end>0;end--){let swapped=false;for(let i=0;i<end;i++){if(a[i]>a[i+1]){[a[i],a[i+1]]=[a[i+1],a[i]];swapped=true;snap("交换相邻记录",`交换下标 ${i} 与 ${i+1}。`,{i,j:i+1},"swap");}}snap("一趟冒泡结束",`最大元素已到位置 ${end}。`,{sortedStart:end});if(!swapped)break;}
+    for(let end=a.length-1;end>0;end--){let swapped=false;invariant=`${sortedTail(a,end)}；本趟把 [0, ${end}] 里的最大值冒到下标 ${end}`;for(let i=0;i<end;i++){const left=a[i],right=a[i+1];const verdict=left>right?"true":"false";snap(`if (a[${i}] > a[${i+1}]) → ${verdict}`,`if (a[${i}] > a[${i+1}]) → ${verdict}`,{i,j:i+1},"compare");if(left>right){swapFrames(i,i+1,{i,j:i+1});swapped=true;}}snap("一趟冒泡结束",`最大元素已到位置 ${end}。`,{sortedStart:end});if(!swapped)break;}
   } else if(op==="quick"){
-    function q(l,r){if(l>=r)return;const pivot=a[l];let i=l,j=r;while(i<j){while(i<j&&a[j]>=pivot)j--;if(i<j)a[i++]=a[j];while(i<j&&a[i]<=pivot)i++;if(i<j)a[j--]=a[i];}a[i]=pivot;snap("完成一次划分",`枢轴 ${pivot} 落在位置 ${i}。`,{low:l,high:r,pivotIndex:i},"partition");q(l,i-1);q(i+1,r);}q(0,a.length-1);
+    function q(l,r){if(l>=r)return;const pivot=a[l];invariant=`正在划分区间 [${l}, ${r}]：枢轴是 a[${l}]=${pivot}，比它小的放左边、大的放右边`;let i=l,j=r;while(i<j){while(i<j){const hit=a[j]>=pivot;snap(`if (a[${j}] >= pivot) → ${hit?"true":"false"}`,`if (a[${j}] >= pivot) → ${hit?"true":"false"}`,{low:l,high:r,pivotIndex:i,current:j},"compare");if(!hit)break;j--;}if(i<j){a[i]=a[j];snap(`a[${i}] = a[${j}]`,`a[${i}] = a[${j}]`,{low:l,high:r,pivotIndex:i,current:i},"move",true);i++;}while(i<j){const hit=a[i]<=pivot;snap(`if (a[${i}] <= pivot) → ${hit?"true":"false"}`,`if (a[${i}] <= pivot) → ${hit?"true":"false"}`,{low:l,high:r,pivotIndex:i,current:i},"compare");if(!hit)break;i++;}if(i<j){a[j]=a[i];snap(`a[${j}] = a[${i}]`,`a[${j}] = a[${i}]`,{low:l,high:r,pivotIndex:j,current:j},"move",true);j--;} }a[i]=pivot;snap("完成一次划分",`枢轴 ${pivot} 落在位置 ${i}。`,{low:l,high:r,pivotIndex:i},"partition");q(l,i-1);q(i+1,r);}q(0,a.length-1);
   } else if(op==="simple_selection"){
-    for(let i=0;i<a.length-1;i++){let min=i;for(let j=i+1;j<a.length;j++)if(a[j]<a[min])min=j;if(min!==i)[a[i],a[min]]=[a[min],a[i]];snap("选择最小记录",`第 ${i+1} 个位置确定为 ${a[i]}。`,{current:i,selected:min},"select");}
+    for(let i=0;i<a.length-1;i++){let min=i;invariant=`${sortedHead(i)}${i>0?`（这 ${i} 个是全局最小的）`:""}；现在从下标 ${i} 到 ${a.length-1} 里挑最小值`;for(let j=i+1;j<a.length;j++){const hit=a[j]<a[min];const verdict=hit?"true":"false";snap(`if (a[${j}] < a[${min}]) → ${verdict}`,`if (a[${j}] < a[${min}]) → ${verdict}`,{current:i,selected:min,scan:j},"compare");if(hit)min=j;}if(min!==i){swapFrames(i,min,{current:i,selected:min});}else{snap("无需交换",`位置 ${i} 已是剩余记录中的最小值，第 ${i+1} 个位置确定为 ${a[i]}。`,{current:i,selected:min},"select");}}
   } else if(op==="tournament_selection"){
-    const remain=a.map((v,i)=>({v,i})),out=[];while(remain.length){remain.sort((x,y)=>x.v-y.v);const win=remain.shift();out.push(win.v);/* current 指向胜者在原序列里的下标，画面才知道高亮谁 */snap("锦标赛选出当前最小值",`${win.v} 胜出并输出。`,{winner:win.v,current:win.i,output:[...out]},"select");}a.splice(0,a.length,...out);
+    const remain=a.map((v,i)=>({v,i})),out=[];while(remain.length){remain.sort((x,y)=>x.v-y.v);const win=remain.shift();out.push(win.v);invariant=`已经输出 ${out.length} 个最小记录；剩下 ${remain.length} 个还在锦标赛里`;/* current 指向胜者在原序列里的下标，画面才知道高亮谁 */snap("锦标赛选出当前最小值",`${win.v} 胜出并输出。`,{winner:win.v,current:win.i,output:[...out]},"select");}a.splice(0,a.length,...out);
   } else if(op==="heap"){
-    function down(n,i){while(true){let largest=i,l=2*i+1,r=2*i+2;if(l<n&&a[l]>a[largest])largest=l;if(r<n&&a[r]>a[largest])largest=r;if(largest===i)break;[a[i],a[largest]]=[a[largest],a[i]];snap("向下调整堆",`交换 ${i} 与 ${largest}。`,{i,j:largest,heapSize:n},"swap");i=largest;}}
-    for(let i=Math.floor(a.length/2)-1;i>=0;i--)down(a.length,i);snap("建立初始大根堆","从最后一个非叶结点向前调整。",{heapSize:a.length},"heapify");for(let end=a.length-1;end>0;end--){[a[0],a[end]]=[a[end],a[0]];snap("堆顶与末尾交换",`最大元素固定到位置 ${end}。`,{i:0,j:end,heapSize:end},"swap");down(end,0);}
+    function down(n,i){invariant=`堆区是 [0, ${n-1}]，正在从结点 ${i} 向下调整：让父结点不小于它的孩子`;while(true){let largest=i;const l=2*i+1,r=2*i+2;if(l<n){const hit=a[l]>a[largest];snap(`if (a[${l}] > a[${largest}]) → ${hit?"true":"false"}`,`if (a[${l}] > a[${largest}]) → ${hit?"true":"false"}`,{i,j:largest,heapSize:n,current:l},"compare");if(hit)largest=l;}if(r<n){const hit=a[r]>a[largest];snap(`if (a[${r}] > a[${largest}]) → ${hit?"true":"false"}`,`if (a[${r}] > a[${largest}]) → ${hit?"true":"false"}`,{i,j:largest,heapSize:n,current:r},"compare");if(hit)largest=r;}if(largest===i)break;swapFrames(i,largest,{i,j:largest,heapSize:n});i=largest;}}
+    for(let i=Math.floor(a.length/2)-1;i>=0;i--)down(a.length,i);snap("建立初始大根堆","从最后一个非叶结点向前调整。",{heapSize:a.length},"heapify");for(let end=a.length-1;end>0;end--){invariant=`${sortedTail(a,end)}；堆区是 [0, ${end}]，堆顶 ${a[0]} 是当前最大值`;swapFrames(0,end,{i:0,j:end,heapSize:end});down(end,0);}
   } else if(op==="merge"){
     /* 逐记录归并：以前整段只报一帧、且只带 left/mid/right 三个数字，
        画面既没有过程也没有高亮（2026-09-24：「你的高亮，不行，整个卡住」）。
@@ -599,21 +1562,22 @@ function simulateSort(request,api){const {makeStep,makeTrace,action}=makeHelpers
     for(let width=1;width<a.length;width*=2){
       for(let l=0;l<a.length;l+=2*width){
         const m=Math.min(l+width,a.length),r=Math.min(l+2*width,a.length);
-        if(m>=r)continue;                                   // 只剩一段，本身有序，无需归并
+        if(m>=r)continue;invariant=`正在合并 [${l}, ${m}) 与 [${m}, ${r})：两段各自已经有序，谁小先取谁`;                                   // 只剩一段，本身有序，无需归并
         const seg=a.slice(l,r),half=m-l,leftSeg=seg.slice(0,half),rightSeg=seg.slice(half);
         let i=0,j=half,k=l;
         const show=()=>viewState("sort",[
           row("array",a),
           row("left",leftSeg,{focusIndex:Math.max(0,Math.min(i,leftSeg.length-1))}),
           row("right",rightSeg,{focusIndex:Math.max(0,Math.min(j-half,rightSeg.length-1))}),
-          row("meta",[],{operation:op,current:k,low:l,high:r-1,mid:m}),
+          row("meta",[],{operation:op,current:k,low:l,high:r-1,mid:m,...(invariant?{invariant}:{})}),
         ]);
-        const emit=(title,note)=>steps.push(makeStep(sid++,"merge",title,note,show(),[action("merge","归并当前记录",{to:k})]));
+        const emit=(title,note,compared=false)=>steps.push(makeStep(sid++,"merge",title,note,show(),compared?[action("compare","比较两段当前记录",{to:k}),action("merge","归并当前记录",{to:k})]:[action("merge","归并当前记录",{to:k})]));
         emit("开始归并有序段",`合并 [${l},${m}) 与 [${m},${r})。`);
         while(i<half&&j<seg.length){
           const fromLeft=seg[i]<=seg[j];
-          a[k]=fromLeft?seg[i]:seg[j];
-          emit(fromLeft?"取前半段较小记录":"取后半段较小记录",`${a[k]} 写入位置 ${k}。`);
+          const taken=fromLeft?seg[i]:seg[j];
+          a[k]=taken;
+          emit(fromLeft?"取前半段较小记录":"取后半段较小记录",`比较左段 ${seg[i]} 与右段 ${seg[j]}，取 ${taken} 写入位置 ${k}。`,true);
           if(fromLeft)i++;else j++;
           k++;
         }
@@ -625,9 +1589,9 @@ function simulateSort(request,api){const {makeStep,makeTrace,action}=makeHelpers
     }
   } else if(op==="radix"){
     /* 逐个元素分桶（以前整趟只有一帧）：每帧高亮正在分派的那个元素。 */
-    let exp=1,max=Math.max(...a.map(Math.abs));while(Math.floor(max/exp)>0){const buckets=Array.from({length:10},()=>[]);a.forEach((v,idx)=>{const d=Math.floor(Math.abs(v)/exp)%10;buckets[d].push(v);snap("按当前位分配",`${v} 的第 ${exp===1?"个位":exp===10?"十位":`10^${Math.log10(exp)}位`}是 ${d}，进 ${d} 号队列。`,{exp,digit:d,current:idx,phase:"distribute"},"distribute");});a.splice(0,a.length,...buckets.flat());snap("按桶序收集","依次收集 0~9 号队列。",{exp,phase:"collect"},"collect");exp*=10;}
+    let exp=1,max=Math.max(...a.map(Math.abs));while(Math.floor(max/exp)>0){const unit=exp===1?"个位":exp===10?"十位":`10^${Math.log10(exp)}位`;invariant=`第 ${Math.round(Math.log10(exp))+1} 趟：按${unit}把每条记录分进 0~9 号桶，再按桶号收回来`;const buckets=Array.from({length:10},()=>[]);a.forEach((v,idx)=>{const d=Math.floor(Math.abs(v)/exp)%10;buckets[d].push(v);snap("按当前位分配",`${v} 的第 ${exp===1?"个位":exp===10?"十位":`10^${Math.log10(exp)}位`}是 ${d}，进 ${d} 号队列。`,{exp,digit:d,current:idx,phase:"distribute"},"distribute");});a.splice(0,a.length,...buckets.flat());snap("按桶序收集","依次收集 0~9 号队列。",{exp,phase:"collect"},"collect");exp*=10;}
   }
-  snap("排序完成",`[${a.join(", ")}]`,{done:true},"done");return makeTrace(request,`教材排序演示：${op}`,initialText,`[${a.join(",")}]`,steps);}
+  invariant="排序结束：整个序列已经有序";snap("排序完成",`[${a.join(", ")}]`,{done:true},"done");return makeTrace(request,`教材排序演示：${op}`,initialText,`[${a.join(",")}]`,steps);}
 
 function simulateExternalSort(request,api){const {makeStep,makeTrace,action}=makeHelpers(api);const rawRuns=request.params.runs!==undefined?request.params.runs:request.initial_state.data;const runs=Array.isArray(rawRuns)&&rawRuns.every(Array.isArray)?rawRuns.map(r=>numberArray(r,[])):[[1,7,13],[2,8,12],[3,6,15]];if(request.operation!=="replacement_selection"&&runs.length===0)throw new SimulationInputError("EMPTY_RUNS","归并段列表为空：请提供至少一个初始归并段","runs");let sid=1;const steps=[makeStep(sid++,"init","初始归并段",`${runs.length} 个归并段。`,viewState("external_sort",[row("runs",runs),row("meta",[],{operation:request.operation})]))];if(request.operation==="replacement_selection"){const input=numberArray(request.params.input??(Array.isArray(request.initial_state.data)&&!request.initial_state.data.every(Array.isArray)?request.initial_state.data:undefined),[12,7,18,3,15,9,20,4]);if(request.params.input!==undefined&&!input.length)throw new SimulationInputError("EMPTY_INPUT","输入记录为空：置换选择至少需要一条记录","input");const memSize=intParam(request.params,"memorySize",3,2,8);const pool=input.slice(0,memSize),rest=input.slice(memSize),out=[];let last=-Infinity;while(pool.length){pool.sort((a,b)=>a-b);let idx=pool.findIndex(x=>x>=last);if(idx<0){steps.push(makeStep(sid++,"new_run","开始新的初始归并段","内存中剩余记录均小于当前输出下界。",viewState("external_sort",[row("memory",pool),row("output",out),row("input",rest),row("meta",[],{operation:request.operation})])));last=-Infinity;idx=0;}const v=pool.splice(idx,1)[0];out.push(v);last=v;if(rest.length)pool.push(rest.shift());steps.push(makeStep(sid++,"output","输出当前可选最小记录",`输出 ${v}，并读入下一条记录。`,viewState("external_sort",[row("memory",pool),row("output",out,{focusIndex:out.length-1}),row("input",rest),row("meta",[],{operation:request.operation,last})]),[action("output","生成初始归并段",{value:v})]));}return makeTrace(request,"置换选择生成初始归并段","输入文件",`输出=${out.join(",")}`,steps);}let current=runs.map(r=>[...r]);const k=request.operation==="multiway_merge"?Math.max(2,intParam(request.params,"ways",3,2,8)):2;while(current.length>1){const next=[];for(let i=0;i<current.length;i+=k){const group=current.slice(i,i+k),pos=Array(group.length).fill(0),merged=[];next.push(merged);
 /* 逐记录归并：整组只报一帧时，输出顺串是"瞬间长出来的"，看不出选了谁（2026-09-24 用户反馈）。

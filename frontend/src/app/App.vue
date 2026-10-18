@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watchEffect } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AppShell from "./app-shell/AppShell.vue";
 import MorphingSquareLoader from "../shared/components/MorphingSquareLoader.vue";
+import SmoothCursor from "../shared/components/SmoothCursor.vue";
 import { useI18n } from "../shared/i18n/locale";
 import { documentTitleForRoute } from "./document-title";
 
@@ -24,6 +25,7 @@ onMounted(() => {
 </script>
 
 <template>
+  <SmoothCursor />
   <main v-if="!routerReady" class="app-bootstrap" aria-busy="true">
     <MorphingSquareLoader :message="t('common.loading')" />
   </main>

@@ -122,7 +122,9 @@ class OpenAiCompatibleModelClientTest {
     void streamsProviderUsageFromTheFinalSseChunkBeforeDone() throws Exception {
         URI baseUrl = startServer("/chat/completions", exchange ->
             respond(exchange, 200, "text/event-stream", """
-                data: {"choices":[{"delta":{"content":"push"}}]}
+                data: {"choices":[{"delta":{"reasoning_content":"Consider "}}]}
+
+                data: {"choices":[{"delta":{"reasoning_content":"the top.","content":"push"}}]}
 
                 data: {"choices":[],"usage":{"total_tokens":41}}
 
@@ -133,6 +135,7 @@ class OpenAiCompatibleModelClientTest {
         ModelClient client = client(baseUrl, API_KEY, Duration.ofSeconds(2), Duration.ofSeconds(2));
         List<String> fragments = new ArrayList<>();
         List<Long> usages = new ArrayList<>();
+        List<String> reasoning = new ArrayList<>();
 
         client.stream(
             new ModelRequest(List.of(new ModelMessage("user", "Show stack operations."))),
@@ -146,10 +149,16 @@ class OpenAiCompatibleModelClientTest {
                 public void onUsage(Long totalTokens) {
                     usages.add(totalTokens);
                 }
+
+                @Override
+                public void onReasoning(String content) {
+                    reasoning.add(content);
+                }
             }
         );
 
         assertThat(fragments).containsExactly("push");
+        assertThat(reasoning).containsExactly("Consider ", "the top.");
         assertThat(usages).containsExactly(41L);
     }
 
@@ -356,6 +365,42 @@ class OpenAiCompatibleModelClientTest {
         );
 
         assertThat(error.code()).isEqualTo("MODEL_RESPONSE_TOO_LARGE");
+    }
+
+    @Test
+    void completesLongReasoningStreamsBeyondOneMiBWithTheFullThinkingBudget() throws Exception {
+        String frame = """
+            data: {"id":"chatcmpl-long-reasoning","object":"chat.completion.chunk","created":1791090000,"model":"deepseek-flash","choices":[{"index":0,"delta":{"reasoning_content":"Consider "},"finish_reason":null}]}
+
+            """;
+        String body = frame.repeat(8192) + """
+            data: {"choices":[{"delta":{"content":"Complete answer."},"finish_reason":"stop"}]}
+
+            data: [DONE]
+
+            """;
+        assertThat(body.getBytes(StandardCharsets.UTF_8).length).isGreaterThan(1_048_576);
+        AtomicReference<JsonNode> sent = new AtomicReference<>();
+        URI baseUrl = startServer("/chat/completions", exchange -> {
+            sent.set(objectMapper.readTree(exchange.getRequestBody()));
+            respond(exchange, 200, "text/event-stream", body);
+        });
+        ModelClient model = client("deepseek", baseUrl, API_KEY, Duration.ofSeconds(5), Duration.ofSeconds(5), 0);
+        StringBuilder answer = new StringBuilder();
+        AtomicInteger thoughts = new AtomicInteger();
+
+        model.stream(new ModelRequest(List.of(new ModelMessage("user", "Explain Huffman trees.")),
+            0.35, 65_536, false, false, true, "max", "deepseek-flash"), new ModelStreamHandler() {
+            @Override
+            public void onContent(String content) { answer.append(content); }
+            @Override
+            public void onReasoning(String content) { thoughts.incrementAndGet(); }
+        });
+
+        assertThat(thoughts.get()).isEqualTo(8192);
+        assertThat(answer.toString()).isEqualTo("Complete answer.");
+        assertThat(sent.get().path("max_tokens").asInt()).isEqualTo(65_536);
+        assertThat(sent.get().path("thinking").path("type").asText()).isEqualTo("enabled");
     }
 
     @Test

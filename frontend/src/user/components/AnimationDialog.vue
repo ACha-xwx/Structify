@@ -49,14 +49,21 @@ const { onKeydown } = useModalLifecycle(() => props.open, overlayRef, dialogRef,
       >
         <header class="animation-dialog__head">
           <h2 :id="titleId" class="animation-dialog__title">{{ title }}</h2>
-          <button class="animation-dialog__close" data-dialog-initial-focus type="button" @click="emit('close')">
-            {{ closeLabel }}
+          <button
+            class="animation-dialog__close"
+            data-dialog-initial-focus
+            type="button"
+            :aria-label="closeLabel"
+            :title="closeLabel"
+            @click="emit('close')"
+          >
+            <span aria-hidden="true">×</span>
           </button>
         </header>
 
         <div class="animation-dialog__body">
           <!-- The dialog's own header carries the title, so the player skips its duplicate headline. -->
-          <AnimationPlayer :definition="definition" :trace="trace" :placeholder="placeholder" compact />
+          <AnimationPlayer :definition="definition" :trace="trace" :placeholder="placeholder" controls-variant="silver" compact />
         </div>
       </section>
     </div>
@@ -89,20 +96,39 @@ const { onKeydown } = useModalLifecycle(() => props.open, overlayRef, dialogRef,
 .animation-dialog__title { margin: 0; color: var(--text); font-family: var(--font-ui); font-size: 22px; font-weight: 650; line-height: 1.25; }
 
 .animation-dialog__close {
-  min-height: 44px;
-  padding: 0 20px;
-  border: 1px solid var(--line-strong);
-  border-radius: 999px;
-  background: transparent;
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  overflow: hidden;
+  border: 1px double rgba(51, 51, 51, .08);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .08);
+  box-shadow: inset 2px -2px 1px -1px rgba(255,255,255,.9), inset -2px 2px 1px -1px rgba(255,255,255,.9), inset 6px -6px 1px -6px rgba(255,255,255,.55), inset -6px 6px 1px -6px rgba(255,255,255,.55), inset 0 0 2px rgba(0,0,0,.18), 0 4px 8px rgba(0,0,0,.14);
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
+  filter: brightness(1.05);
   color: var(--text);
   cursor: pointer;
   font: inherit;
-  font-size: 17px;
-  font-weight: 620;
-  transition: border-color .16s ease, background-color .16s ease;
+  font-size: 27px;
+  font-weight: 400;
+  line-height: 1;
+  transition: transform 250ms linear, background-color 250ms linear, box-shadow 250ms linear, filter 250ms linear;
 }
 
-.animation-dialog__close:hover { border-color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.animation-dialog__close:hover {
+  transform: scale(1.04);
+  background: transparent;
+  filter: brightness(1.1);
+  box-shadow: inset 2px -2px 1px -1px rgba(255,255,255,.95), inset -2px 2px 1px -1px rgba(255,255,255,.95), inset 6px -6px 1px -6px rgba(255,255,255,.65), inset -6px 6px 1px -6px rgba(255,255,255,.65), inset 0 0 2px rgba(0,0,0,.14), 0 6px 12px rgba(0,0,0,.18);
+}
+
+.animation-dialog__close:active { transform: scale(1); }
+.animation-dialog__close:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
 
 .animation-dialog__body { flex: 1 1 auto; min-height: 0; padding-top: 16px; overflow: auto; overscroll-behavior: contain; }
 
@@ -121,7 +147,7 @@ const { onKeydown } = useModalLifecycle(() => props.open, overlayRef, dialogRef,
 
   .animation-dialog__head { padding-bottom: 10px; }
   .animation-dialog__title { font-size: 20px; }
-  .animation-dialog__close { min-height: 40px; padding: 0 16px; font-size: 17px; }
+  .animation-dialog__close { width: 40px; height: 40px; flex-basis: 40px; font-size: 25px; }
   .animation-dialog__body { padding-top: 12px; }
 }
 </style>

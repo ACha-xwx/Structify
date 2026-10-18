@@ -44,6 +44,22 @@ export function prefetchSlideImages(urls: (string | null | undefined)[]): void {
     warmed.add(url);
     const image = new Image();
     image.decoding = "async";
+    image.fetchPriority = "low";
+    image.onerror = () => { warmed.delete(url); };
     image.src = url;
   }
+}
+
+/** Schedule only after the visible image loads; callers cancel this when navigating away. */
+export function scheduleSlidePrefetch(
+  slides: readonly { imageUrl?: string | null }[],
+  index: number,
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  if (typeof window.requestIdleCallback === "function") {
+    const handle = window.requestIdleCallback(() => prefetchSlideWindow(slides, index), { timeout: 1200 });
+    return () => window.cancelIdleCallback(handle);
+  }
+  const handle = window.setTimeout(() => prefetchSlideWindow(slides, index), 120);
+  return () => window.clearTimeout(handle);
 }

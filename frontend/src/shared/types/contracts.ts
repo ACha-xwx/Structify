@@ -2,6 +2,7 @@
 
 // Imported as well as re-exported below: the learning-workbench shape in this file is built on it.
 import type { AnimationDefinition } from "./animation";
+import type { ChatAttachment, ChatReasoningEffort } from "./chat";
 
 export type Role = "STUDENT" | "TEACHER" | "ADMIN";
 export type LicenseScope = "PUBLIC" | "TEAM_ONLY" | "CLASSROOM_ONLY";
@@ -87,12 +88,17 @@ export type ChatRole = "user" | "assistant";
 export interface ChatTurn {
   role: ChatRole;
   content: string;
+  attachments?: ChatAttachment[];
 }
 export interface ChatRequest {
   prompt: string;
   chapterId?: string;
   sessionId?: string;
   history?: ChatTurn[];
+  thinkingEnabled?: boolean;
+  reasoningEffort?: ChatReasoningEffort;
+  attachments?: ChatAttachment[];
+  retryMessageId?: number;
 }
 export interface ChatSource {
   id: string;
@@ -109,6 +115,7 @@ export interface ChatResponse {
   sessionId?: string | null;
   sources: ChatSource[];
   persisted: boolean;
+  reasoning?: string | null;
 }
 export interface ChatSessionSummary {
   id: string;
@@ -116,6 +123,7 @@ export interface ChatSessionSummary {
   title: string;
   updatedAt: string;
   messageCount: number;
+  pinned?: boolean;
 }
 export interface ChatMessage {
   id: number;
@@ -123,6 +131,11 @@ export interface ChatMessage {
   content: string;
   sources: ChatSource[];
   createdAt: string;
+  attachments?: ChatAttachment[];
+  reasoning?: string | null;
+  chapterId?: string | null;
+  thinkingEnabled?: boolean | null;
+  reasoningEffort?: ChatReasoningEffort | null;
 }
 export interface ChatSession {
   id: string;
@@ -130,6 +143,7 @@ export interface ChatSession {
   title: string;
   updatedAt: string;
   messages: ChatMessage[];
+  pinned?: boolean;
 }
 
 export interface ClassroomScript {
@@ -346,6 +360,35 @@ export interface PresentationDeck {
   slideCount: number;
   coverSlideId: string;
 }
+/** One step of a lesson a learner saved; the labels are the ones that step carried when it was saved. */
+export interface ClassroomBookmark {
+  id: number;
+  sessionId: string;
+  lessonId: string;
+  lessonTitle: string;
+  chapterId: string;
+  stepIndex: number;
+  slideId: string;
+  title: string;
+  createdAt: string;
+}
+/** The raw activity behind one node of the learning map, per module. */
+export interface LearningMapSignals {
+  classroomSteps: number; classroomAnswered: number; classroomCorrect: number; classroomHints: number;
+  classroomSkips: number; classroomAsks: number; animations: number; animationRepeats: number;
+  chatSessions: number; chatQuestions: number; codeRuns: number; codePassed: number; codeFailed: number;
+}
+/** Each dimension 0-1, or null when that module recorded nothing here. */
+export interface LearningMapComponents {
+  classroom: number | null; animation: number | null; chat: number | null; code: number | null;
+}
+/** The course, a chapter, or a reviewed lesson inside a chapter. */
+export interface LearningMapNode {
+  id: string; parentId: string | null; level: number; title: string;
+  mastery: number | null; confidence: number; status: "NOT_STARTED" | "LOW_EVIDENCE" | "ESTIMATED";
+  components: LearningMapComponents; signals: LearningMapSignals;
+}
+export interface LearningMap { generatedAt: string; nodes: LearningMapNode[]; }
 export interface LessonCourseware {
   lessonId: string;
   coursewareKey: string;

@@ -9,6 +9,8 @@ import com.feng.dsagent.knowledge.KnowledgeAudience;
 import com.feng.dsagent.knowledge.KnowledgeProperties;
 import com.feng.dsagent.knowledge.KnowledgeSearchService;
 import com.feng.dsagent.model.ModelClient;
+import com.feng.dsagent.model.ModelClientException;
+import com.feng.dsagent.model.ModelErrorCode;
 import com.feng.dsagent.model.ModelMessage;
 import com.feng.dsagent.model.ModelRequest;
 import com.feng.dsagent.model.ModelResponse;
@@ -73,6 +75,7 @@ class ChatServiceTest {
         assertThat(response.sources().getFirst().evidenceHash()).matches("[a-f0-9]{64}");
         assertThat(model.lastRequest.messages().getFirst().content())
             .contains("经过审核的课程资料")
+            .contains("# 标题", "## 标题", "### 标题", "井号后必须有空格")
             .contains("动画演示");
         assertThat(model.lastRequest.messages())
             .anySatisfy(message -> assertThat(message.content()).contains("栈是后进先出"));
@@ -150,6 +153,7 @@ class ChatServiceTest {
         );
 
         assertThat(fragments).containsExactly("先入", "后出");
+        assertThat(model.lastRequest.maxTokens()).isEqualTo(8_192);
         assertThat(response.answer()).isEqualTo("先入后出");
         assertThat(repository.saved).singleElement().satisfies(saved -> {
             assertThat(saved.answer()).isEqualTo("先入后出");
@@ -180,20 +184,161 @@ class ChatServiceTest {
         assertThat(repository.saved).isEmpty();
     }
 
+    @Test
+    void answersAFollowUpAboutTheCodeTheLearnerAlreadyPasted() {
+        CapturingModelClient noEvidenceModel = new CapturingModelClient();
+        ChatService noEvidence = new ChatService(
+            noEvidenceModel,
+            new KnowledgeSearchService(List.of(), 4),
+            repository,
+            new KnowledgeProperties(true, true, "unused", 4, 4, 1100)
+        );
+        noEvidenceModel.response = "先反转指针，再移动头指针。";
+
+        // The first turn pasted the program; "explain it line by line" retrieves nothing to cite of its own.
+        ChatResponse response = noEvidence.complete(
+            new ChatCommand("逐句解释", "03-stack-queue", null, List.of(
+                new ChatTurn("user", "int main(void)\n{\n    return 0;\n}\n"),
+                new ChatTurn("assistant", "这段代码是一个最小的 C 程序。"))),
+            null,
+            KnowledgeAudience.STUDENT
+        );
+
+        assertThat(response.answer()).isEqualTo("先反转指针，再移动头指针。");
+        assertThat(response.sources()).isEmpty();
+        assertThat(noEvidenceModel.lastRequest.messages()).extracting(ModelMessage::content)
+            .anySatisfy(content -> assertThat(content).contains("只能依据学生自己提供的材料"));
+    }
+
+    @Test
+    void answersAFollowUpWhenAnEarlierMessageCarriedTheMaterialAsAnAttachment() {
+        CapturingModelClient noEvidenceModel = new CapturingModelClient();
+        ChatService noEvidence = new ChatService(
+            noEvidenceModel,
+            new KnowledgeSearchService(List.of(), 4),
+            repository,
+            new KnowledgeProperties(true, true, "unused", 4, 4, 1100)
+        );
+        noEvidenceModel.response = "这个文件里只有一个栈顶指针。";
+
+        ChatResponse response = noEvidence.complete(
+            new ChatCommand("这个文件定义了什么？", "03-stack-queue", null, List.of(
+                new ChatTurn("user", "看下这个文件", List.of(
+                    new ChatAttachment("stack.c", "file", "text/plain", "int top = -1;")))
+            )),
+            null,
+            KnowledgeAudience.STUDENT
+        );
+
+        assertThat(response.answer()).isEqualTo("这个文件里只有一个栈顶指针。");
+        assertThat(response.sources()).isEmpty();
+    }
+
+    @Test
+    void stillRefusesAFollowUpWhoseHistoryCarriesNoMaterial() {
+        CapturingModelClient noEvidenceModel = new CapturingModelClient();
+        ChatService noEvidence = new ChatService(
+            noEvidenceModel,
+            new KnowledgeSearchService(List.of(), 4),
+            repository,
+            new KnowledgeProperties(true, true, "unused", 4, 4, 1100)
+        );
+
+        // Talk alone is not material: the gate is about the learner's own code or files, not about having
+        // said something before. One stray semicolon is not a program either.
+        for (List<ChatTurn> historyTurns : List.of(
+            List.of(new ChatTurn("user", "上一问"), new ChatTurn("assistant", "上一答")),
+            List.of(new ChatTurn("user", "int top = -1;"))
+        )) {
+            assertThatThrownBy(() -> noEvidence.complete(
+                new ChatCommand("再讲一遍", "03-stack-queue", null, historyTurns), null, KnowledgeAudience.STUDENT))
+                .isInstanceOfSatisfying(ApiException.class, error -> {
+                    assertThat(error.status()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(error.code()).isEqualTo("CHAT_EVIDENCE_UNAVAILABLE");
+                });
+        }
+
+        assertThat(noEvidenceModel.lastRequest).isNull();
+    }
+
+    @Test
+    void streamsAndPersistsReasoningSeparatelyFromTheAnswer() {
+        model.reasoningFragments = List.of("Consider ", "the top.");
+        model.streamFragments = List.of("Push ", "the value.");
+        List<String> answers = new ArrayList<>();
+        List<String> thoughts = new ArrayList<>();
+        ChatResponse response = service.stream(
+            new ChatCommand("解释栈", "03-stack-queue", null, List.of(), true, "max", List.of()),
+            7L, KnowledgeAudience.STUDENT, "thought-stream", ignored -> {}, answers::add, thoughts::add);
+
+        assertThat(answers).containsExactly("Push ", "the value.");
+        assertThat(thoughts).containsExactly("Consider ", "the top.");
+        assertThat(response.answer()).isEqualTo("Push the value.");
+        assertThat(response.reasoning()).isEqualTo("Consider the top.");
+        assertThat(repository.savedReasoning).isEqualTo(response.reasoning());
+        assertThat(model.lastRequest.thinkingEnabled()).isTrue();
+        assertThat(model.lastRequest.maxTokens()).isEqualTo(65_536);
+        assertThat(model.lastRequest.reasoningEffort()).isEqualTo("max");
+    }
+
+    @Test
+    void retryUsesEditedPromptSettingsAndOnlyPrecedingHistory() {
+        ChatAttachment file = new ChatAttachment("stack.c", "file", "text/plain", "int top = -1;");
+        ChatCommand original = new ChatCommand("解释栈", "03-stack-queue", "session-1", List.of(), true, "max", List.of(file));
+        repository.retry = new ChatRetry(11, 14, original, List.of(
+            new ChatTurn("user", "earlier question"), new ChatTurn("assistant", "earlier answer")));
+        model.response = "New answer";
+
+        ChatResponse response = service.complete(
+            new ChatCommand("请改为解释栈的入栈操作", null, "session-1", List.of(new ChatTurn("user", "later question")),
+                false, "low", List.of(), 11L), 7L, KnowledgeAudience.STUDENT);
+
+        assertThat(model.lastRequest.messages()).extracting(ModelMessage::content)
+            .containsSubsequence("earlier question", "earlier answer")
+            .noneMatch(content -> content.contains("later question"));
+        assertThat(model.lastRequest.messages().getLast().content()).contains("请改为解释栈的入栈操作");
+        assertThat(model.lastRequest.messages().getLast().content()).doesNotContain("stack.c");
+        assertThat(model.lastRequest.thinkingEnabled()).isFalse();
+        assertThat(model.lastRequest.maxTokens()).isEqualTo(8_192);
+        assertThat(model.lastRequest.reasoningEffort()).isNull();
+        assertThat(repository.replaced.messageId()).isEqualTo(repository.retry.messageId());
+        assertThat(repository.replaced.lastMessageId()).isEqualTo(repository.retry.lastMessageId());
+        assertThat(repository.replaced.command().prompt()).isEqualTo("请改为解释栈的入栈操作");
+        assertThat(repository.replaced.command().reasoningEffort()).isEqualTo("low");
+        assertThat(repository.saved).isEmpty();
+        assertThat(response.sessionId()).isEqualTo("session-1");
+    }
+
+    @Test
+    void retryFailureNeverReplacesTheStoredExchange() {
+        repository.retry = new ChatRetry(11, 14,
+            new ChatCommand("解释栈", "03-stack-queue", "session-1", List.of()), List.of());
+        model.failure = new ModelClientException(ModelErrorCode.MODEL_REQUEST_TIMEOUT);
+        assertThatThrownBy(() -> service.complete(
+            new ChatCommand("ignored", null, "session-1", List.of(), false, null, List.of(), 11L),
+            7L, KnowledgeAudience.STUDENT)).isInstanceOf(ApiException.class);
+        assertThat(repository.replaced).isNull();
+        assertThat(repository.saved).isEmpty();
+    }
+
     private static final class CapturingModelClient implements ModelClient {
         private ModelRequest lastRequest;
         private String response;
         private List<String> streamFragments = List.of();
+        private List<String> reasoningFragments = List.of();
+        private ModelClientException failure;
 
         @Override
         public ModelResponse complete(ModelRequest request) {
             lastRequest = request;
+            if (failure != null) throw failure;
             return new ModelResponse(response);
         }
 
         @Override
         public void stream(ModelRequest request, ModelStreamHandler handler) {
             lastRequest = request;
+            reasoningFragments.forEach(handler::onReasoning);
             streamFragments.forEach(handler::onContent);
         }
     }
@@ -202,6 +347,33 @@ class ChatServiceTest {
         private final Map<String, List<ChatTurn>> history = new LinkedHashMap<>();
         private final List<SavedExchange> saved = new ArrayList<>();
         private boolean chapterExists = true;
+        private String savedReasoning;
+        private ChatRetry retry;
+        private ChatRetry replaced;
+
+        @Override
+        public String saveExchange(long userId, ChatCommand command, String answer, List<ChatSource> sources, String reasoning) {
+            savedReasoning = reasoning;
+            return saveExchange(userId, command.sessionId(), command.chapterId(), command.prompt(), answer, sources);
+        }
+
+        @Override
+        public Optional<ChatRetry> prepareRetry(long userId, String sessionId, long messageId, int limit) {
+            return Optional.ofNullable(retry);
+        }
+
+        @Override
+        public String replaceExchange(long userId, ChatRetry retry, String answer, List<ChatSource> sources, String reasoning) {
+            replaced = retry;
+            return retry.command().sessionId();
+        }
+
+        @Override
+        public String replaceExchange(long userId, ChatRetry retry, ChatCommand command, String answer,
+                                      List<ChatSource> sources, String reasoning) {
+            replaced = new ChatRetry(retry.messageId(), retry.lastMessageId(), command, retry.history());
+            return command.sessionId();
+        }
 
         @Override
         public boolean isPublishedChapter(String chapterId) {

@@ -16,6 +16,7 @@ import tools.jackson.databind.json.JsonMapper;
 class KnowledgeCorpusLoaderTest {
 
     private static final String REVIEWED_LABEL = "> OCR质量：已对照原始教材 PDF 核验（2026-09-16）";
+    private static final String LOCAL_DEVELOPMENT_LABEL = "> 本地开发种子：已由项目组复核（2026-10-04，无版权合成正文）";
     private static final String PENDING_LABEL = "> OCR质量：大模型初审需核（公式、代码、图表或局部文本须回看原始 PDF）";
 
     @TempDir
@@ -67,6 +68,46 @@ class KnowledgeCorpusLoaderTest {
         assertThat(corpus.chunks()).extracting(KnowledgeChunk::pageLabel)
             .contains("第 35 页", "第 36 页");
         assertThat(corpus.chunks()).anySatisfy(chunk -> assertThat(chunk.content()).contains("头插法"));
+    }
+
+    @Test
+    void acceptsAnExplicitlyMarkedLocalDevelopmentSeed() throws Exception {
+        String lesson = """
+            # 课时编号：03-01
+            # 课时标题：栈与队列基础
+
+            ### 教材页 1（PDF页 1）
+
+            %s
+
+            栈遵循后进先出，入栈和出栈都发生在栈顶；队列遵循先进先出。
+            """.formatted(LOCAL_DEVELOPMENT_LABEL);
+        writeLesson("03-01-栈与队列-基础.md", lesson);
+        writeManifest(Map.of("03-01-栈与队列-基础.md", entry(
+            "lessons/03-01-栈与队列-基础.md", "第 1 页", 1, 1)));
+
+        KnowledgeCorpus corpus = new KnowledgeCorpusLoader(mapper).load(temporaryDirectory, 400);
+
+        assertThat(corpus.stats().available()).isTrue();
+        assertThat(corpus.stats().rejections()).isEmpty();
+        assertThat(corpus.chunks()).singleElement().satisfies(chunk -> {
+            assertThat(chunk.chapterId()).isEqualTo("03-stack-queue");
+            assertThat(chunk.content()).contains("后进先出");
+        });
+    }
+
+    @Test
+    void loadsTheTrackedDevelopmentKnowledgeDirectory() {
+        Path directory = trackedDevelopmentKnowledgeDirectory();
+
+        KnowledgeCorpus corpus = new KnowledgeCorpusLoader(mapper).load(directory, 400);
+
+        assertThat(corpus.stats().available()).isTrue();
+        assertThat(corpus.stats().lessonFiles()).isGreaterThanOrEqualTo(4);
+        assertThat(corpus.chunks()).isNotEmpty();
+        assertThat(corpus.chunks()).extracting(KnowledgeChunk::chapterId)
+            .contains("02-linear-list", "03-stack-queue", "06-tree", "07-graph");
+        assertThat(corpus.chunks()).anySatisfy(chunk -> assertThat(chunk.content()).contains("栈"));
     }
 
     @Test
@@ -245,6 +286,18 @@ class KnowledgeCorpusLoaderTest {
     private void writeLesson(String name, String body) throws Exception {
         Path lessons = Files.createDirectories(temporaryDirectory.resolve("lessons"));
         Files.writeString(lessons.resolve(name), body, StandardCharsets.UTF_8);
+    }
+
+    private Path trackedDevelopmentKnowledgeDirectory() {
+        List<Path> candidates = List.of(
+            Path.of("knowledge", "dev"),
+            Path.of("..", "..", "knowledge", "dev")
+        );
+        return candidates.stream()
+            .map(path -> path.toAbsolutePath().normalize())
+            .filter(Files::isDirectory)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Tracked knowledge/dev directory is missing"));
     }
 
     private void writeManifest(Map<String, Map<String, Object>> accepted) throws Exception {

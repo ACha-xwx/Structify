@@ -145,20 +145,12 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
     }
 
     private String serialize(ModelRequest request, boolean stream) {
-        List<Map<String, String>> messages = new ArrayList<>(request.messages().size());
-        for (ModelMessage message : request.messages()) {
-            Map<String, String> item = new LinkedHashMap<>();
-            item.put("role", message.role());
-            item.put("content", message.content());
-            messages.add(item);
-        }
-
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", requiredModelName());
-        payload.put("messages", messages);
+        payload.put("messages", ModelPayload.messages(request));
         if (request.jsonObject()) payload.put("response_format", Map.of("type", "json_object"));
-        if (disablesThinking(request) && "deepseek".equalsIgnoreCase(properties.provider())) payload.put("thinking", Map.of("type", "disabled"));
-        if (request.temperature() != null) {
+        boolean thinking = ModelPayload.thinking(payload, request, properties.provider(), Boolean.TRUE.equals(properties.disableThinking()));
+        if (!thinking && request.temperature() != null) {
             payload.put("temperature", request.temperature());
         }
         if (request.maxTokens() != null) {
@@ -205,6 +197,10 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
                 Long totalTokens = reportedTotalTokens(event);
                 if (totalTokens != null) {
                     handler.onUsage(totalTokens);
+                }
+                JsonNode reasoning = event.path("choices").path(0).path("delta").path("reasoning_content");
+                if (reasoning.isString() && !reasoning.asText().isEmpty()) {
+                    handler.onReasoning(reasoning.asText());
                 }
                 String content = streamContent(event);
                 if (content == null || content.isEmpty()) {
@@ -317,7 +313,7 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
     }
 
     private int maximumResponseBytes() {
-        return properties.maximumResponseBytes() > 0 ? properties.maximumResponseBytes() : 1_048_576;
+        return properties.maximumResponseBytes() > 0 ? properties.maximumResponseBytes() : ModelProperties.DEFAULT_MAX_RESPONSE_BYTES;
     }
 
     private String readResponseBody(InputStream input) {

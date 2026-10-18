@@ -11,6 +11,7 @@ record ModelConfigGenerationControls(
 
     static final double DEFAULT_TEMPERATURE = 0.2;
     static final int DEFAULT_MAX_OUTPUT_TOKENS = 1_024;
+    static final int MAX_OUTPUT_TOKENS = 65_536;
     static final long DEFAULT_REQUEST_TIMEOUT_MS = 45_000;
     static final int DEFAULT_RETRY_COUNT = 0;
     static final long DEFAULT_DAILY_TOKEN_QUOTA = 0;

@@ -217,7 +217,7 @@ public class ModelConfigService {
             || temperature < 0.0
             || temperature > 2.0
             || maxOutputTokens < 1
-            || maxOutputTokens > 32_768
+            || maxOutputTokens > ModelConfigGenerationControls.MAX_OUTPUT_TOKENS
             || requestTimeoutMs < 1_000
             || requestTimeoutMs > 120_000
             || retryCount < 0

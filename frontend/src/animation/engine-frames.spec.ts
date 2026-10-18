@@ -1,0 +1,198 @@
+import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+import { normalizeFrame, type AnimationFrame } from "./frame";
+
+/**
+ * The engine's output must be drawable - every capability, every frame.
+ *
+ * The engine and the renderer are two halves of one contract and each has its own tests; nothing checked the
+ * seam. A simulator that reports its content in a field the renderer does not read (or reports nothing at all)
+ * passes every engine test and still shows a learner an empty canvas, and that is exactly how the "空白画面"
+ * and "高亮不动" bugs got in. So this spec takes the engine's *standard* examples for all of its capabilities,
+ * runs them through the real engine, and pushes every frame through the real `normalizeFrame`.
+ *
+ * It loads the engine directly (CommonJS, outside the frontend tsconfig) rather than over HTTP: no server, no
+ * credentials, no model quota, and it fails on the pull request instead of in class.
+ */
+/**
+ * 默认用仓里的引擎。`STRUCTIFY_ENGINE_DIR` 可以指向**另一棵树**（`git worktree add <dir> <base>` 检出的基线），
+ * 用来回答"这帧同画面是这次改动引进的，还是本来就有的"——判定渲染器不变、只换引擎，差异就是引擎的。
+ */
+const ENGINE =
+  process.env.STRUCTIFY_ENGINE_DIR ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../backend/dsvp/engine");
+const require = createRequire(import.meta.url);
+
+/**
+ * ⚠️ **镜像构建时引擎不在构建上下文里**：`deployment/Dockerfile.node` 的 frontend 阶段只 `COPY frontend/`
+ * （外加两个 classroom-code 的 json），而它在构建阶段就跑 `npm test`。
+ * 于是在生产镜像里 `backend/dsvp/engine` 根本不存在 —— 模块顶层 `require` 会直接抛，
+ * 整个 `npm test` 挂掉、**镜像构建失败**（2026-09-24 踩过：把这份 spec `git rm --cached` 掉了）。
+ *
+ * 但那份文件又确实该留在版本库里（它以 `.gitignore` 忽略过一次，切基线时被整棵替换、**彻底丢过**）。
+ * 两个都要保住的办法：**引擎目录不在时整份跳过**，而不是让它加载失败。
+ * 这样本地/CI 照常跑 167 条能力的逐帧断言，镜像构建里它安静地 skip，`npm test` 仍然是绿的。
+ */
+const enginePresent =
+  existsSync(path.join(ENGINE, "animation-capabilities.js")) && existsSync(path.join(ENGINE, "dsvp-engine.js"));
+const engine = enginePresent
+  ? {
+      ...require(path.join(ENGINE, "animation-capabilities")),
+      ...require(path.join(ENGINE, "dsvp-engine")),
+    }
+  : null;
+const ANIMATION_CAPABILITY_REGISTRY = engine?.ANIMATION_CAPABILITY_REGISTRY ?? {};
+const resolveVisualizationIntent = engine?.resolveVisualizationIntent;
+const simulateOperation = engine?.simulateOperation;
+const traceToPlayerData = engine?.traceToPlayerData;
+
+/** What the learner actually sees, in one string: the panels, the pointers drawn on them, and the captions. */
+function picture(frame: AnimationFrame): string {
+  return JSON.stringify({
+    panels: frame.panels.map((panel) => [
+      panel.role,
+      panel.values,
+      panel.nodes,
+      panel.edges,
+      // 线索二叉树的线索是画出来的虚线：只有线索多一根、画面就变了，不能算同画面。
+      panel.threads,
+      panel.range,
+      panel.focusCell,
+      panel.cursors.map((cursor) => `${cursor.key}@${cursor.index}`),
+      panel.chips,
+      // 结点框里每格写什么（next/prior 指向谁）+ 这一帧在改哪一格：两者都是画出来的东西，
+      // 少算了它们，"两帧只差一个被点亮的格子"就会被误判成同画面。
+      panel.chainText,
+      panel.chainWrite,
+    ]),
+    chips: frame.chips,
+    invariant: frame.invariant,
+  });
+}
+
+/** A frame with nothing on it: no panel carries content and there is no caption either. */
+function blank(frame: AnimationFrame): boolean {
+  return frame.panels.length === 0 && frame.chips.length === 0 && !frame.invariant;
+}
+
+interface Audited {
+  capability: string;
+  player: { steps: Array<Record<string, unknown>>; initial?: unknown };
+}
+
+const audited: Audited[] = [];
+const notReady: string[] = [];
+for (const definition of Object.values(ANIMATION_CAPABILITY_REGISTRY) as Array<{ capability: string }>) {
+  const resolution = resolveVisualizationIntent(
+    { needed: true, confidence: 1, capability: definition.capability, arguments: {}, sourceChunkIds: [] },
+    { allowDemoFallback: true, demoSourceRef: "全能力可绘制性检查" },
+  );
+  if (resolution.status !== "ready") {
+    notReady.push(`${definition.capability}: ${resolution.status}`);
+    continue;
+  }
+  audited.push({
+    capability: definition.capability,
+    player: traceToPlayerData(simulateOperation(resolution.toolRequest.request)),
+  });
+}
+
+/**
+ * Frames that draw the same thing as the frame before them, as of 2026-10-06.
+ *
+ * The baseline (teammate's v2.0.0 tree, before this round) had **24** of them; this round fixed 8 and left 16.
+ * The entries are mostly not defects but "解说/收尾" beats - 读栈顶、出栈完成、一段归并完毕 - where the caption
+ * says what happened while the picture is legitimately unchanged. The point of the list is the ratchet: it may
+ * only get shorter. Adding a capability here means answering "这一步真的动了什么吗" - which is exactly the
+ * question that caught six hash-probe frames and a shell-sort insert frame that changed nothing.
+ */
+const KNOWN_IDENTICAL = new Set([
+  "stack.push#3",
+  "stack.pop#1",
+  "stack.pop#3",
+  "queue.enqueue#1",
+  "queue.dequeue#3",
+  "string.kmp_match#3",
+  "string.kmp_match#8",
+  "heap_string.insert#1",
+  "sort.merge#3",
+  "sort.merge#7",
+  "sort.merge#11",
+  "sort.merge#17",
+  "sort.merge#22",
+  "sort.merge#31",
+  "external_sort.multiway_merge#11",
+]);
+
+/* 引擎不在（生产镜像的构建阶段）就整份跳过：`npm test` 必须仍然是绿的，镜像才构建得出来。 */
+describe.skipIf(!enginePresent)("engine frames are drawable", () => {
+  it("resolves a runnable standard example for every capability", () => {
+    expect(notReady).toEqual([]);
+    expect(audited.length).toBeGreaterThanOrEqual(160);
+  });
+
+  it("gives every step a frame the renderer can paint, and never two steps in a row that look the same", () => {
+    const missingFrame: string[] = [];
+    const blanks: string[] = [];
+    const noText: string[] = [];
+    const identical: string[] = [];
+
+    for (const { capability, player } of audited) {
+      let previous: string | null = null;
+      player.steps.forEach((step, index) => {
+        const where = `${capability}#${index}`;
+        if (!step.label || !step.note) noText.push(where);
+        const state = step.dsvpState;
+        if (!state) {
+          missingFrame.push(where);
+          previous = null;
+          return;
+        }
+        const frame = normalizeFrame(state as never);
+        if (blank(frame)) blanks.push(where);
+        const now = picture(frame);
+        // 两帧画得一模一样 = 学生点「下一步」什么都没发生。空面板、没画出来的高亮都是这么变成"看着像坏了"的。
+        if (previous !== null && now === previous && !KNOWN_IDENTICAL.has(where)) identical.push(where);
+        previous = now;
+      });
+    }
+
+    expect(missingFrame).toEqual([]);
+    expect(blanks).toEqual([]);
+    expect(noText).toEqual([]);
+    expect(identical).toEqual([]);
+  });
+
+  it("starts from the state before the operation, not from a half-built one", () => {
+    // 播放器的"起点"显示的是 player.initial（= trace 第 0 帧）。它必须是**操作之前**的样子：
+    // 一旦某一步先"申请了结点、数据还没写"，那个 `""` 占位就会出现在起点上——
+    // 学生看到的是"新结点已经在表里了"。Rrd 2026-10-06 一眼看出来的就是这个。
+    // （`null` 不算：哈希表空槽、循环缓冲区空位本来就是 null。）
+    const polluted = audited
+      .filter(({ player }) =>
+        (Array.isArray(player.initial) ? player.initial : []).some(
+          (panel) => panel && Array.isArray((panel as { values?: unknown[] }).values) && (panel as { values: unknown[] }).values.includes(""),
+        ),
+      )
+      .map(({ capability }) => capability);
+    expect(polluted).toEqual([]);
+  });
+
+  it("prints the ledger the animation work is tracked against", () => {
+    const frames = audited.reduce((total, item) => total + item.player.steps.length, 0);
+    const panels = audited.reduce(
+      (total, item) =>
+        total + item.player.steps.reduce((sum, step) => sum + normalizeFrame(step.dsvpState as never).panels.length, 0),
+      0,
+    );
+    const singleFrame = audited.filter((item) => item.player.steps.length <= 1).map((item) => item.capability);
+    // 台账只打印、不断言：数字变了要有人看见，但它本身不是判据。
+    console.log(
+      `\n能力 ${audited.length} / 帧 ${frames} / 面板 ${panels}` +
+        `\n天生一帧、没有过程可播的能力 ${singleFrame.length} 个：${singleFrame.join(", ")}`,
+    );
+    expect(panels).toBeGreaterThan(0);
+  });
+});

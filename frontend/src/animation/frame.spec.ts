@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { frameValueText, normalizeFrame, panelRoleLabel } from "./frame";
+import { collapseBrief, frameValueText, normalizeFrame, panelRoleLabel } from "./frame";
 import type { DsvpState } from "../shared/types/animation";
 
 /**
@@ -7,6 +7,109 @@ import type { DsvpState } from "../shared/types/animation";
  * pin the shapes the engine actually emits - they were read off real traces, not invented - so a change
  * in the engine that the frontend cannot draw shows up here instead of on a learner's screen.
  */
+
+describe("cursor publication", () => {
+  it("publishes every pointer the step reports, not just the one it focuses", () => {
+    // A compare stands on two cells at once; one highlight cannot say "i is here, j is there".
+    const frame = normalizeFrame({
+      kind: "sort",
+      view: [
+        { role: "array", values: [49, 38, 65, 97] },
+        { role: "meta", values: [], operation: "bubble", i: 1, j: 3 },
+      ],
+    } as DsvpState);
+
+    const panel = frame.panels[0];
+    expect(panel.cursors.map((cursor) => `${cursor.label}@${cursor.index}`)).toEqual(["j@3", "i@1"]);
+    // The single focus keeps the order it always had, so nothing that read it moved.
+    expect(panel.focus).toBe(3);
+  });
+
+  it("keeps a stack's own marker next to the slot the step is reading", () => {
+    const frame = normalizeFrame({ kind: "stack", items: [10, 20, 30], top: 2, current: 1 } as DsvpState);
+
+    expect(frame.panels[0].cursors.map((cursor) => `${cursor.label}@${cursor.index}`)).toEqual(["top@2", "当前@1"]);
+    expect(frame.panels[0].focus).toBe(2);
+  });
+
+  it("draws the values of a linked list as a chain and an array as plain cells", () => {
+    const list = normalizeFrame({
+      kind: "linked_list",
+      view: [{ role: "L", values: [10, 20, 30] }, { role: "meta", values: [], operation: "insert", current: 1 }],
+    } as DsvpState);
+    expect(list.panels[0].chain).not.toBeNull();
+    expect(list.panels[0].cursors.map((cursor) => cursor.key)).toEqual(["current"]);
+
+    const array = normalizeFrame({ kind: "sort", view: [{ role: "array", values: [1, 2] }] } as DsvpState);
+    expect(array.panels[0].chain).toBeNull();
+  });
+
+  it("shapes a node by its structure definition, not by 'lists all look alike'", () => {
+    // 双向链表每个结点同时存前驱和后继：框里要有 prior 一栏、结点之间要有反向箭头。
+    // 只画 next 就是把双向链表画成了单链表——2026-10-06 用户拿截图问的正是这个。
+    const doubly = normalizeFrame({
+      kind: "doubly_linked_list",
+      view: [{ role: "L", values: [10, 15, 20] }, { role: "meta", values: [], operation: "insert", position: 2 }],
+    } as DsvpState);
+    expect(doubly.panels[0].chain).toEqual({ lead: "prior", slots: ["next"], back: true, circular: false });
+
+    const singly = normalizeFrame({
+      kind: "linked_list",
+      view: [{ role: "L", values: [10, 15] }],
+    } as DsvpState);
+    expect(singly.panels[0].chain).toEqual({ lead: null, slots: ["next"], back: false, circular: false });
+
+    // 循环链表尾结点的 next 指回 head，所以要绕回去。
+    const circular = normalizeFrame({
+      kind: "circular_linked_list",
+      view: [{ role: "LA", values: [1, 3, 5] }, { role: "meta", values: [], circular: true }],
+    } as DsvpState);
+    expect(circular.panels[0].chain).toEqual({ lead: null, slots: ["next"], back: false, circular: true });
+  });
+});
+
+describe("brief cut", () => {
+  it("drops a stage's line-by-line frames but keeps that stage's last one", () => {
+    const steps = [
+      { label: "申请", phase: "line" },
+      { label: "写数据", phase: "line" },
+      { label: "定位 p", phase: "assign" },
+      { label: "接前驱", phase: "line" },
+      { label: "接后继", phase: "line" },
+      { label: "完成", phase: "free" },
+    ];
+    // 每段连续 line 只留最后一帧——那一帧就是这个阶段的完成态，信息不丢。
+    expect(collapseBrief(steps).map((step) => step.label)).toEqual(["写数据", "定位 p", "接后继", "完成"]);
+  });
+
+  it("leaves an operation without line frames completely untouched", () => {
+    // 排序/树/图没标 line：详细与精简两版必须一模一样，否则那个开关会把它们压坏。
+    const steps = [{ label: "比较", phase: "sort" }, { label: "交换", phase: "sort" }, { label: "完成", phase: null }];
+    expect(collapseBrief(steps)).toHaveLength(3);
+  });
+});
+
+describe("frame invariant", () => {
+  it("promotes the engine's invariant to a line of its own and keeps it out of the chips", () => {
+    // "什么成立" 是这一帧的标题句，不是又一个字段值：混在 i/j/mid 中间会被读成同一个层级的东西。
+    const frame = normalizeFrame({
+      kind: "sort",
+      view: [
+        { role: "array", values: [3, 1, 2] },
+        { role: "meta", values: [], operation: "bubble", i: 0, j: 1, invariant: "下标 1 到 2 已经排好", compareCount: 4, swapCount: 1 },
+      ],
+    } as DsvpState);
+
+    expect(frame.invariant).toBe("下标 1 到 2 已经排好");
+    expect(frame.chips.map((chip) => chip.label)).toEqual(expect.arrayContaining(["比较次数", "交换次数"]));
+    expect(frame.chips.map((chip) => chip.label)).not.toContain("invariant");
+  });
+
+  it("has no invariant line when the engine states none", () => {
+    const frame = normalizeFrame({ kind: "stack", items: [10], top: 0 } as DsvpState);
+    expect(frame.invariant).toBe("");
+  });
+});
 
 describe("normalizeFrame", () => {
   it("returns an empty frame for a step the engine did not annotate", () => {

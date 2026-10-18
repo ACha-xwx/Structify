@@ -1,7 +1,14 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import AnimationStage from "./AnimationStage.vue";
-import { initialFrame } from "./frame";
+import LiquidMetalButton from "../admin/components/LiquidMetalButton.vue";
+import RuntimeSelect from "../shared/components/RuntimeSelect.vue";
+import leftArrowIcon from "../assets/classroom/left-arrow.svg";
+import rightArrowIcon from "../assets/classroom/right-arrow.svg";
+import playIcon from "../assets/animation/play.svg";
+import pauseIcon from "../assets/animation/pause.svg";
+import loopIcon from "../assets/animation/loop.svg";
+import { collapseBrief, initialFrame } from "./frame";
 import { PLAYBACK_SPEEDS, useAnimationPlayback } from "./useAnimationPlayback";
 import { useI18n } from "../shared/i18n/locale";
 import type { AnimationDefinition } from "../shared/types/animation";
@@ -21,10 +28,21 @@ const props = withDefaults(defineProps<{
   placeholder?: string;
   /** Hides the headline when the caller already renders the title (the classroom does). */
   compact?: boolean;
-}>(), { placeholder: "", compact: false, trace: null });
+  controlsVariant?: "default" | "silver";
+}>(), { placeholder: "", compact: false, trace: null, controlsVariant: "default" });
 
 const { t } = useI18n();
-const steps = computed(() => props.definition?.steps ?? []);
+/**
+ * 两档粒度：**详细**＝一行代码一帧（像 debug 单步，默认）；**精简**＝每个阶段一帧。
+ *
+ * 分档由引擎标（`phase: "line"` 的是"中间过程帧"），所以排序/树/图这些没标 phase 的操作
+ * 两版完全一样——这个开关不会把它们压坏。
+ */
+const detail = ref<"debug" | "brief">("debug");
+const steps = computed(() => {
+  const all = props.definition?.steps ?? [];
+  return detail.value === "brief" ? collapseBrief(all) : all;
+});
 const stepCount = computed(() => steps.value.length);
 /** 这条动画的身份：标题 + 步数 + 首步标题。步数相同的两条动画也必须各自从起点开始播。 */
 const playbackIdentity = computed(() =>
@@ -33,6 +51,24 @@ const playbackIdentity = computed(() =>
 const playback = useAnimationPlayback(stepCount, { identity: playbackIdentity });
 
 const currentStep = computed(() => (playback.index.value >= 0 ? steps.value[playback.index.value] ?? null : null));
+/**
+ * True when the engine produced no process frames at all, so the whole animation is one picture.
+ *
+ * 初始化、取平方取中、伪随机这类操作本来就只有一个状态，引擎给不出中间帧。此时进度条上只有一格、
+ * 「下一步」按了也不动，学生只会以为演示坏了——把这件事说出来，比让他自己猜好。
+ */
+const singleFrame = computed(() => stepCount.value === 1);
+/**
+ * 这一帧的标题就是**一行代码**（`p->next = B->next`）。
+ *
+ * 判据是引擎的约定：**代码帧的 title 与 note 都是那行代码**（解释性帧两者不同）。
+ * 早先这里看的是 `phase === "assign"`，但 phase 后来兼作"详细/精简"的分档标记（`line`），
+ * 两者混在一起会让逐行帧丢掉等宽字体——真机验收抓到的。
+ */
+const headlineIsCode = computed(() => {
+  const step = currentStep.value;
+  return Boolean(step && step.note && step.note === step.label);
+});
 /** Before the first step the learner sees the input, not a blank canvas. */
 const initialState = computed(() => initialFrame(props.definition, props.trace));
 /** The one big line under the title: the step's concrete outcome (note) beats its category (label),
@@ -61,7 +97,10 @@ function onKeydown(event: KeyboardEvent) {
     </header>
 
     <template v-if="definition">
-      <p class="player__headline" aria-live="polite">{{ headline }}</p>
+      <p class="player__headline" :class="{ 'player__headline--code': headlineIsCode }" aria-live="polite">{{ headline }}</p>
+      <!-- 引擎给不出过程帧的操作（初始化、哈希函数…）整条动画只有一帧。不写这一句，
+           学生点「下一步」画面不动，只会以为坏了。 -->
+      <p v-if="singleFrame" class="player__single">{{ t("player.singleFrame") }}</p>
 
       <div class="player__viewport" tabindex="0" role="group" :aria-label="t('player.canvas')" @keydown="onKeydown">
         <!-- The initial frame is only for the "before the first step" position: once a step is active its
@@ -75,16 +114,50 @@ function onKeydown(event: KeyboardEvent) {
       </div>
 
       <div class="player__controls">
+        <template v-if="controlsVariant === 'silver'">
+          <LiquidMetalButton class="player__silver-control" view-mode="icon" :disabled="playback.atStart.value" :aria-label="t('player.previous')" :title="t('player.previous')" @click="playback.previous">
+            <template #icon><img class="player__icon" :src="leftArrowIcon" alt="" aria-hidden="true"></template>
+          </LiquidMetalButton>
+          <LiquidMetalButton class="player__silver-control" view-mode="icon" :aria-label="playback.playing.value ? t('player.pause') : t('player.play')" :title="playback.playing.value ? t('player.pause') : t('player.play')" @click="playback.toggle">
+            <template #icon><img class="player__icon" :src="playback.playing.value ? pauseIcon : playIcon" alt="" aria-hidden="true"></template>
+          </LiquidMetalButton>
+          <LiquidMetalButton class="player__silver-control" view-mode="icon" :disabled="playback.atEnd.value" :aria-label="t('player.next')" :title="t('player.next')" @click="playback.next">
+            <template #icon><img class="player__icon" :src="rightArrowIcon" alt="" aria-hidden="true"></template>
+          </LiquidMetalButton>
+          <LiquidMetalButton class="player__silver-control" view-mode="icon" :aria-label="t('player.reset')" :title="t('player.reset')" @click="playback.reset">
+            <template #icon><img class="player__icon" :src="loopIcon" alt="" aria-hidden="true"></template>
+          </LiquidMetalButton>
+        </template>
+        <template v-else>
         <button class="player__button" type="button" :disabled="playback.atStart.value" @click="playback.previous">{{ t("player.previous") }}</button>
         <button class="player__button player__button--primary" type="button" @click="playback.toggle">
           {{ playback.playing.value ? t("player.pause") : t("player.play") }}
         </button>
         <button class="player__button" type="button" :disabled="playback.atEnd.value" @click="playback.next">{{ t("player.next") }}</button>
         <button class="player__button" type="button" @click="playback.reset">{{ t("player.reset") }}</button>
+        </template>
         <span class="player__position">{{ playback.positionLabel.value }}</span>
+        <!-- 详细（一行代码一帧，默认）/ 精简（每个阶段一帧）。只对引擎标了"逐行帧"的操作有区别。 -->
+        <div class="player__detail" role="group" :aria-label="t('player.detailLabel')">
+          <button
+            type="button"
+            class="player__detail-option"
+            :class="{ 'player__detail-option--on': detail === 'debug' }"
+            :aria-pressed="detail === 'debug'"
+            @click="detail = 'debug'"
+          >{{ t("player.detailDebug") }}</button>
+          <button
+            type="button"
+            class="player__detail-option"
+            :class="{ 'player__detail-option--on': detail === 'brief' }"
+            :aria-pressed="detail === 'brief'"
+            @click="detail = 'brief'"
+          >{{ t("player.detailBrief") }}</button>
+        </div>
         <label class="player__speed">
           <span>{{ t("player.speed") }}</span>
-          <select v-model.number="playback.speed.value" :aria-label="t('player.speedLabel')">
+          <RuntimeSelect v-if="controlsVariant === 'silver'" v-model="playback.speed.value" class-name="player__speed-select" variant="reference" :options="PLAYBACK_SPEEDS.map(option => ({ value: option, label: `${option}×` }))" :ariaLabel="t('player.speedLabel')" />
+          <select v-else v-model.number="playback.speed.value" :aria-label="t('player.speedLabel')">
             <option v-for="option in PLAYBACK_SPEEDS" :key="option" :value="option">{{ option }}×</option>
           </select>
         </label>
@@ -132,6 +205,23 @@ function onKeydown(event: KeyboardEvent) {
   text-wrap: pretty;
 }
 
+/* 只有一帧的演示：说明白"这一步没有过程"，而不是留一个按了没反应的「下一步」。 */
+.player__single {
+  margin: 6px 0 0;
+  font-size: 19px;
+  color: var(--text-muted, #6f6d69);
+  text-wrap: pretty;
+}
+
+/* 标题本身是一行代码时用等宽字体：学生一眼分得出"这是程序"还是"这是解释"。
+   代码级动画的每一帧标题就是那行赋值（`p->next = B->next`），解释性文字越少越好。 */
+.player__headline--code {
+  font-family: var(--font-mono, ui-monospace, Consolas, monospace);
+  font-weight: 500;
+  letter-spacing: 0;
+  font-variant-ligatures: none;
+}
+
 /* The canvas the panels stand on: lighter than the cards inside it, so they read as raised. */
 .player__viewport {
   padding: 16px;
@@ -170,6 +260,11 @@ function onKeydown(event: KeyboardEvent) {
 .player__button--primary { border-color: transparent; background: var(--text); color: var(--surface); font-weight: 620; }
 .player__button--primary:hover:not(:disabled) { background: var(--accent-strong); border-color: transparent; }
 
+.player__silver-control { --liquid-width: 50px; --liquid-height: 50px; flex: 0 0 50px; }
+.player__icon { display: block; width: 24px; height: 24px; }
+:global([data-theme="dark"]) .player__icon { filter: invert(1); }
+.player__speed :deep(.player__speed-select) { width: 98px; flex: none; }
+
 .player__position {
   margin-left: auto;
   color: var(--text);
@@ -179,6 +274,27 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 .player__speed { display: inline-flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 19px; }
+
+/* 详细 / 精简 两档。做成连体胶囊：一眼看出这是"同一件事的两档"，而不是两个按钮。 */
+.player__detail {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.player__detail-option {
+  padding: 6px 16px;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 19px;
+  cursor: pointer;
+}
+
+.player__detail-option--on { background: var(--text); color: var(--surface); }
 .player__speed select {
   min-height: 40px;
   padding: 6px 14px;

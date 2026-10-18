@@ -14,6 +14,26 @@ class ClassroomPreparationSceneTest {
             teachingRole, "", List.of(), List.of(), true, List.of("01-01A"), "", "2.3.1", role, List.of());
     }
 
+    private static PresentationSlide hidden(String title) {
+        return new PresentationSlide("hidden", "deck", "deck title", 1, "01", title, "", "", "",
+            "", "", List.of(), List.of(), false, List.of("01-01A"), "", "", "", List.of());
+    }
+
+    /**
+     * A deck holds pages that are not teaching material - a cover, the school's own introduction, an
+     * acknowledgement - and marks them {@code shouldShow=false}. Walking them as teaching steps is how a
+     * lesson ended up narrating one topic over a page that shows another.
+     */
+    @Test
+    void pagesTheDeckMarksNotToShowNeverBecomeTeachingSteps() {
+        List<PresentationSlide> pages = List.of(
+            slide("1.1 数据结构的基础概念", "定义", "definition"),
+            hidden("学校简介"));
+
+        assertThat(ClassroomPreparation.taughtPages(pages)).extracting(PresentationSlide::title)
+            .containsExactly("1.1 数据结构的基础概念");
+    }
+
     @Test
     void reviewPagesAreIntroWhateverThePlanCalledThem() {
         // The regression this guards: a neighbouring deck's review page was filed under a summary scene

@@ -68,6 +68,69 @@ beforeEach(() => {
 });
 
 describe("animation lab", () => {
+  it("switches between the structured and sentence panels without losing either panel's input", async () => {
+    const wrapper = mountLab();
+    await flushPromises();
+
+    const tabs = wrapper.findAll('[role="tab"]');
+    expect(tabs).toHaveLength(2);
+    expect(tabs[0].attributes("aria-selected")).toBe("true");
+    expect(wrapper.findAll("select")).toHaveLength(3);
+
+    await wrapper.get('[role="tab"][aria-selected="false"]').trigger("click");
+    expect(wrapper.get('[role="tab"][aria-selected="true"]').text()).toContain("一句话描述");
+    expect(wrapper.find("textarea").exists()).toBe(true);
+    expect(wrapper.findAll("select")).toHaveLength(0);
+
+    await wrapper.get("textarea").setValue("看看快速排序如何分区");
+    await wrapper.find('[role="tab"]').trigger("click");
+    expect(wrapper.findAll("select")).toHaveLength(3);
+    await wrapper.get('[role="tab"][aria-selected="false"]').trigger("click");
+    expect(wrapper.get("textarea").element.value).toBe("看看快速排序如何分区");
+    wrapper.unmount();
+  });
+
+  it("keeps the introduction chapter out of the other chapters' capabilities", async () => {
+    api.listChapters.mockResolvedValue([
+      { id: "01-intro", chapterNumber: 1, title: "绪论", summary: "" },
+      { id: "06-tree", chapterNumber: 6, title: "树与二叉树", summary: "" },
+    ]);
+    const wrapper = mountLab();
+    await flushPromises();
+
+    const selects = wrapper.findAll("select");
+    expect(selects[1].findAll("option").map(option => option.text())).toEqual(["绪论"]);
+    expect(selects[1].attributes("disabled")).toBeDefined();
+    expect(selects[2].findAll("option")).toHaveLength(0);
+    expect(wrapper.findAll("button").find(button => button.text() === "生成动画")!.attributes("disabled")).toBeDefined();
+    expect(api.planAnimation).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("uses chapterNumber for opaque IDs and clears the old operation when switching to introduction", async () => {
+    api.listChapters.mockResolvedValue([
+      { id: "sorting-chapter", chapterNumber: 9, title: "内部排序", summary: "" },
+      { id: "intro-chapter", chapterNumber: 1, title: "绪论", summary: "" },
+    ]);
+    const wrapper = mountLab();
+    await flushPromises();
+
+    const selects = wrapper.findAll("select");
+    expect(selects[1].findAll("option").map(option => option.text())).toEqual(["排序"]);
+    expect(wrapper.findAll("input").length).toBeGreaterThan(0);
+    await selects[0].setValue("intro-chapter");
+    await flushPromises();
+    expect(selects[1].findAll("option").map(option => option.text())).toEqual(["绪论"]);
+    expect(selects[2].findAll("option")).toHaveLength(0);
+    expect(wrapper.findAll("input")).toHaveLength(0);
+
+    await selects[0].setValue("sorting-chapter");
+    await flushPromises();
+    expect(selects[2].findAll("option").length).toBeGreaterThan(0);
+    expect(wrapper.findAll("button").find(button => button.text() === "生成动画")!.attributes("disabled")).toBeUndefined();
+    wrapper.unmount();
+  });
+
   it("offers the capabilities of the selected chapter and runs the chosen one deterministically", async () => {
     api.planAnimation.mockResolvedValue({
       status: "ready",
@@ -204,6 +267,7 @@ describe("animation lab", () => {
 
     const wrapper = mountLab();
     await flushPromises();
+    await wrapper.get('[role="tab"][aria-selected="false"]').trigger("click");
     await wrapper.get("textarea").setValue("看看快速排序一趟怎么划分");
     await wrapper.findAll("button").find((button) => button.text() === "让模型选一个演示")!.trigger("click");
     await flushPromises();
@@ -254,6 +318,7 @@ describe("animation lab", () => {
 
     const wrapper = mountLab();
     await flushPromises();
+    await wrapper.get('[role="tab"][aria-selected="false"]').trigger("click");
     await wrapper.get("textarea").setValue("什么是排序？");
     await wrapper.findAll("button").find((button) => button.text() === "让模型选一个演示")!.trigger("click");
     await flushPromises();

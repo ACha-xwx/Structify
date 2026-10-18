@@ -20,6 +20,54 @@ const props = defineProps<{
 
 const { t } = useI18n();
 
+/**
+ * The cursors standing on one cell: `i` and `j` can share a cell, and a step may be reading while a stack
+ * marker sits elsewhere. Drawing them all is the point - a single highlight cannot say "i is here, j is
+ * there", which is exactly what a learner has to see during a compare or a partition.
+ */
+function cursorsOf(panel: FramePanel, cell: number) {
+  return panel.cursors.filter((cursor) => cursor.index === cell);
+}
+
+/** The lead cursor of a panel is the one the step is operating on; it gets the filled pill. */
+function isLeadCursor(panel: FramePanel, cursor: { key: string }): boolean {
+  return panel.cursors.length > 0 && panel.cursors[0].key === cursor.key;
+}
+
+/**
+ * 尾结点末端要不要画"绕回头结点"的那根箭头。
+ *
+ * 不能只看结构形状（`chain.circular`）：循环表**被改过指针之后**，尾结点的 next 可能已经指向别的结点
+ * （合并第一行 `p->next = B->next` 之后，A 的尾结点指向的是 2，不再指回自己的头结点）。
+ * 所以以引擎给的序号为准：末结点的 next 确实是**第 1 个结点**时才画那根绕回箭头。
+ */
+function chainWraps(panel: FramePanel): boolean {
+  if (!panel.chain?.circular || panel.values.length === 0) return false;
+  const lastNext = panel.chainText?.next?.[panel.values.length - 1];
+  if (lastNext === undefined) return true;
+  return lastNext === 1 || lastNext === "1";
+}
+
+/**
+ * 结点框里某一栏写什么。**指向谁用结点序号表示**（`→ 3` = 第 3 个结点）——
+ * 写值的话遇到重复数据就不直观了（`[20,20]` 分不清指向哪一个）；序号唯一，而且结点框上就标着序号。
+ * 优先用引擎给的（`panel.chainText`），没有才按相邻关系推。
+ */
+function chainSlotText(panel: FramePanel, cell: number, slot: string): string {
+  const fromEngine = panel.chainText?.[slot]?.[cell];
+  if (fromEngine !== undefined) return chainTargetText(fromEngine);
+  const last = panel.values.length - 1;
+  if (slot === "next") return cell < last ? chainTargetText(cell + 2) : panel.chain?.circular ? chainTargetText(1) : "NULL";
+  if (slot === "prior") return cell === 0 ? "NULL" : chainTargetText(cell);
+  return "NULL";
+}
+
+/** `2` → `→ 2`；`"B#2"` → `→ B#2`（跨表）；`null` → `NULL`。 */
+function chainTargetText(target: string | number | null): string {
+  if (target === null) return "NULL";
+  return `→ ${target}`;
+}
+
 const frame = computed<AnimationFrame>(() => normalizeFrame(props.state ?? props.step?.dsvpState ?? null));
 // A frame whose only content is metadata still says something (n, result, front/rear...); treating it as
 // "nothing to render" made such a step a completely blank canvas.
@@ -151,6 +199,11 @@ interface TreeLayout {
   height: number;
   nodes: PlacedNode[];
   edges: { x1: number; y1: number; x2: number; y2: number; active: boolean; loop: boolean }[];
+  /**
+   * 线索二叉树的线索：空孩子指针改指前驱/后继。画成虚线，**不参与布局**。
+   * `label` 非空的是"线索指向 NULL"（带 ltag/rtag 却找不到目标）——按教材画法吊在结点下方。
+   */
+  threads: { x1: number; y1: number; x2: number; y2: number; label: string }[];
   nodeWidth: (node: DsvpNode) => number;
 }
 
@@ -297,11 +350,48 @@ function layoutTree(panel: FramePanel): TreeLayout {
     })
     .filter((edge): edge is TreeLayout["edges"][number] => edge !== null);
 
+  // 线索：空孩子指针改指前驱/后继。它**不是父子边**，所以不参与上面的布局，只额外画一根虚线；
+  // 带 ltag/rtag 却在图上找不到目标（线索指向 NULL）的，按教材画法吊一小段虚线并标 NULL——
+  // 「p->ltag = 1」那一帧的可见变化就在这根短线上。
+  const threads: TreeLayout["threads"] = [];
+  const drawn = new Set<string>();
+  for (const thread of panel.threads) {
+    const from = positionOf.get(thread.from);
+    const to = positionOf.get(thread.to);
+    if (!from || !to) continue;
+    const node = byId.get(thread.from);
+    const half = (node ? widthOf(node) : 46) / 2;
+    const dy = NODE_HEIGHT / 2;
+    const left = thread.side === "L";
+    threads.push({
+      x1: left ? from.x - half : from.x + half,
+      y1: from.y + dy,
+      x2: left ? to.x + 6 : to.x - 6,
+      y2: to.y + (to.y >= from.y ? -dy : dy),
+      label: "",
+    });
+    drawn.add(`${thread.from}:${thread.side}`);
+  }
+  panel.nodes.forEach((node, index) => {
+    const id = String(node.id ?? index);
+    const placed = positionOf.get(id);
+    if (!placed) return;
+    const half = widthOf(node) / 2;
+    const dy = NODE_HEIGHT / 2;
+    if (Number(node.ltag) === 1 && !drawn.has(`${id}:L`)) {
+      threads.push({ x1: placed.x - half, y1: placed.y + dy, x2: placed.x - half - 16, y2: placed.y + dy + 26, label: "NULL" });
+    }
+    if (Number(node.rtag) === 1 && !drawn.has(`${id}:R`)) {
+      threads.push({ x1: placed.x + half, y1: placed.y + dy, x2: placed.x + half + 16, y2: placed.y + dy + 26, label: "NULL" });
+    }
+  });
+
   return {
     width,
-    height: PAD * 2 + maxDepth * LEVEL_HEIGHT + NODE_HEIGHT,
+    height: PAD * 2 + maxDepth * LEVEL_HEIGHT + NODE_HEIGHT + (threads.length ? 34 : 0),
     nodes,
     edges,
+    threads,
     nodeWidth: widthOf,
   };
 }
@@ -379,6 +469,9 @@ const graphLayouts = computed(() => {
       <!-- The engine's meta fields (front/rear/top/k/formula/stored...) belong to the frame, not to one
            panel; without this row they were computed and then dropped, so a step that reported "k = 7"
            showed nothing at all. -->
+      <!-- 不变式条：这一步"结构上什么成立"（"下标 0 到 i-1 已经排好"）。给学生的是能带到下一步去的那句话，
+           所以它是这一帧的标题句、单独占一行放在画布上方，而不是混进下面那排字段胶囊里。 -->
+      <p v-if="frame.invariant" class="stage__invariant">{{ frame.invariant }}</p>
       <div v-if="frame.chips.length" class="stage__meta">
         <span v-for="chip in frame.chips" :key="`meta-${chip.label}`" class="chip"><i>{{ chip.label }}</i>{{ chip.value }}</span>
       </div>
@@ -388,6 +481,65 @@ const graphLayouts = computed(() => {
         <template v-if="panel.kind === 'array' || panel.kind === 'text'">
           <!-- 空的顺序结构：容量已知就摆出空槽，容量未知就给一个大「空」字——空白画布说明不了任何事。 -->
           <p v-if="!panel.values.length" class="panel__vacant">{{ t("stage.emptyBucket") }}</p>
+          <!-- 链表家族：值本身没说明力，链接才是重点，所以画成结点框 + 箭头，而不是一排格子。 -->
+          <ol v-else-if="panel.chain" class="chain">
+            <li
+              v-for="(value, cell) in panel.values"
+              :key="`node-${cell}`"
+              class="chain__node"
+              :class="{ 'chain__node--focus': panel.focus === cell }"
+            >
+              <span class="chain__marks">
+                <span v-if="cell === 0" class="cursor cursor--primary">head</span>
+                <span
+                  v-for="cursor in cursorsOf(panel, cell)"
+                  :key="`${cell}-${cursor.key}`"
+                  class="cursor"
+                  :class="{ 'cursor--primary': cell === 0 && isLeadCursor(panel, cursor) }"
+                >{{ cursor.label }}</span>
+              </span>
+              <span class="chain__body">
+                <!-- 结点里有哪些槽位、写什么，全部来自结构定义（`panel.chain`）：双向链表多一格 prior，
+                     循环链表末结点的 next 写 head 而不是 NULL。以前这两样都被写死成单链表的画法。
+                     每一格**两行**：上面是字段名（prior / next），下面是它此刻指向谁——
+                     只写目标值就看不出哪格是哪个字段，只写字段名又看不出"next 指向谁"。 -->
+                <span
+                  v-if="panel.chain.lead"
+                  class="chain__slot chain__slot--lead"
+                  :class="{ 'chain__slot--writing': panel.chainWrite?.slot === panel.chain.lead && panel.chainWrite.index === cell }"
+                >
+                  <i class="chain__slot-name">{{ panel.chain.lead }}</i>
+                  <b class="chain__slot-target">{{ chainSlotText(panel, cell, panel.chain.lead) }}</b>
+                </span>
+                <span class="chain__value">
+                  <b class="chain__value-text">{{ isEmptyValue(value) ? "∅" : frameValueText(value) }}</b>
+                  <!-- 结点序号：槽位里那些 `→ 3` 指的就是这个号。重复数据也能分清谁指向谁。 -->
+                  <i class="chain__index">#{{ cell + 1 }}</i>
+                </span>
+                <!-- 正在被改写的那一格点亮——帧的标题就是那行代码（`p->next = B->next`），一格一亮对应一行。
+                     改的是**哪个字段**由引擎说了算（`p->next->prior = s` 亮的是 prior 格，不是 next 格）。 -->
+                <span
+                  v-for="slot in panel.chain.slots"
+                  :key="slot"
+                  class="chain__slot"
+                  :class="{ 'chain__slot--writing': panel.chainWrite?.slot === slot && panel.chainWrite.index === cell }"
+                >
+                  <i class="chain__slot-name">{{ slot }}</i>
+                  <b class="chain__slot-target">{{ chainSlotText(panel, cell, slot) }}</b>
+                </span>
+              </span>
+              <!-- 结点之间：正向一根；双向链表再在下面补一根反向的（prior 指向前驱）。 -->
+              <span v-if="cell < panel.values.length - 1" class="chain__links">
+                <span class="chain__link" aria-hidden="true"></span>
+                <span v-if="panel.chain.back" class="chain__link chain__link--back" aria-hidden="true"></span>
+              </span>
+              <!-- 循环链表：尾结点的 next 绕回首结点时，明写成一根回到 head 的箭头。 -->
+              <span v-else-if="chainWraps(panel)" class="chain__links chain__links--wrap">
+                <span class="chain__link" aria-hidden="true"></span>
+                <span class="chain__wrap">{{ t("stage.backToHead") }}</span>
+              </span>
+            </li>
+          </ol>
           <ol v-else class="cells">
             <li
               v-for="(value, cell) in panel.values"
@@ -395,6 +547,14 @@ const graphLayouts = computed(() => {
               class="cell"
               :class="{ 'cell--empty': isEmptyValue(value), 'cell--focus': panel.focus === cell, 'cell--inRange': panel.range && cell >= panel.range[0] && cell < panel.range[1] }"
             >
+              <span v-if="cursorsOf(panel, cell).length" class="cell__cursors">
+                <span
+                  v-for="cursor in cursorsOf(panel, cell)"
+                  :key="`${cell}-${cursor.key}`"
+                  class="cursor"
+                  :class="{ 'cursor--primary': isLeadCursor(panel, cursor) }"
+                >{{ cursor.label }}</span>
+              </span>
               <span v-if="!isEmptyValue(value)" class="cell__value">{{ frameValueText(value) }}</span>
               <span class="cell__index">{{ cell }}</span>
             </li>
@@ -464,6 +624,14 @@ const graphLayouts = computed(() => {
               :class="{ 'edge--active': edge.active }"
               :x1="edge.x1" :y1="edge.y1" :x2="edge.x2" :y2="edge.y2"
             />
+          </template>
+          <template v-for="(thread, threadIndex) in treeLayouts[index].threads" :key="`thread-${threadIndex}`">
+            <line
+              class="edge edge--thread"
+              :class="{ 'edge--thread-null': thread.label !== '' }"
+              :x1="thread.x1" :y1="thread.y1" :x2="thread.x2" :y2="thread.y2"
+            />
+            <text v-if="thread.label" class="thread__label" :x="thread.x2" :y="thread.y2 + 13" text-anchor="middle">{{ thread.label }}</text>
           </template>
           <g v-for="placed in treeLayouts[index].nodes" :key="`node-${placed.key}`" class="node" :class="`node--${placed.state}`">
             <rect
@@ -627,7 +795,195 @@ const graphLayouts = computed(() => {
 
 .cell--focus .cell__value { font-weight: 660; }
 
-.cell--inRange { border-style: dashed; }
+/* 正在处理的那一段（排序的一趟、折半查找的候选区间）：虚线边框 + 顶上一道细条，
+   一眼看出"工作量在缩小"。 */
+.cell--inRange {
+  border-style: dashed;
+  box-shadow: inset 0 3px 0 color-mix(in srgb, var(--stage-ink) 26%, transparent);
+}
+
+/* 具名游标：引擎一直在报 i/j/mid/top/front/rear，以前只在页眉印一遍，格子上什么都没有。
+   颜色在这是灰阶设计，靠"名字 + 主次填充"区分：当前那一个是实心，其余是描边。 */
+.cell__cursors,
+.chain__marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+}
+
+.cursor {
+  padding: 1px 7px;
+  border: 1px solid color-mix(in srgb, var(--stage-ink) 30%, transparent);
+  border-radius: 999px;
+  background: var(--stage-face);
+  color: var(--stage-ink-soft);
+  font-size: 14px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.cursor--primary {
+  border-color: var(--stage-ink);
+  background: var(--stage-ink);
+  color: var(--stage-face);
+}
+
+/* 链表：结点框 [值 | next] + 结点之间的箭头。值挤在一排格子里看不出"谁指向谁"。 */
+.chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chain__node {
+  position: relative;
+  display: flex;
+  align-items: center;
+  /* 给结点上方的具名指针留够一行的高度：`head` + `当前` 这种两枚标记必须并排在一行，
+     换行后会掉进结点框里把值盖住（2026-10-06 真机截图抓到的 `当前` 压在 `10 next` 上）。 */
+  padding-top: 26px;
+}
+
+/* 绝对定位的盒子默认宽度只从 `left:50%` 到父元素右边缘——结点宽的一半——所以 max-width 根本轮不到生效，
+   两枚标记必然换行。`width: max-content` 让盒子按内容撑开，再靠 translateX(-50%) 居中。 */
+.chain__marks {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 240px;
+  flex-wrap: nowrap;
+}
+
+.chain__body {
+  display: flex;
+  align-items: stretch;
+  border: 1px double color-mix(in srgb, var(--stage-ink) 22%, transparent);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--stage-cell);
+}
+
+.chain__node--focus .chain__body {
+  border-color: color-mix(in srgb, var(--stage-ink) 55%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--stage-ink) 18%, transparent);
+}
+
+.chain__value {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 1px;
+  min-width: 54px;
+  min-height: 48px;
+  padding: 0 6px;
+  color: var(--stage-ink);
+}
+
+.chain__value-text {
+  font-size: 19px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+/* 结点序号（第几个结点）。槽位里的 `→ 3` 指的就是它——重复数据靠这个才分得清。 */
+.chain__index {
+  color: var(--stage-ink-soft);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 结点框里的槽位：`prior` / `next`。两行——字段名在上、它此刻指向谁在下。
+   只写目标值看不出哪格是哪个字段，只写字段名又看不出"next 指向谁"，所以两样都要。 */
+.chain__slot {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 1px;
+  min-width: 52px;
+  padding: 2px 4px;
+  border-left: 1px solid color-mix(in srgb, var(--stage-ink) 18%, transparent);
+  background: color-mix(in srgb, var(--stage-ink) 6%, transparent);
+}
+
+.chain__slot-name {
+  color: var(--stage-ink-soft);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.2;
+}
+
+.chain__slot-target {
+  color: var(--stage-ink-soft);
+  font-size: 15px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+/* 值左边的槽位（双向链表的 prior）：竖线画在右边。 */
+.chain__slot--lead {
+  border-left: none;
+  border-right: 1px solid color-mix(in srgb, var(--stage-ink) 18%, transparent);
+}
+
+/* 这一帧正在改写的那一格（帧标题就是那行代码，比如 `p->next = B->next`）：
+   点亮它，"断了哪根、接上哪根"就不用旁白。 */
+.chain__slot--writing {
+  background: color-mix(in srgb, var(--stage-focus) 18%, var(--stage-face));
+  color: var(--stage-ink);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--stage-focus) 45%, transparent);
+}
+
+/* 结点之间的箭头区：正向一根；双向链表在下面再补一根反向的，两根都居中于结点框。 */
+.chain__links {
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chain__link {
+  position: relative;
+  width: 28px;
+  height: 2px;
+  margin: 0 3px;
+  background: var(--stage-line);
+}
+
+/* 反向箭头直接镜像整根线（含箭头尖）：`scaleX(-1)` 一定指向左，比手算旋转角度可靠。 */
+.chain__link--back { transform: scaleX(-1); }
+
+.chain__links--wrap { flex-direction: row; align-items: center; gap: 6px; }
+
+.chain__wrap {
+  padding: 1px 7px;
+  border: 1px dashed color-mix(in srgb, var(--stage-ink) 34%, transparent);
+  border-radius: 999px;
+  color: var(--stage-ink-soft);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.chain__link::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: -4px;
+  width: 9px;
+  height: 9px;
+  border-top: 2px solid var(--stage-line);
+  border-right: 2px solid var(--stage-line);
+  transform: rotate(45deg);
+}
 
 .cell__value {
   font-size: 19px;
@@ -698,6 +1054,10 @@ const graphLayouts = computed(() => {
 
 .edge { fill: none; stroke: var(--stage-line); stroke-width: 1.8; }
 .edge--active { stroke: var(--stage-focus); stroke-width: 3.4; }
+/* 线索指针：虚线，和"父子边"一眼可分。指向 NULL 的那一小段用更浅的墨色。 */
+.edge--thread { stroke-dasharray: 5 4; stroke-width: 1.6; }
+.edge--thread-null { stroke: var(--stage-ink-soft); }
+.thread__label { fill: var(--stage-ink-soft); font-size: 11px; letter-spacing: .04em; }
 .edge__weight { fill: var(--stage-ink-soft); font-size: 13px; }
 
 .node__box { fill: var(--stage-cell); stroke: var(--stage-line); stroke-width: 1.8; }
@@ -717,6 +1077,19 @@ const graphLayouts = computed(() => {
 
 /* One row for the frame's own metadata, above the panels it describes. */
 .stage__meta { display: flex; flex-wrap: wrap; gap: 7px; }
+
+/* 不变式条：现在这一步"什么成立"。它是学生要带到下一步去的那句话，不是又一个字段值，
+   所以字不能小（≥19px）、独占一行，并用左侧竖线和大面积底色和胶囊区分开。 */
+.stage__invariant {
+  margin: 0 0 10px;
+  padding: 10px 14px;
+  border-left: 4px solid color-mix(in srgb, var(--stage-ink) 30%, transparent);
+  border-radius: 10px;
+  background: var(--stage-cell);
+  color: var(--stage-ink);
+  font-size: 19px;
+  line-height: 1.5;
+}
 
 .chip {
   display: inline-flex;

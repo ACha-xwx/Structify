@@ -1,0 +1,118 @@
+{
+  "version": 2,
+  "policy": "仓库内无版权合成开发种子；仅供本地开发和手动验收，不代表正式教材内容。",
+  "accepted": [
+    {
+      "source": "02-01-线性表与顺序表.md",
+      "target": "lessons/02-01-线性表与顺序表.md",
+      "targetSha256": "2bed376f22a83a2e479c27fa303dba17cfa803456430d7a57a73c96defe3b283",
+      "pageRange": "第 1–2 页",
+      "pages": [
+        {
+          "page": 1,
+          "pdfPage": 1
+        },
+        {
+          "page": 2,
+          "pdfPage": 2
+        }
+      ]
+    },
+    {
+      "source": "02-03-链表与基本运算.md",
+      "target": "lessons/02-03-链表与基本运算.md",
+      "targetSha256": "7fe1c1167058d0f3d6ff016dcefc9bc457022f64a574c8b04ace7051d3735f2b",
+      "pageRange": "第 1–2 页",
+      "pages": [
+        {
+          "page": 1,
+          "pdfPage": 1
+        },
+        {
+          "page": 2,
+          "pdfPage": 2
+        }
+      ]
+    },
+    {
+      "source": "03-01-栈与队列-基础.md",
+      "target": "lessons/03-01-栈与队列-基础.md",
+      "targetSha256": "c437f28f890acbe5d7f89431cb61ac449ee9533c88b4ca749fddd5b9372e9a53",
+      "pageRange": "第 1–2 页",
+      "pages": [
+        {
+          "page": 1,
+          "pdfPage": 1
+        },
+        {
+          "page": 2,
+          "pdfPage": 2
+        }
+      ]
+    },
+    {
+      "source": "06-01-树与二叉树-遍历.md",
+      "target": "lessons/06-01-树与二叉树-遍历.md",
+      "targetSha256": "29c738c5965f6821d7711ddd9e49b75c298bb4be8cf9ddb86f985ac3bd66e5c7",
+      "pageRange": "第 1–2 页",
+      "pages": [
+        {
+          "page": 1,
+          "pdfPage": 1
+        },
+        {
+          "page": 2,
+          "pdfPage": 2
+        }
+      ]
+    },
+    {
+      "source": "07-01-图与基本遍历.md",
+      "target": "lessons/07-01-图与基本遍历.md",
+      "targetSha256": "0ac9a3976afbe7ffc1de58f523543074bf4ac6b8af120553910e270a27504f34",
+      "pageRange": "第 1–2 页",
+      "pages": [
+        {
+          "page": 1,
+          "pdfPage": 1
+        },
+        {
+          "page": 2,
+          "pdfPage": 2
+        }
+      ]
+    },
+    {
+      "source": "08-01-查找与哈希.md",
+      "target": "lessons/08-01-查找与哈希.md",
+      "targetSha256": "125d87c01d7eb1d86967459d90ab9add8b1e1a6fee6e0e514166b625dd1a008b",
+      "pageRange": "第 1–2 页",
+      "pages": [
+        {
+          "page": 1,
+          "pdfPage": 1
+        },
+        {
+          "page": 2,
+          "pdfPage": 2
+        }
+      ]
+    },
+    {
+      "source": "09-01-排序方法-复杂度.md",
+      "target": "lessons/09-01-排序方法-复杂度.md",
+      "targetSha256": "749a16508c89f88d1d260e160f928f69cf2cf160dcebb612be6e9bc6147f56bb",
+      "pageRange": "第 1–2 页",
+      "pages": [
+        {
+          "page": 1,
+          "pdfPage": 1
+        },
+        {
+          "page": 2,
+          "pdfPage": 2
+        }
+      ]
+    }
+  ]
+}

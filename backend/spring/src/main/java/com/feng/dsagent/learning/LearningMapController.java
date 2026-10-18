@@ -1,0 +1,27 @@
+package com.feng.dsagent.learning;
+
+import com.feng.dsagent.security.AuthenticatedUser;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * The learner's own map. Authentication is required by the global rule, and the map is always the caller's:
+ * there is no user id in the path, so nobody can ask for somebody else's profile.
+ */
+@RestController
+@RequestMapping("/api/v1/users/learning-map")
+class LearningMapController {
+
+    private final LearningMapService map;
+
+    LearningMapController(LearningMapService map) {
+        this.map = map;
+    }
+
+    @GetMapping
+    LearningMapService.LearningMap read(@AuthenticationPrincipal AuthenticatedUser user) {
+        return map.forUser(user.userId());
+    }
+}

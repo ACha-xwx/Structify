@@ -79,7 +79,7 @@ app:
     name: ${MODEL_NAME:}
     timeout: ${MODEL_TIMEOUT:PT45S}
     stream-idle-timeout: ${MODEL_STREAM_IDLE_TIMEOUT:PT30S}
-    maximum-response-bytes: ${MODEL_MAX_RESPONSE_BYTES:1048576}
+    maximum-response-bytes: ${MODEL_MAX_RESPONSE_BYTES:33554432}
     # true: never ask the provider to spend tokens on hidden reasoning (DeepSeek "thinking").
     # Retrieval supplies the facts, so reasoning tokens are pure cost here.
     disable-thinking: ${MODEL_DISABLE_THINKING:true}
@@ -94,6 +94,9 @@ app:
     minimum-score: ${KNOWLEDGE_MIN_SCORE:8}
     search-limit: ${KNOWLEDGE_SEARCH_LIMIT:4}
     chunk-size: ${KNOWLEDGE_CHUNK_SIZE:1100}
+  chat:
+    attachments:
+      directory: ${CHAT_ATTACHMENTS_DIR:../../private/chat-attachments}
   resources:
     directory: ${RESOURCE_DIR:../../private/course-content}
   classroom:

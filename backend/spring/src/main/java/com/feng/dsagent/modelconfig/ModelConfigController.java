@@ -88,7 +88,7 @@ public class ModelConfigController {
         @NotBlank @Size(max = 512) String model,
         @Size(max = 4096) String apiKey,
         @DecimalMin("0.0") @DecimalMax("2.0") Double temperature,
-        @Min(1) @Max(32768) Integer maxOutputTokens,
+        @Min(1) @Max(ModelConfigGenerationControls.MAX_OUTPUT_TOKENS) Integer maxOutputTokens,
         @Min(1000) @Max(120000) Long requestTimeoutMs,
         @Min(0) @Max(5) Integer retryCount,
         @Min(0) @Max(10000000) Long dailyTokenQuota,

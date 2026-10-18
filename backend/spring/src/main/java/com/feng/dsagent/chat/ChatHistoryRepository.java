@@ -9,5 +9,7 @@ interface ChatHistoryRepository {
 
     Optional<ChatSessionView> findSession(long userId, String sessionId);
 
+    boolean updateSession(long userId, String sessionId, String title, Boolean pinned);
+
     boolean deleteSession(long userId, String sessionId);
 }

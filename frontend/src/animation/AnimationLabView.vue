@@ -4,6 +4,10 @@ import { useRoute, useRouter } from "vue-router";
 import AnimationPlayer from "./AnimationPlayer.vue";
 import catalog from "./capability-catalog.json";
 import BrandStage from "../shared/components/BrandStage.vue";
+import AiTitle from "../shared/components/AiTitle.vue";
+import RuntimeSelect from "../shared/components/RuntimeSelect.vue";
+import LiquidMetalButton from "../admin/components/LiquidMetalButton.vue";
+import homeIcon from "../assets/classroom/home.svg";
 import NoticeDialog from "../shared/components/NoticeDialog.vue";
 import type { AnimationCatalog, AnimationCatalogStructure, DsvpCapabilityArgument, DsvpSimulationResponse } from "../shared/types/animation";
 import type { Chapter } from "../shared/types/course";
@@ -21,7 +25,7 @@ import { userApi } from "../user/runtime";
 const capabilities = catalog as AnimationCatalog;
 const route = useRoute();
 const router = useRouter();
-const { t } = useI18n();
+const { t, isEnglish } = useI18n();
 
 const chapters = ref<Chapter[]>([]);
 const chapterId = ref("");
@@ -42,13 +46,16 @@ const busy = ref(false);
 const demoFallback = ref(false);
 const observation = ref("");
 const observationSaved = ref(false);
+const activePanel = ref<"structured" | "prompt">("structured");
 
 const structureOptions = computed<AnimationCatalogStructure[]>(() => {
-  const chapter = chapterNumber(chapterId.value);
-  if (!chapter) return capabilities.structures;
-  const scoped = capabilities.structures.filter((item) => item.chapter === chapter);
-  return scoped.length ? scoped : capabilities.structures;
+  const chapter = chapters.value.find((item) => item.id === chapterId.value);
+  return chapter ? capabilities.structures.filter((item) => item.chapter === chapter.chapterNumber) : [];
 });
+
+const structureSelectOptions = computed(() => structureOptions.value.length
+  ? structureOptions.value.map((item) => ({ value: item.structure, label: item.label }))
+  : [{ value: "", label: chapterTitle(), disabled: true }]);
 
 const capabilityOptions = computed<DsvpCapabilityArgument[]>(
   () => structureOptions.value.find((item) => item.structure === structure.value)?.capabilities ?? [],
@@ -80,11 +87,6 @@ const playerDefinition = computed(() => {
   return { ...data, title: generatedTitle.value || data.title };
 });
 const canObserve = computed(() => Boolean(response.value?.animationRecordId));
-
-function chapterNumber(id: string): number | null {
-  const match = String(id ?? "").match(/^(\d{1,2})/);
-  return match ? Number(match[1]) : null;
-}
 
 /** A one-word reminder of the expected shape, from the canonical example the engine would use. */
 function hintFor(name: string, demo: unknown): string {
@@ -211,8 +213,9 @@ async function runFromPrompt() {
       .find((item) => item.capability === capability);
     generatedTitle.value = known?.label ?? capability;
     response.value = await userApi.simulateAnimation(request);
-    if (known) {
-      structure.value = capabilities.structures.find((item) => item.capabilities.includes(known))?.structure ?? structure.value;
+    const scopedStructure = known ? structureOptions.value.find((item) => item.capabilities.includes(known)) : null;
+    if (known && scopedStructure) {
+      structure.value = scopedStructure.structure;
       capabilityName.value = known.capability;
       resetArguments();
     }
@@ -243,8 +246,7 @@ function chapterTitle(): string {
   return chapters.value.find((item) => item.id === chapterId.value)?.title ?? t("lab.title");
 }
 
-/* Immediate on purpose: the first chapter can carry no structures of its own, in which case the scoped
-   list falls back to the same array and a lazy watch would never fire - leaving both pickers empty. */
+/* A chapter with no capabilities clears the previous chapter's selection and arguments. */
 watch(structureOptions, () => {
   if (!structureOptions.value.some((item) => item.structure === structure.value)) {
     structure.value = structureOptions.value[0]?.structure ?? "";
@@ -263,62 +265,99 @@ onMounted(() => void loadChapters());
   <BrandStage wide>
     <div class="lab">
       <header class="lab__head">
-        <h1 class="lab__title">{{ t("lab.title") }}</h1>
-        <button class="lab__link" type="button" @click="router.push('/')">{{ t("common.backHome") }}</button>
+        <AiTitle><h1 class="lab__title workbench-title">{{ t("lab.title") }}</h1></AiTitle>
       </header>
 
-      <div class="lab__grid">
+      <div class="lab__grid" :class="{ 'lab__grid--english': isEnglish }">
         <section class="panel" :aria-label="t('lab.pickOne')">
-          <label class="field">
-            <span class="field__label">{{ t("lab.chapter") }}</span>
-            <select v-model="chapterId" class="field__control">
-              <option v-for="chapter in chapters" :key="chapter.id" :value="chapter.id">{{ chapter.title }}</option>
-            </select>
-          </label>
+          <nav class="lab__panel-nav" :aria-label="t('lab.panelNavigation')">
+            <button
+              class="lab__panel-tab"
+              :class="{ 'lab__panel-tab--active': activePanel === 'structured' }"
+              type="button"
+              role="tab"
+              :aria-selected="activePanel === 'structured'"
+              @click="activePanel = 'structured'"
+            >
+              <svg class="lab__panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M4 5h16M4 12h10M4 19h7" />
+                <circle cx="18" cy="12" r="2" />
+                <circle cx="14" cy="19" r="2" />
+              </svg>
+              <span>{{ t("lab.panelStructured") }}</span>
+            </button>
+            <button
+              class="lab__panel-tab"
+              :class="{ 'lab__panel-tab--active': activePanel === 'prompt' }"
+              type="button"
+              role="tab"
+              :aria-selected="activePanel === 'prompt'"
+              @click="activePanel = 'prompt'"
+            >
+              <svg class="lab__panel-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4h9A2.5 2.5 0 0 1 19 6.5v7a2.5 2.5 0 0 1-2.5 2.5H11l-4.5 4v-4.7A2.5 2.5 0 0 1 5 13.5z" />
+                <path d="M8 8.5h8M8 12h5" />
+              </svg>
+              <span>{{ t("lab.panelPrompt") }}</span>
+            </button>
+          </nav>
 
-          <label class="field">
-            <span class="field__label">{{ t("lab.structure") }}</span>
-            <select v-model="structure" class="field__control">
-              <option v-for="item in structureOptions" :key="item.structure" :value="item.structure">{{ item.label }}</option>
-            </select>
-          </label>
-
-          <label class="field">
-            <span class="field__label">{{ t("lab.operation") }}</span>
-            <select v-model="capabilityName" class="field__control">
-              <option v-for="item in capabilityOptions" :key="item.capability" :value="item.capability">{{ item.label }}</option>
-            </select>
-          </label>
-
-          <div v-if="argumentFields.length" class="fields">
-            <label v-for="field in argumentFields" :key="field.name" class="field">
-              <span class="field__label">{{ field.name }}<em v-if="!field.required">{{ t("common.optional") }}</em></span>
-              <input v-model="argumentText[field.name]" class="field__control" type="text" :placeholder="field.hint">
+          <div v-if="activePanel === 'structured'" class="lab__panel-content" role="tabpanel">
+            <label class="field">
+              <span class="field__label">{{ t("lab.chapter") }}</span>
+              <RuntimeSelect v-model="chapterId" variant="reference" :options="chapters.map(chapter => ({ value: chapter.id, label: chapter.title }))" :ariaLabel="t('lab.chapter')" :disabled="busy || !chapters.length" />
             </label>
+
+            <label class="field">
+              <span class="field__label">{{ t("lab.structure") }}</span>
+              <RuntimeSelect v-model="structure" variant="reference" :options="structureSelectOptions" :ariaLabel="t('lab.structure')" :disabled="busy || !structureOptions.length" />
+            </label>
+
+            <label class="field">
+              <span class="field__label">{{ t("lab.operation") }}</span>
+              <RuntimeSelect v-model="capabilityName" variant="reference" :options="capabilityOptions.map(item => ({ value: item.capability, label: item.label }))" :ariaLabel="t('lab.operation')" :placeholder="t('lab.noOperations')" :disabled="busy || !capabilityOptions.length" />
+            </label>
+
+            <div v-if="argumentFields.length" class="fields">
+              <label v-for="field in argumentFields" :key="field.name" class="field">
+                <span class="field__label">{{ field.name }}<em v-if="!field.required">{{ t("common.optional") }}</em></span>
+                <input v-model="argumentText[field.name]" class="field__control field__control--reference" type="text" :placeholder="field.hint">
+              </label>
+            </div>
+
+            <LiquidMetalButton class="lab__silver-button" :disabled="busy || !selected" @click="runDeterministic">
+              {{ busy ? t("lab.calculating") : t("lab.generate") }}
+            </LiquidMetalButton>
           </div>
 
-          <button class="lab__button lab__button--primary" type="button" :disabled="busy || !selected" @click="runDeterministic">
-            {{ busy ? t("lab.calculating") : t("lab.generate") }}
-          </button>
+          <div v-else class="lab__panel-content" role="tabpanel">
+            <hr class="panel__divider">
 
-          <hr class="panel__divider">
-
-          <label class="field">
-            <span class="field__label">{{ t("lab.describe") }}</span>
-            <textarea
-              v-model="prompt"
-              class="field__control field__control--area"
-              rows="2"
-              :placeholder="t('lab.describePlaceholder')"
-            />
-          </label>
-          <button class="lab__button" type="button" :disabled="busy || !prompt.trim() || !chapterId" @click="runFromPrompt">{{ t("lab.askModel") }}</button>
+            <label class="field">
+              <span class="field__label">{{ t("lab.describe") }}</span>
+              <textarea
+                v-model="prompt"
+                class="field__control field__control--area"
+                rows="2"
+                :placeholder="t('lab.describePlaceholder')"
+              />
+            </label>
+            <LiquidMetalButton class="lab__silver-button" :disabled="busy || !prompt.trim() || !chapterId" @click="runFromPrompt">{{ t("lab.askModel") }}</LiquidMetalButton>
+          </div>
         </section>
 
         <section class="panel panel--stage" :aria-label="t('lab.playerTitle')">
+          <div class="panel__actions">
+            <p v-if="!playerDefinition" class="panel__placeholder">{{ t("lab.placeholder") }}</p>
+            <button class="lab__home" type="button" :aria-label="t('common.backHome')" :title="t('common.backHome')" @click="router.push('/begin')">
+              <img class="lab__home-icon" :src="homeIcon" alt="" aria-hidden="true">
+            </button>
+          </div>
           <p v-if="demoFallback" class="panel__flag">{{ t("lab.demoFallback") }}</p>
 
           <AnimationPlayer
+            v-if="playerDefinition"
+            controls-variant="silver"
             :definition="playerDefinition"
             :trace="response?.trace ?? null"
             :placeholder="t('lab.placeholder')"
@@ -351,7 +390,7 @@ onMounted(() => void loadChapters());
    uses, so a demo opened here and a demo opened in class are framed identically. */
 .lab {
   display: grid;
-  width: min(1320px, 100%);
+  width: min(var(--workbench-width), 100%);
   gap: 22px;
   margin: 0 auto;
   color: var(--text);
@@ -365,39 +404,14 @@ onMounted(() => void loadChapters());
   gap: 14px;
 }
 
-.lab__title {
-  margin: 0;
-  color: var(--text);
-  font-family: var(--font-ui);
-  font-size: clamp(30px, 3.4vw, 46px);
-  font-weight: 400;
-  letter-spacing: 0;
-  line-height: 1.06;
-}
-
-.lab__link {
-  min-height: 42px;
-  padding: 0 20px;
-  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface) 24%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 92%, transparent), 0 5px 12px color-mix(in srgb, var(--text) 10%, transparent);
-  color: var(--text);
-  cursor: pointer;
-  font: inherit;
-  font-size: 15px;
-  font-weight: 650;
-  transition: transform 160ms cubic-bezier(.25, 1, .5, 1), border-color 160ms ease, background-color 160ms ease;
-}
-
-.lab__link:hover { border-color: var(--text); background: color-mix(in srgb, var(--surface) 46%, transparent); transform: translateY(-1px); }
-
 .lab__grid {
   display: grid;
   grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
   gap: 20px;
   align-items: start;
 }
+
+.lab__grid--english { grid-template-columns: minmax(0, 480px) minmax(0, 1fr); }
 
 .panel {
   display: grid;
@@ -413,7 +427,107 @@ onMounted(() => void loadChapters());
   backdrop-filter: blur(7px) saturate(1.08);
 }
 
+.lab__panel-nav {
+  display: flex;
+  justify-content: center;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+}
+
+.lab__panel-tab {
+  position: relative;
+  display: inline-flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 42px;
+  min-width: 0;
+  padding: 8px 10px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.lab__panel-tab::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: var(--text);
+  content: "";
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 160ms ease;
+}
+
+.lab__panel-tab:hover,
+.lab__panel-tab:focus-visible,
+.lab__panel-tab--active {
+  color: var(--text);
+}
+
+.lab__panel-tab:hover::after,
+.lab__panel-tab:focus-visible::after,
+.lab__panel-tab--active::after { transform: scaleX(1); }
+
+.lab__panel-tab:focus-visible { outline: none; }
+.lab__panel-tab:focus-visible::before {
+  position: absolute;
+  inset: 4px -5px 4px;
+  border: 1px solid var(--text);
+  border-radius: 7px;
+  content: "";
+}
+
+.lab__panel-icon { width: 18px; height: 18px; flex: none; }
+.lab__panel-content { display: grid; gap: 14px; min-width: 0; }
+
 .panel--stage { gap: 12px; }
+.panel__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+}
+.panel__placeholder {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 19px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.lab__home {
+  display: inline-grid;
+  width: 50px;
+  height: 50px;
+  flex: none;
+  padding: 0;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--surface) 38%, transparent);
+  box-shadow: inset 2px -2px 1px -1px color-mix(in srgb, var(--surface) 88%, transparent), inset -2px 2px 1px -1px color-mix(in srgb, var(--surface) 88%, transparent), inset 0 0 2px color-mix(in srgb, var(--text) 32%, transparent), 0 4px 8px color-mix(in srgb, var(--text) 17%, transparent);
+  -webkit-backdrop-filter: blur(7px) saturate(1.14);
+  backdrop-filter: blur(7px) saturate(1.14);
+  cursor: pointer;
+  transition: transform 180ms ease, filter 180ms ease;
+}
+.lab__home:hover { transform: translateY(-1px) scale(1.04); filter: brightness(1.06); }
+.lab__home:focus-visible { outline: none; border-color: var(--text); box-shadow: var(--focus-ring); }
+.lab__home-icon { display: block; width: 24px; height: 24px; }
+:global([data-theme="dark"]) .lab__home-icon { filter: invert(1); }
 
 .field { display: grid; gap: 6px; }
 .field__label { color: var(--text-muted); font-size: 14px; font-weight: 620; }
@@ -432,6 +546,20 @@ onMounted(() => void loadChapters());
 }
 
 .field__control--area { min-height: 68px; border-radius: 20px; resize: vertical; line-height: 1.6; }
+.field__control--reference {
+  height: calc(1em + 2.5rem);
+  padding: 1.25rem 0.75rem;
+  border: 1px solid rgb(0 0 0 / 10%);
+  border-radius: 0.75rem;
+  background: #fff;
+  color: #000;
+  font-size: 17px;
+  line-height: 1;
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+.field__control--reference:hover { border-color: rgb(0 0 0 / 20%); background: rgb(0 0 0 / 4%); }
+:global([data-theme="dark"]) .field__control--reference { border-color: rgb(255 255 255 / 10%); background: #000; color: #fff; }
+:global([data-theme="dark"]) .field__control--reference:hover { border-color: rgb(255 255 255 / 20%); background: rgb(255 255 255 / 8%); }
 .field__control:focus-visible { outline: none; border-color: var(--text); box-shadow: var(--focus-ring); }
 
 .fields { display: grid; gap: 12px; }
@@ -462,9 +590,12 @@ onMounted(() => void loadChapters());
 .lab__button--primary:hover:not(:disabled) { background: var(--accent-strong); border-color: transparent; }
 
 .observe { display: grid; gap: 10px; }
+.lab__silver-button { --liquid-width: 100%; --liquid-height: 50px; }
+.lab__silver-button :deep(.liquid-metal-button__content-layer) { font-size: 18px; font-weight: 700; }
 
 @media (max-width: 940px) {
-  .lab__grid { grid-template-columns: minmax(0, 1fr); }
+  .lab__grid,
+  .lab__grid--english { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (prefers-reduced-transparency: reduce) {

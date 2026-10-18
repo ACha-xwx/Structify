@@ -117,6 +117,11 @@ function normalizeGraphSpec(request, defaults = {}) {
   const nodeSet = new Set();
   for (const item of rawNodes) {
     const label = String(item);
+    /* 空标签的顶点会画成一个**没有名字的圆圈**（渲染器按 "有没有字" 画不出来差别，但谁也认不出它是谁），
+       和没有这个顶点一样没有意义。报错比默默画一个空顶点清楚——树那边同一个道理。 */
+    if (label.trim() === "") {
+      throw new SimulationInputError("EMPTY_NODE_LABEL", "顶点标签不能为空：请给每个顶点一个名字（如 A、B、C）", "nodes");
+    }
     if (nodeSet.has(label)) {
       throw new SimulationInputError("DUPLICATE_NODE", `顶点重复：${label}（每个顶点只能出现一次）`, label);
     }

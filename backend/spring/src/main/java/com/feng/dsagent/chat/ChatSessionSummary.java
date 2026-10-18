@@ -7,6 +7,11 @@ public record ChatSessionSummary(
     String chapterId,
     String title,
     Instant updatedAt,
-    long messageCount
+    long messageCount,
+    boolean pinned
 ) {
+
+    public ChatSessionSummary(String id, String chapterId, String title, Instant updatedAt, long messageCount) {
+        this(id, chapterId, title, updatedAt, messageCount, false);
+    }
 }

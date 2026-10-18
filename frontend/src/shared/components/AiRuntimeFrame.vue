@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import runtimeLogo from "../../assets/logo.webp";
+import runtimeLogo from "../../favicon.svg";
+import { BRAND_NAME } from "../brand";
 import { useLocale } from "../i18n/locale";
 
 export type AiRuntimeFrameMode = "landing" | "workbench";
@@ -36,7 +37,7 @@ const props = withDefaults(defineProps<{
   menuItems: () => [],
   menuOpen: undefined,
   brandHref: "/",
-  brandLabel: "Structify",
+  brandLabel: BRAND_NAME,
   signInHref: "/login",
   signInLabel: "登录",
   videoSrc: RUNTIME_VIDEO_URL,

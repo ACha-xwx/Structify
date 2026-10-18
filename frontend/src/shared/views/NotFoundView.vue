@@ -9,6 +9,6 @@ const { t } = useI18n();
     <p class="screen-code">404</p>
     <h1 id="not-found-title">{{ t("notFound.title") }}</h1>
     <p>{{ t("notFound.body") }}</p>
-    <RouterLink class="button button--primary" to="/">{{ t("common.backToHome") }}</RouterLink>
+    <RouterLink class="button button--primary" to="/begin">{{ t("common.backToHome") }}</RouterLink>
   </section>
 </template>

@@ -3,6 +3,7 @@ import { RouterLinkStub, flushPromises, mount } from "@vue/test-utils";
 import ClassroomView from "./ClassroomView.vue";
 import { DEFAULT_LOCALE, setLocale } from "../shared/i18n/locale";
 import type { ClassroomSession } from "../shared/types/contracts";
+import type { ClassroomLesson } from "../user/api";
 
 const api = vi.hoisted(() => ({
   listClassroomLessons: vi.fn(),
@@ -13,6 +14,9 @@ const api = vi.hoisted(() => ({
   simulateAnimation: vi.fn(),
   getLessonCourseware: vi.fn(),
   pinClassroomSlide: vi.fn(),
+  listBookmarks: vi.fn(),
+  saveBookmark: vi.fn(),
+  deleteBookmark: vi.fn(),
 }));
 
 vi.mock("../user/runtime", () => ({ userApi: api }));
@@ -61,7 +65,7 @@ const opening: ClassroomSession = {
 beforeEach(() => {
   localStorage.clear();
   setLocale(DEFAULT_LOCALE);
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   navigation.query = {};
   api.listClassroomLessons.mockResolvedValue([
     { id: "lesson-1", chapterId: "06-tree", title: "二叉树", source: "textbook", pages: "157-161" },
@@ -69,19 +73,179 @@ beforeEach(() => {
   api.prepareClassroom.mockResolvedValue({ id: "job-1", state: "ready", phase: "ready", session: opening });
   api.getLessonCourseware.mockResolvedValue(noCourseware);
   api.pinClassroomSlide.mockResolvedValue(opening);
+  api.listBookmarks.mockResolvedValue([]);
 });
 
 describe("minimal classroom", () => {
+  it("keeps the title mascot both when choosing courseware and after entering a classroom", async () => {
+    const chooser = mountClassroom();
+    await flushPromises();
+    expect(chooser.get(".ai-title .workbench-title").text()).toBe("课堂学习");
+    expect(chooser.get(".ai-title .ai-ball").attributes("data-follow-pointer")).toBe("true");
+    chooser.unmount();
+    openSession("session-1");
+    api.getClassroomSession.mockResolvedValue(opening);
+    const lesson = mountClassroom();
+    await flushPromises();
+    expect(lesson.find(".classroom__topbar").exists()).toBe(true);
+    expect(lesson.findAll(".ai-title .ai-ball")).toHaveLength(1);
+    expect(lesson.get(".ai-title .ai-ball").attributes("data-follow-pointer")).toBe("true");
+    lesson.unmount();
+  });
+  it("shows loading while fetching lessons and courseware, then shows the resolved empty state", async () => {
+    let resolveLessons!: (lessons: ClassroomLesson[]) => void;
+    let resolveCourseware!: (courseware: typeof noCourseware) => void;
+    api.listClassroomLessons.mockReturnValue(new Promise<ClassroomLesson[]>((resolve) => { resolveLessons = resolve; }));
+    api.getLessonCourseware.mockReturnValue(new Promise<typeof noCourseware>((resolve) => { resolveCourseware = resolve; }));
+
+    const wrapper = mountClassroom();
+    expect(wrapper.get(".slides__stage--empty").text()).toBe("正在载入课件");
+
+    resolveLessons([{ id: "lesson-1", chapterId: "06-tree", title: "二叉树", source: "textbook", pages: "157-161" }]);
+    await flushPromises();
+    expect(api.getLessonCourseware).toHaveBeenCalledWith("lesson-1");
+    expect(wrapper.get(".slides__stage--empty").text()).toBe("正在载入课件");
+
+    resolveCourseware(noCourseware);
+    await flushPromises();
+    expect(wrapper.get(".slides__stage--empty").text()).toBe("本课时没有配套课件");
+    wrapper.unmount();
+  });
+
+  it("stops showing loading if the lesson list cannot be fetched", async () => {
+    api.listClassroomLessons.mockRejectedValue(new Error("offline"));
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+
+    expect(wrapper.get(".slides__stage--empty").text()).toBe("课件暂时无法访问");
+    wrapper.unmount();
+  });
+
+  it("reads the selected deck into the picker and loads its mapped lesson without resuming the old session", async () => {
+    localStorage.setItem("structify.classroom.last", "session-1");
+    localStorage.setItem("structify.courseware.selected", JSON.stringify({
+      deckId: "tree-deck",
+      title: "树的遍历课件",
+      lessonIds: ["lesson-unavailable", "lesson-2"],
+    }));
+    api.listClassroomLessons.mockResolvedValue([
+      { id: "lesson-1", chapterId: "06-tree", title: "二叉树", source: "textbook", pages: "157-161" },
+      { id: "lesson-2", chapterId: "06-tree", title: "树的遍历", source: "textbook", pages: "162-168" },
+    ]);
+    api.getLessonCourseware.mockResolvedValue({
+      ...noCourseware,
+      lessonId: "lesson-2",
+      title: "树的遍历课件",
+      slides: [{
+        id: "tree-deck-s001",
+        deckId: "tree-deck",
+        deckTitle: "树的遍历课件",
+        slideNumber: 1,
+        imageUrl: "/api/v1/presentation/slides/tree-deck-s001/image",
+      }],
+    });
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+
+    expect(wrapper.get(".classroom__lesson-select .runtime-select__trigger").attributes("aria-label")).toContain("树的遍历");
+    expect(api.getLessonCourseware).toHaveBeenCalledExactlyOnceWith("lesson-2");
+    expect(wrapper.get("img.slides__image").attributes("src")).toBe("/api/v1/presentation/slides/tree-deck-s001/image");
+    expect(api.getClassroomSession).not.toHaveBeenCalled();
+    await wrapper.get("button[aria-label='开始']").trigger("click");
+    await flushPromises();
+    expect(api.prepareClassroom).toHaveBeenCalledWith("lesson-2");
+    wrapper.unmount();
+  });
+
+  it("falls back to the first lesson in the selected deck chapter when slide lesson ids are unavailable", async () => {
+    localStorage.setItem("structify.courseware.selected", JSON.stringify({
+      deckId: "tree-deck-01",
+      title: "第六章-树和二叉树01",
+      chapter: "06",
+      lessonIds: [],
+    }));
+    api.listClassroomLessons.mockResolvedValue([
+      { id: "lesson-intro", chapterId: "01-intro", title: "绪论-数据结构的基础概念", source: "textbook", pages: "1-8" },
+      { id: "lesson-tree-01", chapterId: "06-tree", title: "树与二叉树-树的基本概念", source: "textbook", pages: "150-156" },
+      { id: "lesson-tree-02", chapterId: "06-tree", title: "树与二叉树-树的遍历", source: "textbook", pages: "157-162" },
+    ]);
+    api.getLessonCourseware.mockResolvedValue({ ...noCourseware, lessonId: "lesson-tree-01", title: "第六章-树和二叉树01" });
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+
+    expect(api.getLessonCourseware).toHaveBeenCalledWith("lesson-tree-01");
+    expect(wrapper.get(".classroom__chapter-select .runtime-select__trigger").attributes("aria-label")).toContain("树与二叉树");
+    expect(wrapper.get(".classroom__lesson-select .runtime-select__trigger").attributes("aria-label")).toContain("树的基本概念");
+    await wrapper.get("button[aria-label='开始']").trigger("click");
+    await flushPromises();
+    expect(api.prepareClassroom).toHaveBeenCalledWith("lesson-tree-01");
+    wrapper.unmount();
+  });
+
+  it("can infer a chapter from legacy saved deck titles", async () => {
+    localStorage.setItem("structify.courseware.selected", JSON.stringify({
+      deckId: "tree-deck-01",
+      title: "第六章-树和二叉树01",
+      lessonIds: [],
+    }));
+    api.listClassroomLessons.mockResolvedValue([
+      { id: "lesson-intro", chapterId: "01-intro", title: "绪论", source: "textbook", pages: "1-8" },
+      { id: "lesson-tree-01", chapterId: "06-tree", title: "树和二叉树", source: "textbook", pages: "150-156" },
+    ]);
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+
+    expect(api.getLessonCourseware).toHaveBeenCalledWith("lesson-tree-01");
+    wrapper.unmount();
+  });
+
+  it("groups topics by chapter and selects the first topic when switching chapters", async () => {
+    api.listClassroomLessons.mockResolvedValue([
+      { id: "intro-1", chapterId: "01-intro", title: "绪论-数据结构的基础概念", source: "textbook", pages: "1-2" },
+      { id: "intro-2", chapterId: "01-intro", title: "绪论－算法与算法描述", source: "textbook", pages: "3-4" },
+      { id: "list-1", chapterId: "02-list", title: "线性表—线性表的定义", source: "textbook", pages: "5-6" },
+      { id: "list-2", chapterId: "02-list", title: "线性表-单链表-插入", source: "textbook", pages: "7-8" },
+    ]);
+    api.getLessonCourseware.mockImplementation(async (id: string) => ({ ...noCourseware, lessonId: id }));
+    const wrapper = mountClassroom();
+    await flushPromises();
+
+    const chapters = wrapper.get(".classroom__chapter-select select");
+    const topics = wrapper.get(".classroom__lesson-select select");
+    expect(chapters.findAll("option").map((option) => option.text())).toEqual(["绪论", "线性表"]);
+    expect(topics.findAll("option").map((option) => option.text())).toEqual(["数据结构的基础概念", "算法与算法描述"]);
+
+    await topics.setValue("intro-2");
+    await flushPromises();
+    expect(api.getLessonCourseware).toHaveBeenLastCalledWith("intro-2");
+
+    await chapters.setValue("02-list");
+    await flushPromises();
+    expect(api.getLessonCourseware).toHaveBeenLastCalledWith("list-1");
+    expect(topics.findAll("option").map((option) => option.text())).toEqual(["线性表的定义", "单链表-插入"]);
+    expect(wrapper.get(".classroom__lesson-select .runtime-select__trigger").attributes("aria-label")).toContain("线性表的定义");
+
+    await wrapper.get("button[aria-label='开始']").trigger("click");
+    await flushPromises();
+    expect(api.prepareClassroom).toHaveBeenCalledWith("list-1");
+    wrapper.unmount();
+  });
+
   it("renders only large functional controls before class", async () => {
     const wrapper = mountClassroom();
     await flushPromises();
 
-    expect(wrapper.get("select[aria-label='选择课时']").text()).toContain("二叉树");
+    expect(wrapper.get(".classroom__lesson-select .runtime-select__trigger").text()).toContain("二叉树");
     // The stage carries the theme switch, so the lesson controls are addressed by role, not by position.
-    expect(wrapper.get(".classroom__button--primary").text()).toBe("开始");
+    expect(wrapper.get(".classroom__silver-start .liquid-metal-button__native").text()).toBe("开始");
     expect(wrapper.find("small").exists()).toBe(false);
     expect(wrapper.find("nav").exists()).toBe(false);
-    expect(wrapper.find("header").exists()).toBe(false);
+    expect(wrapper.find(".classroom__conversation").exists()).toBe(false);
+    expect(wrapper.find("aside.slides--courseware").exists()).toBe(true);
     wrapper.unmount();
   });
 
@@ -91,8 +255,8 @@ describe("minimal classroom", () => {
     const wrapper = mountClassroom();
     await flushPromises();
 
-    expect(wrapper.find("select[aria-label='Pick a lesson']").exists()).toBe(true);
-    expect(wrapper.get(".classroom__button--primary").text()).toBe("Start");
+    expect(wrapper.find(".classroom__lesson-select .runtime-select__trigger").exists()).toBe(true);
+    expect(wrapper.get(".classroom__silver-start .liquid-metal-button__native").text()).toBe("Start");
     wrapper.unmount();
   });
 
@@ -106,7 +270,60 @@ describe("minimal classroom", () => {
     const wrapper = mountClassroom();
     await flushPromises();
 
-    expect(wrapper.get("select[aria-label='选择课时']").text()).toBe("查找-二叉排序树");
+    expect(wrapper.get(".classroom__chapter-select .runtime-select__trigger").text()).toBe("查找");
+    expect(wrapper.get(".classroom__lesson-select .runtime-select__trigger").text()).toBe("二叉排序树");
+    wrapper.unmount();
+  });
+
+  it("saves the step on screen and takes the bookmark back", async () => {
+    // The bookmark lives on the slide pane, so this lesson has courseware - as a lesson being taught does.
+    api.getLessonCourseware.mockResolvedValue({
+      ...noCourseware,
+      coursewareKey: "03-01",
+      slides: [{
+        id: "slide-1", deckId: "deck-1", deckTitle: "栈与队列", slideNumber: 1, chapter: "03",
+        title: "栈的存取", rawText: "", speakerNotes: "", semanticSummary: "栈只在顶端进出",
+        teachingRole: "concept", teachingFocus: "", concepts: [], visualAnchors: [], shouldShow: true,
+        lessonIds: ["lesson-1"], imageUrl: "/api/v1/presentation/slides/slide-1/image",
+        section: "3.1", role: "定义", terms: [],
+      }],
+    });
+    api.actInClassroom.mockResolvedValue({
+      ...opening,
+      state: "EXPLAIN",
+      stage: {
+        content: "栈只在顶端进出，最后放进去的元素最先出来。",
+        stepIndex: 0,
+        stepCount: 3,
+        revision: 1,
+        chapterId: "03-stack-queue",
+        lessonId: "lesson-1",
+      },
+    });
+    api.saveBookmark.mockResolvedValue({
+      id: 11, sessionId: "session-1", lessonId: "lesson-1", lessonTitle: "栈与队列基础",
+      chapterId: "03-stack-queue", stepIndex: 0, slideId: "slide-9",
+      title: "栈只在顶端进出，最后放进去的元素最先出来。", createdAt: "2026-10-08T00:00:00Z",
+    });
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+    // Opening the lesson puts the deck on screen; the step to save is the one after the opening.
+    await wrapper.get(".classroom__silver-start .liquid-metal-button__native").trigger("click");
+    await flushPromises();
+    await wrapper.get(".classroom__silver-start .liquid-metal-button__native").trigger("click");
+    await flushPromises();
+
+    // The client names the step; the server decides which page it is, so no slide id is sent.
+    await wrapper.get('[aria-label="收藏这一步"]').trigger("click");
+    await flushPromises();
+    expect(api.saveBookmark).toHaveBeenCalledWith("session-1", 0);
+    expect(wrapper.get('[aria-label="取消收藏"]').attributes("aria-pressed")).toBe("true");
+
+    await wrapper.get('[aria-label="取消收藏"]').trigger("click");
+    await flushPromises();
+    expect(api.deleteBookmark).toHaveBeenCalledWith(11);
+    expect(wrapper.get('[aria-label="收藏这一步"]').attributes("aria-pressed")).toBe("false");
     wrapper.unmount();
   });
 
@@ -130,11 +347,11 @@ describe("minimal classroom", () => {
 
     const wrapper = mountClassroom();
     await flushPromises();
-    await wrapper.get(".classroom__button--primary").trigger("click");
+    await wrapper.get(".classroom__silver-start .liquid-metal-button__native").trigger("click");
     await flushPromises();
 
     expect(wrapper.get(".classroom__speech").text()).toBe("准备开始");
-    await wrapper.get(".classroom__button--primary").trigger("click");
+    await wrapper.get(".classroom__silver-start .liquid-metal-button__native").trigger("click");
     await flushPromises();
     expect(api.actInClassroom).toHaveBeenNthCalledWith(1, "session-1", { action: "CONTINUE", content: undefined, expectedRevision: 0 });
     expect(wrapper.get(".classroom__speech").text()).toBe("根结点是什么？");
@@ -170,9 +387,9 @@ describe("minimal classroom", () => {
 
     const wrapper = mountClassroom();
     await flushPromises();
-    await wrapper.get(".classroom__button--primary").trigger("click");
+    await wrapper.get(".classroom__silver-start .liquid-metal-button__native").trigger("click");
     await flushPromises();
-    await wrapper.get(".classroom__button--primary").trigger("click");
+    await wrapper.get(".classroom__silver-start .liquid-metal-button__native").trigger("click");
     await flushPromises();
 
     const speech = wrapper.get(".classroom__speech");
@@ -202,13 +419,13 @@ describe("minimal classroom", () => {
 
     const wrapper = mountClassroom();
     await flushPromises();
-    await wrapper.get(".classroom__button--primary").trigger("click");   // 开始
+    await wrapper.get(".classroom__silver-start .liquid-metal-button__native").trigger("click");   // 开始
     await flushPromises();
-    await wrapper.get(".classroom__button--primary").trigger("click");   // 进入这一步
+    await wrapper.get(".classroom__silver-start .liquid-metal-button__native").trigger("click");   // 进入这一步
     await flushPromises();
     expect(wrapper.get(".classroom__speech").text()).toBe("根结点是什么？");
 
-    const hint = wrapper.findAll(".classroom__button").find((button) => button.text() === "要点提示");
+    const hint = wrapper.findAll(".classroom__silver-action .liquid-metal-button__native").find((button) => button.text() === "要点提示");
     expect(hint, "提问时应当先给出「要点提示」").toBeTruthy();
     await hint!.trigger("click");
     await flushPromises();
@@ -216,9 +433,9 @@ describe("minimal classroom", () => {
     expect(api.actInClassroom).toHaveBeenLastCalledWith("session-1", { action: "HINT", content: undefined, expectedRevision: 1 });
     expect(wrapper.get(".classroom__speech").text()).toBe("先看它有没有孩子");
     // The question is still open, so the learner can answer it - or take the explained skip now.
-    expect(wrapper.findAll(".classroom__button").some((button) => button.text() === "回答")).toBe(true);
-    expect(wrapper.findAll(".classroom__button").some((button) => button.text() === "看讲解，跳过这题")).toBe(true);
-    expect(wrapper.findAll(".classroom__button").some((button) => button.text() === "要点提示")).toBe(false);
+    expect(wrapper.findAll(".classroom__silver-action .liquid-metal-button__native").some((button) => button.text() === "回答")).toBe(true);
+    expect(wrapper.findAll(".classroom__silver-action .liquid-metal-button__native").some((button) => button.text() === "看讲解，跳过这题")).toBe(true);
+    expect(wrapper.findAll(".classroom__silver-action .liquid-metal-button__native").some((button) => button.text() === "要点提示")).toBe(false);
   });
 
   it("stops offering the skip once the lesson has spent its budget", async () => {
@@ -235,12 +452,12 @@ describe("minimal classroom", () => {
 
     const wrapper = mountClassroom();
     await flushPromises();
-    await wrapper.get(".classroom__button--primary").trigger("click");
+    await wrapper.get(".classroom__silver-start .liquid-metal-button__native").trigger("click");
     await flushPromises();
-    await wrapper.get(".classroom__button--primary").trigger("click");
+    await wrapper.get(".classroom__silver-start .liquid-metal-button__native").trigger("click");
     await flushPromises();
 
-    const labels = wrapper.findAll(".classroom__button").map((button) => button.text());
+    const labels = wrapper.findAll(".classroom__silver-action .liquid-metal-button__native").map((button) => button.text());
     expect(labels).not.toContain("看讲解，跳过这题");
     expect(labels).toContain("回答");
   });
@@ -324,7 +541,7 @@ describe("minimal classroom", () => {
     await flushPromises();
     expect(wrapper.get(".classroom__speech").text()).toContain("先左子树");
     expect(wrapper.find("textarea").exists()).toBe(true);
-    expect(wrapper.get(".classroom__button--primary").text()).toBe("回答");
+    expect(wrapper.findAll("button").find((button) => button.text() === "回答")?.text()).toBe("回答");
     wrapper.unmount();
   });
 
@@ -372,11 +589,51 @@ describe("minimal classroom", () => {
     await flushPromises();
 
     const panel = wrapper.get("aside[aria-label='课件']");
-    expect(panel.text()).toContain("3/3");
-    expect(panel.get("img").attributes("src")).toBe("/api/v1/presentation/slides/deck-s003/image");
+    expect(panel.find(".slides__position").exists()).toBe(false);
+    expect(panel.get("img.slides__image").attributes("src")).toBe("/api/v1/presentation/slides/deck-s003/image");
 
     await panel.findAll("button").find((button) => button.text() === "上一页")!.trigger("click");
-    expect(panel.text()).toContain("2/3");
+    expect(panel.get("img.slides__image").attributes("src")).toBe("/api/v1/presentation/slides/deck-s002/image");
+    wrapper.unmount();
+  });
+
+  it("moves the lesson picker into the courseware stage before a class starts", async () => {
+    api.getLessonCourseware.mockResolvedValue({
+      ...noCourseware,
+      title: "二叉树课件",
+      slides: [{
+        id: "deck-s001",
+        deckId: "deck",
+        deckTitle: "二叉树课件",
+        slideNumber: 1,
+        imageUrl: "/api/v1/presentation/slides/deck-s001/image",
+        section: "1.1",
+      }],
+    });
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+
+    expect(wrapper.find(".classroom--courseware").exists()).toBe(true);
+    expect(wrapper.find(".classroom__conversation").exists()).toBe(false);
+    expect(wrapper.find("aside.slides--courseware .classroom__lesson-select .runtime-select__trigger").exists()).toBe(true);
+    expect(wrapper.get("aside.slides--courseware .classroom__silver-start .liquid-metal-button__native").text()).toBe("开始");
+    wrapper.unmount();
+  });
+
+  it("shows the local demo deck when no classroom courseware is published", async () => {
+    api.listClassroomLessons.mockResolvedValue([]);
+    api.getLessonCourseware.mockResolvedValue({ ...noCourseware, ready: false });
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+
+    const panel = wrapper.get("aside.slides--courseware");
+    expect(panel.get(".slides__title").text()).toBe("数筑 · Structify 本地演示课件");
+    expect(panel.get("img.slides__image").attributes("src")).toContain("slide-01");
+    expect(panel.find(".slides__position").exists()).toBe(false);
+    expect(panel.get(".classroom__lesson-select .runtime-select__trigger").text()).toContain("数筑 · Structify 本地演示课件");
+    expect(panel.get(".classroom__silver-start .liquid-metal-button__native").attributes("disabled")).toBeDefined();
     wrapper.unmount();
   });
 
@@ -421,6 +678,7 @@ describe("minimal classroom", () => {
         ...explain.stage,
         revision: 5,
         teacherResponse: { feedback: "叶子结点没有孩子", answered: false, kind: "question" },
+        asks: [{ stepIndex: 0, question: "什么是叶子结点？", answer: "叶子结点没有孩子" }],
       },
     });
 
@@ -435,8 +693,136 @@ describe("minimal classroom", () => {
       content: "什么是叶子结点？",
       expectedRevision: 4,
     });
-    expect(wrapper.get(".classroom__speech").text()).toBe("叶子结点没有孩子");
-    expect(wrapper.get(".classroom__button--primary").text()).toBe("回到课堂");
+    // The reply is the answer bubble now, not the lesson narration: asking opens the conversation.
+    expect(wrapper.get(".classroom__ask-answer").text()).toBe("叶子结点没有孩子");
+    // The answer to a question the learner asked is something to read and ask about again, so the box
+    // stays where it was - and what was already said stays on screen next to it.
+    expect(wrapper.find("textarea").exists()).toBe(true);
+    expect(wrapper.get(".classroom__ask-question").text()).toBe("什么是叶子结点？");
+    expect(wrapper.get(".classroom__ask-answer").text()).toBe("叶子结点没有孩子");
+    // The answer comes from the mascot, the way the learner asked it: as a reply, not as another paragraph.
+    expect(wrapper.find(".classroom__answer .ai-ball").exists()).toBe(true);
+    // One reading surface at a time: the conversation takes the narration's row instead of covering it or
+    // squeezing it into a scrolling sliver.
+    expect(wrapper.find(".classroom__lesson .classroom__asks").exists()).toBe(true);
+    expect(wrapper.find(".classroom__lesson .classroom__speech").exists()).toBe(false);
+    expect(wrapper.findAll("button").find((button) => button.text() === "继续上课")).toBeTruthy();
+    expect(wrapper.findAll("button").find((button) => button.text() === "提问")).toBeTruthy();
+    wrapper.unmount();
+  });
+
+  it("keeps the lesson's conversation across pages, marking where each question was asked", async () => {
+    const later: ClassroomSession = {
+      ...opening,
+      state: "EXPLAIN",
+      stage: {
+        content: "这一页讲中序遍历",
+        stepIndex: 2,
+        stepCount: 3,
+        revision: 9,
+        chapterId: "06-tree",
+        asks: [
+          { stepIndex: 0, question: "什么是叶子结点？", answer: "叶子结点没有孩子" },
+          { stepIndex: 2, question: "中序先走哪边？", answer: "先左子树" },
+        ],
+      },
+    };
+    openSession(later.id);
+    api.getClassroomSession.mockResolvedValue(later);
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+
+    // The counter is about the lesson, not the page: turning a page does not start a new conversation.
+    expect(wrapper.findAll("button").find((button) => button.text() === "我问的（2）")).toBeTruthy();
+    await wrapper.findAll("button").find((button) => button.text() === "我问的（2）")!.trigger("click");
+
+    expect(wrapper.findAll(".classroom__ask-question").map((node) => node.text()))
+      .toEqual(["什么是叶子结点？", "中序先走哪边？"]);
+    // Only the exchange from another page carries a step label; the one asked here needs no reminder.
+    expect(wrapper.findAll(".classroom__ask-step").map((node) => node.text())).toEqual(["第 1 步"]);
+    wrapper.unmount();
+  });
+
+  it("switches between the narration and the conversation without losing either", async () => {
+    const explain: ClassroomSession = {
+      ...opening,
+      state: "EXPLAIN",
+      stage: {
+        content: "树由结点和边组成",
+        stepIndex: 0,
+        stepCount: 3,
+        revision: 4,
+        chapterId: "06-tree",
+        asks: [{ stepIndex: 0, question: "什么是叶子结点？", answer: "叶子结点没有孩子" }],
+      },
+    };
+    openSession(explain.id);
+    api.getClassroomSession.mockResolvedValue(explain);
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+
+    // A step with questions opens on the narration; the exchange is one tap away.
+    expect(wrapper.find(".classroom__speech").exists()).toBe(true);
+    expect(wrapper.find(".classroom__asks").exists()).toBe(false);
+    expect(wrapper.findAll("button").find((button) => button.text() === "我问的（1）")).toBeTruthy();
+
+    await wrapper.findAll("button").find((button) => button.text() === "我问的（1）")!.trigger("click");
+    expect(wrapper.find(".classroom__asks").exists()).toBe(true);
+    expect(wrapper.find(".classroom__ask-question").text()).toBe("什么是叶子结点？");
+    expect(wrapper.find(".classroom__speech").exists()).toBe(false);
+
+    await wrapper.findAll("button").find((button) => button.text() === "回到讲稿")!.trigger("click");
+    expect(wrapper.find(".classroom__speech").exists()).toBe(true);
+    expect(wrapper.find(".classroom__asks").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("lets the learner ask again without losing the previous answer", async () => {
+    const explain: ClassroomSession = {
+      ...opening,
+      state: "EXPLAIN",
+      stage: { content: "树由结点和边组成", stepIndex: 0, stepCount: 3, revision: 4, chapterId: "06-tree" },
+    };
+    openSession(explain.id);
+    api.getClassroomSession.mockResolvedValue(explain);
+    api.actInClassroom
+      .mockResolvedValueOnce({
+        ...explain,
+        stage: {
+          ...explain.stage,
+          revision: 5,
+          teacherResponse: { feedback: "叶子结点没有孩子", answered: false, kind: "question" },
+          asks: [{ stepIndex: 0, question: "什么是叶子结点？", answer: "叶子结点没有孩子" }],
+        },
+      })
+      .mockResolvedValueOnce({
+        ...explain,
+        stage: {
+          ...explain.stage,
+          revision: 6,
+          teacherResponse: { feedback: "边表示结点之间的父子关系", answered: false, kind: "question" },
+          asks: [
+            { stepIndex: 0, question: "什么是叶子结点？", answer: "叶子结点没有孩子" },
+            { stepIndex: 0, question: "那边是什么？", answer: "边表示结点之间的父子关系" },
+          ],
+        },
+      });
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+    await wrapper.get("textarea").setValue("什么是叶子结点？");
+    await wrapper.findAll("button").find((button) => button.text() === "提问")!.trigger("click");
+    await flushPromises();
+    await wrapper.get("textarea").setValue("那边是什么？");
+    await wrapper.findAll("button").find((button) => button.text() === "提问")!.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.findAll(".classroom__ask-question").map((node) => node.text()))
+      .toEqual(["什么是叶子结点？", "那边是什么？"]);
+    expect(wrapper.findAll(".classroom__ask-answer").map((node) => node.text()))
+      .toEqual(["叶子结点没有孩子", "边表示结点之间的父子关系"]);
     wrapper.unmount();
   });
 
@@ -505,14 +891,14 @@ describe("minimal classroom", () => {
 
     // Leaving only unhooks the session; it stays recallable from the picker and the entry page.
     expect(localStorage.getItem("structify.classroom.last")).toBe("session-1");
-    expect(wrapper.find("select[aria-label='选择课时']").exists()).toBe(true);
+    expect(wrapper.find(".classroom__lesson-select .runtime-select__trigger").exists()).toBe(true);
     expect(wrapper.findAll("button").map((button) => button.text())).toContain("继续上次课堂");
 
     await wrapper.findAll("button").find((button) => button.text() === "继续上次课堂")!.trigger("click");
     await flushPromises();
 
     expect(api.getClassroomSession).toHaveBeenLastCalledWith("session-1");
-    expect(wrapper.find("select[aria-label='选择课时']").exists()).toBe(false);
+    expect(wrapper.find(".classroom__lesson-select .runtime-select__trigger").exists()).toBe(false);
     expect(wrapper.get("p[aria-label='当前课时']").text()).toBe("二叉树");
     wrapper.unmount();
   });
@@ -527,9 +913,21 @@ describe("minimal classroom", () => {
     await flushPromises();
 
     expect(api.getClassroomSession).not.toHaveBeenCalled();
-    expect(wrapper.get("select[aria-label='选择课时']").text()).toContain("二叉树");
+    expect(wrapper.get(".classroom__lesson-select .runtime-select__trigger").text()).toContain("二叉树");
     expect(wrapper.find(".classroom__topbar").exists()).toBe(false);
     expect(wrapper.findAll("button").map((button) => button.text())).toContain("继续上次课堂");
+    wrapper.unmount();
+  });
+
+  it("shows the glass home button in the slide card before a lesson starts", async () => {
+    const wrapper = mountClassroom();
+    await flushPromises();
+
+    const homeButton = wrapper.get(".slides__header-actions .classroom__icon-button[aria-label='回到首页']");
+    await homeButton.trigger("click");
+    await flushPromises();
+
+    expect(navigation.push).toHaveBeenCalledWith("/begin");
     wrapper.unmount();
   });
 
@@ -551,7 +949,7 @@ describe("minimal classroom", () => {
     await flushPromises();
 
     // A stale link falls back to the picker rather than an error screen.
-    expect(stale.find("select[aria-label='选择课时']").exists()).toBe(true);
+    expect(stale.find(".classroom__lesson-select .runtime-select__trigger").exists()).toBe(true);
     expect(stale.find(".classroom__error").exists()).toBe(false);
     stale.unmount();
   });
@@ -571,7 +969,7 @@ describe("minimal classroom", () => {
     await wrapper.findAll("button").find((button) => button.text() === "回到首页")!.trigger("click");
     await flushPromises();
 
-    expect(navigation.push).toHaveBeenCalledWith("/");
+    expect(navigation.push).toHaveBeenCalledWith("/begin");
     expect(localStorage.getItem("structify.classroom.last")).toBe("session-1");
     wrapper.unmount();
   });

@@ -10,6 +10,14 @@
 !backend/node/presentation-runtime.js
 !backend/node/lib
 !backend/node/lib/**
+!backend/spring
+!backend/spring/src
+!backend/spring/src/main
+!backend/spring/src/main/resources
+!backend/spring/src/main/resources/classroom-code
+!backend/spring/src/main/resources/classroom-code/lessons.json
+!backend/spring/src/main/resources/classroom-code/textbook
+!backend/spring/src/main/resources/classroom-code/textbook/library.json
 !frontend/package.json
 !frontend/package-lock.json
 !frontend/tsconfig.json
