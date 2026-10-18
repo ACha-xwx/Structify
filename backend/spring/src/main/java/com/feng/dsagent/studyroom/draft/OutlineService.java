@@ -1,0 +1,525 @@
+package com.feng.dsagent.studyroom.draft;
+
+import com.feng.dsagent.studyroom.generation.JdbcGenerationRepository;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
+
+@Service
+public class OutlineService {
+    private final JdbcOutlineRepository store;
+    private final JdbcGenerationRepository jobs;
+    private final OutlineJson json;
+    private final OutlineValidator validator;
+    private final OutlineFeasibilityService feasibility;
+    private final com.feng.dsagent.studyroom.StudyroomUnitComposer composer;
+
+    public OutlineService(
+            JdbcOutlineRepository store,
+            JdbcGenerationRepository jobs,
+            OutlineJson json,
+            OutlineValidator validator,
+            OutlineFeasibilityService feasibility,
+            com.feng.dsagent.studyroom.StudyroomUnitComposer composer) {
+        this.store = store;
+        this.jobs = jobs;
+        this.json = json;
+        this.validator = validator;
+        this.feasibility = feasibility;
+        this.composer = composer;
+    }
+
+    @Transactional
+    public Map<String, Object> create(
+            long user,
+            String question,
+            LearningDepth depth,
+            String chapter,
+            String sourceRoom,
+            String key) {
+        if (question == null || question.isBlank() || question.length() > 4000 || depth == null)
+            throw OutlineJson.error(
+                    HttpStatus.BAD_REQUEST, "INVALID_OUTLINE_REQUEST", "请输入问题并选择详细程度");
+        store.lockUser(user);
+        String payload = json.write(Arrays.asList(question, depth, chapter, sourceRoom));
+        String previous = store.key(user, "outline_create", key, payload);
+        if (previous != null) return Map.of("draftId", previous);
+        Map<String, Object> room = null;
+        if (sourceRoom != null) {
+            room =
+                    store.row(
+                            "SELECT * FROM study_rooms WHERE id=? AND user_id=? FOR UPDATE",
+                            sourceRoom,
+                            user);
+            if (room == null)
+                throw OutlineJson.error(HttpStatus.NOT_FOUND, "STUDYROOM_NOT_FOUND", "学习空间不存在");
+            if (chapter == null) chapter = (String) room.get("chapter_id");
+        }
+        if (chapter != null
+                && store.row("SELECT id FROM chapters WHERE id=? AND status='PUBLISHED'", chapter)
+                        == null)
+            throw OutlineJson.error(HttpStatus.BAD_REQUEST, "CHAPTER_NOT_FOUND", "章节不存在");
+        String id = OutlineJson.id();
+        store.db()
+                .update(
+                        "INSERT INTO"
+                            + " study_outline_drafts(id,user_id,question,chapter_id,depth,status,source_room_id,source_run_id)"
+                            + " VALUES(?,?,?,?,?,'GENERATING',?,?)",
+                        id,
+                        user,
+                        question,
+                        chapter,
+                        depth.name(),
+                        sourceRoom,
+                        room == null ? null : room.get("current_run_id"));
+        String job =
+                jobs.enqueue(
+                        user,
+                        id,
+                        null,
+                        null,
+                        "PLAN",
+                        "plan:" + id,
+                        Map.of("baseRevision", 0, "feedback", "", "depth", depth.name()));
+        store.db().update("UPDATE study_outline_drafts SET pending_job_id=? WHERE id=?", job, id);
+        store.message(id, "USER", question, 0);
+        store.saveKey(user, "outline_create", key, payload, id);
+        return Map.of("draftId", id);
+    }
+
+    public Map<String, Object> get(long user, String id) {
+        var draft = store.owned(user, id, false);
+        int revision = JdbcOutlineRepository.number(draft, "latest_revision");
+        var result = new LinkedHashMap<String, Object>();
+        result.put("id", id);
+        result.put("question", draft.get("question"));
+        result.put("depth", draft.get("depth"));
+        result.put("status", draft.get("status"));
+        result.put("latestRevision", revision);
+        result.put("pendingJobId", draft.get("pending_job_id"));
+        result.put("confirmedRunId", draft.get("confirmed_run_id"));
+        result.put("sourceRoomId", draft.get("source_room_id"));
+        var confirmed =
+                draft.get("confirmed_run_id") == null
+                        ? null
+                        : store.row(
+                                "SELECT room_id FROM studyroom_runs WHERE id=? AND user_id=?",
+                                draft.get("confirmed_run_id"),
+                                user);
+        result.put("confirmedRoomId", confirmed == null ? null : confirmed.get("room_id"));
+        var saved = revision == 0 ? null : store.revision(id, revision);
+        result.put(
+                "outline", saved == null ? null : json.value((String) saved.get("outline_json")));
+        result.put(
+                "issues",
+                saved == null
+                        ? List.of()
+                        : feasibility
+                                .assess(
+                                        json.read(
+                                                (String) saved.get("outline_json"),
+                                                ReviewedOutline.class),
+                                        (String) draft.get("question"),
+                                        (String) draft.get("chapter_id"))
+                                .issues());
+        result.put(
+                "changes",
+                saved == null ? List.of() : json.value((String) saved.get("change_summary_json")));
+        result.put(
+                "messages",
+                store.db()
+                        .queryForList(
+                                "SELECT role,content,revision FROM study_outline_messages WHERE"
+                                        + " draft_id=? ORDER BY message_order",
+                                id));
+        result.put(
+                "revisions",
+                store.db()
+                        .queryForList(
+                                "SELECT revision,base_revision,feedback,created_at FROM"
+                                    + " study_outline_revisions WHERE draft_id=? ORDER BY revision",
+                                id));
+        var last =
+                store.row(
+                        "SELECT status,failure_code,failure_message FROM studyroom_generation_jobs"
+                            + " WHERE draft_id=? AND job_type<>'UNIT' ORDER BY created_at DESC,id"
+                            + " DESC LIMIT 1",
+                        id);
+        result.put("generation", last);
+        return result;
+    }
+
+    @Transactional
+    public Map<String, Object> revise(
+            long user, String id, int base, String feedback, LearningDepth depth, String key) {
+        if (feedback == null || feedback.isBlank() || feedback.length() > 4000)
+            throw OutlineJson.error(
+                    HttpStatus.BAD_REQUEST, "INVALID_OUTLINE_FEEDBACK", "请输入修改意见，最多4000字");
+        store.lockUser(user);
+        String payload = json.write(Arrays.asList(id, base, feedback, depth));
+        String prior = store.key(user, "outline_revise", key, payload);
+        if (prior != null) return Map.of("draftId", id, "jobId", prior);
+        var draft = store.owned(user, id, true);
+        requireEditable(draft, base);
+        var target = depth == null ? LearningDepth.valueOf((String) draft.get("depth")) : depth;
+        String job =
+                jobs.enqueue(
+                        user,
+                        id,
+                        null,
+                        null,
+                        "REVISE",
+                        "revise:" + id + ":" + base + ":" + OutlineJson.id(),
+                        Map.of("baseRevision", base, "feedback", feedback, "depth", target.name()));
+        store.db()
+                .update(
+                        "UPDATE study_outline_drafts SET"
+                            + " depth=?,status='GENERATING',pending_job_id=?,updated_at=CURRENT_TIMESTAMP"
+                            + " WHERE id=?",
+                        target.name(),
+                        job,
+                        id);
+        store.message(id, "USER", feedback, base);
+        store.saveKey(user, "outline_revise", key, payload, job);
+        return Map.of("draftId", id, "jobId", job);
+    }
+
+    private void requireEditable(Map<String, Object> draft, int base) {
+        OutlineJson.require(
+                draft.get("pending_job_id") == null, "OUTLINE_GENERATING", "大纲正在生成，请等待完成");
+        OutlineJson.require(
+                JdbcOutlineRepository.number(draft, "latest_revision") == base && base > 0,
+                "OUTLINE_VERSION_CONFLICT",
+                "大纲已更新，请重新审阅最新版本");
+    }
+
+    public void complete(Map<String, Object> job, String raw) {
+        var snapshot =
+                store.owned(
+                        ((Number) job.get("user_id")).longValue(),
+                        (String) job.get("draft_id"),
+                        false);
+        var depth = LearningDepth.valueOf((String) snapshot.get("depth"));
+        var parsed = json.read(raw, ReviewedOutline.class);
+        validator.validate(parsed, depth);
+        var assessment =
+                feasibility.assess(
+                        parsed,
+                        (String) snapshot.get("question"),
+                        (String) snapshot.get("chapter_id"));
+        var outline = assessment.outline();
+        validator.validate(outline, depth);
+        jobs.tx()
+                .executeWithoutResult(
+                        status -> {
+                            long user = ((Number) job.get("user_id")).longValue();
+                            store.lockUser(user);
+                            var draft = store.owned(user, (String) job.get("draft_id"), true);
+                            OutlineJson.require(
+                                    jobs.active(job)
+                                            && Objects.equals(
+                                                    draft.get("pending_job_id"), job.get("id")),
+                                    "OUTLINE_JOB_STALE",
+                                    "大纲生成任务已失效");
+                            int base = JdbcOutlineRepository.number(draft, "latest_revision");
+                            var payload = json.object((String) job.get("payload_json"));
+                            OutlineJson.require(
+                                    ((Number) payload.get("baseRevision")).intValue() == base,
+                                    "OUTLINE_VERSION_CONFLICT",
+                                    "大纲版本已改变");
+                            var before =
+                                    base == 0
+                                            ? null
+                                            : json.read(
+                                                    (String)
+                                                            store.revision(
+                                                                            (String)
+                                                                                    draft.get("id"),
+                                                                            base)
+                                                                    .get("outline_json"),
+                                                    ReviewedOutline.class);
+                            int revision = base + 1;
+                            store.db()
+                                    .update(
+                                            "INSERT INTO"
+                                                + " study_outline_revisions(id,draft_id,revision,base_revision,outline_json,issues_json,change_summary_json,feedback,curriculum_version)"
+                                                + " VALUES(?,?,?,?,?,?,?,?,?)",
+                                            OutlineJson.id(),
+                                            draft.get("id"),
+                                            revision,
+                                            base,
+                                            json.write(outline),
+                                            json.write(assessment.issues()),
+                                            json.write(OutlineDiff.between(before, outline)),
+                                            payload.get("feedback"),
+                                            outline.curriculumVersion());
+                            store.db()
+                                    .update(
+                                            "UPDATE study_outline_drafts SET"
+                                                + " latest_revision=?,status='REVIEWABLE',pending_job_id=NULL,confirmed_run_id=NULL,updated_at=CURRENT_TIMESTAMP"
+                                                + " WHERE id=?",
+                                            revision,
+                                            draft.get("id"));
+                            store.message(
+                                    (String) draft.get("id"),
+                                    "ASSISTANT",
+                                    "第" + revision + "版大纲已生成，请审阅后确认。",
+                                    revision);
+                            jobs.finish(job);
+                        });
+    }
+
+    @Transactional
+    public Map<String, Object> confirm(long user, String id, int revision, String key) {
+        store.lockUser(user);
+        String payload = json.write(List.of(id, revision));
+        String prior = store.key(user, "outline_confirm", key, payload);
+        if (prior != null) return confirmation(prior);
+        var draft = store.owned(user, id, true);
+        requireEditable(draft, revision);
+        OutlineJson.require(
+                draft.get("confirmed_run_id") == null,
+                "OUTLINE_ALREADY_CONFIRMED",
+                "该大纲已确认，请修改后再提交");
+        var saved = store.revision(id, revision);
+        var outline = json.read((String) saved.get("outline_json"), ReviewedOutline.class);
+        validator.validate(outline, LearningDepth.valueOf((String) draft.get("depth")));
+        var assessment =
+                feasibility.assess(
+                        outline, (String) draft.get("question"), (String) draft.get("chapter_id"));
+        OutlineJson.require(
+                assessment.issues().stream().noneMatch(i -> "BLOCKER".equals(i.severity())),
+                "OUTLINE_MATERIALS_UNAVAILABLE",
+                "必要材料不可用，请先修改大纲");
+        String room = (String) draft.get("source_room_id");
+        int runRevision = 1;
+        if (room == null) {
+            room = OutlineJson.id();
+            store.db()
+                    .update(
+                            "INSERT INTO"
+                                + " study_rooms(id,user_id,chapter_id,title,initial_question,summary)"
+                                + " VALUES(?,?,?,?,?,?)",
+                            room,
+                            user,
+                            draft.get("chapter_id"),
+                            outline.title(),
+                            draft.get("question"),
+                            String.join("；", outline.objectives()));
+        } else {
+            var current =
+                    store.row(
+                            "SELECT * FROM study_rooms WHERE id=? AND user_id=? FOR UPDATE",
+                            room,
+                            user);
+            OutlineJson.require(
+                    current != null
+                            && Objects.equals(
+                                    current.get("current_run_id"), draft.get("source_run_id")),
+                    "ROOM_RUN_CONFLICT",
+                    "当前学习路线已改变，请重新规划");
+            runRevision =
+                    store.db()
+                            .queryForObject(
+                                    "SELECT COALESCE(MAX(run_revision),0)+1 FROM studyroom_runs"
+                                            + " WHERE room_id=?",
+                                    Integer.class,
+                                    room);
+        }
+        String run = OutlineJson.id();
+        store.db()
+                .update(
+                        "INSERT INTO"
+                            + " studyroom_runs(id,room_id,user_id,draft_id,outline_revision,run_revision,status,approved_outline_json)"
+                            + " VALUES(?,?,?,?,?,?,'PREPARING',?)",
+                        run,
+                        room,
+                        user,
+                        id,
+                        revision,
+                        runRevision,
+                        json.write(outline));
+        int order = 0;
+        for (var unit : outline.units()) {
+            String unitId = OutlineJson.id(), spec = json.write(unit);
+            String contentHash =
+                    OutlineJson.hash(
+                            json.write(
+                                    Arrays.asList(
+                                            "unit-v2",
+                                            spec,
+                                            outline.depth(),
+                                            draft.get("question"),
+                                            draft.get("chapter_id"))));
+            store.db()
+                    .update(
+                            "INSERT INTO"
+                                + " studyroom_units(id,run_id,unit_key,unit_order,status,unit_spec_json,content_hash)"
+                                + " VALUES(?,?,?,?,'PENDING',?,?)",
+                            unitId,
+                            run,
+                            unit.id(),
+                            order++,
+                            spec,
+                            contentHash);
+            var reusable =
+                    store.row(
+                            "SELECT u.* FROM studyroom_units u JOIN studyroom_runs r ON"
+                                    + " r.id=u.run_id WHERE r.user_id=? AND u.content_hash=? AND"
+                                    + " u.status='READY' ORDER BY u.created_at DESC LIMIT 1",
+                            user,
+                            contentHash);
+            if (reusable != null
+                    && composer.reusable(
+                            (String) reusable.get("content_json"),
+                            unit,
+                            (String) draft.get("question"),
+                            (String) draft.get("chapter_id")))
+                store.db()
+                        .update(
+                                "UPDATE studyroom_units SET source_unit_id=?,content_json=? WHERE"
+                                        + " id=?",
+                                reusable.get("id"),
+                                reusable.get("content_json"),
+                                unitId);
+            if (order == 1) {
+                jobs.enqueue(user, id, run, unitId, "UNIT", "unit:" + unitId, Map.of());
+                store.db().update("UPDATE studyroom_units SET status='QUEUED' WHERE id=?", unitId);
+            }
+        }
+        store.db()
+                .update(
+                        "UPDATE studyroom_generation_jobs SET"
+                            + " status='CANCELLED',failure_code='RUN_SUPERSEDED',lease_until=NULL"
+                            + " WHERE run_id IN (SELECT id FROM studyroom_runs WHERE room_id=? AND"
+                            + " id<>?) AND status='QUEUED'",
+                        room,
+                        run);
+        store.db()
+                .update(
+                        "UPDATE studyroom_runs SET status='SUPERSEDED' WHERE room_id=? AND id<>?",
+                        room,
+                        run);
+        store.db()
+                .update(
+                        "UPDATE study_rooms SET"
+                            + " current_run_id=?,current_step_id=NULL,title=?,version=version+1,updated_at=CURRENT_TIMESTAMP"
+                            + " WHERE id=?",
+                        run,
+                        outline.title(),
+                        room);
+        store.db()
+                .update(
+                        "UPDATE study_outline_drafts SET"
+                            + " confirmed_run_id=?,source_room_id=?,source_run_id=?,status='CONFIRMED'"
+                            + " WHERE id=?",
+                        run,
+                        room,
+                        run,
+                        id);
+        store.saveKey(user, "outline_confirm", key, payload, run);
+        return confirmation(run);
+    }
+
+    private Map<String, Object> confirmation(String run) {
+        var row = store.row("SELECT room_id FROM studyroom_runs WHERE id=?", run);
+        var unit =
+                store.row(
+                        "SELECT id FROM studyroom_units WHERE run_id=? ORDER BY unit_order LIMIT 1",
+                        run);
+        return Map.of("roomId", row.get("room_id"), "runId", run, "firstUnitId", unit.get("id"));
+    }
+
+    @Transactional
+    public Map<String, Object> retry(long user, String id, String key) {
+        store.lockUser(user);
+        var draft = store.owned(user, id, true);
+        String payload =
+                json.write(List.of(id, JdbcOutlineRepository.number(draft, "latest_revision")));
+        String prior = store.key(user, "outline_retry", key, payload);
+        if (prior != null) return Map.of("draftId", id, "jobId", prior);
+        OutlineJson.require(draft.get("pending_job_id") == null, "OUTLINE_GENERATING", "大纲仍在生成");
+        var failed =
+                store.row(
+                        "SELECT * FROM studyroom_generation_jobs WHERE draft_id=? AND"
+                            + " job_type<>'UNIT' AND status='FAILED' ORDER BY created_at DESC,id"
+                            + " DESC LIMIT 1",
+                        id);
+        OutlineJson.require(failed != null, "OUTLINE_RETRY_UNAVAILABLE", "当前没有失败的大纲任务");
+        String job =
+                jobs.enqueue(
+                        user,
+                        id,
+                        null,
+                        null,
+                        (String) failed.get("job_type"),
+                        "retry:" + OutlineJson.id(),
+                        json.object((String) failed.get("payload_json")));
+        var retryPayload = json.object((String) failed.get("payload_json"));
+        String targetDepth = (String) retryPayload.getOrDefault("depth", draft.get("depth"));
+        store.db()
+                .update(
+                        "UPDATE study_outline_drafts SET"
+                                + " depth=?,status='GENERATING',pending_job_id=? WHERE id=?",
+                        targetDepth,
+                        job,
+                        id);
+        store.saveKey(user, "outline_retry", key, payload, job);
+        return Map.of("draftId", id, "jobId", job);
+    }
+
+    @Transactional
+    public Map<String, Object> restore(long user, String id, int base, int target, String key) {
+        store.lockUser(user);
+        String payload = json.write(List.of(id, base, target));
+        String prior = store.key(user, "outline_restore", key, payload);
+        if (prior != null) {
+            var existing =
+                    store.row("SELECT revision FROM study_outline_revisions WHERE id=?", prior);
+            return Map.of("draftId", id, "revision", existing.get("revision"));
+        }
+        var draft = store.owned(user, id, true);
+        requireEditable(draft, base);
+        var source = store.revision(id, target);
+        OutlineJson.require(source != null, "OUTLINE_REVISION_NOT_FOUND", "历史版本不存在");
+        var restored = json.read((String) source.get("outline_json"), ReviewedOutline.class);
+        validator.validate(restored, restored.depth());
+        var assessment =
+                feasibility.assess(
+                        restored, (String) draft.get("question"), (String) draft.get("chapter_id"));
+        var before =
+                json.read(
+                        (String) store.revision(id, base).get("outline_json"),
+                        ReviewedOutline.class);
+        String revisionId = OutlineJson.id();
+        int revision = base + 1;
+        store.db()
+                .update(
+                        "INSERT INTO"
+                            + " study_outline_revisions(id,draft_id,revision,base_revision,outline_json,issues_json,change_summary_json,feedback,curriculum_version)"
+                            + " VALUES(?,?,?,?,?,?,?,?,?)",
+                        revisionId,
+                        id,
+                        revision,
+                        base,
+                        json.write(assessment.outline()),
+                        json.write(assessment.issues()),
+                        json.write(OutlineDiff.between(before, assessment.outline())),
+                        "恢复第" + target + "版",
+                        assessment.outline().curriculumVersion());
+        store.db()
+                .update(
+                        "UPDATE study_outline_drafts SET"
+                            + " latest_revision=?,depth=?,status='REVIEWABLE',confirmed_run_id=NULL,updated_at=CURRENT_TIMESTAMP"
+                            + " WHERE id=?",
+                        revision,
+                        restored.depth().name(),
+                        id);
+        store.message(id, "USER", "恢复第" + target + "版大纲", revision);
+        store.saveKey(user, "outline_restore", key, payload, revisionId);
+        return Map.of("draftId", id, "revision", revision);
+    }
+}

@@ -77,6 +77,7 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
         String responseBody = readResponseBody(response.body());
         String content;
         Long totalTokens;
+        String finishReason;
         try {
             JsonNode payload = objectMapper.readTree(responseBody);
             content = payload
@@ -86,13 +87,18 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
                 .path("content")
                 .asText();
             totalTokens = reportedTotalTokens(payload);
+            finishReason = payload.path("choices").path(0).path("finish_reason").asText("");
+            org.slf4j.LoggerFactory.getLogger(OpenAiCompatibleModelClient.class).info(
+                "Model completion: finishReason={} completionTokens={} maxTokens={} outputChars={}",
+                payload.path("choices").path(0).path("finish_reason").asText("unknown"),
+                payload.path("usage").path("completion_tokens").asInt(-1), request.maxTokens(), content.length());
         } catch (Exception error) {
             throw failure(MODEL_RESPONSE_READ_FAILED);
         }
         if (content == null || content.isBlank()) {
             throw failure(MODEL_EMPTY_RESPONSE);
         }
-        return new ModelResponse(content, totalTokens);
+        return new ModelResponse(content, totalTokens, finishReason);
     }
 
     @Override

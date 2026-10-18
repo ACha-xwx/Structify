@@ -39,7 +39,7 @@ public final class AiQuotaRequestId {
 
     public static String operationScoped(String operation, String requestId) {
         String normalizedOperation = operation == null ? "formal" : operation.trim().toLowerCase(java.util.Locale.ROOT);
-        if (!normalizedOperation.matches("[a-z0-9-]{1,32}")) {
+        if (!normalizedOperation.matches("[a-z0-9_-]{1,32}")) {
             normalizedOperation = "formal";
         }
         return "quota-" + digest(normalizedOperation + "\n" + canonicalize(requestId));

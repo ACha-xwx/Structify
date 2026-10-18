@@ -19,6 +19,271 @@ tags:
   - name: AI
   - name: Admin
 paths:
+  /study-outlines:
+    post:
+      tags: [Classroom]
+      summary: Queue an outline only; no lesson body is generated before confirmation
+      security: [{bearerAuth: []}, {cookieAuth: []}]
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question, depth]
+              properties:
+                question: {type: string, minLength: 1, maxLength: 4000}
+                depth: {$ref: '#/components/schemas/LearningDepth'}
+                chapterId: {type: string, maxLength: 64}
+                sourceRoomId: {type: string, maxLength: 36}
+      responses:
+        '202': {description: Draft ID; poll the owned draft}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {description: Idempotency payload conflict}
+  /study-outlines/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Classroom]
+      summary: Read an owned draft, latest valid outline, issues, immutable revision history and generation status
+      security: [{bearerAuth: []}, {cookieAuth: []}]
+      responses:
+        '200':
+          description: Draft state; reading never starts generation
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OutlineDraft'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: Draft absent or owned by another user}
+  /study-outlines/{id}/revisions:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [Classroom]
+      summary: Queue a revised outline while retaining the last valid version
+      security: [{bearerAuth: []}, {cookieAuth: []}]
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [baseRevision, feedback]
+              properties:
+                baseRevision: {type: integer, minimum: 1}
+                feedback: {type: string, minLength: 1, maxLength: 4000}
+                depth: {$ref: '#/components/schemas/LearningDepth'}
+      responses:
+        '202': {description: Operation accepted; repeated keys return the same result}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: Draft absent or foreign}
+        '409': {description: Stale revision, generation pending, unavailable required material or idempotency conflict}
+  /study-outlines/{id}/confirm:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [Classroom]
+      summary: Freeze the latest reviewed outline and queue the first unit
+      security: [{bearerAuth: []}, {cookieAuth: []}]
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision]
+              properties:
+                revision: {type: integer, minimum: 1}
+      responses:
+        '200': {description: Operation accepted; repeated keys return the same result}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: Draft absent or foreign}
+        '409': {description: Stale revision, generation pending, unavailable required material or idempotency conflict}
+  /study-outlines/{id}/restore:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [Classroom]
+      summary: Copy a historical outline into a new immutable revision
+      security: [{bearerAuth: []}, {cookieAuth: []}]
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [baseRevision, targetRevision]
+              properties:
+                baseRevision: {type: integer, minimum: 1}
+                targetRevision: {type: integer, minimum: 1}
+      responses:
+        '200': {description: Operation accepted; repeated keys return the same result}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: Draft absent or foreign}
+        '409': {description: Stale revision, generation pending, unavailable required material or idempotency conflict}
+  /study-outlines/{id}/retry:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [Classroom]
+      summary: Explicitly retry failed generation; an uncertain prior call may have consumed quota
+      security: [{bearerAuth: []}, {cookieAuth: []}]
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, maxLength: 128}}
+      responses:
+        '202': {description: Operation accepted; repeated keys return the same result}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: Draft absent or foreign}
+        '409': {description: Stale revision, generation pending, unavailable required material or idempotency conflict}
+  /study-rooms/{id}/run:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Classroom]
+      summary: Read owned current learning run and unit preparation states without generation
+      security: [{bearerAuth: []}, {cookieAuth: []}]
+      responses:
+        '200': {description: Run snapshot or legacy=true for a legacy room}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: Run absent or foreign}
+  /studyroom-runs/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Classroom]
+      summary: Read owned current learning run and unit preparation states without generation
+      security: [{bearerAuth: []}, {cookieAuth: []}]
+      responses:
+        '200': {description: Run snapshot or legacy=true for a legacy room}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: Run absent or foreign}
+  /studyroom-runs/{id}/units/{unitId}/prepare:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+      - {name: unitId, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [Classroom]
+      summary: Explicitly prepare or retry one unit in the current run
+      security: [{bearerAuth: []}, {cookieAuth: []}]
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, maxLength: 128}}
+      responses:
+        '202': {description: Owned queued or active job ID}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: Unit absent, foreign or run superseded}
+        '409': {description: Unit ready or idempotency payload conflict}
+  /study-rooms:
+    post:
+      tags: [Classroom]
+      summary: Legacy creation endpoint; requires the reviewed outline flow
+      security: [{bearerAuth: []}, {cookieAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question: {type: string, minLength: 1, maxLength: 4000}
+                chapterId: {type: string, maxLength: 64}
+      responses:
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '409': {description: STUDYROOM_OUTLINE_REQUIRED; create and confirm a draft first}
+  /study-rooms/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    get:
+      tags: [Classroom]
+      summary: Read an owned lesson; legacy records receive a scene adapter
+      security: [{bearerAuth: []}, {cookieAuth: []}]
+      responses:
+        '200':
+          description: Owned lesson
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StudyroomView'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: Lesson does not exist or belongs to another user}
+  /study-rooms/{id}/messages:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [Classroom]
+      summary: Answer in the current scene or append independently bound teaching steps
+      security: [{bearerAuth: []}, {cookieAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question: {type: string, minLength: 1, maxLength: 4000}
+                context:
+                  type: object
+                  required: [stepId, sceneId]
+                  properties:
+                    stepId: {type: string, maxLength: 64}
+                    sceneId: {type: string, maxLength: 160}
+                    resourceId: {type: string, maxLength: 160}
+                    codeMode: {type: string, enum: [READ, EXPERIMENT]}
+                    runResult:
+                      type: object
+                      properties:
+                        stdout: {type: string, maxLength: 4000}
+                        stderr: {type: string, maxLength: 4000}
+      responses:
+        '200':
+          description: Updated lesson; an invalid supplement is explicitly reported in the answer
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/StudyroomView'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: Lesson does not exist or belongs to another user}
+  /study-rooms/{id}/progress:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    patch:
+      tags: [Classroom]
+      summary: Save the selected step; does not imply mastery or persist slide/editor state
+      security: [{bearerAuth: []}, {cookieAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [stepId]
+              properties:
+                stepId: {type: string, minLength: 1, maxLength: 64}
+      responses:
+        '200':
+          description: Saved progress
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [currentStepId, version, updatedAt]
+                properties:
+                  currentStepId: {type: string}
+                  version: {type: integer, description: Optimistic room revision, distinct from orchestration schemaVersion}
+                  updatedAt: {type: string, format: date-time}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: Room or step is not owned by this user}
   /auth/request-code:
     post:
       tags: [Auth]
@@ -1494,6 +1759,151 @@ components:
       description: Local evidence persistence failed and the transaction was rolled back
       content: {application/json: {schema: {$ref: '#/components/schemas/ApiError'}}}
   schemas:
+    ReviewedOutline:
+      type: object
+      required: [schemaVersion, depth, title, objectives, prerequisites, units, excludedCoverageKeys, exclusions, evidenceIds, coverageAssessment]
+      properties:
+        schemaVersion: {type: integer, enum: [1]}
+        depth: {$ref: '#/components/schemas/LearningDepth'}
+        title: {type: string, minLength: 1, maxLength: 160}
+        objectives: {type: array, minItems: 1, maxItems: 12, items: {type: string, maxLength: 400}}
+        prerequisites: {type: array, items: {type: string}}
+        units: {type: array, minItems: 1, maxItems: 24, items: {$ref: '#/components/schemas/OutlineUnit'}}
+        excludedCoverageKeys: {type: array, items: {type: string}}
+        exclusions: {type: array, items: {type: string}}
+        evidenceIds: {type: array, items: {type: string}}
+        curriculumVersion: {type: string, nullable: true}
+        coverageAssessment: {type: string, enum: [REVIEWED_FRAMEWORK, EVIDENCE_ONLY]}
+    OutlineUnit:
+      type: object
+      required: [id, title, objective, coverageKeys, expansion, activities, materials]
+      properties:
+        id: {type: string, maxLength: 80}
+        title: {type: string, maxLength: 160}
+        objective: {type: string, maxLength: 400}
+        coverageKeys: {type: array, minItems: 1, maxItems: 32, items: {type: string}}
+        expansion: {type: string, enum: [INTRODUCE, EXPLAIN, PRACTICE]}
+        activities: {type: array, minItems: 1, maxItems: 8, items: {type: string, enum: [CONCEPT, PROCESS, IMPLEMENTATION, EXPERIMENT, CHECK]}}
+        materials:
+          type: array
+          maxItems: 9
+          description: At most three purposes per material kind; candidate IDs are computed by the server
+          items:
+            type: object
+            required: [kind, requirement, purpose, candidateIds, availability]
+            properties:
+              kind: {type: string, enum: [PPT, ANIMATION, C_CODE]}
+              requirement: {type: string, enum: [REQUIRED, RECOMMENDED, OPTIONAL]}
+              purpose: {type: string, maxLength: 200}
+              candidateIds: {type: array, items: {type: string}}
+              availability: {type: string, enum: [AVAILABLE, UNAVAILABLE, UNVERIFIED]}
+    LearningDepth:
+      type: string
+      enum: [QUICK, STANDARD, DEEP]
+    OutlineDraft:
+      type: object
+      required: [id, status, latestRevision, outline, issues, changes]
+      properties:
+        id: {type: string}
+        status: {type: string, enum: [GENERATING, REVIEWABLE, FAILED, CONFIRMED]}
+        latestRevision: {type: integer, minimum: 0}
+        pendingJobId: {type: string, nullable: true}
+        confirmedRunId: {type: string, nullable: true}
+        confirmedRoomId: {type: string, nullable: true}
+        sourceRoomId: {type: string, nullable: true}
+        outline: {allOf: [{$ref: '#/components/schemas/ReviewedOutline'}], nullable: true}
+        issues: {type: array, items: {type: object, description: code, unitId, severity BLOCKER or WARNING, message}}
+        changes: {type: array, items: {type: object, description: unitId, kind ADDED or REMOVED or CHANGED or MOVED, summary}}
+        revisions: {type: array, items: {type: object, description: immutable revision metadata}}
+        messages: {type: array, items: {type: object, description: outline discussion only}}
+    StudyroomScene:
+      type: object
+      required: [id, kind, purpose, items]
+      properties:
+        id: {type: string}
+        kind: {type: string, enum: [TEXT, PPT, ANIMATION, C_CODE]}
+        purpose: {type: string, maxLength: 200}
+        items:
+          type: array
+          maxItems: 12
+          description: Ordered pages for PPT; exactly one item for animation/code, none for TEXT
+          items:
+            type: object
+            required: [resourceId, explanation]
+            properties:
+              resourceId: {type: string}
+              explanation: {type: string, maxLength: 4000}
+              startLine: {type: integer, minimum: 1, nullable: true}
+              endLine: {type: integer, minimum: 1, nullable: true}
+        codeMode: {type: string, enum: [READ, EXPERIMENT], nullable: true}
+        task: {type: string, maxLength: 1000, nullable: true}
+        stdin: {type: string, nullable: true}
+        expectedObservation: {type: string, maxLength: 1000, nullable: true}
+    StudyroomOrchestration:
+      type: object
+      required: [schemaVersion, objective, intent, primary, supplementary]
+      properties:
+        schemaVersion: {type: integer, enum: [2]}
+        objective: {type: string, maxLength: 400}
+        intent: {type: string, enum: [CONCEPT, PROCESS, IMPLEMENTATION, EXPERIMENT, CHECK]}
+        primary: {$ref: '#/components/schemas/StudyroomScene'}
+        supplementary:
+          type: array
+          maxItems: 2
+          items: {$ref: '#/components/schemas/StudyroomScene'}
+    StudyroomView:
+      type: object
+      required: [id, title, summary, version, steps, messages]
+      properties:
+        id: {type: string}
+        chapterId: {type: string, nullable: true}
+        title: {type: string}
+        initialQuestion: {type: string}
+        summary: {type: string}
+        currentStepId: {type: string, nullable: true}
+        version: {type: integer}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        steps:
+          type: array
+          items:
+            type: object
+            required: [id, stepKey, type, title, explanation, resources, orchestration]
+            properties:
+              id: {type: string}
+              stepKey: {type: string}
+              type: {type: string}
+              title: {type: string}
+              explanation: {type: string}
+              evidenceIds: {type: array, items: {type: string}}
+              order: {type: integer}
+              supplemental: {type: boolean}
+              parentStepId: {type: string, nullable: true}
+              createdAt: {type: string, format: date-time}
+              orchestration: {$ref: '#/components/schemas/StudyroomOrchestration'}
+              resources:
+                type: array
+                items:
+                  type: object
+                  required: [type, id, title, description, parameters, available]
+                  properties:
+                    type: {type: string, description: Lowercase wire resource type}
+                    id: {type: string}
+                    title: {type: string}
+                    description: {type: string}
+                    parameters: {type: object, additionalProperties: true}
+                    available: {type: boolean}
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              id: {type: string}
+              role: {type: string}
+              content: {type: string}
+              sourceIds: {type: array, items: {type: string}}
+              stepId: {type: string, nullable: true}
+              createdAt: {type: string, format: date-time}
     ApiError:
       type: object
       required: [code, message, requestId, details]
@@ -1813,13 +2223,13 @@ components:
         i: {type: integer, minimum: 0, maximum: 1024, nullable: true}
         j: {type: integer, minimum: 0, maximum: 1024, nullable: true}
         key: {type: string, maxLength: 48, nullable: true}
-          val: {type: string, maxLength: 48, nullable: true}
-          state:
-            type: array
-            nullable: true
-            readOnly: true
-            items: {}
-            description: Exact step snapshot from deterministic local execution; not accepted from model-generated definitions.
+        val: {type: string, maxLength: 48, nullable: true}
+        state:
+          type: array
+          nullable: true
+          readOnly: true
+          items: {}
+          description: Exact step snapshot from deterministic local execution; not accepted from model-generated definitions.
     AnimationDefinition:
       type: object
       required: [animation, type, title, description, initial, steps]
@@ -1832,12 +2242,12 @@ components:
           type: array
           maxItems: 64
           items: {}
-          steps:
-            type: array
-            minItems: 1
-            maxItems: 256
-            description: Deterministic DSVP output may contain up to 256 steps; untrusted model-generated definitions remain limited to 20.
-            items: {$ref: '#/components/schemas/AnimationStep'}
+        steps:
+          type: array
+          minItems: 1
+          maxItems: 256
+          description: Deterministic DSVP output may contain up to 256 steps; untrusted model-generated definitions remain limited to 20.
+          items: {$ref: '#/components/schemas/AnimationStep'}
     AnimationResponse:
       type: object
       required: [definition, persisted]

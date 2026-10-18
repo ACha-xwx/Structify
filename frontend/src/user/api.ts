@@ -36,6 +36,7 @@ import type {
   TextbookCodeLibraryResponse,
 } from "../shared/types/contracts";
 import type { Chapter, KnowledgeSearchResponse } from "../shared/types/course";
+import type { StudyroomProgress, StudyroomView, StudyroomFollowUpContext } from "../shared/types/studyroom";
 
 /**
  * A code explanation is a model answer, so it outlives the default request budget (20s): the same
@@ -127,6 +128,10 @@ export interface UserApi {
   getLearningProgress(): Promise<LearningProgress>;
   getLearningWorkbench(): Promise<LearningWorkbenchProjection>;
   recordLearningEvent(input: LearningEventRequest): Promise<LearningEvent>;
+  createStudyroom(input: { question: string; chapterId?: string }): Promise<StudyroomView>;
+  getStudyroom(id: string): Promise<StudyroomView>;
+  followUpStudyroom(id: string, input: { question: string; context?: StudyroomFollowUpContext }): Promise<StudyroomView>;
+  updateStudyroomProgress(id: string, stepId: string): Promise<StudyroomProgress>;
 }
 
 export interface ClassroomLesson {
@@ -143,6 +148,20 @@ export interface ClassroomPreparationStatus {
   phase: string;
   error?: string | null;
   session?: ClassroomSession | null;
+}
+
+function normalizeStudyroom(value: StudyroomView): StudyroomView {
+  return {
+    ...value,
+    steps: (value.steps ?? []).map((step) => ({
+      ...step,
+      resources: (step.resources ?? []).map((resource) => ({
+        ...resource,
+        type: ["ppt", "animation", "c_code"].includes(resource.type.toLowerCase())
+          ? resource.type.toUpperCase() : resource.type,
+      })),
+    })),
+  };
 }
 
 export function createUserApi(client: { request: UserRequest }): UserApi {
@@ -222,5 +241,10 @@ export function createUserApi(client: { request: UserRequest }): UserApi {
     async getLearningProgress() { return jsonData(await request<LearningProgress>("/learning/progress")); },
     async getLearningWorkbench() { return jsonData(await request<LearningWorkbenchProjection>("/learning/workbench")); },
     async recordLearningEvent(input) { return jsonData(await request<LearningEvent>("/learning/events", { method: "POST", body: input })); },
+    // Creation can perform two model calls (generation + one validated repair), each allowing 45s.
+    async createStudyroom(input) { return normalizeStudyroom(jsonData(await request<StudyroomView>("/study-rooms", { method: "POST", body: input, timeoutMs: 120_000 }))); },
+    async getStudyroom(id) { return normalizeStudyroom(jsonData(await request<StudyroomView>(`/study-rooms/${encoded(id)}`))); },
+    async followUpStudyroom(id, input) { return normalizeStudyroom(jsonData(await request<StudyroomView>(`/study-rooms/${encoded(id)}/messages`, { method: "POST", body: input, timeoutMs: 60_000 }))); },
+    async updateStudyroomProgress(id, stepId) { return jsonData(await request<StudyroomProgress>(`/study-rooms/${encoded(id)}/progress`, { method: "PATCH", body: { stepId } })); },
   };
 }

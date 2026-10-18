@@ -466,7 +466,7 @@ public class PresentationCatalog {
     /** Sibling file a converted page would live in, or null when the page is already the converted form. */
     private static Path convertedTwin(Path image) {
         String name = image.getFileName().toString();
-        return name.endsWith(".png")
+        return name.toLowerCase(Locale.ROOT).endsWith(".png")
             ? image.resolveSibling(name.substring(0, name.length() - ".png".length()) + ".webp")
             : null;
     }

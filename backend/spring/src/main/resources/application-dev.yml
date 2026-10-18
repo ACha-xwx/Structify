@@ -1,8 +1,26 @@
+spring:
+  flyway:
+    locations: classpath:db/migration,classpath:db/dev
+
 app:
+  model:
+    provider: ${MODEL_PROVIDER:deepseek}
+    api-key: ${MODEL_API_KEY:${DEEPSEEK_API_KEY:}}
+    base-url: ${MODEL_BASE_URL:https://api.deepseek.com}
+    name: ${MODEL_NAME:deepseek-flash}
+  ai-quota:
+    daily-token-quota: ${AI_DAILY_TOKEN_QUOTA:500000}
   security:
     jwt-secret: ${JWT_SECRET:local-development-only-jwt-secret-change-me}
   auth:
     expose-development-code: ${AUTH_EXPOSE_DEV_CODE:true}
+  dev-test-account:
+    email: ${DEV_TEST_ACCOUNT_EMAIL:student@structify.test}
+    username: ${DEV_TEST_ACCOUNT_USERNAME:StructifyTest}
+    password: ${DEV_TEST_ACCOUNT_PASSWORD:StructifyTest123!}
   knowledge:
     auto-publish-local: ${KNOWLEDGE_AUTO_PUBLISH_LOCAL:true}
-    directory: ${KNOWLEDGE_DIR:../../knowledge/dev}
+    directory: ${KNOWLEDGE_DIR:../../知识库}
+  presentation:
+    directory: ${PRESENTATION_DIR:../../WebP}
+    image-directory: ${PRESENTATION_IMAGE_DIR:../../WebP}

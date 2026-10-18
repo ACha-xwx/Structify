@@ -81,7 +81,7 @@ public class ClassroomPreparation {
         return jdbc.query("""
             SELECT k.chapter_id, k.source_path, MIN(k.title) AS title
             FROM knowledge_chunks k JOIN chapters c ON c.id = k.chapter_id
-            WHERE k.source_path LIKE 'textbook/%' AND k.review_status = 'VERIFIED'
+            WHERE (k.source_path LIKE 'textbook/%' OR k.source_path LIKE 'courseware/%') AND k.review_status = 'VERIFIED'
               AND k.resource_id IS NULL AND k.license_scope IN ('PUBLIC','CLASSROOM_ONLY') AND c.status = 'PUBLISHED'
             GROUP BY k.chapter_id, k.source_path ORDER BY k.source_path
             """, (row, n) -> new Lesson(id(row.getString("chapter_id"), row.getString("source_path")), row.getString("chapter_id"), row.getString("title"), row.getString("source_path"),
@@ -98,7 +98,7 @@ public class ClassroomPreparation {
         Map<String, java.util.TreeSet<Integer>> pages = new LinkedHashMap<>();
         jdbc.query("""
             SELECT k.source_path, k.page_label FROM knowledge_chunks k JOIN chapters c ON c.id = k.chapter_id
-            WHERE k.source_path LIKE 'textbook/%' AND k.review_status = 'VERIFIED'
+            WHERE (k.source_path LIKE 'textbook/%' OR k.source_path LIKE 'courseware/%') AND k.review_status = 'VERIFIED'
               AND k.resource_id IS NULL AND k.license_scope IN ('PUBLIC','CLASSROOM_ONLY') AND c.status = 'PUBLISHED'
             """, (org.springframework.jdbc.core.RowCallbackHandler) row -> {
             int page = firstNumber(row.getString("page_label"));

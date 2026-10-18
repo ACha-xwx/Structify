@@ -14,6 +14,9 @@ describe("workbench entry routes", () => {
     const home = routes.find((route) => route.name === "home");
     const begin = routes.find((route) => route.name === "begin");
     const classroom = routes.find((route) => route.name === "classroom");
+    const studyroom = routes.find((route) => route.name === "studyroom");
+    const courseChat = routes.find((route) => route.name === "chat");
+    const legacyChat = routes.find((route) => route.name === "chat-legacy");
 
     expect(home?.path).toBe("/");
     expect(home?.meta?.requiresAuth).not.toBe(true);
@@ -24,5 +27,23 @@ describe("workbench entry routes", () => {
     expect(classroom?.path).toBe("/classroom");
     expect(home?.component).not.toBe(classroom?.component);
     expect(begin?.component).not.toBe(home?.component);
+    expect(studyroom?.path).toBe("/studyroom/:id");
+    expect(studyroom?.meta?.requiresAuth).toBe(true);
+    expect(courseChat?.path).toBe("/chat");
+    expect(courseChat?.component).toBe(routes.find(route=>route.name==="studyroom-new")?.component);
+    expect(routes.find(route=>route.name==="studyroom-outline")?.path).toBe("/studyroom/outlines/:draftId");
+    expect(legacyChat?.path).toBe("/chat-legacy");
+  });
+
+  it("exposes the resource demo as a local preview route in development", () => {
+    const demo = routes.find((route) => route.name === "studyroom-demo-new");
+
+    expect(Boolean(demo)).toBe(import.meta.env.DEV);
+    if (demo) {
+      expect(demo.meta?.requiresAuth).toBe(true);
+      expect(demo.meta?.allowsLocalPreview).toBeUndefined();
+      expect(demo.redirect).toBe("/studyroom");
+      expect(demo.props).not.toEqual({ mock: true });
+    }
   });
 });

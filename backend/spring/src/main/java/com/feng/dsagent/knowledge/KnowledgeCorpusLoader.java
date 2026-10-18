@@ -56,6 +56,9 @@ public final class KnowledgeCorpusLoader {
             return KnowledgeCorpus.empty();
         }
         Path root = textbookDirectory.toAbsolutePath().normalize();
+        if (Files.isRegularFile(root.resolve("转换清单.json"))) {
+            return new CoursewareKnowledgeLoader(mapper).load(root, chunkSize);
+        }
         Path lessonsDirectory = root.resolve("lessons");
         if (!Files.isDirectory(lessonsDirectory)) {
             return KnowledgeCorpus.empty();

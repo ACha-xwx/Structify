@@ -26,9 +26,13 @@ cd backend/spring
 
 The explicit `dev` profile starts with an in-memory H2 database at `http://127.0.0.1:8792`, enables local verification-code echoing, and may import local knowledge files. The base configuration requires `JWT_SECRET` and keeps those development conveniences disabled, so an accidentally unprofiled deployment fails closed. Health endpoint:
 
+Local course resources now come from the original `知识库/` and `WebP/` directories at the repository root. Before starting Spring, run `node scripts/build-original-courseware.mjs` from the repository root to validate and index all 22 decks / 1,210 pages. The dev profile imports the per-page PPT text into `knowledge_chunks` and serves the corresponding original WebP images. `KNOWLEDGE_DIR`, `PRESENTATION_DIR`, and `PRESENTATION_IMAGE_DIR` can override these paths. These are PPT page references, not verified textbook/PDF page references. Chapters 04 and 10 have no original decks in this bundle and receive no invented content. The repeatable dev migration removes old `dev-mock/` chunks, and the former demo routes redirect to the real studyroom.
+
 ```text
 GET http://127.0.0.1:8792/actuator/health
 ```
+
+The `dev` profile also seeds a student account for local testing: `student@structify.test` / `StructifyTest123!`. It is created only when missing and never resets an existing account password. Override the values with `DEV_TEST_ACCOUNT_EMAIL`, `DEV_TEST_ACCOUNT_USERNAME`, and `DEV_TEST_ACCOUNT_PASSWORD` when needed.
 
 For a packaged-JAR health check without development conveniences, use the `verification` profile. It binds only to `127.0.0.1:8793`, uses a separate in-memory H2 database, disables mail and local knowledge publishing, and expects temporary empty resource directories through `KNOWLEDGE_DIR` and `RESOURCE_DIR` when those paths need to be exercised.
 
@@ -154,3 +158,22 @@ npm test
 ```
 
 The GitHub Actions workflow runs both checks for pushes and pull requests. Docker Compose and Caddy examples are under [`deployment`](../../deployment).
+
+## Studyroom resource orchestration (schemaVersion 2)
+
+Question-driven lessons first plan teaching goals, then retrieve candidates per goal and bind scenes in a second bounded model call. A single repair is allowed; separate operation-scoped quota keys meter each call. `room.version` remains the progress revision and is unrelated to scene `schemaVersion`.
+
+Flyway V27 adds nullable `study_room_steps.orchestration_json`. NULL historical records are adapted without model calls. A PPT scene contains ordered page references and per-page explanations; code scenes distinguish READ and EXPERIMENT. All scene references must belong to the step and its authorized candidate list. Code line ranges are checked against the catalog source. Missing resources never authorize replacement resources.
+
+The UI shows actual step materials, supports page navigation/zoom/fullscreen, and keeps slide positions and code drafts only during the current page session. Follow-up context may include the selected scene/page and bounded run output; it is validated against the owned lesson and treated as untrusted data. Development demo routes use the same backend resource catalog instead of injecting frontend resources.
+
+Per-step candidate budgets: PPT 12, animation 4, code 6. Search uses the original question plus each goal; explicit code activities are normalized to implementation intent. Inspect `Studyroom selection` and `Studyroom resource decision` logs by request ID to distinguish candidate absence, model omission and selected IDs. Catalog errors and validation removal are reported separately. Full material text and credentials are not logged.
+
+
+## 学习大纲审阅预览
+
+课程问答使用“选择详细程度 → 生成大纲 → 学生修改/确认 → 按单元准备”流程。新增接口与状态见 `../../contracts/openapi-v1.yaml`；实施、恢复策略与验证边界见 [验收记录](../../docs/project/studyroom-reviewed-outline-acceptance-2026-10-18.md)。
+
+从仓库根目录运行 `./scripts/start-studyroom-preview.ps1`，在未设置 DB_URL 时使用 `private/dev-db/reviewed-outline` 文件库，使草稿、任务与课堂在重启后保留。已有外部数据库配置优先。普通 `spring-boot:run` 仍遵循 application.yml 的数据库配置。
+
+Worker 使用数据库租约与模型响应记录；`app.studyroom-generation.enabled=false` 停止自动领取。SENT 调用结果不确定时不会自动再消耗额度，需要显式重试。代码运行服务未配置时可以阅读、编辑源码，规划默认不安排运行实验；显式实验须先具备运行能力。

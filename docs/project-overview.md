@@ -1,5 +1,8 @@
 # Structify 项目总览
 
+> **开发者 onboarding 请以 [`docs/handoff/README.md`](./handoff/README.md) 为准**（以当前分支代码与 OpenAPI 为事实来源）。  
+> 下文含 **2026-09-22** 生产实测数字与历史进度，可能与当前仓库有偏差。
+
 > 面向"数据结构（C 语言描述）"课程的 AI 教学系统。
 > 生成日期：2026-09-22　　当前生产版本：`v1.0.71-signed-static-courseware-urls`
 > 线上：学习站 `https://structify.cn`　管理端 `https://admin.structify.cn`

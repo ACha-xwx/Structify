@@ -107,6 +107,27 @@ class PresentationCatalogTest {
     }
 
     @Test
+    void prefersTheConvertedTwinForUppercasePngPaths() throws IOException {
+        write("rendered/deck-upper/幻灯片1.PNG");
+        write("rendered/deck-upper/幻灯片1.webp");
+        Files.writeString(root.resolve("slides.json"), """
+            {"version":1,"builtAt":"now","slides":[
+              {"id":"deck-upper-s001","deckId":"deck-upper","deckTitle":"Uppercase PNG",
+               "slideNumber":1,"chapter":"06","title":"Page 1",
+               "imagePath":"rendered/deck-upper/幻灯片1.PNG","lessonIds":[]}
+            ]}
+            """);
+        Files.writeString(root.resolve("lesson-presentation-plans.json"), """
+            {"version":1,"builtAt":"now","lessons":{}}
+            """);
+        catalog = catalogFor(root, true);
+
+        assertThat(catalog.slide("deck-upper-s001").imageUrl()).endsWith(".webp");
+        assertThat(catalog.imageFile("deck-upper-s001"))
+            .isEqualTo(root.resolve("rendered/deck-upper/幻灯片1.webp").toRealPath());
+    }
+
+    @Test
     void signsEveryPageDifferentlySoTheDeckCannotBeWalkedById() {
         assertThat(catalog.slide("deck-a-s001").imageUrl())
             .isNotEqualTo(catalog.slide("deck-a-s002").imageUrl());
