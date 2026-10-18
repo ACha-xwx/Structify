@@ -88,7 +88,9 @@ interface DraftView {
 - `studyroom_generation_calls`：id、job_id、attempt、phase、status、quota_request_id、response_json、failure_code、created_at、updated_at；UNIQUE(job_id,attempt,phase)，UNIQUE(quota_request_id)。正文不写入普通日志，response_json 限制为现有模型输出上限。
 - `studyroom_request_keys`：user_id、operation、idempotency_key、payload_hash、result_id、created_at；UNIQUE(user_id,operation,idempotency_key)。同键不同载荷返回 409。
 
-`study_room_steps` 增加可空 unit_id、run_id、step_key_in_unit 和 generation_status；历史记录保持 NULL。新单元用自身序号排序，历史扁平步骤继续按 step_order。写入 room 进度时校验所选步骤属于当前 run，旧课堂仍按原所有权规则工作。
+`study_rooms` 增加可空 current_run_id，确认时原子更新，不能仅靠最大版本号推断当前运行。`study_room_steps` 增加可空 unit_id、run_id、step_key_in_unit 和 generation_status，另加非空 run_scope（历史数据默认 `legacy`，新数据填 runId）。历史 nullable 字段保持 NULL。将原 UNIQUE(study_room_id,step_order) 替换为 UNIQUE(study_room_id,run_scope,step_order)，避免新旧运行的相同步骤序号冲突；每个新单元最多八步，以 unit_order * 8 + stepIndex 生成该 run 内稳定 step_order。增加 UNIQUE(unit_id,step_key_in_unit)，防止任务重复发布步骤。
+
+`study_room_messages` 增加可空 run_id。新课堂读取和模型上下文只选择 current_run_id 的步骤/消息；旧课堂 current_run_id 为 NULL 时继续选择历史 NULL 记录。单元内部步骤尚未发布时不得混入原课堂 GET。写入进度时校验步骤属于当前 run，不能用旧 run 的 stepId 更新。重新确认复用已准备正文时创建新 run 下的步骤标识及轻量元数据关联，保留 source_unit_id 来源，不复制课件图片、源码等资源本体。
 
 ## 三、接口路径与前后端时序
 
