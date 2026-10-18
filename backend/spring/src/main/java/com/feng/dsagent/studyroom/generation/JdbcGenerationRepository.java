@@ -66,7 +66,7 @@ public class JdbcGenerationRepository {
                                     + " status='QUEUED' AND next_attempt_at<=CURRENT_TIMESTAMP AND"
                                     + " NOT EXISTS(SELECT 1 FROM studyroom_generation_jobs running"
                                     + " WHERE running.user_id=studyroom_generation_jobs.user_id AND"
-                                    + " running.status='RUNNING') ORDER BY created_at,id LIMIT"
+                                    + " running.status='RUNNING') ORDER BY priority DESC,created_at,id LIMIT"
                                     + " 20")) {
             var claimed =
                     tx.execute(
