@@ -8,9 +8,13 @@
 
 **Tech Stack:** Java 21、Spring Boot、JDBC、Flyway、H2/MySQL、Vue 3、TypeScript、Vitest、JUnit/MockMvc。
 
+**Harness tools:** ArchUnit、JSON Schema 校验、Micrometer Observation、Playwright；复用已有 GitHub Actions、Actuator 和模型客户端，不增加通用 Agent 框架或监控服务器。
+
 **Spec:** `G:/Code/Structify/docs/superpowers/specs/2026-10-18-progressive-studyroom-design.md`。
 
 **Scope update:** 按用户要求，尚未上线的项目不维护旧版兼容；只清理学习教室模块，不清除其他功能的数据或通用代码。
+
+**Harness scope:** 本轮先做开发端和基础能力：仓库导航、共用验证入口、架构/契约检查、确定性浏览器回归、统一执行契约、预算与结构化记录、脱敏离线重放。向量检索实验、通用 Agent 框架和完整监控基础设施后置。
 
 **Status:** 待执行；本文中的测试和命令是实施要求，不能作为已通过的验证结果。
 
@@ -24,12 +28,14 @@
 执行前查看 AGENTS.md、当前分支、索引和工作区。已有测试账号无限额度改动、课件、知识库、数据库和压缩包均不属于本计划，不能混入提交或覆盖。
 需要隔离时先应用 using-git-worktrees 技能；当前预览数据库保持在原位置，不复制到版本库，不让两个进程同时打开同一个 H2 文件。
 
-先按任务 1–5 建立片段读模型和生成底座，6–9 接通生成链，10–12 接通交互，13 完成验证与交付。
+执行 H1、H2 建立开发入口和验证底座；执行任务 1–6；在任务 7 前完成 H3 的执行契约与预算；任务 7–11 接通生成与交互；H4 接入浏览器回归和离线重放；任务 12、13 验收清理并交付。H2 的边界检查随任务 7–8 接入，不能把不存在的生产路径检查当成已完成。
 每个任务先写失败测试，再最小实现并验证，提交只枚举本任务文件。文档提交在被忽略目录下应使用精确路径 `git add -f`，不修改全局忽略规则。
 模块开发数据不保留兼容入口：实施时先停止相关任务并做本地备份，再按外键顺序清理课堂、大纲、生成任务和进度，使用新链重新生成；不清理账号、模型凭据、配额账本和素材。
 不自动推送半成品；完成后按用户已要求的目标 master 执行正常合并/快进，禁止强推，并报告提交和远端校验结果。
 
 ## 1. 文件职责图
+
+Harness 文件与任务见下列 H1–H4；它们是本计划的依赖任务，不另开独立功能线。
 
 - `B/fragment/FragmentPlan.java`：冻结的子目标、活动和必需资源声明。
 - `B/fragment/ContentPlanCompiler.java`：从已确认大纲确定性编译片段，不调用模型。
@@ -82,6 +88,89 @@ export interface ProgressiveRun {
 
 现有 StudyroomRun 保留 roomId、outline、codeExecutionAvailable；以新增字段承载新版读模型。`stepId` 指向既有课堂 step，资源渲染与对话仍沿用该 step 的资源协议。
 stateVersion 是持久化的 run 单调递增计数，在片段状态、发布、焦点和进度变更事务中加一；不能用前端时间戳模拟。
+
+## H1：仓库导航和统一验证入口（先执行）
+
+**Files:** Create `AGENTS.md`, `docs/architecture/studyroom.md`, `scripts/verify-studyroom.mjs`, `scripts/verify-studyroom.test.mjs`; Modify `backend/spring/README.md`, `.github/workflows/ci.yml`。
+
+- [ ] AGENTS.md 控制在约 100 行，指向当前设计、实施计划、架构图、实际启动命令和验证入口；注明 private 素材与数据库不得提交，当前设计不允许旧学习链复活。旧材料只作历史背景，不作当前事实。
+- [ ] 先写 runner 的失败测试：子命令失败停止并保留退出码；Windows 使用 mvnw.cmd，Linux 使用 ./mvnw；无参数给出 usage，未知参数退出 2。
+- [ ] 根目录执行 `node --test scripts/verify-studyroom.test.mjs`，确认尚无 runner 时失败，再实现纯 Node 子进程入口，不依赖 shell 拼接命令。
+
+```js
+const result = runChecks([
+  { name: 'failed', command: process.execPath, args: ['-e', 'process.exit(7)'] },
+  { name: 'never', command: process.execPath, args: ['-e', 'process.exit(0)'] },
+]);
+assert.equal(result.exitCode, 7);
+assert.deepEqual(result.completed, ['failed']);
+```
+
+runChecks 在 verify-studyroom.mjs 导出，接收 name/command/args/cwd，使用 spawnSync 检查 error/status/signal；脚本被 import 时不执行 CLI。测试中不运行 Maven 或收费模型。
+- [ ] 实现 `node scripts/verify-studyroom.mjs --scope backend|frontend|contracts|architecture|e2e|all`；backend 调 mvnw test，frontend 调 npm test 与 npm run build，contracts 复用已有 fixture 校验，architecture 运行 H2 的 ArchUnit 测试，e2e 运行 H4 的 Playwright。all 串联全部 scope，未接通 scope 明确失败，不能假成功或跳过。
+- [ ] 更新现有 CI job 使用相同 scope，保持其既有安装步骤和非学习教室检查；不要把整个项目 CI 改为只测本模块。
+- [ ] runner 测试通过后提交：`chore: add studyroom development harness entrypoints`。
+
+## H2：架构依赖与执行协议检查（底座先建，随生成链接入）
+
+**Files:** Modify `backend/spring/pom.xml`; Create `T/fragment/StudyroomArchitectureTest.java`, `T/fragment/FragmentContractTest.java`, `backend/spring/src/test/resources/studyroom/fragment-contract/valid.json`。
+
+- [ ] 使用测试范围的 ArchUnit JUnit 5 依赖，实施时核对与项目 Java/JUnit 的兼容版本并固定。先写可故障注入的规则测试，确认一个直接依赖 JdbcTemplate 的测试生成器被规则拒绝。
+- [ ] 在任务 7–8 加入真实类后，约束 fragment 生成与资源解析不得依赖发布器、JdbcTemplate、JdbcFragmentRepository 或事务写库；Composer 通过 GenerationCallService 记录调用，发布器不得依赖 ModelClient、AiQuotaExecution 或 Composer。不要禁止已有合法的调用账本持久化路径。
+
+```java
+noClasses().that().haveSimpleName("FragmentComposer")
+    .should().dependOnClassesThat()
+    .haveSimpleName("FragmentPublicationService")
+    .check(importedProductionClasses);
+```
+
+importedProductionClasses 使用 ClassFileImporter 导入生产包并排除测试；测试同时检查目标类存在，不能使用 allowEmptyShould 掩盖缺失实现。
+- [ ] 为生成结果协议建立唯一 JSON Schema，文件 `backend/spring/src/main/resources/studyroom/fragment-output.schema.json`。FragmentValidator 使用同一 schema，测试包含合法输出、缺失 evidenceKeys、未知字段、非法候选键、截断输出。Schema 校验库选择兼容现有 JSON 工具链的固定版本；不引入第二套领域类型。
+- [ ] `contracts` scope 检查 OpenAPI、实际 MockMvc 响应及前端类型；无法静态推导的字段用响应 fixture 断言，而非字符串搜索。
+- [ ] 定义 `./mvnw.cmd '-Dtest=StudyroomArchitectureTest,FragmentContractTest' test` 为 architecture 验证命令。任务 8 完成后必须通过，再提交：`test: enforce studyroom execution boundaries and contracts`。
+
+## H3：基础执行契约、预算与观测（任务 7 前接入）
+
+**Files:** Create `B/fragment/FragmentExecutionContext.java`, `B/fragment/FragmentBudget.java`, `T/fragment/FragmentBudgetTest.java`; Modify `B/generation/GenerationCallService.java`, `B/fragment/FragmentComposer.java`, `backend/spring/src/main/resources/application.yml`。
+
+- [ ] 执行契约固定为 runId、fragmentId、jobId、attempt、objective、evidenceRevision、resourceRevision、promptVersion、schemaVersion、budget 和 completionCriteria；由服务端组装，不接受模型写入权威状态。
+- [ ] 写预算失败测试：预算耗尽后生成/修复/审查均不能再调用模型；失败调用仍占调用次数；缓存响应不重复计费；重试延续同一片段修订已消耗预算。
+
+```java
+var budget = new FragmentBudget(4, 20000, java.time.Duration.ofMinutes(8));
+assertThat(budget.permits(4, 12000, java.time.Duration.ofMinutes(1))).isFalse();
+assertThat(budget.permits(2, 20000, java.time.Duration.ofMinutes(1))).isFalse();
+assertThat(budget.permits(2, 12000, java.time.Duration.ofMinutes(9))).isFalse();
+```
+
+FragmentBudget 为配置值 record，permits(completedCalls,chargedTokens,elapsed) 仅在三个值均小于上限时返回 true；实际预占还需验证本次估算输入与输出预算不超过剩余额度。
+- [ ] 默认每片段内容修订最多 4 次模型调用、累计 20000 Token、执行活跃时间 8 分钟；输出仍遵循各 phase 上限。配置集中到 app.studyroom-generation.fragment-budget。排队时间不计入活跃执行时间。
+- [ ] 持久化上下文与预算摘要，在 job/call 事务中预占尝试次数和估算额度，成功使用供应方用量结算；缺失用量标为估算。模型审查/修复共享预算。显式重试 FAILED 不自动重置预算；耗尽时要求明确“重新生成该片段”建立新内容修订，提示可能产生费用。
+- [ ] schema 迁移使用 Task 1 核对后的下一个空闲版本，给调用记录添加 request_context_json、usage_json、elapsed_ms、issues_json，以及片段修订的累计 calls/tokens/active_duration。实际用量高于预估则如实记录并停止后续调用，不声称能撤回已产生消耗。
+- [ ] 通过现有 Micrometer ObservationRegistry 记录 studyroom.fragment 与 studyroom.model.call。指标标签只允许 phase、outcome、error_code、activity；run/fragment/job/call ID 只在结构化日志与观察上下文中出现。
+- [ ] 暂不配置 OTel exporter/Collector。日志不写 API key、JWT、完整私人问题或私有课件。用测试断言调用关联和脱敏行为，预算并发预占不能超发。
+- [ ] 运行 `./mvnw.cmd '-Dtest=FragmentBudgetTest,FragmentContractTest' test` 及调用账本集成测试；Composer 的上下文接入和相关断言与 Task 7 一并完成，通过后提交：`feat: add bounded observable fragment execution`。
+
+## H4：确定性浏览器回归与脱敏失败重放（任务 11 后执行）
+
+**Files:** Create `frontend/playwright.config.ts`, `frontend/e2e/studyroom-progressive.spec.ts`, `frontend/e2e/fixtures/studyroom.ts`, `backend/spring/src/test/resources/application-harness.yml`, `T/fragment/FragmentReplayTest.java`, `backend/spring/src/test/resources/studyroom/replay/manifest.json`; Modify `frontend/package.json`, `frontend/package-lock.json`, `.github/workflows/ci.yml`。
+
+- [ ] 安装固定版本 @playwright/test 为开发依赖，添加 `test:e2e` 命令；CI 使用 `npx playwright install --with-deps chromium`。测试报告进入现有忽略目录，失败时上传脱敏报告和 trace artifact。
+- [ ] 隔离启动测试后端与 Vite：使用独立 H2、独立端口和 test+harness profiles，Worker 启用，模型替换为确定性 fake，使用仓库自有小型素材。不读取 private/dev-db、不使用个人测试账号、不向真实供应方发送请求。webServer 管理生命周期，CI 禁止 reuseExistingServer。
+- [ ] fake 模型与测试播种代码放在测试源码，通过 Maven test classpath 运行；harness profile 配置放测试资源，生产打包不能包含测试控制端点。前端 E2E 接真实测试后端，不用路由 mock 冒充端到端生成。
+- [ ] Playwright 用例覆盖确认→等待→首段自动进入、离开无强制跳转、单层导航、后台准备、指定片段失败与显式重试、刷新续读、代码草稿保留。故障由测试 fake 的确定性场景控制。
+
+```ts
+await page.getByRole('button', { name: '确认大纲，开始学习' }).click();
+await expect(page).toHaveURL(/\/studyroom\/[a-f0-9-]+$/);
+await expect(page.getByRole('navigation', { name: '知识点路线' })).toHaveCount(1);
+await expect(page.getByLabel('课堂学习步骤')).toHaveCount(0);
+```
+
+- [ ] 失败重放 manifest 每条记录包含 id、schemaVersion、promptVersion、plan、公开/合成证据、候选资源、modelOutput、expectedIssueCodes。准备非法 JSON、无效资源键、审查不确定和代码越界四类故障及一个合法样本。
+- [ ] FragmentReplayTest 使用生产解析/绑定/校验路径执行 fixture，并验证 ModelClient 零交互、无代码执行。真实私人故障只保留本地，人工脱敏后才能提炼成仓库样本，不默认提交原始响应或完整提示词。
+- [ ] 根目录命令 `node scripts/verify-studyroom.mjs --scope e2e` 跑真实隔离服务，`./mvnw.cmd '-Dtest=FragmentReplayTest' test` 跑离线重放；两者均通过后提交：`test: add reproducible studyroom browser and replay harness`。
 
 ## Task 1：协议、迁移和版本隔离
 
@@ -281,11 +370,14 @@ POST /api/v1/studyroom-runs/{run}/progress
   {unitId, fragmentId, completed} -> {stateVersion}
 POST /api/v1/studyroom-runs/{run}/fragments/{fragment}/retry
   {} -> 202 {jobId, stateVersion}; READY 无待处理修订时返回已有结果而非重生成
+POST /api/v1/studyroom-runs/{run}/fragments/{fragment}/regenerate
+  {baseContentRevision} -> 202 {jobId, stateVersion}; 创建新内容修订和新预算
 GET /api/v1/studyroom-runs/{run}
   原字段 + ProgressiveRun 字段
 ```
 
 - [ ] 删除 unit prepare 接口、outlineApi.prepare 和对应 OpenAPI 条目；FAILED 必须用片段 retry。completed 只能由明确操作提交，不在生成回调中置 true。
+- [ ] retry 达到预算上限返回 409 `FRAGMENT_BUDGET_EXHAUSTED`，不重复调用模型。regenerate 必须来自显式用户操作，校验 baseContentRevision；已有工作修订时返回既有任务或 409，不并行创建预算。前端显示“重新生成该片段，可能使用模型额度”，新修订通过前保留已发布内容。
 - [ ] runtime 精确使用上述路径和类型；接口失败保留 status/code，不把所有错误变成同一字符串。
 - [ ] Java 测试通过后在根目录运行 `node scripts/verify-api-contract-fixtures.js`；如果脚本帮助或依赖要求提供参数，按脚本实际 usage 使用本地测试服务和 fixture，不调用生产。
 - [ ] 提交：`feat: add authenticated progressive learning operations`。
@@ -357,6 +449,7 @@ deferredRun 在本测试文件实现为暴露 Promise resolve 的小工具；sta
 - [ ] 在 `backend/spring` 执行 `./mvnw.cmd test`，期望退出码 0，无失败/错误；记录实际测试总数，不能引用旧轮的 611。
 - [ ] 在 `frontend` 分别执行 `npm run test`、`npm run build`，期望均退出码 0；记录构建警告并判断是否新增。
 - [ ] 根目录执行 `git diff --check`；对既有未相关变更不擅自修改。检查 OpenAPI 和实际响应包含相同字段与状态。
+- [ ] 根目录执行 `node scripts/verify-studyroom.mjs --scope all`，确认与 CI 使用相同验证路径；检查架构规则、契约、隔离 E2E 和离线重放真实运行，不能以 fixture 缺失为由跳过后宣称通过。
 - [ ] 使用启动脚本重启本地服务，确认 backend health=UP，frontend HTTP=200；数据库文件路径保持原配置，先备份再做必要迁移验证。
 - [ ] 用浏览器验证新大纲确认→等待首段→自动进入→边读边准备→局部失败→重试恢复→刷新续读；另验离开页面无跳转、已就绪片段可读、窄屏路线、代码草稿保留。
 - [ ] 保存不含凭据的界面证据到 private/run-logs，验收文档写明实测结果、未配置能力和基线对比，不能把 fake 模型测试表述为真实模型稳定性验证。
@@ -364,6 +457,11 @@ deferredRun 在本测试文件实现为暴露 Promise resolve 的小工具；sta
 - [ ] 提交本计划范围的最终改动；核查每个提交文件清单后，将完整、通过验证的工作正常推送到用户指定的 master，并用远端 ref 核对 SHA。不创建用户未要求的 PR，不强推。
 
 ## 覆盖自审
+
+- 开发仓库导航、共用命令与现有 CI：H1。
+- 实际依赖约束、单一生成协议与契约：H2、Task 7–9。
+- 上下文版本、共享预算、结构化日志和基础指标：H3、Task 7–8。
+- 不收费的隔离端到端、故障重放、脱敏：H4、Task 12–13。
 
 - 单层导航与浏览/生成状态分离：Task 3、10。
 - 审阅前可见的冻结计划与三档边界：Task 2、4。
