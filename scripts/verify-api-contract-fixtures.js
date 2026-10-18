@@ -6,7 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
-const openapi = fs.readFileSync(path.join(root, "contracts", "openapi-v1.yaml"), "utf8");
+const openapi = fs.readFileSync(path.join(root, "contracts", "openapi-v1.yaml"), "utf8").replace(/\r\n/g, "\n");
 const fixturePath = path.join(root, "fixtures", "http", "spring-v1-admin-and-ai.json");
 const fixture = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
 

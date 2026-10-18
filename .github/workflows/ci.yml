@@ -19,7 +19,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: node scripts/verify-api-contract-fixtures.js
+      - run: node --test scripts/verify-studyroom.test.mjs
+      - run: node scripts/verify-studyroom.mjs --scope contracts
       - run: node scripts/verify-backend-layout.js
       - run: node scripts/verify-frontend-layout.js
       - run: node scripts/verify-core-regression.js
@@ -38,15 +39,8 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
-      - name: Run Vitest
-        working-directory: frontend
-        run: npm test
-      - name: Typecheck
-        working-directory: frontend
-        run: npm run typecheck
-      - name: Build production frontend
-        working-directory: frontend
-        run: npm run build
+      - name: Verify frontend tests, types, and build
+        run: node scripts/verify-studyroom.mjs --scope frontend
       - name: Verify production artifact integrity
         run: node scripts/verify-frontend-build-artifact.js
 
@@ -64,8 +58,7 @@ jobs:
         working-directory: backend/spring
         run: chmod +x mvnw
       - name: Run tests
-        working-directory: backend/spring
-        run: ./mvnw -B clean test
+        run: node scripts/verify-studyroom.mjs --scope backend
       - name: Package application
         working-directory: backend/spring
         run: ./mvnw -B -DskipTests package
