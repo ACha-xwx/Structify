@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { BookOpen, Check, ChevronDown } from "@lucide/vue";
 import BrandStage from "../components/BrandStage.vue";
 import AiTitle from "../components/AiTitle.vue";
@@ -21,6 +21,7 @@ import LiquidMetalButton from "../../admin/components/LiquidMetalButton.vue";
  */
 const { t } = useI18n();
 const router = useRouter();
+const route = useRoute();
 const decks = ref<PresentationDeck[]>([]);
 const slides = ref<PresentationSlide[]>([]);
 const expandedChapter = ref<string | null>(null);
@@ -63,7 +64,7 @@ function failureMessage(cause: unknown): string {
   return cause instanceof Error && cause.message ? cause.message : t("common.failed");
 }
 
-async function openDeck(deckId: string) {
+async function openDeck(deckId: string, slideId = "") {
   const deck = displayedDecks.value.find((item) => item.deck.deckId === deckId);
   if (!deck) return;
   const request = ++deckRequest;
@@ -78,12 +79,35 @@ async function openDeck(deckId: string) {
     const result = await coursewareCatalog.getSlides(deckId);
     if (request !== deckRequest) return;
     slides.value = result;
+    const target = slideId ? result.findIndex((slide) => slide.id === slideId) : -1;
+    if (target >= 0) index.value = target;
   } catch (cause) {
     if (request !== deckRequest) return;
     error.value = failureMessage(cause);
   } finally {
     if (request === deckRequest) loading.value = false;
   }
+}
+
+/** A citation opens the deck of its lesson number, so arriving here never lands on an unrelated deck. */
+function queryValue(name: string): string {
+  const value = route.query[name];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+async function requestedDeck(): Promise<{ deckId: string; slideId: string } | null> {
+  const slideId = queryValue("slide");
+  const coursewareKey = queryValue("courseware");
+  const lessonId = queryValue("lesson");
+  if (coursewareKey || lessonId) {
+    const lesson = coursewareKey
+      ? await coursewareCatalog.getLessonCourseware(coursewareKey)
+      : await coursewareCatalog.getLessonSlides(lessonId);
+    const first = lesson.slides[0];
+    return first ? { deckId: first.deckId, slideId: slideId || first.id } : null;
+  }
+  const deckId = queryValue("deck");
+  return deckId ? { deckId, slideId } : null;
 }
 
 function toggleChapter(key: string) {
@@ -140,7 +164,10 @@ onMounted(async () => {
     const result = await coursewareCatalog.getDecks();
     if (disposed) return;
     decks.value = result;
-    if (decks.value.length) await openDeck(displayedDecks.value[0].deck.deckId);
+    const requested = await requestedDeck();
+    if (disposed) return;
+    const deckId = requested?.deckId ?? displayedDecks.value[0]?.deck.deckId ?? "";
+    if (deckId) await openDeck(deckId, requested?.slideId ?? "");
     else loading.value = false;
   } catch (cause) {
     error.value = failureMessage(cause);

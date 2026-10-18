@@ -6,6 +6,7 @@ import static org.mockito.Mockito.*;
 import com.feng.dsagent.common.ApiException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -42,6 +43,29 @@ class ClassroomServiceTest {
                 : "{\"feedback\":\"先直接回答你的插问\"}");
         });
     }
+    @Test void keepsTheQuestionsAskedDuringTheLessonAndTellsTheNextAnswerAboutThem() {
+        String id = service.create(user, "timeline-test").id();
+
+        ClassroomSessionView first = service.apply(user, id, ClassroomAction.ASK, "这个例子我不懂");
+        assertThat(first.stage().path("asks")).hasSize(1);
+        assertThat(first.stage().path("asks").get(0).path("question").asText()).isEqualTo("这个例子我不懂");
+        assertThat(first.stage().path("asks").get(0).path("answer").asText()).isEqualTo("先直接回答你的插问");
+
+        // A question asked before turning the page is still what the next answer has to build on: the session
+        // keeps only its latest response, so the lesson's questions are the only thread there is.
+        service.apply(user, id, ClassroomAction.CONTINUE, null);
+        service.apply(user, id, ClassroomAction.ASK, "那再举一个");
+        ArgumentCaptor<String> context = ArgumentCaptor.forClass(String.class);
+        verify(model, atLeastOnce()).generate(eq(user), anyString(), context.capture(), anyInt(), any());
+        assertThat(context.getAllValues()).anySatisfy(sent -> assertThat(sent)
+            .contains("askedSoFar")
+            .contains("这个例子我不懂")
+            .contains("\"step\""));
+
+        // And the whole lesson's exchange is readable again, not only the latest one.
+        assertThat(service.get(user, id).stage().path("asks")).hasSize(2);
+    }
+
     @Test void preservesAllStepsAndBothQuestions() {
         String id = service.create(user, "timeline-test").id();
         assertThat(service.get(user,id).state()).isEqualTo(ClassroomState.OPENING);

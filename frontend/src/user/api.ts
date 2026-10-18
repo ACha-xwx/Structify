@@ -19,6 +19,7 @@ import type {
   CodeRunResponse,
   CodeSessionChunk,
   CodeSessionStart,
+  ClassroomBookmark,
   DsvpRequest,
   DsvpResolution,
   DsvpSimulationResponse,
@@ -26,6 +27,7 @@ import type {
   LearningEventRequest,
   LearningProgress,
   LearningWorkbenchProjection,
+  LearningMap,
   LessonCourseware,
   PresentationDeck,
   PresentationMeta,
@@ -34,6 +36,12 @@ import type {
   TextbookCodeLibraryResponse,
 } from "../shared/types/contracts";
 import type { Chapter, KnowledgeSearchResponse } from "../shared/types/course";
+
+/**
+ * A code explanation is a model answer, so it outlives the default request budget (20s): the same
+ * question answered in 25 seconds is a slow answer, not a failure, and aborting it wastes the call.
+ */
+const ANALYZE_TIMEOUT_MS = 90_000;
 
 interface JsonResponse<T> { kind: "json"; data: T }
 interface EmptyResponse { kind: "empty"; data: undefined }
@@ -77,6 +85,15 @@ export interface UserApi {
   pinClassroomSlide(sessionId: string, stepIndex: number, slideId: string): Promise<ClassroomSession>;
   getPresentationMeta(): Promise<PresentationMeta>;
   getLessonCourseware(lessonId: string): Promise<LessonCourseware>;
+  /** The courseware of one lesson number (06-06), which is how a textbook citation addresses its deck. */
+  getCoursewareSlides(coursewareKey: string): Promise<LessonCourseware>;
+  /** The courseware of one prepared lesson, addressed by the lesson id a classroom step carries. */
+  getLessonSlides(lessonId: string): Promise<LessonCourseware>;
+  /** The caller's own learning map: every chapter and lesson with what the four modules recorded. */
+  getLearningMap(): Promise<LearningMap>;
+  listBookmarks(): Promise<ClassroomBookmark[]>;
+  saveBookmark(sessionId: string, stepIndex: number): Promise<ClassroomBookmark>;
+  deleteBookmark(id: number): Promise<void>;
   listPresentationDecks(): Promise<PresentationDeck[]>;
   listDeckSlides(deckId: string): Promise<PresentationSlide[]>;
   coursewareImageUrl(slideId: string): string;
@@ -164,6 +181,12 @@ export function createUserApi(client: { request: UserRequest }): UserApi {
     async pinClassroomSlide(sessionId, stepIndex, slideId) { return jsonData(await request<ClassroomSession>(`/classroom/sessions/${encoded(sessionId)}/slides`, { method: "PUT", body: { stepIndex, slideId } })); },
     async getPresentationMeta() { return jsonData(await request<PresentationMeta>("/presentation/meta")); },
     async getLessonCourseware(lessonId) { return jsonData(await request<LessonCourseware>(`/presentation/lessons/${encoded(lessonId)}/slides`)); },
+    async getCoursewareSlides(coursewareKey) { return jsonData(await request<LessonCourseware>(`/presentation/courseware/${encoded(coursewareKey)}/slides`)); },
+    async getLessonSlides(lessonId) { return jsonData(await request<LessonCourseware>(`/presentation/lessons/${encoded(lessonId)}/slides`)); },
+    async getLearningMap() { return jsonData(await request<LearningMap>("/users/learning-map")); },
+    async listBookmarks() { return jsonData(await request<ClassroomBookmark[]>("/users/bookmarks")); },
+    async saveBookmark(sessionId, stepIndex) { return jsonData(await request<ClassroomBookmark>("/users/bookmarks", { method: "POST", body: { sessionId, stepIndex } })); },
+    async deleteBookmark(id) { await request(`/users/bookmarks/${encoded(String(id))}`, { method: "DELETE" }); },
     async listPresentationDecks() { return jsonData(await request<PresentationDeck[]>("/presentation/decks")); },
     async listDeckSlides(deckId) { return jsonData(await request<PresentationSlide[]>(`/presentation/decks/${encoded(deckId)}/slides`)); },
     coursewareImageUrl(slideId) { return `/api/v1/presentation/slides/${encoded(slideId)}/image`; },
@@ -195,7 +218,7 @@ export function createUserApi(client: { request: UserRequest }): UserApi {
       return jsonData(await request<ClassroomCodeSamplesResponse>(`/code/samples${query}`));
     },
     async getCodeLibrary() { return jsonData(await request<TextbookCodeLibraryResponse>("/code/library")); },
-    async analyzeCode(input) { return jsonData(await request<CodeAnalysisResponse>("/code/analyze", { method: "POST", body: input })); },
+    async analyzeCode(input) { return jsonData(await request<CodeAnalysisResponse>("/code/analyze", { method: "POST", body: input, timeoutMs: ANALYZE_TIMEOUT_MS })); },
     async getLearningProgress() { return jsonData(await request<LearningProgress>("/learning/progress")); },
     async getLearningWorkbench() { return jsonData(await request<LearningWorkbenchProjection>("/learning/workbench")); },
     async recordLearningEvent(input) { return jsonData(await request<LearningEvent>("/learning/events", { method: "POST", body: input })); },

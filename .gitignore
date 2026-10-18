@@ -115,7 +115,7 @@ test-results/
 # === Local canvas artifacts ===
 *.miora
 
-# Frame-capture audit: reads backend/dsvp/engine from the repo root, which the
-# production image does not ship. Local probe only - keeping it out of the index
-# keeps it out of the release pack too.
-frontend/src/animation/engine-frames.spec.ts
+# === Frame-capture audit ===
+# 这里原来忽略了 frontend/src/animation/engine-frames.spec.ts，理由是"发布镜像不带 backend/dsvp/engine"。
+# 代价是它从没进过 CI，换基线时被整棵替换掉、彻底丢过一次，而它守的正是"引擎报了、前端没画"这条缝。
+# 现在收进版本库（只读后端引擎、57ms 跑完）。发布包要减重请在打包脚本里排除 *.spec.ts，别靠 .gitignore。

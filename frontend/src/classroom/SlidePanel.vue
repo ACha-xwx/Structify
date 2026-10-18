@@ -58,6 +58,17 @@ function applyActive(id: string | null) {
   if (found >= 0) select(found);
 }
 
+/**
+ * True while the panel shows a page other than the one the lesson is on - the learner browsed away with
+ * 上一页/下一页, or is looking at what comes next. The lesson itself is still talking about its own page,
+ * so the way back has to be one click, not a guess about how far to scroll back.
+ */
+const drifted = computed(() => Boolean(props.activeSlideId) && !!current.value && current.value.id !== props.activeSlideId);
+
+function backToStep() {
+  applyActive(props.activeSlideId);
+}
+
 function select(next: number) {
   if (next < 0 || next >= slides.value.length) return;
   if (next !== index.value) imageFailed.value = false;
@@ -139,6 +150,7 @@ useSlidePaging(
           <span class="slides__icon-label">{{ t("slides.next") }}</span>
         </LiquidMetalButton>
         <button class="slides__chip slides__chip--glass" type="button" @click="emit('openBrowser')">{{ t("slides.browseAll") }}</button>
+        <button v-if="drifted" class="slides__chip slides__chip--glass" type="button" @click="backToStep">{{ t("slides.backToStep") }}</button>
       </div>
       <div v-if="$slots.footerActions" class="slides__footer-actions">
         <slot name="footerActions" />

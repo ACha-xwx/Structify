@@ -9,6 +9,8 @@ import downloadIcon from "../assets/compiler/download.svg";
 import { useI18n } from "../shared/i18n/locale";
 import { userApi } from "../user/runtime";
 import type { CodeRunResponse, TextbookCodeChapter } from "../shared/types/contracts";
+import type { KnowledgeSearchResult } from "../shared/types/course";
+import { coursewareTarget } from "../shared/courseware/lesson-key";
 import { runCodeWithBusyRetry } from "../shared/compiler/run-with-retry";
 import { createInteractiveConsole } from "../shared/compiler/interactive-console";
 import { takeChatCode } from "../shared/compiler/chat-code-import";
@@ -55,6 +57,10 @@ const running = ref(false);
 const busyRetrying = ref(false);
 const result = ref<CodeRunResponse | null>(null);
 const failure = ref("");
+const analysis = ref("");
+const analysisError = ref("");
+const analyzing = ref(false);
+const related = ref<KnowledgeSearchResult[]>([]);
 
 /**
  * The console the learner actually sees. When the interactive runner is available the program runs
@@ -313,6 +319,79 @@ async function onPrimaryAction() {
   await run();
 }
 
+/** The textbook passages that belong to the listing on screen, so an explanation can be checked on it. */
+const relatedLinks = computed(() => related.value
+  .map((item) => ({ item, target: coursewareTarget(item.source) })));
+
+/**
+ * The listing the code came from is what makes the explanation useful: it names the topic, which is
+ * what the reviewer can look up. Hand-written code has no listing, so nothing is offered for it.
+ */
+async function loadRelated() {
+  const entry = current.value;
+  if (!entry) return;
+  try {
+    const found = await userApi.searchKnowledge({ query: entry.title, chapterId: entry.chapterId, limit: 3 });
+    related.value = found.results ?? [];
+  } catch {
+    related.value = [];
+  }
+}
+
+/**
+ * Why the explanation is not here. Naming the reason is the difference between a learner trying again
+ * and a learner giving up: a slow answer, a burst of requests and an unavailable service are three
+ * different things, and "please try later" tells none of them.
+ */
+function analysisFailure(error: unknown): string {
+  if (!(error instanceof ApiClientError)) return t("compiler.analysisFailed");
+  if (error.code === "AI_QUOTA_AUTHENTICATION_REQUIRED") return t("compiler.analysisLogin");
+  if (error.code === "NETWORK_TIMEOUT" || error.status === 504) return t("compiler.analysisSlow");
+  if (error.status === 429) return t("compiler.analysisBusy");
+  if (error.status === 502 || error.status === 503) return t("compiler.analysisOffline");
+  return `${t("compiler.analysisFailed")}（${error.code || error.status}）`;
+}
+
+/**
+ * Explaining the code is the one place the editor asks the model. A run that was already persisted is
+ * sent as a run id, so the explanation is about the code that actually ran; otherwise the code and what
+ * the console shows are sent as they are.
+ */
+async function explain() {
+  if (analyzing.value) return;
+  analysisError.value = "";
+  analysis.value = "";
+  related.value = [];
+  if (!code.value.trim()) {
+    analysisError.value = t("compiler.emptyCode");
+    return;
+  }
+  if (code.value.length > MAX_CODE_LENGTH) {
+    analysisError.value = t("compiler.tooLong");
+    return;
+  }
+  analyzing.value = true;
+  try {
+    const response = await userApi.analyzeCode(result.value?.runId
+      ? { runId: result.value.runId }
+      : {
+        language: "c",
+        code: code.value,
+        stdin: stdin.value,
+        stdout: mode.value === "live" ? output.value : result.value?.stdout ?? "",
+        stderr: mode.value === "live" ? errors.value : result.value?.stderr ?? "",
+        status: mode.value === "live" ? "unknown" : result.value?.status ?? "unknown",
+        chapterId: current.value?.chapterId || undefined,
+      });
+    analysis.value = response.analysis;
+    void loadRelated();
+  } catch (error) {
+    analysisError.value = analysisFailure(error);
+  } finally {
+    analyzing.value = false;
+  }
+}
+
 /** Enter sends the line the way a terminal does; the program reads it and carries on. */
 async function sendInput() {
   if (!awaitingInput.value) return;
@@ -510,9 +589,27 @@ onMounted(() => {
 
             <p v-if="failure" class="library__failure" role="alert">{{ failure }}</p>
 
+            <section v-if="analyzing || analysis || analysisError" class="analysis" :aria-label="t('compiler.analysis')">
+              <div class="console__bar">
+                <span class="console__label">{{ t("compiler.analysis") }}</span>
+              </div>
+              <p v-if="analysisError" class="analysis__text" role="alert">{{ analysisError }}</p>
+              <p v-else-if="analyzing" class="analysis__text">{{ t("compiler.explaining") }}</p>
+              <p v-else class="analysis__text">{{ analysis }}</p>
+              <ul v-if="relatedLinks.length" class="analysis__related">
+                <li v-for="link in relatedLinks" :key="link.item.id">
+                  <RouterLink v-if="link.target" class="analysis__link" :to="link.target">{{ link.item.title }}</RouterLink>
+                  <span v-else class="analysis__source">{{ link.item.title }}</span>
+                </li>
+              </ul>
+            </section>
+
             <div class="library__actions">
               <button v-if="canLoadExample" class="library__chip library__glass" type="button" @click="loadExample">
                 {{ t("compiler.addExample") }}
+              </button>
+              <button v-if="code.trim()" class="library__chip library__glass" type="button" :disabled="analyzing" @click="explain">
+                {{ analyzing ? t("compiler.explaining") : t("compiler.explain") }}
               </button>
               <button v-if="dirty && current" class="library__restore library__glass library__glass--icon" type="button" :aria-label="t('experiment.restore')" :title="t('experiment.restore')" @click="restore"><RotateCcw :size="20" aria-hidden="true" /></button>
               <LiquidMetalButton class="library__run" :disabled="running && !awaitingInput" @click="onPrimaryAction">{{ primaryLabel }}</LiquidMetalButton>
@@ -581,6 +678,38 @@ onMounted(() => {
 }
 .library__retry:hover { opacity: .88; }
 .library__failure { flex: none; max-height: 48px; overflow-y: auto; margin: 0; color: #df3549; font-size: 14px; font-weight: 620; }
+
+/* The model's explanation of the code, and the textbook passages that back it. */
+.analysis {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  gap: 8px;
+  max-height: clamp(180px, 30dvh, 320px);
+  overflow-y: auto;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 74%, transparent);
+}
+.analysis__text { margin: 0; font-size: 19px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.analysis__related { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.analysis__link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 19px;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--text) 30%, transparent);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.analysis__link:hover { text-decoration-color: currentColor; }
+.analysis__link:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+.analysis__source { font-size: 19px; }
 
 /* The console: one panel, terminal-shaped - the program's output on top, your input at the prompt. */
 .console {

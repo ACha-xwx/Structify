@@ -15,6 +15,7 @@ import tools.jackson.databind.node.ObjectNode;
 /** A durable cursor over the complete lesson; responses never silently advance it. */
 @Service
 public class ClassroomTimeline {
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ClassroomTimeline.class);
     private final ClassroomRepository repository;
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
@@ -95,6 +96,16 @@ public class ClassroomTimeline {
             stage.set("slideRefs", references);
             stage.set("slideMatch", slides.describe(slide));
         }
+        // The lesson's questions, so the pane shows the conversation back - and shows it as one conversation,
+        // not one per page: a question asked at step 3 is still part of what is being discussed at step 5.
+        var asks = mapper.createArrayNode();
+        for (ClassroomAskExchange exchange : repository.asksOf(session.id())) {
+            ObjectNode ask = asks.addObject();
+            ask.put("stepIndex", exchange.stepIndex());
+            ask.put("question", exchange.question());
+            ask.put("answer", exchange.answer() == null ? "" : exchange.answer());
+        }
+        stage.set("asks", asks);
         ClassroomAnswerEvaluation evaluation = null;
         if (cursor.response() != null) {
             JsonNode response = mapper.readTree(cursor.response());
@@ -103,6 +114,46 @@ public class ClassroomTimeline {
             if (response.has("status")) evaluation = new ClassroomAnswerEvaluation(ClassroomAnswerStatus.valueOf(response.path("status").asText()), response.path("misconception").isTextual() ? response.path("misconception").asText() : null, response.path("feedback").asText());
         }
         return new ClassroomSessionView(session.id(), session.userId(), session.scriptId(), session.state(), session.paused(), session.summary(), stage, evaluation);
+    }
+
+    /**
+     * One step of a saved lesson, for features that look a lesson up out of band (bookmarks): its page and
+     * the labels it carried. It reads the same alignment the live view reads, so what a learner saved and
+     * what that step shows cannot disagree.
+     */
+    public record StepPage(String sessionId, String lessonId, String lessonTitle, String chapterId,
+                           int stepIndex, int stepCount, String slideId, String title) {
+    }
+
+    @Transactional
+    public StepPage stepPage(long userId, String sessionId, int stepIndex) {
+        ClassroomSessionRecord session = owned(userId, sessionId);
+        List<JsonNode> steps = steps(session);
+        if (stepIndex < 0 || stepIndex >= steps.size()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "CLASSROOM_STEP_OUT_OF_RANGE", "这一步不在这节课里");
+        }
+        JsonNode step = steps.get(stepIndex);
+        JsonNode root = mapper.readTree(session.scriptJson());
+        String lessonId = root.path("lessonId").asText("");
+        ClassroomSlideAlignment.StepSlide slide =
+            slides.forStep(session.scriptId(), session.scriptJson(), lessonId, stepIndex, step);
+        String title = slide == null || slide.slideTitle() == null ? "" : slide.slideTitle().strip();
+        if (title.isBlank()) title = excerpt(step.path("content").asText(step.path("prompt").asText("")));
+        if (title.isBlank()) title = "第 " + (stepIndex + 1) + " 步";
+        return new StepPage(session.id(), lessonId, root.path("title").asText(""), session.chapterId(),
+            stepIndex, steps.size(), slide == null ? "" : slide.slideId(), title);
+    }
+
+    /** The first words of a step, which is all one bookmark row can carry of it. */
+    private static String excerpt(String text) {
+        String flat = text.replaceAll("\\s+", " ").strip();
+        return flat.length() <= 60 ? flat : flat.substring(0, 60) + "…";
+    }
+
+    /** The first words of something long, kept on one line, for context that is background rather than the point. */
+    private static String truncate(String text, int limit) {
+        String flat = text.replaceAll("\\s+", " ").strip();
+        return flat.length() <= limit ? flat : flat.substring(0, limit) + "…";
     }
     @Transactional
     public ClassroomSessionView apply(long userId, String id, ClassroomAction action, String content, Integer expectedRevision) {
@@ -144,11 +195,40 @@ public class ClassroomTimeline {
                 }
                 context.set("currentStep", stepContext); context.set("lesson", lessonContext); context.put("studentInput", input);
                 if (response != null) context.set("previousResponse", mapper.readTree(response));
+                // The session keeps only its latest response, so without this the next question has no idea what
+                // the lesson already answered - even when it was asked three pages ago, which is exactly when a
+                // learner expects the conversation to carry on.
+                List<ClassroomAskExchange> askedBefore = repository.asksOf(id);
+                if (!askedBefore.isEmpty()) {
+                    var conversation = context.putArray("askedSoFar");
+                    for (ClassroomAskExchange exchange : askedBefore.subList(Math.max(0, askedBefore.size() - 6), askedBefore.size())) {
+                        ObjectNode turn = conversation.addObject();
+                        turn.put("step", exchange.stepIndex() + 1);
+                        turn.put("question", exchange.question());
+                        turn.put("answer", truncate(exchange.answer() == null ? "" : exchange.answer(), 500));
+                    }
+                }
+                // The page on screen is what the learner is asking about: send its own words, not just its id,
+                // and keep the step before it in reach for "what did the last page say".
+                String lessonId = lesson.path("lessonId").asText("");
+                String page = slides.pageText(session.scriptId(), session.scriptJson(), lessonId, index, active);
+                if (!page.isBlank()) context.put("currentSlideText", page);
+                if (index > 0) {
+                    String previousNarration = steps.get(index - 1).path("content").asText("");
+                    if (!previousNarration.isBlank()) context.put("previousStepNarration", truncate(previousNarration, 400));
+                }
+                log.info(
+                    "classroom ask: session={} step={} pageChars={} askedBefore={}",
+                    id,
+                    index,
+                    page.length(),
+                    askedBefore.size()
+                );
                 // The grader knows which attempt this is, so its hint can tighten instead of repeating itself.
                 if (grading) context.put("attempt", attempts + 1);
                 JsonNode generated = model.generate(userId,
                     grading ? "你是数据结构老师。依据所给教材教案，对学生回答做语义判断，识别同义表达、否定和误区，不用关键词命中判分。返回 {\"status\":\"CORRECT|MISCONCEPTION|INCORRECT\",\"feedback\":\"针对学生回答的解释\",\"misconception\":null}。判为错误时 feedback 要指出答案偏离在哪，并给出能让学生自己纠正的提示，让他重新作答；不要直接把完整答案念出来，也不要说本课已经结束。若 attempt 大于 1，提示要更具体，可以点出关键结论。"
-                        : "你是数据结构老师。先直接回答学生此刻的插问，不要复述主线、不要求先答原题。只依据教案提供的教材事实，资料不足时明确说明；最多两小段。返回 {\"feedback\":\"老师的回答\",\"animationRef\":null}。如果学生希望看动画，由你理解其意图并生成或复用当前例子的 animationRef，不能忽略这个请求。格式 {\"protocol\":\"dsvp/1.0\",\"request\":{\"version\":\"1.0\",\"structure\":\"...\",\"operation\":\"...\",\"params\":{},\"initial_state\":{\"data\":[]}}}。\n"
+                        : "你是数据结构老师。先直接回答学生此刻的插问，不要复述主线、不要求先答原题。只依据下面给的材料回答：currentSlideText 是学生眼前这一页课件上的原话，currentStep 是这一步的讲稿与关键词，askedSoFar 是这节课到现在为止问过与答过的内容（每条形如 {step, question, answer}，可能发生在别的页上），previousStepNarration 是上一步的讲稿。追问答不上来时先看 askedSoFar：学生常在前一页问过、这一页接着问，要顺着那条线往下讲，**已经讲过的例子和结论不要再说一遍**。资料不足时明确说明；最多两小段。返回 {\"feedback\":\"老师的回答\",\"animationRef\":null}。如果学生希望看动画，由你理解其意图并生成或复用当前例子的 animationRef，不能忽略这个请求。格式 {\"protocol\":\"dsvp/1.0\",\"request\":{\"version\":\"1.0\",\"structure\":\"...\",\"operation\":\"...\",\"params\":{},\"initial_state\":{\"data\":[]}}}。\n"
                             + animations.animationRules(session.chapterId())
                             + "无法执行的算法说明限制，不编造轨迹。",
                     context.toString() + "\n动画字段约束：\n" + com.feng.dsagent.animation.DsvpModelContract.INSTRUCTIONS, 1800, json -> {
@@ -179,6 +259,11 @@ public class ClassroomTimeline {
                 reply.put("answered", answered); reply.put("question", input); reply.put("kind", grading ? "answer" : "question");
                 if (attempts > 0) reply.put("attempts", attempts);
                 response = reply.toString();
+                if (!grading) {
+                    // Kept so the next question at this step knows what was already answered, and so the
+                    // learner can read back what they asked.
+                    repository.recordAsk(id, index, input, reply.path("feedback").asText(""));
+                }
                 if (grading) {
                     // A wrong answer keeps the cursor on the very same question and leaves it unanswered,
                     // so CONTINUE cannot walk past it: the learner has to answer again to move on.
@@ -242,7 +327,10 @@ public class ClassroomTimeline {
         int changed = jdbc.update("UPDATE classroom_sessions SET runtime_index = ?, runtime_revision = runtime_revision + 1, runtime_response = ? WHERE id = ? AND user_id = ? AND runtime_revision = ?", index, response, id, userId, current.revision());
         if (changed != 1) throw conflict("课堂进度已改变，请刷新后重试");
         ClassroomSessionRecord updated = repository.updateSession(session, new ClassroomStatus(nextState, paused), session.summary());
-        repository.appendEvent(new ClassroomEventRecord(id, action, input, session.state(), nextState, evaluation));
+        // Which try this was and whether a hint came first: what makes the line evidence of learning.
+        ClassroomRepository.StepAttempts attempts = repository.attemptsAt(id, index);
+        repository.appendEvent(new ClassroomEventRecord(id, action, input, session.state(), nextState, evaluation,
+            index, null, attempts.answers() + 1, attempts.hints() > 0));
         return view(updated);
     }
     /** A hint or a skip only makes sense while this question is still waiting for an answer. */
@@ -299,4 +387,5 @@ public class ClassroomTimeline {
         return view(session);
     }
     private ApiException conflict(String message) { return new ApiException(HttpStatus.CONFLICT, "CLASSROOM_ACTION_INVALID", message); }
+
 }

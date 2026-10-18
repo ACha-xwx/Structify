@@ -14,6 +14,9 @@ const api = vi.hoisted(() => ({
   simulateAnimation: vi.fn(),
   getLessonCourseware: vi.fn(),
   pinClassroomSlide: vi.fn(),
+  listBookmarks: vi.fn(),
+  saveBookmark: vi.fn(),
+  deleteBookmark: vi.fn(),
 }));
 
 vi.mock("../user/runtime", () => ({ userApi: api }));
@@ -70,6 +73,7 @@ beforeEach(() => {
   api.prepareClassroom.mockResolvedValue({ id: "job-1", state: "ready", phase: "ready", session: opening });
   api.getLessonCourseware.mockResolvedValue(noCourseware);
   api.pinClassroomSlide.mockResolvedValue(opening);
+  api.listBookmarks.mockResolvedValue([]);
 });
 
 describe("minimal classroom", () => {
@@ -268,6 +272,58 @@ describe("minimal classroom", () => {
 
     expect(wrapper.get(".classroom__chapter-select .runtime-select__trigger").text()).toBe("查找");
     expect(wrapper.get(".classroom__lesson-select .runtime-select__trigger").text()).toBe("二叉排序树");
+    wrapper.unmount();
+  });
+
+  it("saves the step on screen and takes the bookmark back", async () => {
+    // The bookmark lives on the slide pane, so this lesson has courseware - as a lesson being taught does.
+    api.getLessonCourseware.mockResolvedValue({
+      ...noCourseware,
+      coursewareKey: "03-01",
+      slides: [{
+        id: "slide-1", deckId: "deck-1", deckTitle: "栈与队列", slideNumber: 1, chapter: "03",
+        title: "栈的存取", rawText: "", speakerNotes: "", semanticSummary: "栈只在顶端进出",
+        teachingRole: "concept", teachingFocus: "", concepts: [], visualAnchors: [], shouldShow: true,
+        lessonIds: ["lesson-1"], imageUrl: "/api/v1/presentation/slides/slide-1/image",
+        section: "3.1", role: "定义", terms: [],
+      }],
+    });
+    api.actInClassroom.mockResolvedValue({
+      ...opening,
+      state: "EXPLAIN",
+      stage: {
+        content: "栈只在顶端进出，最后放进去的元素最先出来。",
+        stepIndex: 0,
+        stepCount: 3,
+        revision: 1,
+        chapterId: "03-stack-queue",
+        lessonId: "lesson-1",
+      },
+    });
+    api.saveBookmark.mockResolvedValue({
+      id: 11, sessionId: "session-1", lessonId: "lesson-1", lessonTitle: "栈与队列基础",
+      chapterId: "03-stack-queue", stepIndex: 0, slideId: "slide-9",
+      title: "栈只在顶端进出，最后放进去的元素最先出来。", createdAt: "2026-10-08T00:00:00Z",
+    });
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+    // Opening the lesson puts the deck on screen; the step to save is the one after the opening.
+    await wrapper.get(".classroom__silver-start .liquid-metal-button__native").trigger("click");
+    await flushPromises();
+    await wrapper.get(".classroom__silver-start .liquid-metal-button__native").trigger("click");
+    await flushPromises();
+
+    // The client names the step; the server decides which page it is, so no slide id is sent.
+    await wrapper.get('[aria-label="收藏这一步"]').trigger("click");
+    await flushPromises();
+    expect(api.saveBookmark).toHaveBeenCalledWith("session-1", 0);
+    expect(wrapper.get('[aria-label="取消收藏"]').attributes("aria-pressed")).toBe("true");
+
+    await wrapper.get('[aria-label="取消收藏"]').trigger("click");
+    await flushPromises();
+    expect(api.deleteBookmark).toHaveBeenCalledWith(11);
+    expect(wrapper.get('[aria-label="收藏这一步"]').attributes("aria-pressed")).toBe("false");
     wrapper.unmount();
   });
 
@@ -622,6 +678,7 @@ describe("minimal classroom", () => {
         ...explain.stage,
         revision: 5,
         teacherResponse: { feedback: "叶子结点没有孩子", answered: false, kind: "question" },
+        asks: [{ stepIndex: 0, question: "什么是叶子结点？", answer: "叶子结点没有孩子" }],
       },
     });
 
@@ -636,8 +693,136 @@ describe("minimal classroom", () => {
       content: "什么是叶子结点？",
       expectedRevision: 4,
     });
-    expect(wrapper.get(".classroom__speech").text()).toBe("叶子结点没有孩子");
-    expect(wrapper.findAll("button").find((button) => button.text() === "回到课堂")?.text()).toBe("回到课堂");
+    // The reply is the answer bubble now, not the lesson narration: asking opens the conversation.
+    expect(wrapper.get(".classroom__ask-answer").text()).toBe("叶子结点没有孩子");
+    // The answer to a question the learner asked is something to read and ask about again, so the box
+    // stays where it was - and what was already said stays on screen next to it.
+    expect(wrapper.find("textarea").exists()).toBe(true);
+    expect(wrapper.get(".classroom__ask-question").text()).toBe("什么是叶子结点？");
+    expect(wrapper.get(".classroom__ask-answer").text()).toBe("叶子结点没有孩子");
+    // The answer comes from the mascot, the way the learner asked it: as a reply, not as another paragraph.
+    expect(wrapper.find(".classroom__answer .ai-ball").exists()).toBe(true);
+    // One reading surface at a time: the conversation takes the narration's row instead of covering it or
+    // squeezing it into a scrolling sliver.
+    expect(wrapper.find(".classroom__lesson .classroom__asks").exists()).toBe(true);
+    expect(wrapper.find(".classroom__lesson .classroom__speech").exists()).toBe(false);
+    expect(wrapper.findAll("button").find((button) => button.text() === "继续上课")).toBeTruthy();
+    expect(wrapper.findAll("button").find((button) => button.text() === "提问")).toBeTruthy();
+    wrapper.unmount();
+  });
+
+  it("keeps the lesson's conversation across pages, marking where each question was asked", async () => {
+    const later: ClassroomSession = {
+      ...opening,
+      state: "EXPLAIN",
+      stage: {
+        content: "这一页讲中序遍历",
+        stepIndex: 2,
+        stepCount: 3,
+        revision: 9,
+        chapterId: "06-tree",
+        asks: [
+          { stepIndex: 0, question: "什么是叶子结点？", answer: "叶子结点没有孩子" },
+          { stepIndex: 2, question: "中序先走哪边？", answer: "先左子树" },
+        ],
+      },
+    };
+    openSession(later.id);
+    api.getClassroomSession.mockResolvedValue(later);
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+
+    // The counter is about the lesson, not the page: turning a page does not start a new conversation.
+    expect(wrapper.findAll("button").find((button) => button.text() === "我问的（2）")).toBeTruthy();
+    await wrapper.findAll("button").find((button) => button.text() === "我问的（2）")!.trigger("click");
+
+    expect(wrapper.findAll(".classroom__ask-question").map((node) => node.text()))
+      .toEqual(["什么是叶子结点？", "中序先走哪边？"]);
+    // Only the exchange from another page carries a step label; the one asked here needs no reminder.
+    expect(wrapper.findAll(".classroom__ask-step").map((node) => node.text())).toEqual(["第 1 步"]);
+    wrapper.unmount();
+  });
+
+  it("switches between the narration and the conversation without losing either", async () => {
+    const explain: ClassroomSession = {
+      ...opening,
+      state: "EXPLAIN",
+      stage: {
+        content: "树由结点和边组成",
+        stepIndex: 0,
+        stepCount: 3,
+        revision: 4,
+        chapterId: "06-tree",
+        asks: [{ stepIndex: 0, question: "什么是叶子结点？", answer: "叶子结点没有孩子" }],
+      },
+    };
+    openSession(explain.id);
+    api.getClassroomSession.mockResolvedValue(explain);
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+
+    // A step with questions opens on the narration; the exchange is one tap away.
+    expect(wrapper.find(".classroom__speech").exists()).toBe(true);
+    expect(wrapper.find(".classroom__asks").exists()).toBe(false);
+    expect(wrapper.findAll("button").find((button) => button.text() === "我问的（1）")).toBeTruthy();
+
+    await wrapper.findAll("button").find((button) => button.text() === "我问的（1）")!.trigger("click");
+    expect(wrapper.find(".classroom__asks").exists()).toBe(true);
+    expect(wrapper.find(".classroom__ask-question").text()).toBe("什么是叶子结点？");
+    expect(wrapper.find(".classroom__speech").exists()).toBe(false);
+
+    await wrapper.findAll("button").find((button) => button.text() === "回到讲稿")!.trigger("click");
+    expect(wrapper.find(".classroom__speech").exists()).toBe(true);
+    expect(wrapper.find(".classroom__asks").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("lets the learner ask again without losing the previous answer", async () => {
+    const explain: ClassroomSession = {
+      ...opening,
+      state: "EXPLAIN",
+      stage: { content: "树由结点和边组成", stepIndex: 0, stepCount: 3, revision: 4, chapterId: "06-tree" },
+    };
+    openSession(explain.id);
+    api.getClassroomSession.mockResolvedValue(explain);
+    api.actInClassroom
+      .mockResolvedValueOnce({
+        ...explain,
+        stage: {
+          ...explain.stage,
+          revision: 5,
+          teacherResponse: { feedback: "叶子结点没有孩子", answered: false, kind: "question" },
+          asks: [{ stepIndex: 0, question: "什么是叶子结点？", answer: "叶子结点没有孩子" }],
+        },
+      })
+      .mockResolvedValueOnce({
+        ...explain,
+        stage: {
+          ...explain.stage,
+          revision: 6,
+          teacherResponse: { feedback: "边表示结点之间的父子关系", answered: false, kind: "question" },
+          asks: [
+            { stepIndex: 0, question: "什么是叶子结点？", answer: "叶子结点没有孩子" },
+            { stepIndex: 0, question: "那边是什么？", answer: "边表示结点之间的父子关系" },
+          ],
+        },
+      });
+
+    const wrapper = mountClassroom();
+    await flushPromises();
+    await wrapper.get("textarea").setValue("什么是叶子结点？");
+    await wrapper.findAll("button").find((button) => button.text() === "提问")!.trigger("click");
+    await flushPromises();
+    await wrapper.get("textarea").setValue("那边是什么？");
+    await wrapper.findAll("button").find((button) => button.text() === "提问")!.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.findAll(".classroom__ask-question").map((node) => node.text()))
+      .toEqual(["什么是叶子结点？", "那边是什么？"]);
+    expect(wrapper.findAll(".classroom__ask-answer").map((node) => node.text()))
+      .toEqual(["叶子结点没有孩子", "边表示结点之间的父子关系"]);
     wrapper.unmount();
   });
 

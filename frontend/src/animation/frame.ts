@@ -20,6 +20,60 @@ export interface FrameChip {
   value: string;
 }
 
+/**
+ * One named position on a panel - `top` on a stack, `mid` in a binary search, `i`/`j` while sorting.
+ *
+ * The engine has always reported these (they used to survive only as header text like "mid 3"), and a grid
+ * with a single highlight cannot say "i is here and j is there". A learner reads a cursor's *name* on the
+ * cell it stands on, so every pointer the engine reports for a panel is published, not just the first.
+ */
+export interface FrameCursor {
+  key: string;
+  label: string;
+  index: number;
+}
+
+/**
+ * 一根**线索**：`p->lchild`（或 `rchild`）本来是空指针，被改成指向前驱/后继。
+ *
+ * 引擎可以给 `[前, 后]`、`[前, 后, "successor"]` 或 `{from, to}` 三种写法，这里统一成 `{from, to}`。
+ */
+export interface PanelThread {
+  from: string;
+  /** 线索建在**哪一侧**的空指针上：`L` = 左指针改指前驱，`R` = 右指针改指后继。 */
+  to: string;
+  side: "L" | "R";
+}
+
+/**
+ * 一个结点框该有哪些槽位、结点之间该有哪些箭头——**按结构定义来**，不是"链表都长一样"。
+ *
+ * 单链表每个结点只有后继，所以是 `[值 | next]`；双向链表每个结点**同时存前驱和后继**，
+ * 框里必须有 `prior` 那一栏，结点之间也要有一根**反向**箭头——只画 next 就等于把双向链表画成了单链表
+ * （2026-10-06 Rrd 拿截图问"双向链表这个箭头方向是不是也不对"，就是这里）。
+ * 循环链表则要把尾结点的 next 绕回首结点，末结点的 `next` 栏写 `head` 而不是 `NULL`。
+ */
+export interface ChainShape {
+  /** 值左边的槽位名（双向链表的 `prior`）；没有就是 null。 */
+  lead: string | null;
+  /** 值右边的槽位名（`next`；链式栈/队列同样是 next）。 */
+  slots: string[];
+  /** 结点之间还要画一根反向箭头（prior 指向前驱），画在正向箭头下面一行。 */
+  back: boolean;
+  /** 尾结点的 next 绕回首结点。 */
+  circular: boolean;
+}
+
+/** 按 `kind`（结构定义本身）给形状；认不出的链表面板退回单链表画法。 */
+const CHAIN_SHAPES: Record<string, ChainShape> = {
+  linked_list: { lead: null, slots: ["next"], back: false, circular: false },
+  doubly_linked_list: { lead: "prior", slots: ["next"], back: true, circular: false },
+  circular_linked_list: { lead: null, slots: ["next"], back: false, circular: true },
+  linked_stack: { lead: null, slots: ["next"], back: false, circular: false },
+  linked_queue: { lead: null, slots: ["next"], back: false, circular: false },
+};
+const DEFAULT_CHAIN: ChainShape = { lead: null, slots: ["next"], back: false, circular: false };
+
 export interface FramePanel {
   role: string;
   label: string;
@@ -32,10 +86,29 @@ export interface FramePanel {
   /** Present for `tree`/`graph`, normalized to objects even when the engine lists bare labels. */
   nodes: DsvpNode[];
   edges: unknown[][];
+  /**
+   * 线索二叉树的**线索指针**（画成虚线）。它和"父子边"不是一回事：线索是空的左右孩子指针改指前驱/后继，
+   * 所以**不参与树形布局**（算进去会把结点排到错误的层上），只是额外画一根虚线。
+   */
+  threads: PanelThread[];
   /** B-tree nodes hold several keys; the tree renderer then draws a key strip per node. */
   multiKey: boolean;
   /** Zero-based index inside this panel that the step is operating on, when the engine says so. */
   focus: number | null;
+  /** Every named position the engine reports for this panel, drawn on the cells they stand on. */
+  cursors: FrameCursor[];
+  /** Present when the values are a chain of nodes: how a node is shaped and how nodes are wired. */
+  chain: ChainShape | null;
+  /**
+   * 引擎按结构给的槽位目标：`next: [2, 3, 4, null]` = "第 i 个结点的 next 指向第几个结点"。
+   * 存序号而不是值——值会重复，序号不会。有就直接用，前端不再自己反推。
+   */
+  chainText: Record<string, (string | number | null)[]> | null;
+  /**
+   * 这一帧正在改写哪个结点的**哪个字段**（`{index, slot}`）——渲染器把那一格点亮，
+   * 对应标题里那行代码（`p->next->prior = s` 改的是 `prior`，不是 `next`）。
+   */
+  chainWrite: { index: number; slot: string } | null;
   /** Zero-based [row, column] of the one cell a grid step is standing on (matrix panels only). */
   focusCell: [number, number] | null;
   /** Half-open index range a sort pass is working on (`low`..`high`). */
@@ -50,11 +123,19 @@ export interface AnimationFrame {
   panels: FramePanel[];
   /** Every meta field, rendered for display. */
   chips: FrameChip[];
+  /**
+   * One sentence stating what is true of the structure right now ("[0, i) is sorted, [i, n) is not").
+   *
+   * The engine reports it as `meta.invariant`. It is drawn as a bar above the canvas rather than as one
+   * more chip, because a chip next to "mid 3" reads as another value, while the invariant is the frame's
+   * headline: it is what the learner is supposed to carry from one step to the next.
+   */
+  invariant: string;
   /** The engine's meta verbatim, for renderers that need structure rather than text (`visited`, `dist`). */
   raw: Record<string, unknown>;
 }
 
-const EMPTY_FRAME: AnimationFrame = { kind: "", label: "", panels: [], chips: [], raw: {} };
+const EMPTY_FRAME: AnimationFrame = { kind: "", label: "", panels: [], chips: [], invariant: "", raw: {} };
 
 /**
  * Roles whose values are a list of lists. Everything else holding an array of scalars is drawn as one
@@ -80,8 +161,7 @@ const NESTED_ROLES = new Set([
   "usedIndices",
 ]);
 
-/** Meta fields whose numeric value is a cursor a sibling panel should highlight. */
-const POINTER_KEYS = new Set([
+/** Meta fields whose numeric value is a cursor a sibling panel should highlight. */const POINTER_KEYS = new Set([
   "index",
   "current",
   "top",
@@ -96,7 +176,19 @@ const POINTER_KEYS = new Set([
   "pivotIndex",
   "mid",
   "column",
+  // 双端栈：两个栈顶在**同一个共享数组**里从两端往中间长，所以两边的栈顶都要标出来。
+  "topLeft",
+  "topRight",
+  // 简单选择排序：一边扫一边记"目前最小的在哪"——这两格不标出来，那几十帧比较帧看起来就是静止的。
+  "selected",
+  "scan",
 ]);
+
+/**
+ * 这几个游标说的是"**这个结构长什么样**"，不是"这一步在动哪一格"：栈顶、队首、队尾。
+ * 所以它们和面板自带的 `focusIndex` 一起画，不会被顶掉（双端栈的左右栈顶就是这么丢过一次的）。
+ */
+const STRUCTURAL_CURSOR_KEYS = new Set(["top", "front", "rear"]);
 
 const ROLE_LABELS: Record<string, string> = {
   A: "塔 A",
@@ -279,6 +371,14 @@ const META_LABELS: Record<string, string> = {
   result: "结果",
   peek: "读取值",
   removed: "移出",
+  compareCount: "比较次数",
+  swapCount: "交换次数",
+  // 交换的三步里那个临时变量。它得看得见，否则"为什么要 temp"讲不清（也解释不了中间那帧的重复值）。
+  temp: "临时变量",
+  // 双端栈：两个栈顶在同一个共享数组里，还要看得见还剩几个单元。
+  topLeft: "左栈顶",
+  topRight: "右栈顶",
+  free: "空位",
   found: "命中",
   digit: "数位",
   pass: "趟",
@@ -353,7 +453,7 @@ export function normalizeFrame(state: DsvpState | null | undefined): AnimationFr
     for (const panel of view) {
       if (!panel || typeof panel !== "object") continue;
       if (panel.role === "meta" || panel.role === "probe" || panel.role === "matrix_index") continue;
-      panels.push(panelFromView(panel, pointers, raw));
+      panels.push(panelFromView(panel, pointers, raw, kind));
     }
   } else {
     panels.push(...panelsFromLegacy(kind, state as Record<string, unknown>, chips, raw));
@@ -372,11 +472,12 @@ export function normalizeFrame(state: DsvpState | null | undefined): AnimationFr
     label: frameKindLabel(kind),
     panels: panels.filter((panel) => panel.kind !== "board"),
     chips,
+    invariant: typeof raw.invariant === "string" ? raw.invariant : "",
     raw,
   };
 }
 
-function panelFromView(panel: DsvpPanel, pointers: Record<string, number>, raw: Record<string, unknown>): FramePanel {
+function panelFromView(panel: DsvpPanel, pointers: Record<string, number>, raw: Record<string, unknown>, kind: string): FramePanel {
   const role = String(panel.role ?? "");
   const nodes = normalizeNodes(panel.nodes);
   const edges = Array.isArray(panel.edges) ? (panel.edges as unknown[][]) : [];
@@ -391,8 +492,13 @@ function panelFromView(panel: DsvpPanel, pointers: Record<string, number>, raw: 
     rows: [],
     nodes,
     edges,
+    threads: [],
     multiKey: false,
     focus: null,
+    cursors: [],
+    chain: null,
+    chainText: null,
+    chainWrite: null,
     focusCell: null,
     range: null,
     chips: [],
@@ -401,6 +507,7 @@ function panelFromView(panel: DsvpPanel, pointers: Record<string, number>, raw: 
   if (nodes.length) {
     frame.kind = role === "graph" ? "graph" : "tree";
     frame.multiKey = nodes.some((node) => Array.isArray(node.keys) && node.keys.length > 1);
+    frame.threads = threadsOf(panel);
     return frame;
   }
 
@@ -440,20 +547,93 @@ function panelFromView(panel: DsvpPanel, pointers: Record<string, number>, raw: 
   frame.focusCell = focusCellOf(panel);
   // A panel may carry its own cursor (`focusIndex`); that beats the shared pointer pool, which several
   // panels read at once and which therefore cannot say "slot 7 of the packed array, not column 7".
+  //
+  // 但**结构性的标记不能因此被顶掉**：双端栈的左右两个栈顶、循环缓冲区的 front/rear 属于"这个结构长什么样"，
+  // 每一帧都该看得见，而 focusIndex 说的是"这一步正在动哪一格"。两者同格时用结构性的名字（`top` 比"当前"
+  // 说得清），不同格就都画出来。
   const ownFocus = typeof panel.focusIndex === "number" ? panel.focusIndex : null;
-  frame.focus = ownFocus === null ? focusFor(role, pointers, frame.values.length) : clamp(ownFocus, frame.values.length);
-  // Pattern matching: both string panels would stay unhighlighted because i/j are not in focusFor's
-  // cursor set. Each side rides its own pointer — i over the text, j over the pattern.
-  // （left/right 已由 focusFor 自己处理，不在这里兜底，免得两套规则打架。）
-  if (ownFocus === null && frame.focus === null) {
-    if (role === "pattern" && pointers.j !== undefined) frame.focus = clamp(pointers.j, frame.values.length);
-    else if (role === "text" && pointers.i !== undefined && pointers.j !== undefined) frame.focus = clamp(pointers.i, frame.values.length);
+  frame.chain = frame.kind === "array" || frame.kind === "records" ? chainShapeOf(role, kind) : null;
+  frame.chainText = chainTextOf(panel);
+  frame.chainWrite = typeof panel.write === "number"
+    ? { index: panel.write, slot: typeof panel.writeSlot === "string" ? panel.writeSlot : "next" }
+    : null;
+  if (ownFocus !== null) {
+    const bounded = clamp(ownFocus, frame.values.length);
+    const own = bounded === null ? [] : [{ key: "focus", label: cursorLabel("focus"), index: bounded }];
+    const structural = cursorsFor(role, pointers, frame.values.length).filter((cursor) => STRUCTURAL_CURSOR_KEYS.has(cursor.key));
+    const sameCell = structural.find((cursor) => cursor.index === bounded);
+    frame.cursors = sameCell ? [sameCell, ...structural.filter((cursor) => cursor !== sameCell)] : [...own, ...structural];
+  } else {
+    frame.cursors = cursorsFor(role, pointers, frame.values.length);
   }
+  // 面板自己的具名指针（`pointers: {p: 3, A: 0}`）排在最前：它们是**这个结构**的指针，
+  // 比"整帧共用池"里推出来的更具体，也该是渲染器强调的那一个。
+  const ownPointers = ownPointerCursors(panel, frame.values.length);
+  if (ownPointers.length) {
+    frame.cursors = [...ownPointers, ...frame.cursors.filter((cursor) => !ownPointers.some((own) => own.key === cursor.key))];
+  }
+  // Pattern matching: both string panels would stay unhighlighted because i/j are not in cursorsFor's
+  // generic set. Each side rides its own pointer — i over the text, j over the pattern.
+  if (ownFocus === null && frame.cursors.length === 0) {
+    const pair = role === "pattern" && pointers.j !== undefined ? { key: "j", at: pointers.j }
+      : role === "text" && pointers.i !== undefined && pointers.j !== undefined ? { key: "i", at: pointers.i }
+        : null;
+    const bounded = pair === null ? null : clamp(pair.at, frame.values.length);
+    if (pair !== null && bounded !== null) {
+      frame.cursors = [{ key: pair.key, label: cursorLabel(pair.key), index: bounded }];
+    }
+  }
+  frame.focus = frame.cursors.length ? frame.cursors[0].index : null;
   return frame;
 }
 
-/** The one cell a grid step stands on, when the engine names it as `focusCell: [row, column]`. */
-function focusCellOf(panel: DsvpPanel): [number, number] | null {
+/**
+ * 面板自带的具名指针：`pointers: {p: 3, A: 0}`（名字 → 第几个结点）。
+ *
+ * 与整帧共用的指针池不同，这些指针**只属于这个面板**——两个循环表各有自己的 p、q 时，
+ * 一份共用的池会把 LB 的 q 标到 LA 上。所以引擎按面板发，这里按面板收。
+ */
+function ownPointerCursors(panel: DsvpPanel, length: number): FrameCursor[] {
+  const raw = panel.pointers;
+  if (!isRecord(raw)) return [];
+  const cursors: FrameCursor[] = [];
+  for (const [key, value] of Object.entries(raw)) {
+    const index = clamp(Number(value), length);
+    if (index === null) continue;
+    cursors.push({ key, label: cursorLabel(key), index });
+  }
+  return cursors;
+}
+
+/**
+ * 引擎按结构给的槽位目标：`next: [2, 3, 4, null]` —— **第 i 个结点的 next 指向第几个结点**。
+ *
+ * 存的是**结点序号**而不是它的值：值会重复（`[20,20]` 两个 20 都写 "20" 就分不清指向谁），
+ * 只有序号唯一。跨表的用 `"B#2"` 这种带表后缀的写法。`null` = 没有指向。
+ */
+function chainTextOf(panel: DsvpPanel): Record<string, (string | number | null)[]> | null {
+  const text: Record<string, (string | number | null)[]> = {};
+  for (const key of ["next", "prior"] as const) {
+    const value = panel[key];
+    if (!Array.isArray(value)) continue;
+    text[key] = value.map((item) => (item === undefined ? null : (item as string | number | null)));
+  }
+  return Object.keys(text).length ? text : null;
+}
+
+/**
+ * 精简版：把「逐行细节」帧的每一连续段压成最后一帧。
+ *
+ * 引擎用 `phase: "line"` 标出"这一帧只是一行代码的中间过程"（`s->prior = p`、`p = p->next` 之类），
+ * 段内最后一帧就是这一阶段的完成态，留着它这一段就没有信息损失。
+ * **没标 `line` 的操作（排序、树、图…）一帧都不会掉**——详细/精简这个开关对它们没有副作用。
+ * 详细版（默认）一帧不压：一行代码一帧，像 debug 单步。
+ */
+export function collapseBrief<T extends { phase?: string | null }>(steps: readonly T[]): T[] {
+  return steps.filter((step, index) => step.phase !== "line" || steps[index + 1]?.phase !== "line");
+}
+
+/** The one cell a grid step stands on, when the engine names it as `focusCell: [row, column]`. */function focusCellOf(panel: DsvpPanel): [number, number] | null {
   const value = panel.focusCell;
   if (!Array.isArray(value) || value.length < 2) return null;
   const row = Number(value[0]);
@@ -472,8 +652,13 @@ function panelsFromLegacy(kind: string, state: Record<string, unknown>, chips: F
     rows: [],
     nodes: [],
     edges: [],
+    threads: [],
     multiKey: false,
     focus: null,
+    cursors: [],
+    chain: chainShapeOf(role, kind),
+    chainText: null,
+    chainWrite: null,
     focusCell: null,
     range: null,
     chips: [],
@@ -483,13 +668,27 @@ function panelsFromLegacy(kind: string, state: Record<string, unknown>, chips: F
     const values = asArray(state.items).map((item) => (isRecord(item) ? item.value : item));
     const panel = base(kind, values);
     const pointer = kind === "stack" ? state.top : state.front;
+    const cursors = cursorsFor(kind, {
+      ...(typeof state.top === "number" ? { top: state.top } : {}),
+      ...(typeof state.front === "number" ? { front: state.front } : {}),
+      ...(typeof state.rear === "number" ? { rear: state.rear } : {}),
+      ...(typeof state.current === "number" ? { current: state.current } : {}),
+    }, values.length);
+    panel.cursors = cursors;
     if (typeof pointer === "number") {
-      panel.focus = clamp(pointer, values.length);
       panel.chips.push({ label: kind === "stack" ? "top" : "front", value: String(pointer) });
     }
     // 队列/栈在读元素、写入元素的帧会给 current（这一步正踩着的下标），它比 front/top 更具体。
-    if (typeof state.current === "number") panel.focus = clamp(state.current, values.length);
+    if (typeof state.current === "number" && !cursors.length) {
+      const bounded = clamp(state.current, values.length);
+      if (bounded !== null) panel.cursors = [{ key: "current", label: cursorLabel("current"), index: bounded }];
+    }
+    panel.focus = panel.cursors.length ? panel.cursors[0].index : null;
     if (kind === "queue" && typeof state.rear === "number") panel.chips.push({ label: "rear", value: String(state.rear) });
+    // 走了多少步：引擎在每帧上累加比较/交换次数，它是"看起来很随机"和"选择排序比较得多、交换得少"之间的差别。
+    for (const key of ["compareCount", "swapCount"]) {
+      pushChip(panel.chips, chipLabel(key), (state as Record<string, unknown>)[key]);
+    }
     const metadata = isRecord(state.metadata) ? state.metadata : {};
     if (typeof metadata.capacity === "number") panel.chips.push({ label: "容量", value: String(metadata.capacity) });
     return [panel];
@@ -500,8 +699,14 @@ function panelsFromLegacy(kind: string, state: Record<string, unknown>, chips: F
     const panel = base("array", values);
     // 移动中的那个元素优先于插入/删除位置：后移/前移帧的高亮要跟着元素走，
     // 否则整条动画都钉在目标位置上，看起来就是"高亮卡住不动"。
-    if (typeof state.movingIndex === "number" && state.movingIndex >= 0) panel.focus = clamp(state.movingIndex, values.length);
-    else if (typeof state.targetIndex === "number" && state.targetIndex >= 0) panel.focus = clamp(state.targetIndex, values.length);
+    const marker = typeof state.movingIndex === "number" && state.movingIndex >= 0
+      ? { key: "movingIndex", at: state.movingIndex }
+      : typeof state.targetIndex === "number" && state.targetIndex >= 0
+        ? { key: "targetIndex", at: state.targetIndex }
+        : null;
+    const bounded = marker === null ? null : clamp(marker.at, values.length);
+    panel.cursors = marker !== null && bounded !== null ? [{ key: marker.key, label: cursorLabel(marker.key), index: bounded }] : [];
+    panel.focus = panel.cursors.length ? panel.cursors[0].index : null;
     pushChip(panel.chips, "表长", state.length);
     pushChip(panel.chips, "插入位置", state.position);
     pushChip(panel.chips, "新值", state.value);
@@ -515,9 +720,15 @@ function panelsFromLegacy(kind: string, state: Record<string, unknown>, chips: F
     const left = base("LA", asArray(state.left));
     const right = base("LB", asArray(state.right));
     const result = base("LC", asArray(state.result));
-    if (typeof state.i === "number") left.focus = clamp(state.i - 1, left.values.length);
-    if (typeof state.j === "number") right.focus = clamp(state.j - 1, right.values.length);
-    if (typeof state.k === "number") result.focus = clamp(state.k - 1, result.values.length);
+    // Each segment rides its own pointer: i over the left, j over the right, k over what has been built.
+    const mark = (panel: FramePanel, key: string, at: number | undefined): void => {
+      const bounded = at === undefined ? null : clamp(at, panel.values.length);
+      panel.cursors = bounded === null ? [] : [{ key, label: cursorLabel(key), index: bounded }];
+      panel.focus = panel.cursors.length ? panel.cursors[0].index : null;
+    };
+    mark(left, "i", typeof state.i === "number" ? state.i - 1 : undefined);
+    mark(right, "j", typeof state.j === "number" ? state.j - 1 : undefined);
+    mark(result, "k", typeof state.k === "number" ? state.k - 1 : undefined);
     pushChip(chips, "i", state.i);
     pushChip(chips, "j", state.j);
     pushChip(chips, "k", state.k);
@@ -545,7 +756,7 @@ function panelsFromLegacy(kind: string, state: Record<string, unknown>, chips: F
  * Meta fields that never deserve a chip: the operation is already the player's headline, and a
  * graph's directedness is drawn as arrowheads, not spelled out.
  */
-const HIDDEN_META_CHIPS = new Set(["operation", "directed"]);
+const HIDDEN_META_CHIPS = new Set(["operation", "directed", "invariant"]);
 
 function collectMeta(panel: DsvpPanel, chips: FrameChip[], raw: Record<string, unknown>, pointers: Record<string, number>): void {
   const isMeta = panel.role === "meta" || panel.role === "probe" || panel.role === "matrix_index";
@@ -563,32 +774,109 @@ function collectMeta(panel: DsvpPanel, chips: FrameChip[], raw: Record<string, u
   }
 }
 
-function focusFor(role: string, pointers: Record<string, number>, length: number): number | null {
-  if (role === "table" && pointers.index !== undefined) return clamp(pointers.index, length);
-  if (role === "stack" && pointers.top !== undefined) return clamp(pointers.top, length);
-  if (role === "queue" && pointers.front !== undefined) return clamp(pointers.front, length);
-  // 双序列合并（链表归并 LA/LB/LC、多项式相加 PA/PB/PC）：A/B 各自跟着"刚被取走的那个元素"走，
-  // C 是正在增长的结果——高亮最新写入的分量。没有这些规则时整条动画一格高亮都没有。
-  if (/A$/.test(role) && pointers.i !== undefined) return clamp(pointers.i - 1, length);
-  if (/B$/.test(role) && pointers.j !== undefined) return clamp(pointers.j - 1, length);
-  if (/C$/.test(role) && length > 0) return length - 1;
-  // 阶乘非递归这类"逐轮写入"的结果数组：高亮刚乘出来的那一格。
-  if (role === "result" && length > 0) return length - 1;
-  // 分列的面板（归并的「左段/右段」）各跟自己的指针。这两条必须排在通用指针规则之前：
-  // 否则 j（甚至 current）会同时命中左右两段，两段一起跳，看不出"取的是哪一边"。
-  if (role === "left" && pointers.i !== undefined) return clamp(pointers.i, length);
-  if (role === "right" && pointers.j !== undefined) return clamp(pointers.j, length);
-  // 排序家族（冒泡/快排划分/希尔/基数/锦标赛…）用 i、j 报"正在比较的两个下标"，
-  // 归并类用 left/mid/right 报当前区间。没有这几条，整个排序动画一格高亮都没有。
-  if (pointers.current !== undefined) return clamp(pointers.current, length);
-  if (pointers.pivotIndex !== undefined) return clamp(pointers.pivotIndex, length);
-  if (pointers.j !== undefined) return clamp(pointers.j, length);
-  if (pointers.i !== undefined) return clamp(pointers.i, length);
-  if (pointers.mid !== undefined) return clamp(pointers.mid, length);
-  if (pointers.index !== undefined) return clamp(pointers.index, length);
-  if (pointers.position !== undefined) return clamp(pointers.position - 1, length);
-  return null;
+/**
+ * How a cursor is written on the cell it stands on. Textbook names stay as they are (`i`, `mid`, `front`):
+ * a student meets those in the book and in code, and translating them to "中点" would break the link.
+ */
+const CURSOR_LABELS: Record<string, string> = {
+  index: "下标",
+  current: "当前",
+  top: "top",
+  front: "front",
+  rear: "rear",
+  i: "i",
+  j: "j",
+  k: "k",
+  position: "位置",
+  targetIndex: "目标",
+  movingIndex: "移动中",
+  pivotIndex: "枢轴",
+  // 简单选择排序的两个位置：正在扫的那一格，和目前最小的那一格。
+  selected: "最小",
+  scan: "扫描",
+  mid: "mid",
+  column: "列",
+  focus: "当前",
+  latest: "最新",
+};
+
+export function cursorLabel(key: string): string {
+  return CURSOR_LABELS[key] ?? key;
 }
+
+/**
+ * Cursors any panel may show, in the order the single focus used to pick from them.
+ *
+ * `front`/`rear` 在这里是有意的：队列的**两端**都要标出来——只标 front 的话，"队尾在哪、还剩几个空位"
+ * 就得靠胶囊去读（2026-10-06 把队列和循环缓冲区一并过了一遍才发现）。
+ */
+const GENERIC_CURSOR_KEYS = ["current", "pivotIndex", "j", "i", "mid", "index", "position", "front", "rear", "selected", "scan"] as const;
+
+/** Panels whose values are a chain of nodes: a list's links live in the gaps between the values. */
+const CHAIN_ROLES = new Set(["L", "LA", "LB", "LC", "head", "new"]);
+const CHAIN_KINDS = new Set([
+  "linked_list",
+  "doubly_linked_list",
+  "circular_linked_list",
+  "linked_stack",
+  "linked_queue",
+]);
+
+/** 这个面板是不是"结点链"，是的话结点该长什么样——形状由结构定义（`kind`）决定。 */
+function chainShapeOf(role: string, kind: string): ChainShape | null {
+  if (!CHAIN_ROLES.has(role) && !CHAIN_KINDS.has(kind)) return null;
+  return CHAIN_SHAPES[kind] ?? DEFAULT_CHAIN;
+}
+
+/**
+ * Every named position the engine reports for one panel, in the order the focus picks from them.
+ *
+ * The role-specific rules come first and stay exclusive on purpose: a merge's LA rides `i` and LB rides
+ * `j`, and letting the generic rules also fire there drew `j` on both segments, so both jumped together.
+ * A `table`, `stack` or `queue` keeps its own marker *and* the generic ones, because "top 2" and "reading
+ * slot 2" are both true and both worth seeing. An out-of-range pointer yields nothing, which is what the
+ * single focus did before.
+ */
+export function cursorsFor(role: string, pointers: Record<string, number>, length: number): FrameCursor[] {
+  const specific =
+    role === "table" && pointers.index !== undefined ? { key: "index", at: pointers.index }
+      : role === "stack" && pointers.top !== undefined ? { key: "top", at: pointers.top }
+        : role === "queue" && pointers.front !== undefined ? { key: "front", at: pointers.front }
+          // 双端栈：每一侧自己的栈顶都在那一侧数组的**最后一个元素**上（引擎给的是共享数组里的全局下标，
+          // 直接拿来标本侧会越界），所以两侧都取 length-1，标签统一写 top。
+          : role === "left" && pointers.topLeft !== undefined ? { key: "top", at: length - 1 }
+            : role === "right" && pointers.topRight !== undefined ? { key: "top", at: length - 1 }
+              : /A$/.test(role) && pointers.i !== undefined ? { key: "i", at: pointers.i - 1 }
+                : /B$/.test(role) && pointers.j !== undefined ? { key: "j", at: pointers.j - 1 }
+                  : /C$/.test(role) && length > 0 ? { key: "latest", at: length - 1 }
+                    : role === "result" && length > 0 ? { key: "latest", at: length - 1 }
+                      : role === "left" && pointers.i !== undefined ? { key: "i", at: pointers.i }
+                        : role === "right" && pointers.j !== undefined ? { key: "j", at: pointers.j }
+                          : null;
+
+  if (specific) {
+    const index = clamp(specific.at, length);
+    if (index === null) return [];
+    const first: FrameCursor = { key: specific.key, label: cursorLabel(specific.key), index };
+    const shared = role === "table" || role === "stack" || role === "queue" ? genericCursors(pointers, length, first.key) : [];
+    return [first, ...shared];
+  }
+  return genericCursors(pointers, length, "");
+}
+
+function genericCursors(pointers: Record<string, number>, length: number, skip: string): FrameCursor[] {
+  const cursors: FrameCursor[] = [];
+  for (const key of GENERIC_CURSOR_KEYS) {
+    if (key === skip || pointers[key] === undefined) continue;
+    // A 1-based position (insert at the 3rd slot) is drawn on the cell it names.
+    const index = clamp(key === "position" ? pointers[key] - 1 : pointers[key], length);
+    if (index !== null && !cursors.some((cursor) => cursor.key === key)) {
+      cursors.push({ key, label: cursorLabel(key), index });
+    }
+  }
+  return cursors;
+}
+
 
 /** The engine sometimes lists bare labels ("A", "B") and sometimes full objects; unify them. */
 function normalizeNodes(value: unknown): DsvpNode[] {
@@ -606,6 +894,28 @@ function normalizeNodes(value: unknown): DsvpNode[] {
       return null;
     })
     .filter((node): node is DsvpNode => node !== null);
+}
+
+/**
+ * 线索指针：`[[前, 后]]` / `[[前, 后, "successor"]]` / `[{from, to}]` 都收，统一成 `{from, to}`。
+ *
+ * 画成虚线、且**不参与树形布局**——线索是"空孩子指针改指前驱/后继"，不是父子关系；
+ * 混进 edges 会把结点排到错误的层上（也可能让根结点凭空多出一个父亲）。
+ */
+function threadsOf(panel: DsvpPanel): PanelThread[] {
+  if (!Array.isArray(panel.threads)) return [];
+  const out: PanelThread[] = [];
+  for (const item of panel.threads as unknown[]) {
+    if (Array.isArray(item) && item.length >= 2) {
+      const side = String(item[2] ?? "L").toUpperCase() === "R" ? "R" : "L";
+      out.push({ from: String(item[0]), to: String(item[1]), side });
+      continue;
+    }
+    if (isRecord(item) && item.from !== undefined && item.to !== undefined) {
+      out.push({ from: String(item.from), to: String(item.to), side: String(item.side ?? "L").toUpperCase() === "R" ? "R" : "L" });
+    }
+  }
+  return out;
 }
 
 function pushChip(chips: FrameChip[], label: string, value: unknown): void {

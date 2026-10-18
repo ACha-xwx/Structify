@@ -173,6 +173,20 @@ public class AnimationIntentController {
         return engine.capabilities(DsvpLocalEngine.chapterScope(chapterId)).orElse(null);
     }
 
+    /**
+     * Every capability the engine can really simulate, with no chapter scope applied.
+     *
+     * <p>Asked for lazily, and only where it is needed: the scoped table is what the model reads first, so
+     * the ordinary call stays small. It is the answer to "the chapter has none of its own" and to "the
+     * model says this cannot be done" - a learner who asks for a demo that belongs to another chapter must
+     * get one, not a refusal that only ever looked at the current chapter.
+     */
+    private JsonNode wholeCatalogue() {
+        if (engine == null || !engine.enabled()) return null;
+        JsonNode whole = engine.capabilities("").orElse(null);
+        return whole != null && !whole.path("prompt").asText("").isBlank() ? whole : null;
+    }
+
     /** Primary path: the model picks a capability; the engine validates it and builds the executable request. */
     private JsonNode interpretThroughLocalEngine(
         AuthenticatedUser user,
@@ -185,7 +199,17 @@ public class AnimationIntentController {
         String reply
     ) {
         String capabilities = capabilityList.path("prompt").asText("");
-        if (capabilities.isBlank()) return interpretWithModelRequest(user, chapterId, chapterTitle, studentRequest, currentRequest, reply);
+        if (capabilities.isBlank()) {
+            // A chapter with no demos of its own - 绪论 - used to drop straight to the free-form path, which
+            // puts no capability table in front of the model at all; it then improvised from memory. The
+            // registry is the fact on both paths, so an empty chapter widens to the whole textbook rather
+            // than throwing the registry away.
+            JsonNode whole = wholeCatalogue();
+            if (whole == null) return interpretWithModelRequest(user, chapterId, chapterTitle, studentRequest, currentRequest, reply);
+            capabilityList = whole;
+            capabilities = whole.path("prompt").asText("");
+            chapterTitle = "整本教材（" + chapterTitle + " 这一章没有专属演示）";
+        }
 
         boolean readingReply = reply != null && !reply.isBlank();
         ObjectNode context = mapper.createObjectNode();
@@ -221,7 +245,7 @@ public class AnimationIntentController {
             你是教学设计师。判断学生这次的需求值不值得用动画讲，并且只做两件事：从下面的真实能力表里选一个能力、给出它的参数。
             你绝不生成动画步骤、状态快照或数值序列——逐帧状态由本地确定性模拟器计算，你编出来的帧会被丢弃。
             %s
-            真实可用能力（当前教材章，格式为「能力名[必需参数]：说明」）：
+            真实可用能力（本节优先，格式为「能力名[必需参数]：说明」）：
             %s
             选择规则：
             1. 只能从上面的能力表里选，绝不能发明能力名；能力表之外的东西一律返回 unsupported。
@@ -230,6 +254,8 @@ public class AnimationIntentController {
             4. purpose 一句话说明这里为什么值得看动态过程。
             5. 判断只能以上面的能力表为唯一事实依据。表里有对应条目就必须选它，绝不能以「未实现」「这个结构只支持某某操作」为由拒绝。
             6. 不要凭印象描述某个结构支持或不支持哪些操作——印象可能过时或缺漏，能力表才是事实。返回 unsupported 之前，必须逐条扫一遍能力表，确认真的没有可用条目。
+            7. **章节只是优先顺序，不是边界。** 学生要看的算法属于数据结构课程的内容、只是不在上面这张表里时（例如在「栈与队列」这一章里问折半查找、在「线性表」里问二叉树遍历），一律返回 unsupported —— 程序会立刻拿整本教材的能力表再核对一次并把候选补给它。
+               绝不要以「不在本章」「不属于本结构」为由把需求判成 needed:false：needed 只回答「这个过程本身值不值得用动画讲」（静态定义、概念辨析才设 false），「能不能做」由能力表和程序决定。
             只返回下列形状之一：
             {"needed":true,"confidence":0.0到1.0,"capability":"能力名","purpose":"为什么值得演示","arguments":{}}
             {"needed":false,"confidence":0.0,"capability":"","purpose":"为什么不需要动画","arguments":{}}
@@ -246,13 +272,37 @@ public class AnimationIntentController {
             // insert and a linked-list reversal, and the model has refused both while claiming the
             // operations do not exist - a learner then gets told a demo is missing when it is right
             // there. So the closest entries are put back in front of it and it decides once more.
-            JsonNode recheck = recheckRefusal(user, chapterTitle, studentRequest, reply, capabilityList, reason);
+            //
+            // The check reads the whole registry, not the scoped table: a chapter is a preference, not a
+            // boundary, and a learner asking for a binary search demo while the lesson sits in the stack
+            // chapter was told "not in this chapter's table" as if that settled it.
+            JsonNode wider = wholeCatalogue();
+            JsonNode recheck = recheckRefusal(user, chapterTitle, studentRequest, reply,
+                wider == null ? capabilityList : wider, reason, wider != null);
             if (recheck != null && recheck.path("needed").asBoolean(false)) {
                 LOGGER.info("animation intent: first answer refused ({}), the check found {} instead",
                     reason, recheck.path("capability").asText(""));
                 intent = recheck;
             } else {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_NOT_SUPPORTED", reason);
+            }
+        }
+
+        if (intent.path("needed").isBoolean() && !intent.path("needed").asBoolean(false)) {
+            // "Not needed" is also a judgement, and it too can be made without the facts. Asked to halve-search
+            // while the lesson sat in the stack chapter, the model answered that the operation was not in that
+            // chapter's table and therefore did not belong in its animations - a chapter boundary deciding for
+            // it. The same wider check runs here, but only when the wider table offers a candidate the scoped
+            // table did not: a concept question matches the same entries on both sides and costs no extra call.
+            JsonNode wider = wholeCatalogue();
+            if (wider != null && offersSomethingNew(studentRequest, reply, capabilityList, wider)) {
+                JsonNode recheck = recheckRefusal(user, chapterTitle, studentRequest, reply, wider,
+                    intent.path("purpose").asText("这个需求不需要动画"), true);
+                if (recheck != null && recheck.path("needed").asBoolean(false)) {
+                    LOGGER.info("animation intent: first answer said not needed ({}), the wider table found {}",
+                        intent.path("purpose").asText(""), recheck.path("capability").asText(""));
+                    intent = recheck;
+                }
             }
         }
 
@@ -287,6 +337,23 @@ public class AnimationIntentController {
     }
 
     /**
+     * Whether the wider table holds a candidate the scoped table did not. That is the only case worth a second
+     * call: the scoped entries are a subset of the wider ones, so the candidates overlap completely unless the
+     * request really reaches into another chapter.
+     */
+    private boolean offersSomethingNew(String studentRequest, String reply, JsonNode scoped, JsonNode wider) {
+        String query = (studentRequest == null ? "" : studentRequest) + " " + (reply == null ? "" : reply);
+        Set<String> known = new LinkedHashSet<>();
+        for (JsonNode node : scoped.path("capabilities")) {
+            known.add(node.path("capability").asText(""));
+        }
+        for (JsonNode node : candidateCapabilities(query, wider, 8)) {
+            if (!known.contains(node.path("capability").asText(""))) return true;
+        }
+        return false;
+    }
+
+    /**
      * Asks once more before telling a learner that a demo does not exist, with the closest entries from
      * the engine's own table in front of the model. The table is the only evidence, and the model has
      * been seen to deny entries that were sitting in it.
@@ -297,7 +364,8 @@ public class AnimationIntentController {
         String studentRequest,
         String reply,
         JsonNode capabilityList,
-        String reason
+        String reason,
+        boolean wholeTextbook
     ) {
         List<JsonNode> candidates = candidateCapabilities(
             (studentRequest == null ? "" : studentRequest) + " " + (reply == null ? "" : reply),
@@ -317,17 +385,25 @@ public class AnimationIntentController {
         context.put("studentRequest", studentRequest == null ? "" : studentRequest);
         if (reply != null && !reply.isBlank()) context.put("studentReply", reply);
         return model.generateFor(user.userId(), "animation-intent", """
-            复核一次。上一次的判断是「这次需求在能力表里没有对应条目」，理由写的是：
+            复核一次。学生要看的是：%s
+            上一次的判断是「这次需求在能力表里没有对应条目」，理由写的是：%s
             %s
-            下面这些是能力表里和这次需求文字最接近的条目（能力名[必需参数]：说明）：
+            下面这些条目（能力名[必需参数]：说明）是从那张表里按文字相似度找出来的：
             %s
             只看上面这些条目，判断有没有哪一条演示的过程**正是学生要看的那个过程**：
             - 有：返回 {"needed":true,"confidence":0.0到1.0,"capability":"能力名","purpose":"为什么值得演示","arguments":{}}
             - 没有：返回 {"unsupported":true,"reason":"说明这些条目为什么都不合适"}
             判断标准要严：同一种数据结构上的**不同操作不算「正是」**。学生要「插入」，条目里只有「遍历」或「访问」就必须继续返回 unsupported；
             要「查找」而条目只有「插入」也一样。绝不能为了让这次请求有结果就挑一个相近的操作顶替。
+            反过来，只要有一条**正好就是他说的那个过程**（他要折半查找、条目就叫折半查找），就必须选它：
+            「它属于别的章节」「它不是本结构的操作」都不是拒绝的理由——能力表里有，就说明做得到。
             这次不用判断值不值得动画，也不用找别的条目，只看上面列出的这些。只输出这两种形状之一。
-            """.formatted(reason, listing.toString()), context.toString(), 500, this::validateIntent);
+            """.formatted(
+                studentRequest == null ? "" : studentRequest,
+                reason,
+                wholeTextbook ? "注意：上面那次判断只看到「" + chapterTitle + "」这一张表；下面这些条目来自**整本教材**的能力表，包含本章以外的内容。" : "",
+                listing.toString()
+            ), context.toString(), 600, this::validateIntent);
     }
 
     /**

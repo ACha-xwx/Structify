@@ -68,6 +68,24 @@ describe("ChatReasoning", () => {
     view.unmount();
   });
 
+  it("opens the courseware of a cited lesson and leaves a source without a lesson number plain", async () => {
+    const cited = { id: '1', chapterId: '06-tree', title: '哈夫曼树', content: '',
+      source: 'textbook/lessons/06-06-树与二叉树-哈夫曼树及应用-已核验页188-197.md', pageLabel: null, score: 1, evidenceHash: '' };
+    const plain = { id: '2', chapterId: 'ch03', title: '开发种子', content: '',
+      source: 'private/knowledge/dev/lessons/栈与队列.md', pageLabel: null, score: 1, evidenceHash: '' };
+    const view = mount(ChatReasoning, { props: {
+      reasoning: '', working: false, reasoningActive: false, retrieved: true, sources: [cited, plain],
+    } });
+    await view.get('.reasoning__master').trigger('click');
+    const buttons = view.findAll('.reasoning__source');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0].text()).toBe('哈夫曼树');
+    expect(view.get('.reasoning__source-plain').text()).toBe('开发种子');
+    await buttons[0].trigger('click');
+    expect(view.emitted('openSource')?.[0]).toEqual([cited]);
+    view.unmount();
+  });
+
   it("keeps paragraph breaks but removes blank lines from saved reasoning", () => {
     const view = mount(ChatReasoning, { props: {
       reasoning: '第一段\r\n\r\n第二段\n \t\n\n第三段\n第四段',

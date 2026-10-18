@@ -27,6 +27,9 @@ import tools.jackson.databind.node.ObjectNode;
 @Service
 public class ClassroomSlideAlignment {
 
+    /** How much of a page's own words travel with a mid-lesson question; a page can be a whole slide of text. */
+    private static final int PAGE_TEXT_LIMIT = 1500;
+
     /** A page to show, with the reason it was chosen. */
     public record StepSlide(String slideId, String slideTitle, String kind, double score, String subLessonId,
                             String subLessonTitle, String scene, String source, String reason) {
@@ -43,6 +46,28 @@ public class ClassroomSlideAlignment {
         this.catalog = catalog;
         this.jdbc = jdbc;
         this.mapper = mapper;
+    }
+
+    /**
+     * The words of the page a step shows, so a question asked mid-lesson can be answered from the screen
+     * the learner is looking at - the page itself, not only the narration written about it.
+     */
+    public String pageText(String scriptId, String scriptJson, String lessonId, int stepIndex, JsonNode step) {
+        StepSlide aligned = forStep(scriptId, scriptJson, lessonId, stepIndex, step);
+        if (aligned == null) return "";
+        PresentationSlide slide = catalog.slide(aligned.slideId());
+        if (slide == null) return "";
+        StringBuilder text = new StringBuilder();
+        appended(text, slide.title());
+        appended(text, slide.semanticSummary());
+        appended(text, slide.rawText());
+        return text.length() <= PAGE_TEXT_LIMIT ? text.toString() : text.substring(0, PAGE_TEXT_LIMIT);
+    }
+
+    private static void appended(StringBuilder text, String value) {
+        if (value == null || value.isBlank()) return;
+        if (text.length() > 0) text.append('\n');
+        text.append(value.strip());
     }
 
     /** Slide for one step; {@code stepIndex < 0} is the opening, which shows the deck's first page. */

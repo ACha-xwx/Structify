@@ -39,6 +39,38 @@ public final class SlideSpinePlan {
     private static final int NARRATION_LIMIT = 200;
     private static final int QUOTE_LIMIT = 110;
     private static final int EXTENSION_LIMIT = 300;
+    /**
+     * The deck master's own text box, which the extractor treats as a page title: 96 of the 1210 pages
+     * carry it as their title. It is the master's wording, not the book's, so dropping it loses nothing -
+     * and letting it through is what makes a prompt line say nothing about the page.
+     */
+    private static final Pattern MASTER_TEXT_BOX = Pattern.compile("学校简介");
+    /** How much of the page's own wording one prompt line carries, and the ceiling for the whole line. */
+    private static final int PROMPT_EXCERPT = 60;
+    private static final int PROMPT_LABEL_LIMIT = 120;
+
+    /**
+     * What the prompt says about one courseware page.
+     *
+     * <p>The deck's {@code title} is deliberately not used. For 96 of the 1210 pages it is the master's
+     * text box - every page of a chapter titled "学校简介" - so a prompt line built from it tells the
+     * model nothing about the page, and a model that does not know what is on the page narrates the
+     * topic of the section instead. That is how a lesson came to explain {@code int} while the screen
+     * showed the school's organisation chart. The annotation's summary says what the page is; the page's
+     * own wording is what the narration has to stay on. Both go into the line.
+     */
+    public static String promptLabel(Slide slide) {
+        String summary = slide.summary() == null ? "" : slide.summary().strip();
+        String own = MASTER_TEXT_BOX.matcher(plain(slide.body())).replaceAll(" ").replaceAll("\\s+", " ").strip();
+        StringBuilder label = new StringBuilder(summary);
+        if (!own.isBlank() && !own.equals(summary)) {
+            if (label.length() > 0) {
+                label.append(" ｜ ");
+            }
+            label.append("页面文字：").append(shorten(own, PROMPT_EXCERPT));
+        }
+        return label.length() == 0 ? "（本页没有文字，只有图）" : shorten(label.toString(), PROMPT_LABEL_LIMIT);
+    }
     private static final Pattern WORKED_EXAMPLE = Pattern.compile(
         "例\\s*\\d+\\.\\d+|【算法描述】|【算法思想】|【算法分析】|【分析】|解："
     );

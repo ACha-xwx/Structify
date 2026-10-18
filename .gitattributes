@@ -5,3 +5,6 @@
 # manifest rejected it on the build machine - the fixture passed locally and failed in CI for that
 # reason alone. These files are always LF in the working tree, so the hash means the content.
 backend/spring/src/test/resources/knowledge-fixture/** text eol=lf
+
+# 开发种子按内容哈希校验：检出时不许改写它们的字节，否则 Windows 上必然校验失败。
+knowledge/dev/** text eol=lf

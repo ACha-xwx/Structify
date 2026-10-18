@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { Bookmark, BookmarkCheck } from "@lucide/vue";
 import BrandStage from "../shared/components/BrandStage.vue";
 import AiTitle from "../shared/components/AiTitle.vue";
+import AiBall from "../shared/components/AiBall.vue";
 import AnimationPlayer from "../animation/AnimationPlayer.vue";
-import type { ClassroomAction, ClassroomSession, ClassroomSlideMatch, DsvpRequest, DsvpSimulationResponse, LessonCourseware } from "../shared/types/contracts";
+import type { ClassroomAction, ClassroomBookmark, ClassroomSession, ClassroomSlideMatch, DsvpRequest, DsvpSimulationResponse, LessonCourseware } from "../shared/types/contracts";
 import { useI18n } from "../shared/i18n/locale";
 import { userApi } from "../user/runtime";
 import type { ClassroomLesson, ClassroomPreparationStatus } from "../user/api";
@@ -93,7 +95,7 @@ const skipsLeft = computed(() => Math.max(0, skipLimit.value - skipsUsed.value))
 const canHint = computed(() => canAnswer.value && !hinted.value);
 const canSkip = computed(() => canAnswer.value && hinted.value && skipsLeft.value > 0);
 const skipNote = computed(() => t("classroom.skipsLeft", { count: skipsLeft.value }));
-const canType = computed(() => !finished.value && !responseAnswered.value && !interruption.value);
+const canType = computed(() => !finished.value && !responseAnswered.value);
 const canAnswer = computed(() => questionOpen.value && !interruption.value);
 const placeholder = computed(() => (canAnswer.value ? t("classroom.placeholderAnswer") : t("classroom.placeholderAsk")));
 const continueLabel = computed(() => session.value?.state === "OPENING" ? t("classroom.start") : t("classroom.next"));
@@ -325,6 +327,74 @@ function recallLastSessionId() {
   lastSessionId.value = localStorage.getItem(LAST_KEY) ?? "";
 }
 
+const bookmarks = ref<ClassroomBookmark[]>([]);
+/**
+ * Everything asked during this lesson, as the server keeps it - one conversation, not one per page. A
+ * question asked three pages ago is still part of what is being discussed now, so the step each exchange
+ * happened on is carried along and shown next to it.
+ */
+const lessonAsks = computed<Array<{ id: string; stepIndex: number; question: string; answer: string }>>(() => {
+  const asked = stage.value.asks;
+  if (!Array.isArray(asked)) return [];
+  return asked.map((item, position) => {
+    const row = item as Record<string, unknown>;
+    return {
+      id: `${position}-${text(row?.question).slice(0, 12)}`,
+      stepIndex: typeof row?.stepIndex === "number" ? row.stepIndex : -1,
+      question: text(row?.question),
+      answer: text(row?.answer),
+    };
+  });
+});
+/** Whether the row shows the conversation with the mascot instead of the narration. */
+const conversationOpen = ref(false);
+const bubble = ref<HTMLElement | null>(null);
+
+/** The newest answer is the one being waited for, so keep it in view rather than the start of the history. */
+async function showNewestAnswer() {
+  await nextTick();
+  const pane = bubble.value;
+  if (pane) pane.scrollTop = pane.scrollHeight;
+}
+const bookmarkBusy = ref(false);
+/** The step on screen; -1 is the opening, which is not a step and so has nothing to save. */
+const stepIndex = computed(() => Number(stage.value.stepIndex ?? -1));
+const currentBookmark = computed(() => bookmarks.value.find((item) =>
+  item.sessionId === session.value?.id && item.stepIndex === stepIndex.value) ?? null);
+
+async function loadBookmarks() {
+  try {
+    bookmarks.value = await userApi.listBookmarks();
+  } catch {
+    // A list that cannot be read must not disturb the lesson; the button simply starts unmarked.
+    bookmarks.value = [];
+  }
+}
+
+/**
+ * Saving is about the step on screen: the server decides which courseware page that step shows and what
+ * it is about, so the client only names the session and the step. Pressing it again takes it back.
+ */
+async function toggleBookmark() {
+  const saved = currentBookmark.value;
+  if (bookmarkBusy.value || !session.value || stepIndex.value < 0) return;
+  bookmarkBusy.value = true;
+  error.value = "";
+  try {
+    if (saved) {
+      await userApi.deleteBookmark(saved.id);
+      bookmarks.value = bookmarks.value.filter((item) => item.id !== saved.id);
+      return;
+    }
+    const created = await userApi.saveBookmark(session.value.id, stepIndex.value);
+    bookmarks.value = [created, ...bookmarks.value.filter((item) => item.id !== created.id)];
+  } catch (cause) {
+    error.value = failureMessage(cause);
+  } finally {
+    bookmarkBusy.value = false;
+  }
+}
+
 async function loadLessons() {
   lessonsLoading.value = true;
   busy.value = true;
@@ -402,6 +472,7 @@ async function bootstrap() {
   await loadLessons();
   const requested = typeof route.query.session === "string" ? route.query.session.trim() : "";
   if (requested) await resume(requested, true);
+  void loadBookmarks();
 }
 
 /** Continue the session left behind by 退出课堂; a session the server forgot is simply dropped. */
@@ -473,7 +544,10 @@ async function apply(action: ClassroomAction, content?: string) {
 async function submit(action: "ASK" | "ANSWER") {
   const content = input.value.trim();
   if (!content) return;
+  // Asking opens the conversation: the answer is what the learner is waiting for.
+  if (action === "ASK") conversationOpen.value = true;
   await apply(action, content);
+  if (action === "ASK") void showNewestAnswer();
 }
 
 async function openAnimation() {
@@ -496,6 +570,7 @@ function resetClassroom() {
   coursewareError.value = "";
   input.value = "";
   error.value = "";
+  conversationOpen.value = false;
   recallLastSessionId();
   void loadLessons();
 }
@@ -521,6 +596,8 @@ watch(lessonId, (id) => {
 watch(() => text(stage.value.lessonId), (id) => {
   if (id && id !== courseware.value?.lessonId) void loadCourseware(id);
 });
+// A new step is a new page: the reading surface goes back to the narration being taught.
+watch(stepIndex, () => { conversationOpen.value = false; });
 onMounted(() => void bootstrap());
 onBeforeUnmount(() => {
   if (pollTimer !== null) window.clearTimeout(pollTimer);
@@ -531,7 +608,9 @@ onBeforeUnmount(() => {
 <template>
   <BrandStage wide fixed>
     <div class="classroom-page">
-      <AiTitle><h1 class="workbench-title">{{ t("classroom.title") }}</h1></AiTitle>
+      <div class="classroom-page__head">
+        <AiTitle><h1 class="workbench-title">{{ t("classroom.title") }}</h1></AiTitle>
+      </div>
     <div class="classroom" :class="{ 'classroom--split': showSlides && session, 'classroom--courseware': showSlides && !session }" aria-live="polite">
       <div v-if="session || !showSlides" class="classroom__conversation" :class="{ 'classroom__conversation--active': session }">
         <header v-if="session" class="classroom__topbar">
@@ -581,16 +660,35 @@ onBeforeUnmount(() => {
         </section>
 
         <section v-else class="classroom__lesson">
+          <!-- One reading surface at a time: the narration and the conversation with the mascot take the same
+               row, so neither is squeezed or covered - a long answer needs the whole height to be readable. -->
+          <div v-if="conversationOpen && lessonAsks.length" class="classroom__asks" :aria-label="t('classroom.askHistory')" ref="bubble">
+            <ol class="classroom__exchange-list">
+              <li v-for="ask in lessonAsks" :key="ask.id" class="classroom__exchange">
+                <p v-if="ask.stepIndex >= 0 && ask.stepIndex !== stepIndex" class="classroom__ask-step">{{ t("classroom.askStep", { index: ask.stepIndex + 1 }) }}</p>
+                <p class="classroom__ask-question">{{ ask.question }}</p>
+                <div class="classroom__answer">
+                  <AiBall class="classroom__ask-mascot" size="message" :follow-pointer="false" />
+                  <p class="classroom__ask-answer">{{ ask.answer }}</p>
+                </div>
+              </li>
+            </ol>
+          </div>
+          <template v-else>
           <p class="classroom__speech" aria-hidden="true">
             {{ displayedMessage }}<span v-if="messageTyping" class="classroom__typing-cursor" aria-hidden="true"></span>
           </p>
           <p class="classroom__speech-announcement" role="status">{{ messageTyping ? "" : message }}</p>
+          </template>
           <p v-if="failedAttempt" class="classroom__verdict" :aria-label="t('classroom.verdict')">{{ t("classroom.answerWrong") }}</p>
 
           <div class="classroom__composer">
             <textarea v-if="canType" v-model="input" class="classroom__input" :placeholder="placeholder" :aria-label="t('classroom.input')" rows="1" :disabled="busy" />
 
             <div class="classroom__actions classroom__actions--end">
+              <button v-if="lessonAsks.length" class="classroom__toggle" type="button" @click="conversationOpen = !conversationOpen">
+                {{ conversationOpen ? t("classroom.backToNarration") : t("classroom.openAsks", { count: lessonAsks.length }) }}
+              </button>
               <LiquidMetalButton v-if="animationRequest" class="classroom__silver-action" :disabled="busy" @click="openAnimation">{{ t("classroom.demo") }}</LiquidMetalButton>
               <LiquidMetalButton v-if="canType" class="classroom__silver-action" :disabled="busy || !input.trim()" :aria-label="t('classroom.ask')" @click="submit('ASK')">{{ t("classroom.ask") }}</LiquidMetalButton>
               <LiquidMetalButton v-if="interruption" class="classroom__silver-action" :disabled="busy" @click="apply('CONTINUE')">{{ t("classroom.continue") }}</LiquidMetalButton>
@@ -622,6 +720,19 @@ onBeforeUnmount(() => {
       >
         <template #headerActions>
           <template v-if="session">
+            <button
+              v-if="stepIndex >= 0"
+              class="classroom__icon-button classroom__icon-button--glass"
+              type="button"
+              :aria-pressed="Boolean(currentBookmark)"
+              :aria-label="currentBookmark ? t('classroom.unbookmark') : t('classroom.bookmark')"
+              :title="currentBookmark ? t('classroom.unbookmark') : t('classroom.bookmark')"
+              :disabled="bookmarkBusy"
+              @click="toggleBookmark"
+            >
+              <BookmarkCheck v-if="currentBookmark" class="classroom__bookmark" aria-hidden="true" />
+              <Bookmark v-else class="classroom__bookmark" aria-hidden="true" />
+            </button>
             <button class="classroom__icon-button classroom__icon-button--glass" type="button" :aria-label="t('classroom.exit')" :title="t('classroom.exit')" @click="exitClassroom">
               <img class="classroom__icon" :src="exitIcon" alt="" aria-hidden="true">
               <span class="classroom__icon-label">{{ t("classroom.exit") }}</span>
@@ -877,6 +988,56 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 
+/* The learner talks to the mascot, not to the page: the question sits right, the answer comes back from
+   a small version of the same ball that greets them on the entry pages. Both live in the lesson's own
+   reading row, so a long answer gets the whole height and the narration is never squeezed or covered. */
+.classroom__asks { min-height: 0; overflow-y: auto; }
+.classroom__exchange-list { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
+.classroom__exchange { display: grid; gap: 8px; }
+.classroom__ask-step { margin: 0; color: var(--text-muted); font-size: 19px; }
+.classroom__toggle {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px double var(--panel-line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 19px;
+  cursor: pointer;
+}
+.classroom__toggle:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.classroom__toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.classroom__asks { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
+.classroom__exchange { display: grid; gap: 8px; }
+.classroom__ask-question {
+  justify-self: end;
+  max-width: 78%;
+  margin: 0;
+  padding: 10px 18px;
+  border: 1px solid color-mix(in srgb, var(--text) 18%, transparent);
+  border-radius: 20px 20px 6px 20px;
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  font-size: 19px;
+  line-height: 1.55;
+}
+.classroom__answer { display: flex; max-width: 88%; align-items: flex-start; gap: 10px; justify-self: start; }
+.classroom__ask-mascot { flex: 0 0 auto; }
+.classroom__ask-answer {
+  margin: 0;
+  padding: 12px 18px;
+  border: 1px double color-mix(in srgb, var(--text) 15%, transparent);
+  border-radius: 20px 20px 20px 6px;
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
+  -webkit-backdrop-filter: blur(7px) saturate(1.08);
+  backdrop-filter: blur(7px) saturate(1.08);
+  font-size: 19px;
+  line-height: 1.65;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .classroom__ask-answer { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
 /* One register for the narration, at a fixed size: the copy used to switch between a large centred
    variant and a smaller reading variant depending on how long the text was, and the size itself was
    viewport-relative - so the same step looked different from one window to the next. */
@@ -958,6 +1119,9 @@ onBeforeUnmount(() => {
 }
 
 .classroom__actions--end { justify-content: flex-end; }
+
+/* One bookmark control per step: outlined until this step is saved, then filled. */
+.classroom__bookmark { width: 22px; height: 22px; color: var(--text); }
 
 /* The player sizes itself; only its action row shares the card, so no 1fr track here. */
 .classroom__lesson--animation {

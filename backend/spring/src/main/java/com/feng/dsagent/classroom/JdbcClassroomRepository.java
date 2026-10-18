@@ -108,11 +108,48 @@ class JdbcClassroomRepository implements ClassroomRepository {
     }
 
     @Override
+    public void recordAsk(String sessionId, int stepIndex, String question, String answer) {
+        jdbc.update(
+            "INSERT INTO classroom_ask_exchanges (session_id, step_index, question, answer) VALUES (?, ?, ?, ?)",
+            sessionId,
+            stepIndex,
+            question,
+            answer
+        );
+    }
+
+    @Override
+    public List<ClassroomAskExchange> asksOf(String sessionId) {
+        return jdbc.query(
+            "SELECT step_index, question, answer, created_at FROM classroom_ask_exchanges "
+                + "WHERE session_id = ? ORDER BY id",
+            (row, number) -> new ClassroomAskExchange(
+                row.getInt("step_index"),
+                row.getString("question"),
+                row.getString("answer"),
+                row.getTimestamp("created_at").toInstant().toString()
+            ),
+            sessionId
+        );
+    }
+
+    @Override
+    public StepAttempts attemptsAt(String sessionId, int stepIndex) {
+        return jdbc.queryForObject(
+            "SELECT COALESCE(SUM(CASE WHEN action = 'ANSWER' THEN 1 ELSE 0 END), 0) AS answers, "
+                + "COALESCE(SUM(CASE WHEN action = 'HINT' THEN 1 ELSE 0 END), 0) AS hints "
+                + "FROM classroom_events WHERE session_id = ? AND step_index = ?",
+            (row, index) -> new StepAttempts(row.getInt("answers"), row.getInt("hints")),
+            sessionId, stepIndex);
+    }
+
+    @Override
     public void appendEvent(ClassroomEventRecord event) {
         jdbc.update(
             "INSERT INTO classroom_events "
-                + "(session_id, action, content, from_state, to_state, answer_status, misconception, feedback) "
-                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                + "(session_id, action, content, from_state, to_state, answer_status, misconception, feedback, "
+                + "step_index, question_id, attempt_no, hint_used) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             event.sessionId(),
             event.action().name(),
             event.content(),
@@ -120,7 +157,11 @@ class JdbcClassroomRepository implements ClassroomRepository {
             event.toState().name(),
             event.answerEvaluation() == null ? null : event.answerEvaluation().status().name(),
             event.answerEvaluation() == null ? null : event.answerEvaluation().misconception(),
-            event.answerEvaluation() == null ? null : event.answerEvaluation().feedback()
+            event.answerEvaluation() == null ? null : event.answerEvaluation().feedback(),
+            event.stepIndex(),
+            event.questionId(),
+            event.attemptNo(),
+            event.hintUsed()
         );
     }
 

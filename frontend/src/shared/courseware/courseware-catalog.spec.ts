@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createCoursewareCatalog } from "./courseware-catalog";
-import type { PresentationDeck, PresentationSlide } from "../types/contracts";
+import type { LessonCourseware, PresentationDeck, PresentationSlide } from "../types/contracts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -8,6 +8,12 @@ function setup() {
   const api = {
     listPresentationDecks: vi.fn(async (): Promise<PresentationDeck[]> => []),
     listDeckSlides: vi.fn(async (_id: string): Promise<PresentationSlide[]> => []),
+    getCoursewareSlides: vi.fn(async (_key: string): Promise<LessonCourseware> => ({
+      lessonId: "", coursewareKey: "", title: "", source: "", ready: true, builtAt: "", slides: [],
+    })),
+    getLessonSlides: vi.fn(async (_id: string): Promise<LessonCourseware> => ({
+      lessonId: "", coursewareKey: "", title: "", source: "", ready: true, builtAt: "", slides: [],
+    })),
   };
   return { api, catalog: createCoursewareCatalog(api) };
 }
@@ -22,6 +28,15 @@ describe("courseware metadata cache", () => {
     await catalog.getSlides("a");
     expect(api.listPresentationDecks).toHaveBeenCalledTimes(1);
     expect(api.listDeckSlides.mock.calls).toEqual([["a"], ["b"]]);
+  });
+
+  it("shares an in-flight lesson lookup and reuses it by lesson number", async () => {
+    const { api, catalog } = setup();
+    expect(catalog.getLessonCourseware("06-06")).toBe(catalog.getLessonCourseware("06-06"));
+    await catalog.getLessonCourseware("06-06");
+    await catalog.getLessonCourseware("06-06");
+    expect(api.getCoursewareSlides).toHaveBeenCalledTimes(1);
+    expect(api.getCoursewareSlides).toHaveBeenCalledWith("06-06");
   });
 
   it("refreshes expired results and does not retain a failed request", async () => {

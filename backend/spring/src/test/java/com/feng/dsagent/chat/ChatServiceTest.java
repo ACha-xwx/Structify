@@ -185,6 +185,83 @@ class ChatServiceTest {
     }
 
     @Test
+    void answersAFollowUpAboutTheCodeTheLearnerAlreadyPasted() {
+        CapturingModelClient noEvidenceModel = new CapturingModelClient();
+        ChatService noEvidence = new ChatService(
+            noEvidenceModel,
+            new KnowledgeSearchService(List.of(), 4),
+            repository,
+            new KnowledgeProperties(true, true, "unused", 4, 4, 1100)
+        );
+        noEvidenceModel.response = "先反转指针，再移动头指针。";
+
+        // The first turn pasted the program; "explain it line by line" retrieves nothing to cite of its own.
+        ChatResponse response = noEvidence.complete(
+            new ChatCommand("逐句解释", "03-stack-queue", null, List.of(
+                new ChatTurn("user", "int main(void)\n{\n    return 0;\n}\n"),
+                new ChatTurn("assistant", "这段代码是一个最小的 C 程序。"))),
+            null,
+            KnowledgeAudience.STUDENT
+        );
+
+        assertThat(response.answer()).isEqualTo("先反转指针，再移动头指针。");
+        assertThat(response.sources()).isEmpty();
+        assertThat(noEvidenceModel.lastRequest.messages()).extracting(ModelMessage::content)
+            .anySatisfy(content -> assertThat(content).contains("只能依据学生自己提供的材料"));
+    }
+
+    @Test
+    void answersAFollowUpWhenAnEarlierMessageCarriedTheMaterialAsAnAttachment() {
+        CapturingModelClient noEvidenceModel = new CapturingModelClient();
+        ChatService noEvidence = new ChatService(
+            noEvidenceModel,
+            new KnowledgeSearchService(List.of(), 4),
+            repository,
+            new KnowledgeProperties(true, true, "unused", 4, 4, 1100)
+        );
+        noEvidenceModel.response = "这个文件里只有一个栈顶指针。";
+
+        ChatResponse response = noEvidence.complete(
+            new ChatCommand("这个文件定义了什么？", "03-stack-queue", null, List.of(
+                new ChatTurn("user", "看下这个文件", List.of(
+                    new ChatAttachment("stack.c", "file", "text/plain", "int top = -1;")))
+            )),
+            null,
+            KnowledgeAudience.STUDENT
+        );
+
+        assertThat(response.answer()).isEqualTo("这个文件里只有一个栈顶指针。");
+        assertThat(response.sources()).isEmpty();
+    }
+
+    @Test
+    void stillRefusesAFollowUpWhoseHistoryCarriesNoMaterial() {
+        CapturingModelClient noEvidenceModel = new CapturingModelClient();
+        ChatService noEvidence = new ChatService(
+            noEvidenceModel,
+            new KnowledgeSearchService(List.of(), 4),
+            repository,
+            new KnowledgeProperties(true, true, "unused", 4, 4, 1100)
+        );
+
+        // Talk alone is not material: the gate is about the learner's own code or files, not about having
+        // said something before. One stray semicolon is not a program either.
+        for (List<ChatTurn> historyTurns : List.of(
+            List.of(new ChatTurn("user", "上一问"), new ChatTurn("assistant", "上一答")),
+            List.of(new ChatTurn("user", "int top = -1;"))
+        )) {
+            assertThatThrownBy(() -> noEvidence.complete(
+                new ChatCommand("再讲一遍", "03-stack-queue", null, historyTurns), null, KnowledgeAudience.STUDENT))
+                .isInstanceOfSatisfying(ApiException.class, error -> {
+                    assertThat(error.status()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(error.code()).isEqualTo("CHAT_EVIDENCE_UNAVAILABLE");
+                });
+        }
+
+        assertThat(noEvidenceModel.lastRequest).isNull();
+    }
+
+    @Test
     void streamsAndPersistsReasoningSeparatelyFromTheAnswer() {
         model.reasoningFragments = List.of("Consider ", "the top.");
         model.streamFragments = List.of("Push ", "the value.");
