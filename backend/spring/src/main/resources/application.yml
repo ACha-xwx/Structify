@@ -45,6 +45,11 @@ management:
       show-details: when_authorized
 
 app:
+  studyroom-generation:
+    fragment-budget:
+      maximum-calls: ${STUDYROOM_FRAGMENT_MAX_CALLS:4}
+      maximum-tokens: ${STUDYROOM_FRAGMENT_MAX_TOKENS:20000}
+      maximum-active-time: ${STUDYROOM_FRAGMENT_MAX_ACTIVE_TIME:PT8M}
   security:
     jwt-secret: ${JWT_SECRET}
     token-ttl: ${AUTH_TOKEN_TTL:PT2H}

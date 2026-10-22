@@ -9,6 +9,7 @@ import com.feng.dsagent.presentation.PresentationCatalog;
 import com.feng.dsagent.presentation.PresentationSlide;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -207,7 +208,7 @@ public class StudyroomResourceCatalog {
         }
     }
 
-    List<Map<String, String>> codeDetails(List<Candidate> selected) {
+    public List<Map<String, String>> codeDetails(List<Candidate> selected) {
         if (codeCatalog == null) return List.of();
         var ids = selected.stream().filter(c -> c.type() == StudyroomModelOutput.ResourceType.C_CODE)
             .map(Candidate::id).collect(java.util.stream.Collectors.toSet());
@@ -216,6 +217,20 @@ public class StudyroomResourceCatalog {
             .map(s -> Map.of("id", s.id(), "source", s.code().substring(0, Math.min(perSample, s.code().length())),
                 "sourceComplete", String.valueOf(s.code().length() <= perSample), "stdin", s.stdin(),
                 "lineCount", String.valueOf(s.code().split("\\R", -1).length))).toList();
+    }
+
+    public Map<String,Object> animationDemo(String id) {
+        if(animationEngine==null)return Map.of();
+        var response=animationEngine.capabilities(null).orElse(null);
+        if(response==null)return Map.of();
+        for(var capability:response.path("capabilities")) {
+            if(!id.equals(capability.path("capability").asString("")))continue;
+            Map<String,Object> result=new LinkedHashMap<>();
+            capability.path("demoArguments").properties().forEach(entry -> result.put(entry.getKey(),
+                new tools.jackson.databind.json.JsonMapper().convertValue(entry.getValue(),Object.class)));
+            return Collections.unmodifiableMap(result);
+        }
+        return Map.of();
     }
 
     private static void addTextValues(Set<String> target, JsonNode node) {

@@ -70,7 +70,7 @@ class JdbcClassroomBookmarkRepository implements ClassroomBookmarkRepository {
     @Override
     public List<ClassroomBookmark> listByUser(long userId) {
         return jdbc.query(
-            "SELECT " + COLUMNS + " FROM classroom_bookmarks WHERE user_id = ? ORDER BY created_at DESC, id DESC",
+            "SELECT " + COLUMNS + " FROM classroom_bookmarks WHERE user_id = ? AND NOT EXISTS (SELECT 1 FROM study_rooms r WHERE r.id=classroom_bookmarks.session_id AND r.user_id=classroom_bookmarks.user_id AND r.deleted_at IS NOT NULL) ORDER BY created_at DESC, id DESC",
             ROW, userId);
     }
 

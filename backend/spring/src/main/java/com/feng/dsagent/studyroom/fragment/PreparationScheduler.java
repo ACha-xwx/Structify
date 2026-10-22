@@ -23,7 +23,8 @@ public class PreparationScheduler {
         var prior=store.row("SELECT * FROM studyroom_learning_progress WHERE user_id=? AND run_id=? FOR UPDATE",user,run);
         if(prior!=null&&((Number)prior.get("focus_sequence")).longValue()>=sequence)return;
         if(prior==null)store.db().update("INSERT INTO studyroom_learning_progress(user_id,run_id,unit_id,focus_sequence) VALUES(?,?,?,?)",user,run,unit,sequence);
-        else store.db().update("UPDATE studyroom_learning_progress SET unit_id=?,fragment_id=CASE WHEN unit_id=? THEN fragment_id ELSE NULL END,completed=FALSE,focus_sequence=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND run_id=?",unit,unit,sequence,user,run);
+        else store.db().update("UPDATE studyroom_learning_progress SET fragment_id=CASE WHEN unit_id=? THEN fragment_id ELSE NULL END,unit_id=?,completed=FALSE,focus_sequence=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND run_id=?",unit,unit,sequence,user,run);
+        store.db().update("UPDATE study_rooms SET last_learning_at=CURRENT_TIMESTAMP WHERE current_run_id=? AND user_id=?",run,user);
         fragments.touch(run);reconcile(user,run);
     }
 

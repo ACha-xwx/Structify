@@ -63,6 +63,35 @@ jobs:
         working-directory: backend/spring
         run: ./mvnw -B -DskipTests package
 
+  studyroom-browser:
+    name: Studyroom browser harness
+    needs: [frontend, spring-backend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: chmod +x backend/spring/mvnw
+      - run: node scripts/verify-studyroom.mjs --scope e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: studyroom-browser-failure
+          path: frontend/test-results/playwright/
+          retention-days: 7
+
   node-image:
     name: Node image build gate
     needs: [frontend, prototype]

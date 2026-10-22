@@ -17,42 +17,47 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestHeader;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Min;
+import com.feng.dsagent.studyroom.questions.ClassroomQuestionService;
+import com.feng.dsagent.studyroom.draft.OutlineJson;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/study-rooms")
 public class StudyroomController {
 
     private final StudyroomService studyrooms;
+    private final ClassroomQuestionService questions;
+    private final OutlineJson json;
 
-    public StudyroomController(StudyroomService studyrooms) {
+    public StudyroomController(StudyroomService studyrooms,ClassroomQuestionService questions,OutlineJson json) {
         this.studyrooms = studyrooms;
-    }
-
-    @PostMapping
-    ResponseEntity<StudyroomView> create(
-        @AuthenticationPrincipal AuthenticatedUser user,
-        HttpServletRequest request,
-        @Valid @RequestBody CreateRequest body
-    ) {
-        throw new com.feng.dsagent.common.ApiException(org.springframework.http.HttpStatus.CONFLICT,
-            "STUDYROOM_OUTLINE_REQUIRED", "请先生成并确认学习大纲，再开始学习。");
+        this.questions=questions;this.json=json;
     }
 
     @GetMapping("/{id}")
-    StudyroomView get(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable String id) {
-        return studyrooms.get(user.userId(), id);
+    Map<String,Object> get(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable String id) {
+        var result=json.object(json.write(studyrooms.get(user.userId(), id)));
+        result.put("activeQuestionId",questions.activeQuestion(user.userId(),id));return result;
     }
 
     @PostMapping("/{id}/messages")
-    StudyroomView followUp(
+    ResponseEntity<Map<String,Object>> followUp(
         @AuthenticationPrincipal AuthenticatedUser user,
         HttpServletRequest request,
         @PathVariable String id,
+        @RequestHeader(value="Idempotency-Key",required=false) String key,
         @Valid @RequestBody FollowUpRequest body
     ) {
-        studyrooms.followUp(user.userId(), id, body.question(), KnowledgeAudience.from(user), AiQuotaRequestId.from(request), body.context());
-        return studyrooms.get(user.userId(), id);
+        return ResponseEntity.accepted().body(questions.create(user.userId(),id,body.runId(),body.fragmentId(),body.contentRevision(),body.question(),body.context(),key,KnowledgeAudience.from(user)));
     }
+
+    @GetMapping("/{id}/messages/{question}")
+    Map<String,Object> question(@AuthenticationPrincipal AuthenticatedUser user,@PathVariable String id,@PathVariable String question) {return questions.get(user.userId(),id,question);}
+    @PostMapping("/{id}/messages/{question}/cancel")
+    Map<String,Object> cancel(@AuthenticationPrincipal AuthenticatedUser user,@PathVariable String id,@PathVariable String question) {return questions.cancel(user.userId(),id,question);}
 
     @PatchMapping("/{id}/progress")
     StudyroomView.Progress updateProgress(
@@ -63,10 +68,8 @@ public class StudyroomController {
         return studyrooms.updateProgress(user.userId(), id, body.stepId());
     }
 
-    public record CreateRequest(@NotBlank @Size(max = 4_000) String question, @Size(max = 64) String chapterId) {
-    }
-
-    public record FollowUpRequest(@NotBlank @Size(max = 4_000) String question, @Valid StudyroomFollowUpContext context) {
+    public record FollowUpRequest(@NotBlank @Size(max = 4_000) String question, @Valid StudyroomFollowUpContext context,
+        @NotBlank @Size(max=36) String runId,@NotBlank @Size(max=36) String fragmentId,@NotNull @Min(1) Integer contentRevision) {
     }
 
     public record ProgressRequest(@NotBlank @Size(max = 64) String stepId) {

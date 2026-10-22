@@ -32,6 +32,7 @@ export interface StudyroomMessage {
 }
 
 export interface StudyroomView {
+  activeQuestionId?:string|null;
   id: string;
   chapterId: string | null;
   title: string;

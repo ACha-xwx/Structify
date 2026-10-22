@@ -26,7 +26,7 @@ public class JdbcOutlineRepository {
     public Map<String, Object> owned(long user, String id, boolean lock) {
         var row =
                 row(
-                        "SELECT * FROM study_outline_drafts WHERE id=? AND user_id=?"
+                        "SELECT * FROM study_outline_drafts WHERE id=? AND user_id=? AND deleted_at IS NULL"
                                 + (lock ? " FOR UPDATE" : ""),
                         id,
                         user);

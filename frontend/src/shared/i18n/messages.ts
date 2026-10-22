@@ -60,6 +60,7 @@ export const messages = {
   "map.hollowShort": { zh: "空心虚线＝还没有记录", en: "Hollow dashed = nothing recorded yet" },
   "map.hollow": { zh: "空心虚线节点 = 还没有记录（不是 0 分）", en: "Hollow dashed nodes have no activity yet - that is not a zero" },
   "home.profile": { zh: "个人主页", en: "My profile" },
+  "center.bookmarks": { zh: "我的收藏", en: "Saved steps" },
   "profile.pending": { zh: "您的个人空间正在建设中", en: "Your personal space is under construction" },
   "profile.loading": { zh: "正在载入收藏", en: "Loading your saved steps" },
   "profile.empty": { zh: "还没有收藏。上课时点课件面板上的书签图标，就能存下这一步。", en: "Nothing saved yet. Tap the bookmark icon on the slide pane during a lesson to keep a step." },

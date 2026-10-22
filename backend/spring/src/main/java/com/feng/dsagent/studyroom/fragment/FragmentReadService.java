@@ -36,8 +36,11 @@ public class FragmentReadService {
                 item.put("id",fragment.get("id"));item.put("key",fragment.get("fragment_key"));
                 item.put("order",fragment.get("fragment_order"));item.put("status",fragment.get("status"));
                 item.put("stepId",fragment.get("step_id"));item.put("contentRevision",fragment.get("content_revision"));
+                String failureMessage="这段内容未准备完成，已就绪的内容仍可阅读。";
+                if(fragment.get("issues_json")!=null){var issues=json.mapper().readTree((String)fragment.get("issues_json"));
+                    if(issues.isArray()&&!issues.isEmpty())failureMessage=issues.get(0).path("message").asString(failureMessage);}
                 item.put("error",fragment.get("error_code")==null?null:Map.of("code",fragment.get("error_code"),
-                    "message","这段内容未准备完成，已就绪的内容仍可阅读。","retryable",!"FRAGMENT_BUDGET_EXHAUSTED".equals(fragment.get("error_code"))));
+                    "message",failureMessage,"retryable",!"FRAGMENT_BUDGET_EXHAUSTED".equals(fragment.get("error_code"))));
                 items.add(item);
                 if(first==null&&fragment.get("step_id")!=null)first=(String)fragment.get("id");
             }
@@ -50,6 +53,7 @@ public class FragmentReadService {
             point.put("title",spec.path("title").asString((String)unit.get("unit_key")));
             point.put("status",ready==items.size()&&!items.isEmpty()&&!pending&&failed==0?"READY":ready>0?"PARTIAL":failed>0?"NEEDS_ATTENTION":"PREPARING");
             point.put("fragments",items);point.put("readableFragmentCount",ready);point.put("failedFragmentCount",failed);point.put("hasPendingContent",pending);
+            point.put("completed",store.row("SELECT unit_id FROM studyroom_completed_knowledge WHERE user_id=? AND run_id=? AND unit_id=?",user,id,unit.get("id"))!=null);
             points.add(point);
         }
         var progress=store.row("SELECT * FROM studyroom_learning_progress WHERE user_id=? AND run_id=?",user,id);

@@ -1,7 +1,7 @@
 package com.feng.dsagent.studyroom.draft;
 
 import com.feng.dsagent.security.AuthenticatedUser;
-import com.feng.dsagent.studyroom.generation.UnitPublicationService;
+import com.feng.dsagent.studyroom.fragment.FragmentReadService;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -16,9 +16,9 @@ import java.util.*;
 @RequestMapping("/api/v1")
 public class OutlineController {
     private final OutlineService outlines;
-    private final UnitPublicationService units;
+    private final FragmentReadService units;
 
-    public OutlineController(OutlineService outlines, UnitPublicationService units) {
+    public OutlineController(OutlineService outlines, FragmentReadService units) {
         this.outlines = outlines;
         this.units = units;
     }
@@ -68,7 +68,7 @@ public class OutlineController {
             @PathVariable String id,
             @RequestHeader("Idempotency-Key") String key,
             @Valid @RequestBody Confirm body) {
-        return outlines.confirm(user.userId(), id, body.revision(), key);
+        return outlines.confirm(user.userId(), id, body.revision(), key, body.planHash());
     }
 
     @PostMapping("/study-outlines/{id}/restore")
@@ -100,15 +100,6 @@ public class OutlineController {
         return units.get(user.userId(), id);
     }
 
-    @PostMapping("/studyroom-runs/{id}/units/{unitId}/prepare")
-    ResponseEntity<Map<String, Object>> prepare(
-            @AuthenticationPrincipal AuthenticatedUser user,
-            @PathVariable String id,
-            @PathVariable String unitId,
-            @RequestHeader("Idempotency-Key") String key) {
-        return ResponseEntity.accepted().body(units.prepare(user.userId(), id, unitId, key));
-    }
-
     public record Create(
             @NotBlank @Size(max = 4000) String question,
             @NotNull LearningDepth depth,
@@ -122,5 +113,5 @@ public class OutlineController {
 
     public record Restore(@Min(1) int baseRevision, @Min(1) int targetRevision) {}
 
-    public record Confirm(@Min(1) int revision) {}
+    public record Confirm(@Min(1) int revision, @NotBlank @Size(max=64) String planHash) {}
 }

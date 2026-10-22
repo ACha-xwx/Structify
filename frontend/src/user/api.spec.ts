@@ -94,36 +94,17 @@ describe("用户端 API 边界", () => {
     expect(request).toHaveBeenCalledWith("/learning/workbench");
   });
 
-  it.each(["create", "get", "followUp"])("normalizes real backend resource types for %s", async (operation) => {
-    const request = vi.fn().mockResolvedValue({ kind: "json", data: { id: "room-1", steps: [{ resources: [
-      { type: "ppt", id: "slide-1", available: true },
-      { type: "animation", id: "stack.push", available: true },
-      { type: "c_code", id: "code-1", available: true },
-    ] }] } });
-    const api = createUserApi({ request } as never);
-    const room = operation === "create" ? await api.createStudyroom({ question: "栈" })
-      : operation === "get" ? await api.getStudyroom("room-1")
-      : await api.followUpStudyroom("room-1", { question: "入栈" });
-    expect(room.steps[0].resources.map((resource) => resource.type)).toEqual(["PPT", "ANIMATION", "C_CODE"]);
+  it("normalizes resource types when restoring the current classroom", async () => {
+    const request=vi.fn().mockResolvedValue({kind:"json",data:{id:"room",steps:[{resources:[{type:"ppt"},{type:"animation"},{type:"c_code"}]}]}});
+    const api=createUserApi({request} as never);
+    const room=await api.getStudyroom("room/1");
+    expect(room.steps[0].resources.map(resource=>resource.type)).toEqual(["PPT","ANIMATION","C_CODE"]);
+    expect(request).toHaveBeenCalledWith("/study-rooms/room%2F1");
   });
-
-  it("创建、恢复 Studyroom，追问留在同一课堂并保存步骤进度", async () => {
-    const room = { id: "room-1", steps: [], messages: [] };
-    const request = vi.fn()
-      .mockResolvedValueOnce({ kind: "json", data: room })
-      .mockResolvedValueOnce({ kind: "json", data: room })
-      .mockResolvedValueOnce({ kind: "json", data: room })
-      .mockResolvedValueOnce({ kind: "json", data: { currentStepId: "step-2", version: 2, updatedAt: "2026-10-11T00:00:00Z" } });
-    const api = createUserApi({ request } as never);
-
-    await api.createStudyroom({ question: "栈如何工作？", chapterId: "03" });
-    await api.getStudyroom("room/1");
-    await api.followUpStudyroom("room-1", { question: "再解释一下" });
-    await api.updateStudyroomProgress("room-1", "step-2");
-
-    expect(request).toHaveBeenNthCalledWith(1, "/study-rooms", { method: "POST", body: { question: "栈如何工作？", chapterId: "03" }, timeoutMs: 120_000 });
-    expect(request).toHaveBeenNthCalledWith(2, "/study-rooms/room%2F1");
-    expect(request).toHaveBeenNthCalledWith(3, "/study-rooms/room-1/messages", { method: "POST", body: { question: "再解释一下" }, timeoutMs: 60_000 });
-    expect(request).toHaveBeenNthCalledWith(4, "/study-rooms/room-1/progress", { method: "PATCH", body: { stepId: "step-2" } });
+  it("persists progress without invoking question generation",async()=>{
+    const request=vi.fn().mockResolvedValue({kind:"json",data:{currentStepId:"step-2",version:2,updatedAt:"2026-10-11T00:00:00Z"}});
+    const api=createUserApi({request} as never);await api.updateStudyroomProgress("room-1","step-2");
+    expect(request).toHaveBeenCalledOnce();
+    expect(request).toHaveBeenCalledWith("/study-rooms/room-1/progress",{method:"PATCH",body:{stepId:"step-2"}});
   });
 });

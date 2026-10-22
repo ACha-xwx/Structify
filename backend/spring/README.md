@@ -177,3 +177,11 @@ Per-step candidate budgets: PPT 12, animation 4, code 6. Search uses the origina
 从仓库根目录运行 `./scripts/start-studyroom-preview.ps1`，在未设置 DB_URL 时使用 `private/dev-db/reviewed-outline` 文件库，使草稿、任务与课堂在重启后保留。已有外部数据库配置优先。普通 `spring-boot:run` 仍遵循 application.yml 的数据库配置。
 
 Worker 使用数据库租约与模型响应记录；`app.studyroom-generation.enabled=false` 停止自动领取。SENT 调用结果不确定时不会自动再消耗额度，需要显式重试。代码运行服务未配置时可以阅读、编辑源码，规划默认不安排运行实验；显式实验须先具备运行能力。
+
+## Development test account quota
+
+With the `dev` profile, the account selected by `DEV_TEST_ACCOUNT_EMAIL` (default
+`student@structify.test`) has no daily AI token cap. Usage accounting, model
+readiness checks, and request concurrency limits remain active. Set
+`DEV_TEST_ACCOUNT_UNLIMITED_AI_QUOTA=false` to restore its daily cap. This
+exception is disabled outside the `dev` profile.

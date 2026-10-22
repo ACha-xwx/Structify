@@ -16,34 +16,20 @@ import tools.jackson.databind.ObjectMapper;
 public class StudyroomService {
 
     private final AiQuotaExecution execution;
-    private final StudyroomGraph graph;
     private final StudyroomRepository repository;
     private final StudyroomResourceCatalog resourceCatalog;
     private final ObjectMapper mapper;
 
     public StudyroomService(
         AiQuotaExecution execution,
-        StudyroomGraph graph,
         StudyroomRepository repository,
         StudyroomResourceCatalog resourceCatalog,
         ObjectMapper mapper
     ) {
         this.execution = execution;
-        this.graph = graph;
         this.repository = repository;
         this.resourceCatalog = resourceCatalog;
         this.mapper = mapper;
-    }
-
-    public StudyroomRecords.Aggregate create(
-        Long userId,
-        String chapterId,
-        String question,
-        KnowledgeAudience audience,
-        String requestId
-    ) {
-        execution.requireFormalAuthentication(userId);
-        return graph.create(userId, chapterId, question, audience, requestId);
     }
 
     public StudyroomView get(Long userId, String studyroomId) {
@@ -75,48 +61,37 @@ public class StudyroomService {
         return new StudyroomView.Progress(room.currentStepId(), room.version(), room.updatedAt());
     }
 
-    public StudyroomRecords.Aggregate followUp(
-        Long userId,
-        String studyroomId,
-        String question,
-        KnowledgeAudience audience,
-        String requestId
-    ) {
-        execution.requireFormalAuthentication(userId);
-        repository.findOwned(studyroomId, userId).orElseThrow(StudyroomService::notFound);
-        if (question == null || question.isBlank() || question.strip().length() > 4_000) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "STUDYROOM_QUESTION_INVALID", "追问不能为空且不能超过 4000 字");
-        }
-        return graph.followUp(userId, studyroomId, question.strip(), audience, requestId);
-    }
-
-    public StudyroomRecords.Aggregate followUp(Long userId, String studyroomId, String question,
-        KnowledgeAudience audience, String requestId, StudyroomFollowUpContext context) {
-        if (context == null) return followUp(userId, studyroomId, question, audience, requestId);
+    public String validateQuestionContext(long userId,String studyroomId,StudyroomFollowUpContext requested) {
         execution.requireFormalAuthentication(userId);
         var aggregate = repository.findOwned(studyroomId, userId).orElseThrow(StudyroomService::notFound);
-        if (question == null || question.isBlank() || question.strip().length() > 4000)
-            throw new ApiException(HttpStatus.BAD_REQUEST, "STUDYROOM_QUESTION_INVALID", "追问不能为空且不能超过4000字");
-        var step = aggregate.steps().stream().filter(s -> s.id().equals(context.stepId())).findFirst()
+        StudyroomFollowUpContext context=requested;
+        if(context==null) {
+            var current=aggregate.steps().stream().filter(s->s.id().equals(aggregate.room().currentStepId())).findFirst().orElseThrow(()->new ApiException(HttpStatus.CONFLICT,"FRAGMENT_NOT_READY","请先选择就绪的讲解"));
+            var refs=resourceCatalog.candidates(aggregate.room().chapterId()).stream().collect(java.util.stream.Collectors.toMap(c->c.type().value()+":"+c.id(),c->c,(a,b)->a));
+            var first=sceneFor(current,refs).scenes().getFirst();
+            context=new StudyroomFollowUpContext(current.id(),first.id(),null,null,null);
+        }
+        final var selectedContext=context;
+        var step = aggregate.steps().stream().filter(s -> s.id().equals(selectedContext.stepId())).findFirst()
             .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "STUDYROOM_CONTEXT_INVALID", "当前步骤无效"));
         var indexed = resourceCatalog.candidates(aggregate.room().chapterId()).stream().collect(java.util.stream.Collectors.toMap(
             c -> c.type().value() + ":" + c.id(), c -> c, (a,b) -> a));
         var scenes = sceneFor(step, indexed);
-        var scene = scenes.scenes().stream().filter(s -> s.id().equals(context.sceneId())).findFirst()
+        var scene = scenes.scenes().stream().filter(s -> s.id().equals(selectedContext.sceneId())).findFirst()
             .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "STUDYROOM_CONTEXT_INVALID", "当前场景无效"));
-        if (context.resourceId() != null && scene.items().stream().noneMatch(i -> i.resourceId().equals(context.resourceId())))
+        if (context.resourceId() != null && scene.items().stream().noneMatch(i -> i.resourceId().equals(selectedContext.resourceId())))
             throw new ApiException(HttpStatus.BAD_REQUEST, "STUDYROOM_CONTEXT_INVALID", "当前资源不属于本步骤场景");
         if ((context.codeMode() != null && (!scene.kind().equals("C_CODE") || !java.util.Set.of("READ", "EXPERIMENT").contains(context.codeMode())))
             || (context.runResult() != null && (!scene.kind().equals("C_CODE") || !"EXPERIMENT".equals(context.codeMode())
                 || context.resourceId() == null || (context.runResult().stdout() != null && context.runResult().stdout().length() > 4000)
                 || (context.runResult().stderr() != null && context.runResult().stderr().length() > 4000))))
             throw new ApiException(HttpStatus.BAD_REQUEST, "STUDYROOM_CONTEXT_INVALID", "代码上下文无效");
-        return graph.followUp(userId, studyroomId, question.strip(), audience, requestId, mapper.writeValueAsString(context));
+        return mapper.writeValueAsString(context);
     }
 
     private StudyroomScene.Orchestration sceneFor(StudyroomRecords.Step step, Map<String, StudyroomResourceCatalog.Candidate> indexed) {
         var refs = readResources(step.resourcesJson(), indexed);
-        if (step.orchestrationJson() == null) return StudyroomSceneAdapter.legacy(step.title(), step.explanation(), refs);
+        if (step.orchestrationJson() == null) throw new ApiException(HttpStatus.CONFLICT, "STUDYROOM_CONTENT_INVALID", "片段缺少展示协议，请重新准备");
         return StudyroomSceneAdapter.parse(mapper, step.orchestrationJson(), refs);
     }
 

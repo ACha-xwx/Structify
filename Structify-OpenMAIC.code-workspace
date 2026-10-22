@@ -1,0 +1,6 @@
+{
+  "folders": [
+    { "name": "Structify", "path": "." },
+    { "name": "OpenMAIC · reference", "path": "../OpenMAIC" }
+  ]
+}

@@ -9,11 +9,29 @@ const root = path.resolve(__dirname, "..");
 const openapi = fs.readFileSync(path.join(root, "contracts", "openapi-v1.yaml"), "utf8").replace(/\r\n/g, "\n");
 const fixturePath = path.join(root, "fixtures", "http", "spring-v1-admin-and-ai.json");
 const fixture = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
+const classroomFixture = JSON.parse(fs.readFileSync(path.join(root,"fixtures/http/studyroom-classroom.json"),"utf8"));
+assert.equal(classroomFixture.contract,"openapi-v1");
+fixture.cases.push(...classroomFixture.cases);
 
 assertNoIllegalBacktickScalars(openapi);
 const documentedOperations = extractDocumentedOperations(openapi);
 
 const documentedPaths = [
+  "/studyroom-runs/{id}/fragments/{fragmentId}/lecture",
+  "/studyroom-runs/{id}/fragments/{fragmentId}/lecture/regions",
+  "/studyroom-runs/{id}/fragments/{fragmentId}/lecture/regions/{regionId}",
+  "/studyroom-runs/{id}/focus",
+  "/studyroom-runs/{id}/progress",
+  "/studyroom-runs/{id}/fragments/{fragmentId}/retry",
+  "/studyroom-runs/{id}/fragments/{fragmentId}/regenerate",
+  "/study-outlines/{id}/events",
+  "/studyroom-runs/{id}/events",
+  "/study-rooms/{id}/messages",
+  "/study-rooms/{id}/messages/{questionId}",
+  "/study-rooms/{id}/messages/{questionId}/events",
+  "/study-rooms/{id}/messages/{questionId}/cancel",
+  "/studyroom-runs/{id}/knowledge-points/{unitId}/checks",
+  "/studyroom-runs/{id}/checks/{checkId}/attempts",
   "/chat",
   "/chat/stream",
   "/code/runs",
@@ -61,6 +79,16 @@ for (const endpoint of documentedPaths) {
     new RegExp(`^  ${endpoint.replace(/[{}]/g, "\\$&")}:`, "m"),
     `OpenAPI is missing ${endpoint}`
   );
+}
+
+const questionReceipt = fixture.cases.find(c=>c.method==='POST'&&c.path==='/study-rooms/{id}/messages');
+assert.equal(questionReceipt.status,202);
+assert.equal(questionReceipt.response.status,'QUEUED');
+assert.equal(questionReceipt.response.streamId,`question:${questionReceipt.response.questionId}`);
+const unreadChecks=fixture.cases.find(c=>c.method==='GET'&&c.path.endsWith('/checks')).response.questions;
+for(const check of unreadChecks) {
+  assert.ok(check.options.length>=2&&check.options.length<=4);
+  assert.ok(!('answer' in check)&&!('answerOption' in check));
 }
 
 assert.equal(fixture.contract, "openapi-v1");

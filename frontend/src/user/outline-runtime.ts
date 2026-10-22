@@ -1,7 +1,7 @@
 import { api } from "../app/providers/runtime";
 import type { LearningDepth,OutlineDraft,StudyroomRun } from "../shared/types/outline";
-async function read<T>(path:string,body?:unknown,key?:string):Promise<T>{
- const response=await api.request<T>(path,body===undefined?{}:{method:"POST",body,headers:{"Idempotency-Key":key!}});
+async function read<T>(path:string,body?:unknown,key?:string,signal?:AbortSignal):Promise<T>{
+ const response=await api.request<T>(path,body===undefined?{signal}:{method:"POST",body,headers:{"Idempotency-Key":key!},signal});
  if(response.kind!=="json")throw new Error("服务返回格式不正确");
  return response.data;
 }
@@ -11,7 +11,7 @@ export const outlineApi={
  restore:(id:string,baseRevision:number,targetRevision:number,key:string)=>read<{revision:number}>(`/study-outlines/${encodeURIComponent(id)}/restore`,{baseRevision,targetRevision},key),
  get:(id:string)=>read<OutlineDraft>(`/study-outlines/${encodeURIComponent(id)}`),
  revise:(id:string,body:{baseRevision:number;feedback:string;depth?:LearningDepth},key:string)=>read<{jobId:string}>(`/study-outlines/${encodeURIComponent(id)}/revisions`,body,key),
- confirm:(id:string,revision:number,key:string)=>read<{roomId:string;runId:string}>(`/study-outlines/${encodeURIComponent(id)}/confirm`,{revision},key),
+ confirm:(id:string,revision:number,key:string,planHash:string)=>read<{roomId:string;runId:string}>(`/study-outlines/${encodeURIComponent(id)}/confirm`,{revision,planHash},key),
  current:(room:string)=>read<StudyroomRun>(`/study-rooms/${encodeURIComponent(room)}/run`),
- prepare:(run:string,unit:string,key:string)=>read<{jobId:string}>(`/studyroom-runs/${encodeURIComponent(run)}/units/${encodeURIComponent(unit)}/prepare`,{},key),
+ run:(id:string,signal?:AbortSignal)=>read<StudyroomRun>(`/studyroom-runs/${encodeURIComponent(id)}`,undefined,undefined,signal),
 };

@@ -24,5 +24,20 @@ class StudyroomArchitectureTest {
             .isInstanceOf(AssertionError.class);
     }
 
+    @Test void composersCannotPublishAndPublishersCannotCallModels() {
+        var classes=new ClassFileImporter().withImportOption(new ImportOption.DoNotIncludeTests())
+            .importPackages("com.feng.dsagent.studyroom.fragment");
+        assertThat(classes).anyMatch(c->c.getSimpleName().equals("FragmentComposer"));
+        assertThat(classes).anyMatch(c->c.getSimpleName().equals("FragmentPublicationService"));
+        noClasses().that().haveSimpleName("FragmentComposer").should().dependOnClassesThat()
+            .resideInAnyPackage("org.springframework.jdbc..").check(classes);
+        noClasses().that().haveSimpleName("FragmentComposer").should().dependOnClassesThat()
+            .haveSimpleName("FragmentPublicationService").check(classes);
+        noClasses().that().haveSimpleName("FragmentPublicationService").should().dependOnClassesThat()
+            .resideInAnyPackage("com.feng.dsagent.model..").check(classes);
+        noClasses().that().haveSimpleName("FragmentPublicationService").should().dependOnClassesThat()
+            .haveSimpleName("GenerationCallService").check(classes);
+    }
+
     static class ForbiddenComposer { JdbcTemplate database; }
 }

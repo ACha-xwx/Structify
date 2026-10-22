@@ -2,9 +2,11 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { userApi } from '../../runtime';
 import type { StudyroomResource, StudyroomScene } from '../../../shared/types/studyroom';
+import type {MaterialPosition,TeachingAction} from '../../../shared/types/classroom-experience';
 const props = defineProps<{ scene: StudyroomScene; resources: StudyroomResource[]; chapterId?: string }>();
 const emit = defineEmits<{ context: [value: { resourceId?: string; codeMode: 'READ' | 'EXPERIMENT'; runResult?: { stdout: string; stderr: string } }] }>();
 const source = ref(''); const code = ref(''); const stdin = ref(''); const output = ref('');
+const container=ref<HTMLElement>();const highlight=ref<{start:number;end:number}|null>(null);
 const error = ref(''); const loading = ref(false); const running = ref(false); const editing = ref(props.scene.codeMode === 'EXPERIMENT'); const expanded = ref(false);
 let loadVersion = 0; let runVersion = 0;
 const item = computed(() => props.scene.items[0]);
@@ -39,15 +41,22 @@ async function run() {
 watch(() => item.value?.resourceId, () => { editing.value = props.scene.codeMode === 'EXPERIMENT'; void load(); }, { immediate: true });
 watch(editing, () => report());
 onBeforeUnmount(() => { loadVersion++; runVersion++; });
+defineExpose({
+ capture:():MaterialPosition=>({kind:'C_CODE',code:code.value,stdin:stdin.value,editing:editing.value,scrollTop:container.value?.querySelector('pre,textarea')?.scrollTop??0}),
+ pause:()=>{},
+ restore:(position:MaterialPosition)=>{if(position.kind!=='C_CODE'||code.value!==position.code||stdin.value!==position.stdin||editing.value!==position.editing)return;const element=container.value?.querySelector('pre,textarea');if(element)element.scrollTop=position.scrollTop;},
+ supports:(action:TeachingAction)=>action.kind==='CODE_HIGHLIGHT'&&action.resourceId===item.value?.resourceId&&Number.isInteger(action.startLine)&&Number.isInteger(action.endLine)&&action.startLine!>0&&action.endLine!>=action.startLine!&&action.endLine!<=source.value.split('\n').length,
+ apply:(action:TeachingAction)=>{if(action.kind!=='CODE_HIGHLIGHT'||action.resourceId!==item.value?.resourceId||!Number.isInteger(action.startLine)||!Number.isInteger(action.endLine)||action.startLine!<1||action.endLine!<action.startLine!||action.endLine!>source.value.split('\n').length)return false;highlight.value={start:action.startLine!,end:action.endLine!};expanded.value=true;return true;},
+});
 </script>
 <template>
-  <section class="code-scene" aria-label="本步代码">
+  <section ref="container" class="code-scene" aria-label="本步代码">
     <header><strong>{{ resource?.title || scene.purpose }}</strong><span>{{ editing ? '代码实验' : '代码讲解' }}</span></header>
     <p v-if="scene.task" class="code-task">任务：{{ scene.task }}</p>
     <p v-if="item?.explanation" class="code-explanation">{{ item.explanation }}</p>
     <p v-if="loading" role="status">正在加载代码…</p>
     <template v-else-if="source">
-      <template v-if="!editing"><pre class="code-reading" aria-label="C 代码讲解"><code><span v-for="line in lines" :key="line.number"><span class="line-number">{{ line.number }}</span>{{ line.text }}{{ '\n' }}</span></code></pre><div class="code-controls"><button v-if="item?.startLine" type="button" @click="expanded = !expanded">{{ expanded ? '只看相关片段' : '展开完整源码' }}</button><button type="button" aria-label="打开代码实验" @click="editing = true">打开代码实验</button></div></template>
+      <template v-if="!editing"><pre class="code-reading" aria-label="C 代码讲解"><code><span v-for="line in lines" :key="line.number" :class="{ highlighted:highlight && line.number>=highlight.start && line.number<=highlight.end }"><span class="line-number">{{ line.number }}</span>{{ line.text }}{{ '\n' }}</span></code></pre><div class="code-controls"><button v-if="item?.startLine" type="button" @click="expanded = !expanded">{{ expanded ? '只看相关片段' : '展开完整源码' }}</button><button type="button" aria-label="打开代码实验" @click="editing = true">打开代码实验</button></div></template>
       <template v-else><textarea v-model="code" aria-label="C 代码编辑器" class="studyroom__code" spellcheck="false" @input="edited()"></textarea><label>标准输入<textarea v-model="stdin" aria-label="标准输入" class="code-stdin" @input="edited()"></textarea></label><div class="code-controls"><button type="button" class="studyroom__run" aria-label="运行 C 程序" :disabled="running || !code.trim()" @click="run">{{ running ? '运行中…' : '运行 C 程序' }}</button><button type="button" @click="editing = false">返回代码讲解</button></div></template>
     </template>
     <p v-if="scene.expectedObservation" class="code-observation">观察目标：{{ scene.expectedObservation }}</p>
@@ -59,4 +68,5 @@ onBeforeUnmount(() => { loadVersion++; runVersion++; });
 .code-scene { display:grid; gap:14px; min-width:0; }header { display:flex; gap:12px; justify-content:space-between; font-size:13px; }header span { color:var(--text-muted); }.code-task,.code-explanation,.code-observation { margin:0; line-height:1.8; max-width:75ch; white-space:pre-wrap; }
 button { min-height:36px; padding:7px 12px; border:1px solid var(--line); border-radius:6px; color:var(--text); background:var(--bg); cursor:pointer; }button:disabled { opacity:.5; cursor:default; }button:focus-visible,textarea:focus-visible { outline:2px solid var(--text); outline-offset:2px; }.code-controls { display:flex; gap:10px; flex-wrap:wrap; }
 .code-reading,.code-output,.studyroom__code { margin:0; padding:16px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--text); font:13px/1.8 var(--font-mono,monospace); overflow:auto; }.code-reading { max-height:60vh; }.line-number { display:inline-block; width:3em; user-select:none; color:var(--text-muted); }.studyroom__code { width:100%; min-height:320px; resize:vertical; box-sizing:border-box; }label { display:grid; gap:6px; font-size:12px; }.code-stdin { min-height:65px; background:var(--bg); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:10px; }.code-output { white-space:pre-wrap; overflow-wrap:anywhere; }
+.highlighted{display:inline-block;width:100%;background:var(--accent-soft,var(--line));outline:1px solid var(--line)}
 </style>

@@ -1,6 +1,7 @@
 package com.feng.dsagent.studyroom.draft;
 
 import com.feng.dsagent.studyroom.generation.JdbcGenerationRepository;
+import com.feng.dsagent.studyroom.fragment.*;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -15,7 +16,12 @@ public class OutlineService {
     private final OutlineJson json;
     private final OutlineValidator validator;
     private final OutlineFeasibilityService feasibility;
-    private final com.feng.dsagent.studyroom.StudyroomUnitComposer composer;
+    private final ContentPlanCompiler compiler;
+    private final JdbcFragmentRepository fragments;
+    private final PreparationScheduler scheduler;
+    private com.feng.dsagent.studyroom.events.ClassroomEventService events;
+    @org.springframework.beans.factory.annotation.Autowired
+    void events(com.feng.dsagent.studyroom.events.ClassroomEventService events) {this.events=events;}
 
     public OutlineService(
             JdbcOutlineRepository store,
@@ -23,13 +29,15 @@ public class OutlineService {
             OutlineJson json,
             OutlineValidator validator,
             OutlineFeasibilityService feasibility,
-            com.feng.dsagent.studyroom.StudyroomUnitComposer composer) {
+            ContentPlanCompiler compiler, JdbcFragmentRepository fragments, PreparationScheduler scheduler) {
         this.store = store;
         this.jobs = jobs;
         this.json = json;
         this.validator = validator;
         this.feasibility = feasibility;
-        this.composer = composer;
+        this.compiler = compiler;
+        this.fragments = fragments;
+        this.scheduler = scheduler;
     }
 
     @Transactional
@@ -51,7 +59,7 @@ public class OutlineService {
         if (sourceRoom != null) {
             room =
                     store.row(
-                            "SELECT * FROM study_rooms WHERE id=? AND user_id=? FOR UPDATE",
+                            "SELECT * FROM study_rooms WHERE id=? AND user_id=? AND deleted_at IS NULL FOR UPDATE",
                             sourceRoom,
                             user);
             if (room == null)
@@ -145,10 +153,21 @@ public class OutlineService {
         var last =
                 store.row(
                         "SELECT status,failure_code,failure_message FROM studyroom_generation_jobs"
-                            + " WHERE draft_id=? AND job_type<>'UNIT' ORDER BY created_at DESC,id"
+                            + " WHERE draft_id=? AND job_type IN ('PLAN','REVISE') ORDER BY created_at DESC,id"
                             + " DESC LIMIT 1",
                         id);
         result.put("generation", last);
+        if(saved!=null) {
+            var outline=json.read((String)saved.get("outline_json"),ReviewedOutline.class);
+            try {
+                result.put("fragmentPreview",compiler.preview(outline));
+                result.put("planHash",compiler.hash(outline,json));
+            } catch(IllegalArgumentException error) {
+                var issues=new ArrayList<ReviewedOutline.Issue>((List<ReviewedOutline.Issue>)result.get("issues"));
+                issues.add(new ReviewedOutline.Issue("OUTLINE_FRAGMENT_LIMIT",null,"BLOCKER",error.getMessage()));
+                result.put("issues",issues);result.put("planHash",null);result.put("fragmentPreview",Map.of());
+            }
+        }
         return result;
     }
 
@@ -183,6 +202,7 @@ public class OutlineService {
                         job,
                         id);
         store.message(id, "USER", feedback, base);
+        store.db().update("UPDATE study_outline_drafts SET activity_at=CURRENT_TIMESTAMP WHERE id=?",id);
         store.saveKey(user, "outline_revise", key, payload, job);
         return Map.of("draftId", id, "jobId", job);
     }
@@ -268,14 +288,15 @@ public class OutlineService {
                                     "ASSISTANT",
                                     "第" + revision + "版大纲已生成，请审阅后确认。",
                                     revision);
+                            if(events!=null)events.outlineUpdate(job,"outline_validated",Map.of("validatedRevision",revision),true);
                             jobs.finish(job);
                         });
     }
 
     @Transactional
-    public Map<String, Object> confirm(long user, String id, int revision, String key) {
+    public Map<String, Object> confirm(long user, String id, int revision, String key, String planHash) {
         store.lockUser(user);
-        String payload = json.write(List.of(id, revision));
+        String payload = json.write(Arrays.asList(id, revision, planHash));
         String prior = store.key(user, "outline_confirm", key, payload);
         if (prior != null) return confirmation(prior);
         var draft = store.owned(user, id, true);
@@ -287,6 +308,8 @@ public class OutlineService {
         var saved = store.revision(id, revision);
         var outline = json.read((String) saved.get("outline_json"), ReviewedOutline.class);
         validator.validate(outline, LearningDepth.valueOf((String) draft.get("depth")));
+        OutlineJson.require(Objects.equals(compiler.hash(outline,json),planHash),
+            "OUTLINE_PLAN_CHANGED","讲解安排已改变，请重新审阅大纲");
         var assessment =
                 feasibility.assess(
                         outline, (String) draft.get("question"), (String) draft.get("chapter_id"));
@@ -312,7 +335,7 @@ public class OutlineService {
         } else {
             var current =
                     store.row(
-                            "SELECT * FROM study_rooms WHERE id=? AND user_id=? FOR UPDATE",
+                            "SELECT * FROM study_rooms WHERE id=? AND user_id=? AND deleted_at IS NULL FOR UPDATE",
                             room,
                             user);
             OutlineJson.require(
@@ -321,6 +344,10 @@ public class OutlineService {
                                     current.get("current_run_id"), draft.get("source_run_id")),
                     "ROOM_RUN_CONFLICT",
                     "当前学习路线已改变，请重新规划");
+            // The personal title belongs to the course across confirmed outline replacements.
+            var previousTitle=store.row("SELECT d.display_title FROM study_outline_drafts d JOIN studyroom_runs r ON r.draft_id=d.id WHERE r.id=? AND d.user_id=?",current.get("current_run_id"),user);
+            if(previousTitle!=null&&previousTitle.get("display_title")!=null)
+                store.db().update("UPDATE study_outline_drafts SET display_title=COALESCE(display_title,?) WHERE id=?",previousTitle.get("display_title"),id);
             runRevision =
                     store.db()
                             .queryForObject(
@@ -365,30 +392,7 @@ public class OutlineService {
                             order++,
                             spec,
                             contentHash);
-            var reusable =
-                    store.row(
-                            "SELECT u.* FROM studyroom_units u JOIN studyroom_runs r ON"
-                                    + " r.id=u.run_id WHERE r.user_id=? AND u.content_hash=? AND"
-                                    + " u.status='READY' ORDER BY u.created_at DESC LIMIT 1",
-                            user,
-                            contentHash);
-            if (reusable != null
-                    && composer.reusable(
-                            (String) reusable.get("content_json"),
-                            unit,
-                            (String) draft.get("question"),
-                            (String) draft.get("chapter_id")))
-                store.db()
-                        .update(
-                                "UPDATE studyroom_units SET source_unit_id=?,content_json=? WHERE"
-                                        + " id=?",
-                                reusable.get("id"),
-                                reusable.get("content_json"),
-                                unitId);
-            if (order == 1) {
-                jobs.enqueue(user, id, run, unitId, "UNIT", "unit:" + unitId, Map.of());
-                store.db().update("UPDATE studyroom_units SET status='QUEUED' WHERE id=?", unitId);
-            }
+            for(var plan:compiler.compile(outline.depth(),unit))fragments.insert(run,unitId,plan);
         }
         store.db()
                 .update(
@@ -420,7 +424,9 @@ public class OutlineService {
                         room,
                         run,
                         id);
+        store.db().update("UPDATE study_outline_drafts SET activity_at=CURRENT_TIMESTAMP WHERE id=?",id);
         store.saveKey(user, "outline_confirm", key, payload, run);
+        scheduler.reconcile(user,run);
         return confirmation(run);
     }
 
@@ -445,7 +451,7 @@ public class OutlineService {
         var failed =
                 store.row(
                         "SELECT * FROM studyroom_generation_jobs WHERE draft_id=? AND"
-                            + " job_type<>'UNIT' AND status='FAILED' ORDER BY created_at DESC,id"
+                            + " job_type IN ('PLAN','REVISE') AND status='FAILED' ORDER BY created_at DESC,id"
                             + " DESC LIMIT 1",
                         id);
         OutlineJson.require(failed != null, "OUTLINE_RETRY_UNAVAILABLE", "当前没有失败的大纲任务");
@@ -467,6 +473,7 @@ public class OutlineService {
                         targetDepth,
                         job,
                         id);
+        store.db().update("UPDATE study_outline_drafts SET activity_at=CURRENT_TIMESTAMP WHERE id=?",id);
         store.saveKey(user, "outline_retry", key, payload, job);
         return Map.of("draftId", id, "jobId", job);
     }
@@ -519,6 +526,7 @@ public class OutlineService {
                         restored.depth().name(),
                         id);
         store.message(id, "USER", "恢复第" + target + "版大纲", revision);
+        store.db().update("UPDATE study_outline_drafts SET activity_at=CURRENT_TIMESTAMP WHERE id=?",id);
         store.saveKey(user, "outline_restore", key, payload, revisionId);
         return Map.of("draftId", id, "revision", revision);
     }

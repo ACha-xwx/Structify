@@ -1,9 +1,19 @@
-import { describe,it,expect,vi } from "vitest";
+import { describe,it,expect,vi,beforeEach } from "vitest";
 import { mount,flushPromises } from "@vue/test-utils";
 import StudyroomOutlineFlow from "./StudyroomOutlineFlow.vue";
-const { api }=vi.hoisted(()=>({api:{create:vi.fn(),get:vi.fn(),revise:vi.fn(),confirm:vi.fn()}}));
+const { api }=vi.hoisted(()=>({api:{create:vi.fn(),get:vi.fn(),revise:vi.fn(),confirm:vi.fn(),run:vi.fn()}}));
 vi.mock("../../outline-runtime",()=>({outlineApi:api}));
 describe("outline approval",()=>{
+ beforeEach(()=>vi.clearAllMocks());
+ it("stays on the preparation page until a fragment is readable",async()=>{
+  api.get.mockResolvedValue({id:"draft-1",depth:"STANDARD",status:"REVIEWABLE",latestRevision:1,pendingJobId:null,planHash:"hash",outline:{title:"栈",units:[],objectives:[],exclusions:[]},issues:[],changes:[]});
+  api.confirm.mockResolvedValue({roomId:"room-1",runId:"run-1"});
+  api.run.mockResolvedValue({stateVersion:1,firstReadableFragmentId:null,knowledgePoints:[]});
+  const wrapper=mount(StudyroomOutlineFlow,{props:{draftId:"draft-1"}});await flushPromises();
+  await wrapper.get('button[data-action="confirm"]').trigger('click');await flushPromises();
+  expect(wrapper.emitted("confirmed")).toBeUndefined();
+  expect(wrapper.text()).toContain("首段");wrapper.unmount();api.confirm.mockClear();
+ });
  it("offers three depths and only creates a draft on first submission",async()=>{
   api.create.mockResolvedValue({draftId:"draft-1"});
   const wrapper=mount(StudyroomOutlineFlow);

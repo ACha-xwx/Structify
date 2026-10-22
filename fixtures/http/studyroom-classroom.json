@@ -1,0 +1,254 @@
+{
+  "contract": "openapi-v1",
+  "cases": [
+    {
+      "method": "POST",
+      "path": "/studyroom-runs/{id}/focus",
+      "request": {
+        "unitId": "unit-1",
+        "sequence": 1
+      },
+      "response": {
+        "stateVersion": 2
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/studyroom-runs/{id}/progress",
+      "request": {
+        "unitId": "unit-1",
+        "fragmentId": "fragment-1",
+        "completed": false
+      },
+      "response": {
+        "stateVersion": 3
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/studyroom-runs/{id}/fragments/{fragmentId}/retry",
+      "status": 202,
+      "response": {
+        "jobId": "fragment-job-1"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/studyroom-runs/{id}/fragments/{fragmentId}/regenerate",
+      "status": 202,
+      "request": {
+        "baseContentRevision": 1
+      },
+      "response": {
+        "jobId": "fragment-job-2"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/study-outlines/{id}/events",
+      "response": {
+        "contentType": "text/event-stream",
+        "events": [
+          "phase",
+          "outline_item",
+          "outline_validated",
+          "failed",
+          "reset"
+        ],
+        "disconnectBehavior": "subscription-only"
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/studyroom-runs/{id}/events",
+      "response": {
+        "contentType": "text/event-stream",
+        "events": [
+          "phase",
+          "content_published",
+          "failed",
+          "reset"
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/study-rooms/{id}/messages",
+      "status": 202,
+      "request": {
+        "question": "Why is the last item popped first?",
+        "runId": "run-1",
+        "fragmentId": "fragment-1",
+        "contentRevision": 1
+      },
+      "response": {
+        "questionId": "question-1",
+        "status": "QUEUED",
+        "streamId": "question:question-1",
+        "cursor": 0
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/study-rooms/{id}/messages/{questionId}",
+      "response": {
+        "questionId": "question-1",
+        "status": "RUNNING",
+        "streamId": "question:question-1",
+        "cursor": 2,
+        "question": "Why?",
+        "answer": "A stack returns its top item.",
+        "context": {},
+        "runId": "run-1",
+        "fragmentId": "fragment-1",
+        "contentRevision": 1
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/study-rooms/{id}/messages/{questionId}/events",
+      "response": {
+        "contentType": "text/event-stream",
+        "events": [
+          "phase",
+          "answer_delta",
+          "answer_completed",
+          "failed",
+          "cancelled",
+          "reset"
+        ],
+        "disconnectBehavior": "subscription-only"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/study-rooms/{id}/messages/{questionId}/cancel",
+      "response": {
+        "questionId": "question-1",
+        "status": "CANCELLED",
+        "streamId": "question:question-1",
+        "cursor": 3,
+        "question": "Why?",
+        "answer": "A stack returns its top item.",
+        "context": {},
+        "runId": "run-1",
+        "fragmentId": "fragment-1",
+        "contentRevision": 1
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/studyroom-runs/{id}/knowledge-points/{unitId}/checks",
+      "response": {
+        "status": "READY",
+        "questions": [
+          {
+            "id": "check-1",
+            "unitId": "unit-1",
+            "contentRevision": 1,
+            "prompt": "Which item is popped first?",
+            "options": [
+              {
+                "id": "a",
+                "text": "First pushed"
+              },
+              {
+                "id": "b",
+                "text": "Last pushed"
+              }
+            ]
+          }
+        ],
+        "attempts": []
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/studyroom-runs/{id}/knowledge-points/{unitId}/checks",
+      "status": 202,
+      "response": {
+        "jobId": "check-job-1"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/studyroom-runs/{id}/checks/{checkId}/attempts",
+      "request": {
+        "selectedOption": "b"
+      },
+      "response": {
+        "id": "attempt-1",
+        "checkId": "check-1",
+        "selectedOption": "b",
+        "correct": true,
+        "answerOption": "b",
+        "analysis": "A stack follows last in, first out."
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/studyroom-runs/{id}/fragments/{fragmentId}/lecture",
+      "response": {
+        "runId": "run-1",
+        "fragmentId": "fragment-1",
+        "contentRevision": 1,
+        "fingerprint": "public-script-hash",
+        "cues": [
+          {
+            "id": "cue-0",
+            "kind": "PPT",
+            "text": "Observe the top pointer.",
+            "sceneId": "ppt",
+            "resourceId": "public-slide",
+            "action": "PPT_REGION",
+            "regionId": "00000000-0000-4000-8000-000000000001"
+          }
+        ],
+        "regions": [
+          {
+            "id": "00000000-0000-4000-8000-000000000001",
+            "sceneId": "ppt",
+            "resourceId": "public-slide",
+            "x": 0.1,
+            "y": 0.2,
+            "width": 0.3,
+            "height": 0.4,
+            "narration": "Observe the top pointer."
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/studyroom-runs/{id}/fragments/{fragmentId}/lecture/regions",
+      "request": {
+        "contentRevision": 1,
+        "region": {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "sceneId": "ppt",
+          "resourceId": "public-slide",
+          "x": 0.1,
+          "y": 0.2,
+          "width": 0.3,
+          "height": 0.4,
+          "narration": "Observe the top pointer."
+        }
+      },
+      "response": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "sceneId": "ppt",
+        "resourceId": "public-slide",
+        "x": 0.1,
+        "y": 0.2,
+        "width": 0.3,
+        "height": 0.4,
+        "narration": "Observe the top pointer."
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/studyroom-runs/{id}/fragments/{fragmentId}/lecture/regions/{regionId}",
+      "response": {}
+    }
+  ]
+}

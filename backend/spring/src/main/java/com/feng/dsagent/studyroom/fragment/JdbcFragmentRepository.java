@@ -16,7 +16,7 @@ public class JdbcFragmentRepository {
     public JdbcOutlineRepository store() { return store; }
 
     public Map<String,Object> ownedRun(long user, String run) {
-        var row = store.row("SELECT * FROM studyroom_runs WHERE id=? AND user_id=?",run,user);
+        var row = store.row("SELECT r.* FROM studyroom_runs r JOIN study_rooms s ON s.id=r.room_id WHERE r.id=? AND r.user_id=? AND s.deleted_at IS NULL",run,user);
         if (row == null) throw OutlineJson.error(HttpStatus.NOT_FOUND,"RUN_NOT_FOUND","学习路线不存在");
         return row;
     }

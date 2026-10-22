@@ -31,7 +31,6 @@ class ReviewedOutlineWorkflowTest {
     @Autowired com.feng.dsagent.studyroom.StudyroomRepository rooms;
     @MockitoBean com.feng.dsagent.aiquota.AiQuotaExecutionService execution;
     @MockitoBean OutlineModelGateway model;
-    @MockitoBean UnitGenerationService units;
     long user;
     static final String OUTLINE =
             """
@@ -70,13 +69,13 @@ class ReviewedOutlineWorkflowTest {
     @Test
     void onlyPlansBeforeConfirmationAndConfirmationIsIdempotent() {
         String id = create();
-        verifyNoInteractions(model, units);
+        verifyNoInteractions(model);
         assertThat(service.get(user, id).get("status")).isEqualTo("GENERATING");
         assertThat(worker.runOnce()).isTrue();
         assertThat(service.get(user, id).get("latestRevision")).isEqualTo(1);
-        verifyNoInteractions(units);
-        var first = service.confirm(user, id, 1, "confirm-one");
-        assertThat(service.confirm(user, id, 1, "confirm-one")).isEqualTo(first);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM studyroom_fragments WHERE run_id IN (SELECT id FROM studyroom_runs WHERE user_id=?)",Integer.class,user)).isZero();
+        var first = service.confirm(user, id, 1, "confirm-one", (String) service.get(user, id).get("planHash"));
+        assertThat(service.confirm(user, id, 1, "confirm-one", (String) service.get(user, id).get("planHash"))).isEqualTo(first);
         assertThat(
                         jdbc.queryForObject(
                                 "SELECT COUNT(*) FROM studyroom_runs WHERE user_id=?",
@@ -86,11 +85,23 @@ class ReviewedOutlineWorkflowTest {
     }
 
     @Test
+    void confirmingARevisedCoursePreservesItsPersonalDisplayName() {
+        String id=create();worker.runOnce();
+        var first=service.confirm(user,id,1,"confirm-named",(String)service.get(user,id).get("planHash"));
+        jdbc.update("UPDATE study_outline_drafts SET display_title='我的课程名' WHERE id=?",id);
+        jdbc.update("UPDATE studyroom_generation_jobs SET status='CANCELLED' WHERE run_id=?",first.get("runId"));
+        String revised=(String)service.create(user,"调整学习概念",LearningDepth.STANDARD,null,(String)first.get("roomId"),"named-revision").get("draftId");
+        worker.runOnce();
+        service.confirm(user,revised,1,"confirm-revised-name",(String)service.get(user,revised).get("planHash"));
+        assertThat(jdbc.queryForObject("SELECT display_title FROM study_outline_drafts WHERE id=?",String.class,revised)).isEqualTo("我的课程名");
+    }
+
+    @Test
     void rejectsStaleConfirmationAndKeepsLastGoodOutlineAfterFailedRevision() {
         String id = create();
         worker.runOnce();
         service.revise(user, id, 1, "换个例子", LearningDepth.DEEP, "revision-one");
-        assertThatThrownBy(() -> service.confirm(user, id, 1, "confirm-pending"))
+        assertThatThrownBy(() -> service.confirm(user, id, 1, "confirm-pending", (String) service.get(user, id).get("planHash")))
                 .isInstanceOf(ApiException.class);
         when(model.plan(anyLong(), anyString(), any(), anyString(), anyString(), anyString()))
                 .thenThrow(new IllegalArgumentException("模型不可用"));
@@ -98,7 +109,7 @@ class ReviewedOutlineWorkflowTest {
         assertThat(service.get(user, id).get("latestRevision")).isEqualTo(1);
         assertThat(service.get(user, id).get("outline")).isNotNull();
         assertThat(service.get(user, id).get("depth")).isEqualTo("STANDARD");
-        assertThat(service.confirm(user, id, 1, "confirm-preserved")).containsKey("runId");
+        assertThat(service.confirm(user, id, 1, "confirm-preserved", (String) service.get(user, id).get("planHash"))).containsKey("runId");
         assertThatThrownBy(() -> service.get(user + 1, id)).isInstanceOf(ApiException.class);
     }
 
@@ -116,33 +127,6 @@ class ReviewedOutlineWorkflowTest {
                                 Integer.class,
                                 user))
                 .isEqualTo(1);
-    }
-
-    @Test
-    void confirmationQueuesOneUnitAndWorkerPublishesItOnlyOnce() {
-        String id = create();
-        worker.runOnce();
-        var confirmed = service.confirm(user, id, 1, "confirm-body");
-        when(units.generate(anyLong(), anyString(), anyString(), anyString()))
-                .thenReturn(
-                        """
-{"version":1,"title":"概念","summary":"目标","evidenceIds":[],"steps":[{"id":"activity-1","type":"explanation","title":"概念","explanation":"概念讲解","resources":[]}]}
-""");
-        assertThat(worker.runOnce()).isTrue();
-        assertThat(worker.runOnce()).isFalse();
-        assertThat(
-                        jdbc.queryForObject(
-                                "SELECT status FROM studyroom_units WHERE id=?",
-                                String.class,
-                                confirmed.get("firstUnitId")))
-                .isEqualTo("READY");
-        assertThat(
-                        jdbc.queryForObject(
-                                "SELECT COUNT(*) FROM study_room_steps WHERE run_id=?",
-                                Integer.class,
-                                confirmed.get("runId")))
-                .isEqualTo(1);
-        verify(units, times(1)).generate(anyLong(), anyString(), anyString(), anyString());
     }
 
     @Test
@@ -230,7 +214,7 @@ class ReviewedOutlineWorkflowTest {
                                 String.class,
                                 jobId))
                 .isEqualTo("MODEL_CALL_UNCERTAIN");
-        verifyNoInteractions(execution, model, units);
+        verifyNoInteractions(execution, model);
     }
 
     @Test
@@ -251,7 +235,7 @@ class ReviewedOutlineWorkflowTest {
                                 .header("Authorization", auth)
                                 .header("Idempotency-Key", "http-confirm")
                                 .contentType("application/json")
-                                .content("{\"revision\":1}"))
+                                .content("{\"revision\":1,\"planHash\":\"" + service.get(user,id).get("planHash") + "\"}"))
                 .andExpect(
                         org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
                                 .isConflict());
@@ -263,47 +247,23 @@ class ReviewedOutlineWorkflowTest {
                                 .content("{\"question\":\"栈是什么\"}"))
                 .andExpect(
                         org.springframework.test.web.servlet.result.MockMvcResultMatchers.status()
-                                .isConflict());
-        verifyNoInteractions(model, units);
+                                .isNotFound());
+        verifyNoInteractions(model);
     }
 
     @Test
-    void replanSeparatesOldStepsAndRejectsOldProgressAndMessages() {
-        when(units.generate(anyLong(), anyString(), anyString(), anyString()))
-                .thenReturn(
-                        "{\"version\":1,\"title\":\"概念\",\"summary\":\"目标\",\"evidenceIds\":[],\"steps\":[{\"id\":\"activity-1\",\"type\":\"explanation\",\"title\":\"概念\",\"explanation\":\"概念讲解\",\"resources\":[]}]}");
-        String first = create();
-        worker.runOnce();
-        var old = service.confirm(user, first, 1, "old-confirm");
-        worker.runOnce();
-        String room = (String) old.get("roomId"), oldRun = (String) old.get("runId");
-        String oldStep = rooms.findOwned(room, user).orElseThrow().steps().getFirst().id();
-        String next =
-                (String)
-                        service.create(
-                                        user,
-                                        "换个例子",
-                                        LearningDepth.STANDARD,
-                                        null,
-                                        room,
-                                        "new-draft")
-                                .get("draftId");
-        worker.runOnce();
-        var current = service.confirm(user, next, 1, "new-confirm");
-        assertThat(current.get("roomId")).isEqualTo(room);
-        assertThat(rooms.findOwned(room, user).orElseThrow().steps()).isEmpty();
-        assertThat(rooms.updateProgress(user, room, oldStep)).isEmpty();
-        assertThatThrownBy(() -> rooms.appendExchange(room, user, List.of(), List.of(), oldRun))
-                .isInstanceOf(ApiException.class);
-        worker.runOnce();
-        assertThat(rooms.findOwned(room, user).orElseThrow().steps())
-                .hasSize(1)
-                .noneMatch(step -> step.id().equals(oldStep));
-        assertThat(
-                        jdbc.queryForObject(
-                                "SELECT COUNT(*) FROM study_room_steps WHERE study_room_id=?",
-                                Integer.class,
-                                room))
-                .isEqualTo(2);
+    void courseLibraryHttpEndpointsRequireAuthenticationAndValidateTitles() throws Exception {
+        var auth="Bearer "+tokens.issue(user,user+"@outline.test",Set.of("STUDENT"));
+        String id=create();
+        http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/users/courses"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isUnauthorized());
+        http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/users/courses").header("Authorization",auth))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isOk())
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[0].id").value(id));
+        http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/v1/users/courses/"+id).header("Authorization",auth).contentType("application/json").content("{\"title\":\"  \"}"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
+        http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/v1/users/courses/missing").header("Authorization",auth).contentType("application/json").content("{\"title\":\"课程\"}"))
+            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isNotFound());
     }
+
 }

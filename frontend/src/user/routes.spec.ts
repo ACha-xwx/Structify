@@ -3,7 +3,8 @@ import { userRoutes } from "./routes";
 
 describe("user routes", () => {
   it("keeps the profile placeholder and redirects retired user surfaces", () => {
-    expect(userRoutes).toHaveLength(3);
+    expect(userRoutes).toHaveLength(4);
+    expect(userRoutes.map((route) => route.path)).toContain("/user/bookmarks");
     // The learning map is a page of its own, next to the profile it belongs to.
     expect(userRoutes.map((route) => route.path)).toContain("/learning-map");
     expect(userRoutes[0]).toMatchObject({

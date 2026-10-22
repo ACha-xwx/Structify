@@ -154,7 +154,12 @@ public class JdbcGenerationRepository {
                                     message.substring(0, Math.min(1000, message.length())),
                                     job.get("id"),
                                     job.get("lease_token"));
-                    if (job.get("unit_id") != null)
+                    if (job.get("fragment_id") != null) {
+                        store.db().update("UPDATE studyroom_fragments SET status='FAILED',error_code=?,issues_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                            code,json.write(List.of(Map.of("code",code,"message",message))),job.get("fragment_id"));
+                        store.db().update("UPDATE studyroom_runs SET state_version=state_version+1 WHERE id=?",job.get("run_id"));
+                    }
+                    if (job.get("unit_id") != null && job.get("fragment_id") == null)
                         store.db()
                                 .update(
                                         "UPDATE studyroom_units SET"
@@ -163,7 +168,7 @@ public class JdbcGenerationRepository {
                                         code,
                                         message.substring(0, Math.min(1000, message.length())),
                                         job.get("unit_id"));
-                    if (job.get("draft_id") != null && !"UNIT".equals(job.get("job_type")))
+                    if (job.get("draft_id") != null && Set.of("PLAN","REVISE").contains(job.get("job_type")))
                         restoreDraft(job);
                 });
     }
@@ -213,14 +218,19 @@ public class JdbcGenerationRepository {
                                                 + " status='FAILED',failure_code='MODEL_CALL_UNCERTAIN',failure_message='模型调用结果未保存，前次可能已消耗额度。可主动重试。'"
                                                 + " WHERE id=?",
                                             job.get("id"));
-                            if (job.get("unit_id") != null)
+                            if(job.get("fragment_id")!=null) {
+                                store.db().update("UPDATE studyroom_fragments SET status='FAILED',error_code='MODEL_CALL_UNCERTAIN',issues_json=? WHERE id=?",
+                                    json.write(List.of(Map.of("code","MODEL_CALL_UNCERTAIN","message","上次调用结果不确定，可能已消耗额度；可明确重试。"))),job.get("fragment_id"));
+                                store.db().update("UPDATE studyroom_runs SET state_version=state_version+1 WHERE id=?",job.get("run_id"));
+                            }
+                            if (job.get("unit_id") != null && job.get("fragment_id")==null)
                                 store.db()
                                         .update(
                                                 "UPDATE studyroom_units SET"
                                                     + " status='FAILED',error_code='MODEL_CALL_UNCERTAIN',error_message='调用结果未保存，前次可能已消耗额度。'"
                                                     + " WHERE id=?",
                                                 job.get("unit_id"));
-                            if (job.get("draft_id") != null) restoreDraft(job);
+                            if (job.get("draft_id") != null && Set.of("PLAN","REVISE").contains(job.get("job_type"))) restoreDraft(job);
                         }
                     });
         }

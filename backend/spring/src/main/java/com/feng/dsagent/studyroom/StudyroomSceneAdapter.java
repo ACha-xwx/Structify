@@ -5,27 +5,6 @@ import tools.jackson.databind.ObjectMapper;
 
 public final class StudyroomSceneAdapter {
     private StudyroomSceneAdapter() {}
-    public static StudyroomScene.Orchestration legacy(String title, String explanation, List<StudyroomView.Resource> resources) {
-        Map<String, List<StudyroomView.Resource>> groups = new LinkedHashMap<>();
-        for (var r : resources) {
-            String kind = r.type().toUpperCase(Locale.ROOT);
-            if (Set.of("PPT", "ANIMATION", "C_CODE").contains(kind)) {
-                // Animations and code remain individually selectable, slides form a page set.
-                String key = kind.equals("PPT") ? kind : kind + ":" + r.id();
-                groups.computeIfAbsent(key, ignored -> new ArrayList<>()).add(r);
-            }
-        }
-        List<StudyroomScene> scenes = new ArrayList<>();
-        for (var entry : groups.entrySet()) {
-            var first = entry.getValue().getFirst();
-            String kind = first.type().toUpperCase(Locale.ROOT);
-            scenes.add(new StudyroomScene("legacy-" + scenes.size(), kind, first.title().isBlank() ? title : first.title(),
-                entry.getValue().stream().map(r -> new StudyroomScene.Item(r.id(), "", null, null)).distinct().toList(),
-                kind.equals("C_CODE") ? "READ" : null, null, null, null));
-        }
-        if (scenes.isEmpty()) scenes.add(new StudyroomScene("text", "TEXT", title, List.of(), null, null, null, null));
-        return new StudyroomScene.Orchestration(2, title, "CONCEPT", scenes.getFirst(), scenes.subList(1, scenes.size()));
-    }
     public static StudyroomScene.Orchestration parse(ObjectMapper mapper, String json, List<StudyroomView.Resource> resources) {
         try {
             var result = mapper.readValue(json, StudyroomScene.Orchestration.class);

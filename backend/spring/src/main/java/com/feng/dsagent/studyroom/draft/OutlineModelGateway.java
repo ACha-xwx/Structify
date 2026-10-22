@@ -15,6 +15,9 @@ public class OutlineModelGateway {
     private final OutlineJson json;
     private final com.feng.dsagent.compiler.CodeExecutionReadiness execution;
     private final com.feng.dsagent.studyroom.curriculum.CurriculumCatalog curriculum;
+    private com.feng.dsagent.studyroom.events.ClassroomEventService events;
+    @org.springframework.beans.factory.annotation.Autowired
+    void events(com.feng.dsagent.studyroom.events.ClassroomEventService events) {this.events=events;}
 
     public OutlineModelGateway(
             GenerationCallService calls,
@@ -40,10 +43,14 @@ public class OutlineModelGateway {
             String jobId) {
         var job =
                 store.row(
-                        "SELECT draft_id FROM studyroom_generation_jobs WHERE id=? AND user_id=?",
+                        "SELECT * FROM studyroom_generation_jobs WHERE id=? AND user_id=?",
                         jobId,
                         user);
         var draft = store.owned(user, (String) job.get("draft_id"), false);
+        if(events!=null) {
+            events.beginOutline(job);
+            events.outlineUpdate(job,"phase",Map.of("phase","RETRIEVING"),false);
+        }
         var evidence =
                 knowledge.search(
                         question, (String) draft.get("chapter_id"), 6, KnowledgeAudience.STUDENT);
@@ -65,8 +72,12 @@ QUICK突出核心概念和一个典型例子；STANDARD覆盖概念、操作过�
 expansion只允许INTRODUCE/EXPLAIN/PRACTICE；activities只允许CONCEPT/PROCESS/IMPLEMENTATION/EXPERIMENT/CHECK。
 evidenceIds只能引用授权资料中的ID，不宣称覆盖完整课程体系。目标档位必须与输入一致。
 """;
+        if(events!=null)events.outlineUpdate(job,"phase",Map.of("phase","PLANNING"),false);
+        var parser=new OutlineIncrementalParser(json,unit -> {
+            if(events!=null) events.outlineUpdate(job,"outline_item",Map.of("title",unit.get("title"),"objective",unit.get("objective")),false);
+        });
         String raw =
-                calls.complete(
+                calls.stream(
                         user,
                         jobId,
                         "outline",
@@ -90,7 +101,8 @@ evidenceIds只能引用授权资料中的ID，不宣称覆盖完整课程体系�
                                                 .find(question)
                                                 .map(f -> curriculum.recommended(f, depth))
                                                 .orElse(List.of()))),
-                        7000);
+                        7000,parser::accept);
+        if(events!=null)events.outlineUpdate(job,"phase",Map.of("phase","VALIDATING"),false);
         var parsed = json.read(raw, ReviewedOutline.class);
         var authorized = evidence.stream().map(e -> e.chunk().id()).toList();
         OutlineJson.require(

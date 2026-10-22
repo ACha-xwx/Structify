@@ -38,6 +38,12 @@ public final class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        // SSE completion is dispatched again with a fresh SecurityContext in this stateless API.
+        return false;
+    }
+
+    @Override
     protected void doFilterInternal(
         HttpServletRequest request,
         HttpServletResponse response,

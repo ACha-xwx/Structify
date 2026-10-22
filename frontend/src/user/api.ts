@@ -128,9 +128,7 @@ export interface UserApi {
   getLearningProgress(): Promise<LearningProgress>;
   getLearningWorkbench(): Promise<LearningWorkbenchProjection>;
   recordLearningEvent(input: LearningEventRequest): Promise<LearningEvent>;
-  createStudyroom(input: { question: string; chapterId?: string }): Promise<StudyroomView>;
   getStudyroom(id: string): Promise<StudyroomView>;
-  followUpStudyroom(id: string, input: { question: string; context?: StudyroomFollowUpContext }): Promise<StudyroomView>;
   updateStudyroomProgress(id: string, stepId: string): Promise<StudyroomProgress>;
 }
 
@@ -242,9 +240,7 @@ export function createUserApi(client: { request: UserRequest }): UserApi {
     async getLearningWorkbench() { return jsonData(await request<LearningWorkbenchProjection>("/learning/workbench")); },
     async recordLearningEvent(input) { return jsonData(await request<LearningEvent>("/learning/events", { method: "POST", body: input })); },
     // Creation can perform two model calls (generation + one validated repair), each allowing 45s.
-    async createStudyroom(input) { return normalizeStudyroom(jsonData(await request<StudyroomView>("/study-rooms", { method: "POST", body: input, timeoutMs: 120_000 }))); },
     async getStudyroom(id) { return normalizeStudyroom(jsonData(await request<StudyroomView>(`/study-rooms/${encoded(id)}`))); },
-    async followUpStudyroom(id, input) { return normalizeStudyroom(jsonData(await request<StudyroomView>(`/study-rooms/${encoded(id)}/messages`, { method: "POST", body: input, timeoutMs: 60_000 }))); },
     async updateStudyroomProgress(id, stepId) { return jsonData(await request<StudyroomProgress>(`/study-rooms/${encoded(id)}/progress`, { method: "PATCH", body: { stepId } })); },
   };
 }

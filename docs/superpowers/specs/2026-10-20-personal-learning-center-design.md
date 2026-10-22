@@ -24,6 +24,10 @@ Use a forward Flyway migration for title, activity, and soft-deletion fields. De
 
 Existing bookmarks belong to the classroom module; preserve that module and move its current view to `/user/bookmarks`. Only hide a bookmark when its owned session identifies the removed room; unrelated classroom bookmarks remain intact.
 
+## Visual alignment refinement
+
+At the user's request, the learning center follows the existing entry and personal-page visual recipe: shared BrandStage grid and theme, AiTitle with its AI ball, larger regular-weight UI typography, translucent surfaces with lit inset rims, 22–26px panel corners and pill-shaped controls. Course cards omit decorative placeholder covers. The course-action dialog uses the same material and type scale. Retain the approved information hierarchy, existing navigation, data, and management behavior; reduced-transparency mode uses opaque surfaces and reduced-motion mode disables hover transitions.
+
 ## Errors, accessibility, and validation
 
 First-load failure has retry; failed actions retain existing cards and dialog inputs. Distinguish an empty library from no search results. Dialogs have accessible titles, focus containment, Escape handling, and focus restoration; destructive requests disable duplicate submits. Support keyboard navigation, dark/light themes, reduced motion and mobile without horizontal overflow.

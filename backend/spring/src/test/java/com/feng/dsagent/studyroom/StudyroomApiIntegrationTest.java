@@ -47,6 +47,10 @@ class StudyroomApiIntegrationTest {
             "studyroom-api-message", ROOM_ID, 0, "assistant", "开始学习", "[]", STEP_ID);
         jdbc.update("INSERT INTO study_rooms (id, user_id, title, initial_question, summary, version) VALUES (?, ?, ?, ?, ?, ?)",
             "studyroom-api-foreign", OTHER, "他人课堂", "问题", "摘要", 1);
+        jdbc.update("UPDATE study_rooms SET current_run_id='run-owned' WHERE id=?",ROOM_ID);
+        jdbc.update("UPDATE study_room_steps SET run_id='run-owned',orchestration_json=? WHERE id=?",
+            "{\"schemaVersion\":2,\"objective\":\"理解节点\",\"intent\":\"CONCEPT\",\"primary\":{\"id\":\"text\",\"kind\":\"TEXT\",\"purpose\":\"讲解\",\"items\":[]},\"supplementary\":[]}",STEP_ID);
+        jdbc.update("UPDATE study_room_messages SET run_id='run-owned' WHERE study_room_id=?",ROOM_ID);
     }
 
     @Test
