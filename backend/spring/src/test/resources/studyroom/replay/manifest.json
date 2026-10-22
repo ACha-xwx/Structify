@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "fragment-output-1",
+  "promptVersion": "fragment-1",
+  "fixtureOrigin": "synthetic-public",
+  "evidence": {"key": "e1", "id": "public-stack", "title": "栈", "content": "栈遵循后进先出。"},
+  "code": {"id": "public-code", "source": "int main(void) {\n return 0; }", "lineCount": "2"},
+  "cases": [
+    {"id": "valid-text", "phase": "bind", "activity": "CONCEPT", "expectedIssueCode": null,
+      "modelOutput": {"title": "栈", "explanation": "栈遵循后进先出。", "evidenceKeys": ["e1"], "scenes": []}},
+    {"id": "invalid-json", "phase": "bind", "activity": "CONCEPT", "expectedIssueCode": "FRAGMENT_JSON_INVALID",
+      "modelOutputRaw": "{\"title\":"},
+    {"id": "unknown-resource", "phase": "bind", "activity": "CONCEPT", "expectedIssueCode": "RESOURCE_BINDING_INVALID",
+      "modelOutput": {"title": "栈", "explanation": "解释栈", "evidenceKeys": ["e1"], "scenes": [{"resourceKey": "r9", "explanation": "不存在的材料"}]}},
+    {"id": "code-line-outside-source", "phase": "bind", "activity": "IMPLEMENTATION", "expectedIssueCode": "CODE_LINE_OUT_OF_RANGE",
+      "modelOutput": {"title": "源码", "explanation": "阅读源码", "evidenceKeys": ["e1"], "scenes": [{"resourceKey": "r1", "explanation": "源码片段", "startLine": 1, "endLine": 9}]}},
+    {"id": "review-uncertain", "phase": "review", "activity": "CONCEPT", "expectedIssueCode": "REVIEW_UNCERTAIN",
+      "modelOutput": {"valid": true, "issues": []}},
+    {"id": "review-advice-does-not-block", "phase": "review", "activity": "CONCEPT", "expectedIssueCode": null,
+      "modelOutput": {"valid": true, "reason": "结论有依据，表达可以更精简。", "issues": [{"severity": "ADVICE", "code": "STYLE", "message": "表达可以更精简", "evidenceKeys": ["e1"]}]}},
+    {"id": "review-blocker", "phase": "review", "activity": "CONCEPT", "expectedIssueCode": "TEACHING_BLOCKED",
+      "modelOutput": {"valid": false, "reason": "与后进先出相矛盾。", "issues": [{"severity": "BLOCKER", "code": "WRONG_ORDER", "message": "把栈说成先进先出", "evidenceKeys": ["e1"]}]}}
+  ]
+}

@@ -4,6 +4,7 @@ import AnimationPlayer from "./AnimationPlayer.vue";
 import playIcon from "../assets/animation/play.svg";
 import pauseIcon from "../assets/animation/pause.svg";
 import type { AnimationDefinition } from "../shared/types/animation";
+import type {ClassroomMaterialAdapter} from '../user/classroom-materials';
 
 const definition: AnimationDefinition = {
   animation: true,
@@ -30,6 +31,18 @@ afterEach(() => {
 });
 
 describe("animation player", () => {
+  it('captures the initial frame and restores playing position after a classroom question',async()=>{
+    vi.useFakeTimers();const wrapper=mount(AnimationPlayer,{props:{definition}});
+    const adapter=wrapper.vm as unknown as ClassroomMaterialAdapter;
+    const initial=adapter.capture();expect(initial.kind).toBe('ANIMATION');
+    if(initial.kind!=='ANIMATION')throw new Error('animation position missing');
+    expect(initial.index).toBe(-1);
+    await adapter.restore({...initial,index:0,speed:2,playing:true});
+    const playing=adapter.capture();adapter.pause();await vi.advanceTimersByTimeAsync(1000);
+    expect(adapter.capture()).toMatchObject({index:0,playing:false});
+    await adapter.restore(playing);expect(adapter.capture()).toMatchObject({index:0,speed:2,playing:true});
+    await adapter.restore(initial);expect(adapter.capture()).toMatchObject({index:-1,playing:false});wrapper.unmount();
+  });
   it("says so when the engine produced no process at all, instead of a dead 'next' button", () => {
     // 初始化这类操作的 trace 只有一帧：进度条一格、「下一步」按了不动。学生只会以为演示坏了。
     const oneFrame: AnimationDefinition = {

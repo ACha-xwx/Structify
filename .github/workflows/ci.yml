@@ -19,7 +19,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: node scripts/verify-api-contract-fixtures.js
+      - run: node --test scripts/verify-studyroom.test.mjs
+      - run: node scripts/verify-studyroom.mjs --scope contracts
       - run: node scripts/verify-backend-layout.js
       - run: node scripts/verify-frontend-layout.js
       - run: node scripts/verify-core-regression.js
@@ -38,15 +39,8 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
-      - name: Run Vitest
-        working-directory: frontend
-        run: npm test
-      - name: Typecheck
-        working-directory: frontend
-        run: npm run typecheck
-      - name: Build production frontend
-        working-directory: frontend
-        run: npm run build
+      - name: Verify frontend tests, types, and build
+        run: node scripts/verify-studyroom.mjs --scope frontend
       - name: Verify production artifact integrity
         run: node scripts/verify-frontend-build-artifact.js
 
@@ -64,11 +58,39 @@ jobs:
         working-directory: backend/spring
         run: chmod +x mvnw
       - name: Run tests
-        working-directory: backend/spring
-        run: ./mvnw -B clean test
+        run: node scripts/verify-studyroom.mjs --scope backend
       - name: Package application
         working-directory: backend/spring
         run: ./mvnw -B -DskipTests package
+
+  studyroom-browser:
+    name: Studyroom browser harness
+    needs: [frontend, spring-backend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: chmod +x backend/spring/mvnw
+      - run: node scripts/verify-studyroom.mjs --scope e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: studyroom-browser-failure
+          path: frontend/test-results/playwright/
+          retention-days: 7
 
   node-image:
     name: Node image build gate

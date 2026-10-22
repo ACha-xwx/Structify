@@ -49,6 +49,10 @@ final class ApiErrorFallbackResolver implements HandlerExceptionResolver {
         Object handler,
         Exception error
     ) {
+        if(error instanceof org.springframework.web.context.request.async.AsyncRequestNotUsableException) {
+            // A closed SSE connection has no writable response; it is not a JSON API failure.
+            return new ModelAndView();
+        }
         if (acceptsJson(request) || response.isCommitted()) {
             return null;
         }

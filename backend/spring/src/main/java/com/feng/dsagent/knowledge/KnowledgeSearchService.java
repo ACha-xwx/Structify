@@ -104,6 +104,25 @@ public final class KnowledgeSearchService {
             && (chapterId == null || chapterId.isBlank() || chapterId.equals(chunk.chapterId()));
     }
 
+    /** Fragment teaching needs distinct pages, including multiple pages from the same source. */
+    public List<KnowledgeSearchResult> searchForFragment(String query, String chapterId, int limit, KnowledgeAudience audience) {
+        if(query==null||query.isBlank()||limit<1||INJECTION_PATTERN.matcher(query).find())return List.of();
+        var tokens=KnowledgeText.tokens(query);
+        if(tokens.isEmpty())return List.of();
+        var snapshot=chunks.get();var eligible=eligibleIds(snapshot,audience);
+        Map<String,KnowledgeSearchResult> unique=new LinkedHashMap<>();
+        for(var chunk:snapshot) {
+            if(!eligible.contains(chunk.id())||!allows(chunk,chapterId,audience))continue;
+            double relevance=score(chunk,tokens);
+            if(relevance<minimumScore)continue;
+            var candidate=new KnowledgeSearchResult(chunk,relevance);
+            String key=KnowledgeText.normalize(chunk.content());
+            unique.merge(key,candidate,(a,b)->a.score()>=b.score()?a:b);
+        }
+        return unique.values().stream().sorted(Comparator.comparingDouble(KnowledgeSearchResult::score).reversed())
+            .limit(Math.min(limit,6)).toList();
+    }
+
     private Set<String> eligibleIds(Collection<KnowledgeChunk> snapshot, KnowledgeAudience audience) {
         if (audience == null || snapshot.isEmpty()) {
             return Set.of();

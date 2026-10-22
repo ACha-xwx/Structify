@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, nextTick } from "vue";
+import type {MaterialPosition,TeachingAction} from '../shared/types/classroom-experience';
 import AnimationStage from "./AnimationStage.vue";
 import LiquidMetalButton from "../admin/components/LiquidMetalButton.vue";
 import RuntimeSelect from "../shared/components/RuntimeSelect.vue";
@@ -88,6 +89,19 @@ function onKeydown(event: KeyboardEvent) {
   else if (event.key === " ") { event.preventDefault(); playback.toggle(); }
   else if (event.key === "Home") { event.preventDefault(); playback.reset(); }
 }
+defineExpose({
+ capture:():MaterialPosition=>({kind:'ANIMATION',traceId:playbackIdentity.value,index:playback.index.value,speed:playback.speed.value,playing:playback.playing.value,detail:detail.value}),
+ pause:playback.pause,
+ restore:async(position:MaterialPosition)=>{
+  if(position.kind!=='ANIMATION')return;
+  playback.pause();detail.value=position.detail;await nextTick();
+  if(position.traceId!==playbackIdentity.value)return;
+  playback.speed.value=position.speed;playback.goTo(position.index);
+  if(position.playing&&!playback.atEnd.value)playback.play();
+ },
+ supports:(action:TeachingAction)=>action.kind==='ANIMATION_SEEK'&&Number.isInteger(action.stepIndex)&&action.stepIndex!>=-1&&action.stepIndex!<(props.definition?.steps.length??0),
+ apply:async(action:TeachingAction)=>{if(action.kind!=='ANIMATION_SEEK'||!Number.isInteger(action.stepIndex)||action.stepIndex!< -1||action.stepIndex!>=(props.definition?.steps.length??0))return false;detail.value='debug';await nextTick();playback.goTo(action.stepIndex!);return true;},
+});
 </script>
 
 <template>

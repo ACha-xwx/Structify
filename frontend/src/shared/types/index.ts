@@ -8,4 +8,5 @@ export * from "./classroom";
 export * from "./code";
 export * from "./course";
 export * from "./learning";
+export * from "./studyroom";
 export type { SseEvent } from "./contracts";

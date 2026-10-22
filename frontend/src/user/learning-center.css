@@ -1,0 +1,73 @@
+.learning-center {
+  width: min(var(--workbench-width), 100%);
+  margin: 28px auto 0;
+  color: var(--text);
+  font-family: var(--font-ui);
+  align-self: start;
+}
+.center-header { display: flex; align-items: center; justify-content: space-between; gap: 28px; margin-bottom: 38px; }
+h1 { margin: 0; font-size: clamp(32px, 4vw, 50px); font-weight: 400; line-height: 1.15; letter-spacing: 0; }
+.center-intro { margin: 18px 0 0; color: var(--text-muted); font-size: 19px; line-height: 1.65; max-width: 65ch; }
+.center-kicker { margin: 0 0 14px; font-size: 17px; color: var(--text-muted); }
+.center-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 48px; padding: 0 23px; border: 1px double color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 999px; background: color-mix(in srgb, var(--surface) 62%, transparent);
+  color: var(--text); font: inherit; font-size: 19px; text-decoration: none; cursor: pointer;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 92%, transparent), 0 4px 12px color-mix(in srgb, var(--text) 7%, transparent);
+  transition: transform 160ms ease, background 160ms ease;
+}
+.center-button--primary {
+  min-height: 54px; white-space: nowrap;
+  background: color-mix(in srgb, var(--surface) 30%, transparent);
+  box-shadow: inset 2px -2px 1px -1px color-mix(in srgb, var(--surface) 90%, transparent), inset -2px 2px 1px -1px color-mix(in srgb, var(--surface) 90%, transparent), inset 0 0 2px color-mix(in srgb, var(--text) 44%, transparent), 0 7px 13px color-mix(in srgb, var(--text) 12%, transparent);
+  -webkit-backdrop-filter: blur(7px) saturate(1.08); backdrop-filter: blur(7px) saturate(1.08);
+}
+.center-button:hover { transform: translateY(-1px); background: color-mix(in srgb, var(--surface) 76%, transparent); }
+.resume-panel {
+  display: flex; align-items: center; justify-content: space-between; gap: 30px;
+  padding: 30px 32px; margin-bottom: 36px; border: 1px double color-mix(in srgb, var(--text) 15%, transparent);
+  border-radius: 26px; background: color-mix(in srgb, var(--surface) 58%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 92%, transparent), 0 10px 24px color-mix(in srgb, var(--text) 8%, transparent);
+  -webkit-backdrop-filter: blur(7px) saturate(1.08); backdrop-filter: blur(7px) saturate(1.08);
+}
+.resume-content { min-width: 0; max-width: 72%; }
+.resume-panel h2 { margin: 0 0 12px; font-size: 29px; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; }
+.resume-point { margin: 0; font-size: 19px; line-height: 1.65; color: var(--text-muted); }
+.resume-progress { display: grid; gap: 12px; max-width: 340px; margin-top: 22px; color: var(--text-muted); font-size: 16px; }
+progress { appearance: none; width: 100%; height: 4px; border: 0; border-radius: 4px; background: var(--line); color: var(--text-muted); }
+progress::-webkit-progress-bar { background: var(--line); border-radius: 4px; }
+progress::-webkit-progress-value { background: var(--text-muted); border-radius: 4px; }
+progress::-moz-progress-bar { background: var(--text-muted); }
+.library-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.library-heading h2 { display: flex; align-items: center; gap: 12px; margin: 0; font-size: 25px; font-weight: 500; }
+.library-heading h2 span { color: var(--text-muted); font-size: 18px; font-weight: 400; }
+.library-heading nav { display: flex; gap: 14px; flex-wrap: wrap; }
+.library-heading a { display: inline-flex; align-items: center; gap: 9px; min-height: 44px; padding: 0 18px; border: 1px double color-mix(in srgb, var(--text) 15%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--surface) 58%, transparent); color: var(--text); font-size: 18px; text-decoration: none; }
+.library-heading a:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.library-tools { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin: 24px 0; }
+.course-search { display: flex; align-items: center; gap: 12px; width: min(440px, 100%); min-height: 52px; padding: 0 19px; border: 1px double color-mix(in srgb, var(--text) 16%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--surface) 35%, transparent); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 92%, transparent); -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px); color: var(--text-muted); }
+.course-search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 18px; }
+.course-search:focus-within { outline: none; box-shadow: var(--focus-ring); }
+.course-sort { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; color: var(--text-muted); font-size: 17px; }
+.course-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.library-empty { display: grid; justify-items: center; gap: 18px; margin-top: 24px; padding: 50px 24px; text-align: center; color: var(--text-muted); }
+.library-empty h3 { margin: 0; font-size: 26px; font-weight: 400; color: var(--text); }
+.library-empty p { max-width: 50ch; margin: 0 0 8px; font-size: 19px; line-height: 1.7; }
+.center-status { padding: 26px; font-size: 19px; line-height: 1.7; color: var(--text-muted); }
+.center-status button { margin-left: 15px; }
+.center-footer { display: flex; justify-content: center; margin-top: 36px; padding: 12px 0; }
+.center-footer a { display: inline-flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 19px; text-decoration: none; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--text); outline-offset: 4px; }
+@media (max-width: 1000px) { .course-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .center-header { align-items: flex-start; flex-wrap: wrap; } }
+@media (max-width: 600px) {
+  .learning-center { margin-top: 12px; } .center-header { gap: 20px; margin-bottom: 28px; }
+  .center-intro { font-size: 17px; } .resume-panel { padding: 23px; flex-direction: column; align-items: flex-start; gap: 22px; }
+  .resume-content { max-width: 100%; width: 100%; } .resume-panel h2 { font-size: 25px; }
+  .resume-point { font-size: 17px; } .library-heading { flex-wrap: wrap; gap: 16px; }
+  .library-heading nav { gap: 10px; } .library-heading a { font-size: 17px; padding: 0 14px; }
+  .library-tools { flex-wrap: wrap; gap: 14px; } .course-search { box-sizing: border-box; width: 100%; }
+  .course-sort { margin-left: auto; font-size: 16px; } .course-grid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) { .center-button { transition: none; } }
+@media (prefers-reduced-transparency: reduce) { .resume-panel, .center-button, .course-search, .library-heading a { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; } }

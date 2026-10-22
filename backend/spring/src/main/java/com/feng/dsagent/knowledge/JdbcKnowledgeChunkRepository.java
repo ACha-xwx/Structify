@@ -20,7 +20,11 @@ class JdbcKnowledgeChunkRepository implements KnowledgeChunkRepository {
     @Override
     @Transactional
     public void replaceTextbook(Collection<KnowledgeChunk> chunks) {
-        jdbc.update("DELETE FROM knowledge_chunks WHERE source_path LIKE 'textbook/%'");
+        boolean courseware = chunks.stream().anyMatch(chunk -> chunk.source().startsWith("courseware/"));
+        jdbc.update("DELETE FROM knowledge_chunks WHERE source_path LIKE ?", courseware ? "courseware/%" : "textbook/%");
+        if (courseware) {
+            jdbc.update("DELETE FROM knowledge_chunks WHERE source_path LIKE 'dev-mock/%'");
+        }
         jdbc.batchUpdate(
             "INSERT INTO knowledge_chunks "
                 + "(id, chapter_id, title, content, source_path, page_label, review_status, license_scope) "

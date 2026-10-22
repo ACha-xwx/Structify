@@ -1,0 +1,48 @@
+import {test,expect} from './fixtures/studyroom';
+
+test('keeps drafts, resumes learning, renames and deletes owned courses',async({page})=>{
+ await page.goto('/studyroom');
+ await page.getByLabel('课程问题',{exact:true}).fill('栈的定义和C代码阅读，个人学习中心回归');
+ await page.getByRole('button',{name:'生成大纲',exact:true}).click();
+ await expect(page).toHaveURL(/\/studyroom\/outlines\//);
+ const draftUrl=page.url();
+ await expect(page.getByRole('button',{name:'确认大纲，开始学习'})).toBeEnabled();
+ await page.goto('/user');
+ const draft=page.getByTestId('course-card').filter({has:page.getByRole('link',{name:'继续编辑大纲'})}).first();
+ await expect(draft).toBeVisible();
+ await draft.getByRole('link',{name:'继续编辑大纲'}).click();
+ await expect(page).toHaveURL(draftUrl);
+ await page.getByRole('button',{name:'确认大纲，开始学习'}).click();
+ await expect(page).toHaveURL(/\/studyroom\/[a-f0-9-]+$/);
+ await expect(page.locator('.explanation:visible').filter({hasText:'最后进入的元素最先离开。'})).toBeVisible();
+ const roomUrl=page.url();
+ await expect.poll(async()=>{
+  const response=await page.request.get('/api/v1/users/courses');
+  return (await response.json()).some((c:{lastLearningAt:string|null})=>!!c.lastLearningAt);
+ }).toBeTruthy();
+ await page.goto('/user');
+ await expect(page.getByTestId('resume').getByRole('link',{name:'继续学习'})).toBeVisible();
+ await expect(page.getByTestId('resume').getByRole('link')).toHaveAttribute('href',new URL(roomUrl).pathname);
+ const card=page.getByTestId('course-card').filter({has:page.locator(`a[href="${new URL(roomUrl).pathname}"]`)});
+ await card.locator('summary').click();await card.getByRole('button',{name:'重命名',exact:true}).click();
+ const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();
+ await page.getByLabel('课程名称',{exact:true}).fill('我的栈课程 · 回归');
+ await dialog.getByRole('button',{name:'保存名称'}).click();await expect(dialog).not.toBeVisible();
+ await page.reload();await page.getByRole('searchbox').fill('我的栈课程 · 回归');
+ await expect(page.getByTestId('course-card')).toHaveCount(1);
+ await page.screenshot({path:'test-results/learning-center-desktop.png',fullPage:true});
+ await page.setViewportSize({width:390,height:844});
+ await expect(page.getByTestId('course-card')).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
+ await page.screenshot({path:'test-results/learning-center-mobile.png',fullPage:true});
+ await page.getByTestId('course-card').locator('summary').click();
+ await page.getByRole('button',{name:'删除课程',exact:true}).click();
+ await dialog.getByRole('button',{name:'取消'}).click();
+ await expect(page.getByTestId('course-card')).toHaveCount(1);
+ await page.getByTestId('course-card').locator('summary').click();await page.getByRole('button',{name:'删除课程',exact:true}).click();
+ await dialog.getByRole('button',{name:'删除课程',exact:true}).click();await expect(dialog).not.toBeVisible();
+ await expect(page.getByTestId('course-card')).toHaveCount(0);
+ await page.reload();await expect(page.getByText('我的栈课程 · 回归',{exact:true})).toHaveCount(0);
+ const removed=await page.request.get(`/api/v1/study-rooms/${new URL(roomUrl).pathname.split('/').pop()}`);
+ expect(removed.status()).toBe(404);
+});

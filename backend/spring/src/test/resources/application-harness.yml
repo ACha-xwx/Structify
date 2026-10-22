@@ -1,0 +1,23 @@
+server:
+  port: 8893
+spring:
+  datasource:
+    url: jdbc:h2:mem:studyroom-browser-harness;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password: ''
+app:
+  studyroom-generation:
+    enabled: true
+  security:
+    cors-allowed-origins: http://127.0.0.1:5183
+    cookie-secure: false
+  model:
+    api-key: harness-not-a-real-key
+    base-url: https://example.invalid/v1
+    name: harness-model
+  ai-quota:
+    daily-token-quota: 500000
+  knowledge:
+    enabled: false
+    auto-publish-local: false
+    directory: ./no-private-harness-materials

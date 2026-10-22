@@ -42,9 +42,9 @@ final class KnowledgeBootstrapRunner implements ApplicationRunner {
             if (corpus.stats().available()) {
                 int before = repository.findPublished().size();
                 repository.replaceTextbook(corpus.chunks());
-                search.replace(corpus.chunks());
+                search.replace(repository.findPublished());
                 LOGGER.info(
-                    "Loaded {} manifest-approved textbook lessons into {} knowledge chunks; "
+                    "Loaded {} original course lessons into {} knowledge chunks; "
                         + "published chunk count {} -> {}",
                     corpus.stats().lessonFiles(),
                     corpus.stats().chunkCount(),

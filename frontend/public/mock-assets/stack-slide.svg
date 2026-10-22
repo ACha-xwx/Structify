@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">模拟课件：栈与后进先出</title>
+  <desc id="desc">用于 Studyroom 界面测试的模拟课件页面，不是原版 PowerPoint 转换结果。</desc>
+  <rect width="1280" height="720" fill="#f8f7f2"/>
+  <rect x="0" y="0" width="18" height="720" fill="#4e6b60"/>
+  <text x="92" y="82" fill="#66716b" font-family="sans-serif" font-size="20" letter-spacing="4">DATA STRUCTURE · DEMO SLIDE</text>
+  <text x="92" y="184" fill="#222522" font-family="sans-serif" font-size="56" font-weight="700">栈：后进先出</text>
+  <text x="94" y="238" fill="#656b66" font-family="sans-serif" font-size="25">Last In, First Out · LIFO</text>
+  <g font-family="sans-serif" font-size="26" fill="#343a36">
+    <circle cx="112" cy="330" r="7" fill="#5d7b6d"/><text x="142" y="339">插入和删除都发生在栈顶</text>
+    <circle cx="112" cy="398" r="7" fill="#5d7b6d"/><text x="142" y="407">最后进入的元素最先离开</text>
+    <circle cx="112" cy="466" r="7" fill="#5d7b6d"/><text x="142" y="475">常见操作：push（入栈）与 pop（出栈）</text>
+  </g>
+  <g transform="translate(890 290)">
+    <rect x="0" y="0" width="230" height="300" rx="18" fill="#e9ece7"/>
+    <rect x="52" y="180" width="126" height="58" rx="8" fill="#fff" stroke="#829288" stroke-width="3"/>
+    <rect x="52" y="116" width="126" height="58" rx="8" fill="#fff" stroke="#829288" stroke-width="3"/>
+    <rect x="52" y="52" width="126" height="58" rx="8" fill="#dce8df" stroke="#5d7b6d" stroke-width="3"/>
+    <text x="115" y="218" text-anchor="middle" fill="#343a36" font-family="sans-serif" font-size="26">3</text>
+    <text x="115" y="154" text-anchor="middle" fill="#343a36" font-family="sans-serif" font-size="26">5</text>
+    <text x="115" y="90" text-anchor="middle" fill="#343a36" font-family="sans-serif" font-size="26">栈顶</text>
+    <path d="M115 16V42" stroke="#5d7b6d" stroke-width="4" stroke-linecap="round"/><path d="m105 32 10 12 10-12" fill="none" stroke="#5d7b6d" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="92" y="662" fill="#898e89" font-family="sans-serif" font-size="16">本页为前端测试用模拟资源，不代表已接入真实课件或知识库。</text>
+  <text x="1170" y="662" text-anchor="end" fill="#898e89" font-family="sans-serif" font-size="16">01 / 03</text>
+</svg>

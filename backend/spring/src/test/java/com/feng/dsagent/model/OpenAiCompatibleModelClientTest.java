@@ -36,6 +36,15 @@ class OpenAiCompatibleModelClientTest {
     }
 
     @Test
+    void preservesTruncationReasonAndReportedUsageForStructuredCallers() throws Exception {
+        URI baseUrl = startServer("/v1/chat/completions", exchange -> respond(exchange, 200, "application/json",
+            "{\"choices\":[{\"message\":{\"content\":\"{\\\"steps\\\":[\"},\"finish_reason\":\"length\"}],\"usage\":{\"total_tokens\":123}}" )).resolve("/v1/");
+        ModelResponse response = client(baseUrl, API_KEY, Duration.ofSeconds(2), Duration.ofSeconds(2)).complete(new ModelRequest(List.of(new ModelMessage("user", "Outline"))));
+        assertThat(response.finishReason()).isEqualTo("length");
+        assertThat(response.totalTokens()).isEqualTo(123L);
+    }
+
+    @Test
     void completesUsingOpenAiRequestShapeAndBearerAuthenticationOnly() throws Exception {
         AtomicReference<String> authorization = new AtomicReference<>();
         AtomicReference<String> apiKey = new AtomicReference<>();

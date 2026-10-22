@@ -1,165 +1,62 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
-import { X } from "@lucide/vue";
-import BrandStage from "../../shared/components/BrandStage.vue";
-import { useI18n } from "../../shared/i18n/locale";
-import type { ClassroomBookmark } from "../../shared/types/contracts";
-import { userApi } from "../runtime";
-
-/**
- * The learner's own space: the steps they saved while a lesson was running.
- *
- * A saved step keeps the lesson it came from and the page that was on screen, so coming back here
- * offers two honest ways in - the courseware page itself, or the lesson it was part of.
- */
-const { t } = useI18n();
-const router = useRouter();
-const bookmarks = ref<ClassroomBookmark[]>([]);
-const loading = ref(true);
-const error = ref("");
-
-/** Saved steps read best under their lesson: the same lesson is usually saved more than once. */
-const groups = computed(() => {
-  const byLesson = new Map<string, { title: string; items: ClassroomBookmark[] }>();
-  for (const bookmark of bookmarks.value) {
-    const key = bookmark.lessonId || bookmark.sessionId;
-    const group = byLesson.get(key) ?? { title: bookmark.lessonTitle || t("profile.lessonFallback"), items: [] };
-    group.items.push(bookmark);
-    byLesson.set(key, group);
-  }
-  return [...byLesson.entries()].map(([key, group]) => ({
-    key,
-    title: group.title,
-    items: [...group.items].sort((a, b) => a.stepIndex - b.stepIndex),
-  }));
-});
-
-function openPage(bookmark: ClassroomBookmark) {
-  void router.push({ path: "/courseware", query: { lesson: bookmark.lessonId, slide: bookmark.slideId } });
+import {computed,onBeforeUnmount,onMounted,ref} from 'vue';
+import {ArrowRight,ArrowUpRight,Plus,Search,Bookmark,Network,BookOpen,ArrowDownWideNarrow} from '@lucide/vue';
+import BrandStage from '../../shared/components/BrandStage.vue';
+import AiTitle from '../../shared/components/AiTitle.vue';
+import CourseCard from '../components/CourseCard.vue';
+import CourseActionDialog from '../components/CourseActionDialog.vue';
+import {courseLibrary,courseDestination,resumeCourse,sortCourses,type PersonalCourse} from '../course-library';
+import {useLearningCenterCopy} from '../learning-center-copy';
+const {copy}=useLearningCenterCopy();
+const courses=ref<PersonalCourse[]>([]);const loading=ref(true);const error=ref('');const search=ref('');
+const action=ref<{mode:'rename'|'delete';course:PersonalCourse}|null>(null);const busy=ref(false);const actionError=ref('');
+const ordered=computed(()=>sortCourses(courses.value));const resume=computed(()=>resumeCourse(courses.value));
+const filtered=computed(()=>ordered.value.filter(c=>c.title.toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase())));
+const resumeAction=computed(()=>!resume.value?copy.value.newCourse:resume.value.status==='DRAFT'?copy.value.draftAction:resume.value.status==='COMPLETED'?copy.value.reviewAction:resume.value.readableFragments?copy.value.learnAction:resume.value.status==='NEEDS_ATTENTION'?copy.value.attentionAction:copy.value.prepareAction);
+let alive=true;let listVersion=0;let timer:ReturnType<typeof setTimeout>|undefined;
+async function load(initial=true){
+ const version=++listVersion;clearTimeout(timer);if(initial)loading.value=true;error.value='';
+ try{const items=await courseLibrary.list();if(alive&&version===listVersion)courses.value=items;}
+ catch{if(alive&&version===listVersion&&initial)error.value=copy.value.loadFailed;}
+ finally{if(alive){loading.value=false;timer=setTimeout(()=>{if(document.visibilityState==='visible'&&!action.value)void load(false);else schedule();},15000);}}
 }
-
-function backToLesson(bookmark: ClassroomBookmark) {
-  void router.push({ path: "/classroom", query: { session: bookmark.sessionId } });
+function schedule(){clearTimeout(timer);if(alive)timer=setTimeout(()=>void load(false),15000);}
+function open(mode:'rename'|'delete',course:PersonalCourse){action.value={mode,course};actionError.value='';}
+async function confirm(title:string){
+ if(!action.value||busy.value)return;const selected=action.value;
+ if(selected.mode==='rename'&&(!title||title.length>160)){actionError.value=copy.value.invalidName;return;}
+ busy.value=true;listVersion++;actionError.value='';
+ try{
+  if(selected.mode==='rename'){await courseLibrary.rename(selected.course.id,title);courses.value=courses.value.map(c=>c.id===selected.course.id?{...c,title}:c);}
+  else{await courseLibrary.remove(selected.course.id);courses.value=courses.value.filter(c=>c.id!==selected.course.id);}
+  action.value=null;
+ }catch{actionError.value=selected.mode==='rename'?copy.value.renameFailed:copy.value.deleteFailed;}
+ finally{busy.value=false;}
 }
-
-async function remove(bookmark: ClassroomBookmark) {
-  try {
-    await userApi.deleteBookmark(bookmark.id);
-    bookmarks.value = bookmarks.value.filter((item) => item.id !== bookmark.id);
-  } catch {
-    error.value = t("profile.failed");
-  }
-}
-
-function savedAt(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString();
-}
-
-onMounted(async () => {
-  try {
-    bookmarks.value = await userApi.listBookmarks();
-  } catch {
-    error.value = t("profile.failed");
-  } finally {
-    loading.value = false;
-  }
-});
+onMounted(()=>void load());onBeforeUnmount(()=>{alive=false;clearTimeout(timer);});
 </script>
-
 <template>
-  <BrandStage wide>
-    <section class="profile" aria-labelledby="profile-title">
-      <h1 id="profile-title" class="workbench-title">{{ t("home.profile") }}</h1>
-
-      <RouterLink class="profile__map" to="/learning-map">{{ t("map.title") }}</RouterLink>
-      <p v-if="loading" class="profile__status">{{ t("profile.loading") }}</p>
-      <p v-else-if="!bookmarks.length && !error" class="profile__status">{{ t("profile.empty") }}</p>
-      <p v-if="error" class="profile__status" role="alert">{{ error }}</p>
-
-      <div v-for="group in groups" :key="group.key" class="profile__group">
-        <h2 class="profile__lesson">{{ group.title }}</h2>
-        <ul class="profile__list">
-          <li v-for="bookmark in group.items" :key="bookmark.id" class="profile__item">
-            <div class="profile__body">
-              <p class="profile__step">{{ t("profile.step", { index: bookmark.stepIndex + 1 }) }}</p>
-              <p class="profile__title">{{ bookmark.title }}</p>
-              <p class="profile__time">{{ savedAt(bookmark.createdAt) }}</p>
-            </div>
-            <div class="profile__actions">
-              <button v-if="bookmark.slideId" class="profile__action" type="button" @click="openPage(bookmark)">{{ t("profile.openPage") }}</button>
-              <button class="profile__action" type="button" @click="backToLesson(bookmark)">{{ t("profile.backToLesson") }}</button>
-              <button class="profile__action profile__action--quiet" type="button" :aria-label="t('profile.remove')" :title="t('profile.remove')" @click="remove(bookmark)">
-                <X :size="18" aria-hidden="true" />
-              </button>
-            </div>
-          </li>
-        </ul>
-      </div>
-
-      <RouterLink class="profile__back" to="/begin">{{ t("common.backHome") }}</RouterLink>
+ <BrandStage wide>
+  <main class="learning-center" aria-labelledby="learning-center-title">
+   <header class="center-header"><div><AiTitle><h1 id="learning-center-title">{{copy.title}}</h1></AiTitle><p class="center-intro">{{copy.intro}}</p></div><RouterLink class="center-button center-button--primary" to="/studyroom"><Plus :size="19"/>{{copy.newCourse}}</RouterLink></header>
+   <p v-if="loading" class="center-status" role="status">{{copy.loading}}</p>
+   <div v-else-if="error" class="center-status" role="alert">{{error}} <button class="center-button" type="button" data-action="reload" @click="load()">{{copy.retry}}</button></div>
+   <template v-else>
+    <section v-if="resume" class="resume-panel" data-testid="resume" aria-labelledby="resume-title">
+     <div class="resume-content"><p class="center-kicker">{{resume.lastLearningAt?copy.resume:copy.recent}}</p><h2 id="resume-title">{{resume.title}}</h2><p v-if="resume.lastPointTitle" class="resume-point">{{copy.point}}：{{resume.lastPointTitle}}</p><p v-else class="resume-point">{{resume.status==='DRAFT'?copy.draftHint:resume.status==='NEEDS_ATTENTION'?copy.attentionHint:copy.prepareHint}}</p><div v-if="resume.totalPoints" class="resume-progress"><span>{{resume.completedPoints}} / {{resume.totalPoints}} {{copy.progress}}</span><progress :value="resume.completedPoints" :max="resume.totalPoints" :aria-label="copy.progress"/></div></div>
+     <RouterLink class="center-button center-button--primary" :to="courseDestination(resume)">{{resumeAction}}<ArrowRight :size="17"/></RouterLink>
     </section>
-  </BrandStage>
+    <section class="course-library" aria-labelledby="course-library-title">
+     <div class="library-heading"><h2 id="course-library-title">{{copy.courses}} <span>{{courses.length}}</span></h2><nav :aria-label="copy.eyebrow"><RouterLink to="/user/bookmarks"><Bookmark :size="15"/>{{copy.bookmarks}}<ArrowUpRight :size="13"/></RouterLink><RouterLink to="/learning-map"><Network :size="15"/>{{copy.map}}<ArrowUpRight :size="13"/></RouterLink></nav></div>
+     <div v-if="courses.length" class="library-tools"><label class="course-search"><Search :size="17"/><input v-model="search" type="search" :placeholder="copy.search" :aria-label="copy.search" maxlength="160"/></label><span class="course-sort"><ArrowDownWideNarrow :size="15"/>{{copy.sort}}</span></div>
+     <div v-if="filtered.length" class="course-grid"><CourseCard v-for="course in filtered" :key="course.id" :course="course" @rename="open('rename',$event)" @remove="open('delete',$event)"/></div>
+     <div v-else-if="courses.length" class="library-empty"><Search :size="26" :stroke-width="1.25"/><h3>{{copy.noResults}}</h3><button type="button" class="center-button" @click="search=''">{{copy.clear}}</button></div>
+     <div v-else class="library-empty"><BookOpen :size="36" :stroke-width="1.25"/><h3>{{copy.empty}}</h3><p>{{copy.emptyHint}}</p><RouterLink class="center-button center-button--primary" to="/studyroom">{{copy.newCourse}}<ArrowRight :size="16"/></RouterLink></div>
+    </section>
+   </template>
+   <footer class="center-footer"><RouterLink to="/begin">{{copy.back}}<ArrowUpRight :size="16"/></RouterLink></footer>
+   <CourseActionDialog v-if="action" :key="`${action.mode}:${action.course.id}`" :course="action.course" :mode="action.mode" :busy="busy" :error="actionError" @close="action=null" @confirm="confirm"/>
+  </main>
+ </BrandStage>
 </template>
-
-<style scoped>
-.profile { display: grid; width: min(var(--workbench-width), 100%); margin: 0 auto; gap: 22px; justify-items: start; }
-.profile__status { margin: 0; color: var(--text-muted); font-size: 19px; line-height: 1.5; }
-.profile__group { display: grid; width: 100%; gap: 10px; }
-.profile__lesson { margin: 0; font-size: 19px; font-weight: 620; }
-.profile__list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
-.profile__item {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 14px 16px;
-  border: 1px double color-mix(in srgb, var(--text) 15%, transparent);
-  border-radius: 22px;
-  background: color-mix(in srgb, var(--surface) 58%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 92%, transparent), 0 10px 24px color-mix(in srgb, var(--text) 8%, transparent);
-  -webkit-backdrop-filter: blur(7px) saturate(1.08);
-  backdrop-filter: blur(7px) saturate(1.08);
-}
-.profile__body { display: grid; gap: 4px; min-width: 0; }
-.profile__step { margin: 0; color: var(--text-muted); font-size: 19px; }
-.profile__title { margin: 0; font-size: 19px; line-height: 1.5; overflow-wrap: anywhere; }
-.profile__time { margin: 0; color: var(--text-muted); font-size: 19px; }
-.profile__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.profile__action {
-  min-height: 40px;
-  padding: 0 16px;
-  border: 1px solid color-mix(in srgb, var(--text) 20%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface) 62%, transparent);
-  color: var(--text);
-  font: inherit;
-  font-size: 19px;
-  cursor: pointer;
-  transition: transform 160ms ease, background 160ms ease;
-}
-.profile__action:hover { transform: translateY(-1px); background: color-mix(in srgb, var(--text) 8%, transparent); }
-.profile__action:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-.profile__action--quiet { display: inline-grid; width: 40px; padding: 0; place-items: center; border-color: transparent; background: transparent; }
-.profile__map {
-  display: inline-flex;
-  min-height: 48px;
-  align-items: center;
-  padding: 0 22px;
-  border: 1px double color-mix(in srgb, var(--text) 15%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface) 58%, transparent);
-  color: var(--text);
-  font-size: 19px;
-  text-decoration: none;
-}
-.profile__map:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
-.profile__back { color: var(--text); font-size: 19px; }
-.profile__back:focus-visible { outline: 2px solid var(--text); outline-offset: 4px; }
-@media (prefers-reduced-motion: reduce) { .profile__action { transition: none; } }
-@media (prefers-reduced-transparency: reduce) {
-  .profile__item { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
-}
-</style>
+<style scoped src="../learning-center.css"></style>

@@ -65,6 +65,7 @@ final class PinnedOpenAiCompatibleModelClient implements ModelClient {
             String responseBody = readResponseBody(response.body());
             String content;
             Long totalTokens;
+            String finishReason;
             try {
                 JsonNode payload = objectMapper.readTree(responseBody);
                 content = payload
@@ -74,13 +75,14 @@ final class PinnedOpenAiCompatibleModelClient implements ModelClient {
                     .path("content")
                     .asText();
                 totalTokens = reportedTotalTokens(payload);
+                finishReason = payload.path("choices").path(0).path("finish_reason").asText("");
             } catch (Exception error) {
                 throw failure(MODEL_RESPONSE_READ_FAILED);
             }
             if (content == null || content.isBlank()) {
                 throw failure(MODEL_EMPTY_RESPONSE);
             }
-            return new ModelResponse(content, totalTokens);
+            return new ModelResponse(content, totalTokens, finishReason);
         } catch (ModelClientException error) {
             throw error;
         } catch (IOException error) {

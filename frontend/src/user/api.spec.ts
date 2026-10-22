@@ -93,4 +93,18 @@ describe("用户端 API 边界", () => {
     await expect(api.getLearningWorkbench()).resolves.toMatchObject({ currentChapterId: "sequential-list" });
     expect(request).toHaveBeenCalledWith("/learning/workbench");
   });
+
+  it("normalizes resource types when restoring the current classroom", async () => {
+    const request=vi.fn().mockResolvedValue({kind:"json",data:{id:"room",steps:[{resources:[{type:"ppt"},{type:"animation"},{type:"c_code"}]}]}});
+    const api=createUserApi({request} as never);
+    const room=await api.getStudyroom("room/1");
+    expect(room.steps[0].resources.map(resource=>resource.type)).toEqual(["PPT","ANIMATION","C_CODE"]);
+    expect(request).toHaveBeenCalledWith("/study-rooms/room%2F1");
+  });
+  it("persists progress without invoking question generation",async()=>{
+    const request=vi.fn().mockResolvedValue({kind:"json",data:{currentStepId:"step-2",version:2,updatedAt:"2026-10-11T00:00:00Z"}});
+    const api=createUserApi({request} as never);await api.updateStudyroomProgress("room-1","step-2");
+    expect(request).toHaveBeenCalledOnce();
+    expect(request).toHaveBeenCalledWith("/study-rooms/room-1/progress",{method:"PATCH",body:{stepId:"step-2"}});
+  });
 });

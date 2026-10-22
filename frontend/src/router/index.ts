@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
+import { createRouter, createWebHistory, type RouteRecordRaw, type RouteLocation } from "vue-router";
 import { auth } from "../app/providers/runtime";
 import { createRouteGuard } from "./guards";
 const HomeView = () => import("../shared/views/HomeView.vue");
@@ -11,6 +11,8 @@ const ChatView = () => import("../user/views/ChatView.vue");
 const AuthView = () => import("../shared/views/AuthView.vue");
 const ForbiddenView = () => import("../shared/views/ForbiddenView.vue");
 const NotFoundView = () => import("../shared/views/NotFoundView.vue");
+const StudyroomOutlineView = () => import("../user/views/StudyroomOutlineView.vue");
+const StudyroomView = () => import("../user/views/StudyroomView.vue");
 import { userRoutes } from "../user/routes";
 import { adminRoutes } from "../admin/routes";
 
@@ -26,8 +28,15 @@ export const routes: RouteRecordRaw[] = [
   { path: "/animation", name: "animation-lab", component: AnimationLabView, meta: { requiresAuth: true, layout: "workbench", module: "动画实验室" } },
   // The original app let guests run C experiments without an account; that stays.
   { path: "/compiler", name: "compiler", component: CodeEditorView, meta: { layout: "workbench", module: "C 编辑器" } },
-  // Asking the course directly. Its backend never left; the page was dropped in the stage refactor.
-  { path: "/chat", name: "chat", component: ChatView, meta: { requiresAuth: true, layout: "workbench", module: "课程问答" } },
+  { path: "/chat", name: "chat", component: StudyroomOutlineView, meta: { requiresAuth: true, layout: "workbench", module: "课程问答" } },
+  { path: "/chat-legacy", name: "chat-legacy", component: ChatView, meta: { requiresAuth: true, layout: "workbench", module: "旧版课程问答" } },
+  { path: "/studyroom", name: "studyroom-new", component: StudyroomOutlineView, meta: { requiresAuth: true, layout: "workbench", module: "课程问答" } },
+  { path: "/studyroom/outlines/:draftId", name: "studyroom-outline", component: StudyroomOutlineView, meta: { requiresAuth: true, layout: "workbench", module: "课程问答" } },
+  { path: "/studyroom/:id", name: "studyroom", component: StudyroomView, props: true, meta: { requiresAuth: true, layout: "workbench", module: "课程问答" } },
+  ...(import.meta.env.DEV ? [
+    { path: "/studyroom-demo", name: "studyroom-demo-new", redirect: "/studyroom", meta: { requiresAuth: true } },
+    { path: "/studyroom-demo/:id", name: "studyroom-demo", redirect: (to: RouteLocation) => `/studyroom/${encodeURIComponent(String(to.params.id))}`, meta: { requiresAuth: true } },
+  ] : []),
   { path: "/login", name: "login", component: AuthView, props: { mode: "login" }, meta: { layout: "auth" } },
   { path: "/register", name: "register", component: AuthView, props: { mode: "register" }, meta: { layout: "auth" } },
   { path: "/reset-password", name: "reset-password", component: AuthView, props: { mode: "reset" }, meta: { layout: "auth" } },
