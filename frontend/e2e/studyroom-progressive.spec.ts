@@ -35,7 +35,7 @@ test('a failed later fragment is explicit and can be retried independently',asyn
 test('leaving the preparation page never forces navigation back',async({page})=>{
   await approve(page,'栈的定义和C代码阅读，等待保护');
   await page.getByRole('link',{name:'返回学习入口'}).click();
-  await expect(page).toHaveURL('/');
+  await expect(page).toHaveURL('/begin');
   await page.waitForTimeout(4500);
-  await expect(page).toHaveURL('/');
+  await expect(page).toHaveURL('/begin');
 });

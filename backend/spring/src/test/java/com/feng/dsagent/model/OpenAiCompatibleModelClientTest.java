@@ -36,12 +36,49 @@ class OpenAiCompatibleModelClientTest {
     }
 
     @Test
-    void preservesTruncationReasonAndReportedUsageForStructuredCallers() throws Exception {
+    void rejectsTruncatedCompletionAndPreservesReportedUsageForQuotaSettlement() throws Exception {
         URI baseUrl = startServer("/v1/chat/completions", exchange -> respond(exchange, 200, "application/json",
             "{\"choices\":[{\"message\":{\"content\":\"{\\\"steps\\\":[\"},\"finish_reason\":\"length\"}],\"usage\":{\"total_tokens\":123}}" )).resolve("/v1/");
-        ModelResponse response = client(baseUrl, API_KEY, Duration.ofSeconds(2), Duration.ofSeconds(2)).complete(new ModelRequest(List.of(new ModelMessage("user", "Outline"))));
-        assertThat(response.finishReason()).isEqualTo("length");
-        assertThat(response.totalTokens()).isEqualTo(123L);
+        ModelClientException error = catchThrowableOfType(
+            () -> client(baseUrl, API_KEY, Duration.ofSeconds(2), Duration.ofSeconds(2))
+                .complete(new ModelRequest(List.of(new ModelMessage("user", "Outline")))),
+            ModelClientException.class
+        );
+
+        assertThat(error.code()).isEqualTo("MODEL_OUTPUT_TRUNCATED");
+        assertThat(error.consumedTokens()).isEqualTo(123L);
+    }
+
+    @Test
+    void rejectsTruncatedStreamAfterReadingProviderUsage() throws Exception {
+        URI baseUrl = startServer("/chat/completions", exchange ->
+            respond(exchange, 200, "text/event-stream", """
+                data: {"choices":[{"delta":{"content":"partial answer"},"finish_reason":"length"}]}
+
+                data: {"choices":[],"usage":{"total_tokens":123}}
+
+                data: [DONE]
+
+                """)
+        );
+        ModelClient client = client(baseUrl, API_KEY, Duration.ofSeconds(2), Duration.ofSeconds(2));
+        List<String> fragments = new ArrayList<>();
+        List<Long> usages = new ArrayList<>();
+
+        ModelClientException error = catchThrowableOfType(
+            () -> client.stream(new ModelRequest(List.of(new ModelMessage("user", "Outline"))), new ModelStreamHandler() {
+                @Override
+                public void onContent(String content) { fragments.add(content); }
+                @Override
+                public void onUsage(Long totalTokens) { usages.add(totalTokens); }
+            }),
+            ModelClientException.class
+        );
+
+        assertThat(error.code()).isEqualTo("MODEL_OUTPUT_TRUNCATED");
+        assertThat(error.consumedTokens()).isEqualTo(123L);
+        assertThat(fragments).containsExactly("partial answer");
+        assertThat(usages).containsExactly(123L);
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.feng.dsagent.modelconfig;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import com.feng.dsagent.model.ModelClientException;
 import com.feng.dsagent.model.ModelMessage;
 import com.feng.dsagent.model.ModelProperties;
 import com.feng.dsagent.model.ModelRequest;
@@ -55,6 +56,23 @@ class PinnedOpenAiCompatibleModelClientTest {
         assertThat(connections.request()).contains("POST /v1/chat/completions HTTP/1.1\r\n");
         assertThat(connections.request()).contains("Authorization: Bearer opaque-key\r\n");
         assertThat(connections.request()).contains("\"model\":\"model-a\"");
+    }
+
+    @Test
+    void rejectsTruncatedCompletionAndPreservesReportedUsageForQuotaSettlement() {
+        RecordingConnections connections = new RecordingConnections("""
+            {"choices":[{"message":{"content":"partial answer"},"finish_reason":"length"}],"usage":{"total_tokens":37}}
+            """);
+        PinnedOpenAiCompatibleModelClient client = new PinnedOpenAiCompatibleModelClient(
+            settings(), defaults(), new ObjectMapper(), new PinnedHttpsTransport(connections));
+
+        ModelClientException error = catchThrowableOfType(
+            () -> client.complete(new ModelRequest(List.of(new ModelMessage("user", "hello")))),
+            ModelClientException.class
+        );
+
+        assertThat(error.code()).isEqualTo("MODEL_OUTPUT_TRUNCATED");
+        assertThat(error.consumedTokens()).isEqualTo(37L);
     }
 
     @Test
@@ -253,6 +271,37 @@ class PinnedOpenAiCompatibleModelClientTest {
         assertThat(reasoning).containsExactly("Consider ", "the top.");
         assertThat(usages).containsExactly(53L);
         assertThat(connections.request()).contains("\"stream_options\":{\"include_usage\":true}");
+    }
+
+    @Test
+    void rejectsTruncatedStreamAfterReadingProviderUsage() {
+        RecordingConnections connections = new RecordingConnections("""
+            data: {"choices":[{"delta":{"content":"partial answer"},"finish_reason":"length"}]}
+
+            data: {"choices":[],"usage":{"total_tokens":37}}
+
+            data: [DONE]
+            """);
+        PinnedOpenAiCompatibleModelClient client = new PinnedOpenAiCompatibleModelClient(
+            settings(), defaults(), new ObjectMapper(), new PinnedHttpsTransport(connections));
+        List<String> fragments = new ArrayList<>();
+        List<Long> usages = new ArrayList<>();
+
+        ModelClientException error = catchThrowableOfType(
+            () -> client.stream(new ModelRequest(List.of(new ModelMessage("user", "hello"))),
+                new com.feng.dsagent.model.ModelStreamHandler() {
+                    @Override
+                    public void onContent(String content) { fragments.add(content); }
+                    @Override
+                    public void onUsage(Long totalTokens) { usages.add(totalTokens); }
+                }),
+            ModelClientException.class
+        );
+
+        assertThat(error.code()).isEqualTo("MODEL_OUTPUT_TRUNCATED");
+        assertThat(error.consumedTokens()).isEqualTo(37L);
+        assertThat(fragments).containsExactly("partial answer");
+        assertThat(usages).containsExactly(37L);
     }
 
     @Test

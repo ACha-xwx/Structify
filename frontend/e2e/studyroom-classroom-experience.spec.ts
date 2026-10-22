@@ -78,6 +78,7 @@ test('keeps long lessons, checks and question history within a single viewport',
   const explanation=page.getByLabel('完整讲解正文');
   expect(await explanation.evaluate(element=>element.scrollHeight>element.clientHeight)).toBe(true);
   await explanation.hover();await page.mouse.wheel(0,320);
+  await expect.poll(()=>explanation.evaluate(element=>element.scrollTop)).toBeGreaterThan(0);
   const position=await explanation.evaluate(element=>element.scrollTop);
   await page.getByRole('button',{name:'对这里提问 ↗',exact:true}).click();
   await expect(page.getByLabel('课程问题',{exact:true})).toBeFocused();

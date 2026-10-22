@@ -6,8 +6,10 @@ import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -46,5 +48,73 @@ class ClassroomEventApiTest {
         org.junit.jupiter.api.Assertions.assertTrue(body.contains("event:reset"));
         org.junit.jupiter.api.Assertions.assertTrue(body.contains("\"cursor\":1"));
         org.junit.jupiter.api.Assertions.assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM studyroom_generation_jobs WHERE draft_id='events-api'",Integer.class));
+    }
+
+    @Test void activeSubscriptionsAreCappedAndReleasedWhenTheStreamTerminates() throws Exception {
+        String url="/api/v1/study-outlines/events-api/events";
+        List<MvcResult> subscriptions = new ArrayList<>();
+        for (int index=0; index<4; index++) {
+            var result = mvc.perform(get(url).header("Authorization",auth(USER)))
+                .andExpect(status().isOk()).andReturn();
+            org.junit.jupiter.api.Assertions.assertTrue(result.getRequest().isAsyncStarted());
+            subscriptions.add(result);
+        }
+
+        mvc.perform(get(url).header("Authorization",auth(USER)))
+            .andExpect(status().isTooManyRequests())
+            .andExpect(jsonPath("$.code").value("CLASSROOM_EVENT_SUBSCRIPTIONS_LIMITED"));
+
+        events.append(USER,"outline:events-api","operation",1,"failed",Map.of("code","TEST"),Map.of("phase","FAILED"),true);
+        for (var subscription : subscriptions) {
+            mvc.perform(asyncDispatch(subscription)).andExpect(status().isOk());
+        }
+
+        var reopened = mvc.perform(get(url).header("Authorization",auth(USER)))
+            .andExpect(status().isOk()).andReturn();
+        mvc.perform(asyncDispatch(reopened)).andExpect(status().isOk());
+    }
+
+    @Test void subscriptionPermitsEnforceGlobalAndPerUserCapsAndReleaseIdempotently() {
+        var globalLimiter = new ClassroomEventSubscriptions.SubscriptionLimiter(2,2);
+        var first = globalLimiter.acquire(USER);
+        var second = globalLimiter.acquire(OTHER);
+        var globalLimit = org.junit.jupiter.api.Assertions.assertThrows(
+            com.feng.dsagent.common.ApiException.class,
+            () -> globalLimiter.acquire(OTHER+1)
+        );
+        org.junit.jupiter.api.Assertions.assertEquals(HttpStatus.TOO_MANY_REQUESTS, globalLimit.status());
+
+        first.close();
+        first.close();
+        try (var replacement = globalLimiter.acquire(USER)) {
+            org.junit.jupiter.api.Assertions.assertThrows(
+                com.feng.dsagent.common.ApiException.class,
+                () -> globalLimiter.acquire(OTHER+1)
+            );
+        }
+        second.close();
+
+        var userLimiter = new ClassroomEventSubscriptions.SubscriptionLimiter(3,1);
+        var userPermit = userLimiter.acquire(USER);
+        var userLimit = org.junit.jupiter.api.Assertions.assertThrows(
+            com.feng.dsagent.common.ApiException.class,
+            () -> userLimiter.acquire(USER)
+        );
+        org.junit.jupiter.api.Assertions.assertEquals(HttpStatus.TOO_MANY_REQUESTS, userLimit.status());
+
+        try (var other = userLimiter.acquire(OTHER)) {
+            userPermit.close();
+            userPermit.close();
+            try (var replacement = userLimiter.acquire(USER)) {
+                org.junit.jupiter.api.Assertions.assertThrows(
+                    com.feng.dsagent.common.ApiException.class,
+                    () -> userLimiter.acquire(USER)
+                );
+            }
+            org.junit.jupiter.api.Assertions.assertThrows(
+                com.feng.dsagent.common.ApiException.class,
+                () -> userLimiter.acquire(OTHER)
+            );
+        }
     }
 }

@@ -2,6 +2,7 @@ package com.feng.dsagent.model;
 
 import static com.feng.dsagent.model.ModelErrorCode.MODEL_EMPTY_RESPONSE;
 import static com.feng.dsagent.model.ModelErrorCode.MODEL_NOT_CONFIGURED;
+import static com.feng.dsagent.model.ModelErrorCode.MODEL_OUTPUT_TRUNCATED;
 import static com.feng.dsagent.model.ModelErrorCode.MODEL_REQUEST_FAILED;
 import static com.feng.dsagent.model.ModelErrorCode.MODEL_REQUEST_TIMEOUT;
 import static com.feng.dsagent.model.ModelErrorCode.MODEL_RESPONSE_READ_FAILED;
@@ -95,6 +96,9 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
         } catch (Exception error) {
             throw failure(MODEL_RESPONSE_READ_FAILED);
         }
+        if ("length".equalsIgnoreCase(finishReason)) {
+            throw failure(MODEL_OUTPUT_TRUNCATED, totalTokens);
+        }
         if (content == null || content.isBlank()) {
             throw failure(MODEL_EMPTY_RESPONSE);
         }
@@ -175,6 +179,8 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
 
     private void readStream(InputStream input, ModelStreamHandler handler) {
         StringBuilder receivedContent = new StringBuilder();
+        Long reportedTokens = null;
+        boolean outputTruncated = false;
         InputStream limitedInput = new ResponseSizeLimitedInputStream(input, maximumResponseBytes());
         try (
             ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
@@ -184,6 +190,9 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
             while (true) {
                 String line = readLine(reader, executor, limitedInput);
                 if (line == null) {
+                    if (outputTruncated) {
+                        throw failure(MODEL_OUTPUT_TRUNCATED, reportedTokens);
+                    }
                     throw failure(MODEL_STREAM_READ_FAILED);
                 }
                 if (!line.startsWith("data:")) {
@@ -191,6 +200,9 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
                 }
                 String data = line.substring("data:".length()).trim();
                 if ("[DONE]".equals(data)) {
+                    if (outputTruncated) {
+                        throw failure(MODEL_OUTPUT_TRUNCATED, reportedTokens);
+                    }
                     if (receivedContent.toString().isBlank()) {
                         throw failure(MODEL_EMPTY_RESPONSE);
                     }
@@ -202,7 +214,12 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
                 JsonNode event = streamEvent(data);
                 Long totalTokens = reportedTotalTokens(event);
                 if (totalTokens != null) {
+                    reportedTokens = totalTokens;
                     handler.onUsage(totalTokens);
+                }
+                String finishReason = event.path("choices").path(0).path("finish_reason").asText("");
+                if ("length".equalsIgnoreCase(finishReason)) {
+                    outputTruncated = true;
                 }
                 JsonNode reasoning = event.path("choices").path(0).path("delta").path("reasoning_content");
                 if (reasoning.isString() && !reasoning.asText().isEmpty()) {

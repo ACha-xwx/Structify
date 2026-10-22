@@ -9,6 +9,7 @@ public enum ModelErrorCode {
     MODEL_RESPONSE_TOO_LARGE("Model response exceeded the configured limit"),
     MODEL_STREAM_IDLE_TIMEOUT("Model stream timed out while waiting for data"),
     MODEL_STREAM_READ_FAILED("Model stream could not be read"),
+    MODEL_OUTPUT_TRUNCATED("Model output was truncated by the token limit"),
     MODEL_EMPTY_RESPONSE("Model service returned no content");
 
     private final String safeMessage;

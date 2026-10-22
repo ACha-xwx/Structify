@@ -188,6 +188,95 @@ class AiQuotaExecutionApiIntegrationTest {
     }
 
     @Test
+    void truncatedChatCompletionIsFailedAndSettlesProviderReportedUsageWithoutSavingAnAnswer() throws Exception {
+        when(model.complete(any())).thenThrow(new ModelClientException(ModelErrorCode.MODEL_OUTPUT_TRUNCATED, 123L));
+
+        mockMvc.perform(post("/api/v1/chat")
+                .header("Authorization", bearer())
+                .header("X-Request-ID", "quota-chat-truncated-complete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"prompt":"stack","chapterId":"03-stack-queue","history":[]}
+                    """))
+            .andExpect(status().isBadGateway())
+            .andExpect(jsonPath("$.code").value("MODEL_OUTPUT_TRUNCATED"));
+
+        assertThat(jdbc.queryForObject(
+            "SELECT status FROM ai_quota_reservations",
+            String.class
+        )).isEqualTo("FAILED");
+        assertThat(jdbc.queryForObject(
+            "SELECT actual_tokens FROM ai_quota_reservations WHERE status = 'FAILED'",
+            Long.class
+        )).isEqualTo(123L);
+        assertThat(jdbc.queryForObject(
+            "SELECT usage_source FROM ai_quota_reservations WHERE status = 'FAILED'",
+            String.class
+        )).isEqualTo("PROVIDER_REPORTED");
+        assertThat(jdbc.queryForObject(
+            "SELECT COUNT(*) FROM chat_messages m JOIN chat_sessions s ON s.id = m.session_id WHERE s.user_id = ? AND m.role = 'assistant'",
+            Integer.class,
+            USER_ID
+        )).isZero();
+        assertThat(jdbc.queryForObject(
+            "SELECT generation_status FROM chat_messages WHERE role = 'user' ORDER BY id DESC LIMIT 1",
+            String.class
+        )).isEqualTo("FAILED");
+    }
+
+    @Test
+    void truncatedChatStreamEmitsFailureWithoutDoneAndSettlesProviderReportedUsage() throws Exception {
+        doAnswer(invocation -> {
+            ModelStreamHandler handler = invocation.getArgument(1, ModelStreamHandler.class);
+            handler.onContent("partial answer");
+            handler.onUsage(123L);
+            throw new ModelClientException(ModelErrorCode.MODEL_OUTPUT_TRUNCATED, 123L);
+        }).when(model).stream(any(), any());
+
+        MvcResult stream = mockMvc.perform(post("/api/v1/chat/stream")
+                .header("Authorization", bearer())
+                .header("X-Request-ID", "quota-chat-truncated-stream")
+                .accept(MediaType.TEXT_EVENT_STREAM)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"prompt":"stack","chapterId":"03-stack-queue","history":[]}
+                    """))
+            .andExpect(request().asyncStarted())
+            .andReturn();
+
+        String response = mockMvc.perform(asyncDispatch(stream))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+        assertThat(response)
+            .contains("event:delta", "partial answer", "event:error", "MODEL_OUTPUT_TRUNCATED")
+            .doesNotContain("event:done");
+        assertThat(jdbc.queryForObject(
+            "SELECT status FROM ai_quota_reservations",
+            String.class
+        )).isEqualTo("FAILED");
+        assertThat(jdbc.queryForObject(
+            "SELECT actual_tokens FROM ai_quota_reservations WHERE status = 'FAILED'",
+            Long.class
+        )).isEqualTo(123L);
+        assertThat(jdbc.queryForObject(
+            "SELECT usage_source FROM ai_quota_reservations WHERE status = 'FAILED'",
+            String.class
+        )).isEqualTo("PROVIDER_REPORTED");
+        assertThat(jdbc.queryForObject(
+            "SELECT COUNT(*) FROM chat_messages m JOIN chat_sessions s ON s.id = m.session_id WHERE s.user_id = ? AND m.role = 'assistant'",
+            Integer.class,
+            USER_ID
+        )).isZero();
+        assertThat(jdbc.queryForObject(
+            "SELECT generation_status FROM chat_messages WHERE role = 'user' ORDER BY id DESC LIMIT 1",
+            String.class
+        )).isEqualTo("FAILED");
+    }
+
+    @Test
     void guestFormalCallsAndAuthenticatedStreamingAreControlledQuotaBoundaries() throws Exception {
         mockMvc.perform(post("/api/v1/chat")
                 .contentType(MediaType.APPLICATION_JSON)

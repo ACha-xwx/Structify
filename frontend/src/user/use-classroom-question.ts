@@ -38,9 +38,9 @@ export function useClassroomQuestion(completed:()=>void) {
   finally{if(current===epoch||question.value)submitting.value=false;}
  }
  async function cancel(room:string) {
-  const id=question.value?.questionId;if(!id)return;
-  try {await classroomQuestionApi.cancel(room,id);await attach(room,id);}
-  catch(cause){error.value=cause instanceof Error?cause.message:'停止失败，请重试';}
+   const id=question.value?.questionId;if(!id)return;const current=epoch;
+   try {await classroomQuestionApi.cancel(room,id);if(current===epoch)await attach(room,id);}
+   catch(cause){if(current===epoch)error.value=cause instanceof Error?cause.message:'停止失败，请重试';}
  }
  onScopeDispose(stop);
  return {question,error,busy,ask,attach,cancel,stop,connectionError:subscription.error};
