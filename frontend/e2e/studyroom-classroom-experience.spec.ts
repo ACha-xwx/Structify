@@ -3,7 +3,7 @@ async function classroom(page:import('@playwright/test').Page,label:string) {
  await page.goto('/studyroom');await page.getByLabel('课程问题',{exact:true}).fill(`栈的定义和C代码阅读，${label}`);
  await page.getByRole('button',{name:'生成大纲',exact:true}).click();
  await expect(page.getByLabel('课堂生成进度')).toBeVisible();
- await expect(page.locator('.generation-preview li').first()).toBeVisible();
+ await expect(page.locator('.generation-preview li, .outline-units > li').first()).toBeVisible();
  await expect(page.getByRole('button',{name:'确认大纲，开始学习'})).toBeEnabled();
  await page.getByRole('button',{name:'确认大纲，开始学习'}).click();
  await expect(page).toHaveURL(/\/studyroom\/[a-f0-9-]+$/);

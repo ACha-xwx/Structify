@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,12 +48,21 @@ class ResourceContentApiIntegrationTest {
 
     @BeforeEach
     void clearData() {
+        deleteTestData();
+        seedUser(STUDENT_ID, "student-content@example.com", "STUDENT");
+        seedUser(TEACHER_ID, "teacher-content@example.com", "STUDENT", "TEACHER");
+    }
+
+    @AfterEach
+    void removeTestData() {
+        deleteTestData();
+    }
+
+    private void deleteTestData() {
         jdbc.update("DELETE FROM resources WHERE id LIKE 'resource-content-api%'");
         jdbc.update("DELETE FROM chapters WHERE id LIKE 'resource-content-api%'");
         jdbc.update("DELETE FROM user_roles WHERE user_id IN (?, ?)", STUDENT_ID, TEACHER_ID);
         jdbc.update("DELETE FROM users WHERE id IN (?, ?)", STUDENT_ID, TEACHER_ID);
-        seedUser(STUDENT_ID, "student-content@example.com", "STUDENT");
-        seedUser(TEACHER_ID, "teacher-content@example.com", "STUDENT", "TEACHER");
     }
 
     @Test
