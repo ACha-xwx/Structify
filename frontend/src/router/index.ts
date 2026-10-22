@@ -28,8 +28,7 @@ export const routes: RouteRecordRaw[] = [
   { path: "/animation", name: "animation-lab", component: AnimationLabView, meta: { requiresAuth: true, layout: "workbench", module: "动画实验室" } },
   // The original app let guests run C experiments without an account; that stays.
   { path: "/compiler", name: "compiler", component: CodeEditorView, meta: { layout: "workbench", module: "C 编辑器" } },
-  { path: "/chat", name: "chat", component: StudyroomOutlineView, meta: { requiresAuth: true, layout: "workbench", module: "课程问答" } },
-  { path: "/chat-legacy", name: "chat-legacy", component: ChatView, meta: { requiresAuth: true, layout: "workbench", module: "旧版课程问答" } },
+  { path: "/chat", name: "chat", component: ChatView, meta: { requiresAuth: true, layout: "workbench", module: "课程问答" } },
   { path: "/studyroom", name: "studyroom-new", component: StudyroomOutlineView, meta: { requiresAuth: true, layout: "workbench", module: "课程问答" } },
   { path: "/studyroom/outlines/:draftId", name: "studyroom-outline", component: StudyroomOutlineView, meta: { requiresAuth: true, layout: "workbench", module: "课程问答" } },
   { path: "/studyroom/:id", name: "studyroom", component: StudyroomView, props: true, meta: { requiresAuth: true, layout: "workbench", module: "课程问答" } },

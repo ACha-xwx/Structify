@@ -88,7 +88,7 @@ async function signOut() {
         </div>
 
         <div class="choice">
-        <RouterLink class="choice__destination" to="/chat">
+        <RouterLink class="choice__destination" to="/studyroom">
           <span class="choice__symbol" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false">
               <path d="M20 15.5a2.5 2.5 0 0 1-2.5 2.5H9l-4 3v-3H6.5A2.5 2.5 0 0 1 4 15.5v-8A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5z" />
@@ -96,7 +96,7 @@ async function signOut() {
           </span>
           <span class="choice__name">{{ t("home.chat") }}</span>
         </RouterLink>
-          <LiquidMetalButton class="choice__go" view-mode="icon" :aria-label="t('home.chat')" :title="t('home.chat')" @click="router.push('/chat')">
+          <LiquidMetalButton class="choice__go" view-mode="icon" :aria-label="t('home.chat')" :title="t('home.chat')" @click="router.push('/studyroom')">
             <template #icon><img class="choice__arrow" :src="rightArrowIcon" alt="" aria-hidden="true"></template>
           </LiquidMetalButton>
         </div>

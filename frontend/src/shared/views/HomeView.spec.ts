@@ -21,7 +21,7 @@ function mountHome() {
       { path: "/classroom", component: { template: "<div />" } },
       { path: "/animation", component: { template: "<div />" } },
       { path: "/compiler", component: { template: "<div />" } },
-      { path: "/chat", component: { template: "<div />" } },
+      { path: "/studyroom", component: { template: "<div />" } },
       { path: "/user", component: { template: "<div />" } },
       { path: "/login", component: { template: "<div />" } },
     ],
@@ -42,7 +42,8 @@ describe("entry page", () => {
     await flushPromises();
 
     expect(wrapper.findAll(".choice__name").map((node) => node.text())).toEqual(["课堂", "动画学习", "C 编辑器", "课程问答"]);
-    expect(wrapper.findAll(".choice__destination").map((node) => node.attributes("href"))).toEqual(["/classroom", "/animation", "/compiler", "/chat"]);
+    expect(wrapper.findAll(".choice__destination").map((node) => node.attributes("href"))).toEqual(["/classroom", "/animation", "/compiler", "/studyroom"]);
+    expect(wrapper.findAll(".choice__destination").map((node) => node.attributes("href"))).not.toContain("/chat");
     // Nothing classroom-shaped is mounted here: no lesson picker, and no session was opened for us.
     expect(wrapper.find("select").exists()).toBe(false);
     wrapper.unmount();
@@ -64,7 +65,7 @@ describe("entry page", () => {
     const { router, wrapper } = mountHome();
     await flushPromises();
 
-    const paths = ["/classroom", "/animation", "/compiler", "/chat"];
+    const paths = ["/classroom", "/animation", "/compiler", "/studyroom"];
     const controls = wrapper.findAll(".choice__go button");
     expect(controls).toHaveLength(4);
     for (const [index, path] of paths.entries()) {
