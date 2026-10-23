@@ -3,6 +3,7 @@ package com.feng.dsagent.teacher;
 import com.feng.dsagent.admin.AdminAuditService;
 import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.learning.LearningMapService;
+import com.feng.dsagent.studyroom.library.CourseLibraryService;
 import java.sql.Timestamp;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -33,13 +34,37 @@ public class TeacherService {
     public record StudentRow(long id, String username, String email, String status, String lastActivityAt,
                              long classroomSteps) {}
 
+    /**
+     * One student's learning footprint as the teacher sees it: courses with their progress, classroom work,
+     * bookmarks and the mastery map. Deliberately without spend or generation jobs - what a lesson costs is an
+     * operations question, and the teacher console is not the place that answers it.
+     */
+    public record StudentFootprint(
+        long studentId,
+        String username,
+        String email,
+        List<CourseLibraryService.Course> courses,
+        long bookmarks,
+        long classroomSessions,
+        long classroomEvents,
+        String lastActivityAt,
+        LearningMapService.LearningMap learningMap
+    ) {}
+
     private final JdbcTemplate jdbc;
     private final LearningMapService learningMap;
+    private final CourseLibraryService courseLibrary;
     private final AdminAuditService audit;
 
-    TeacherService(JdbcTemplate jdbc, LearningMapService learningMap, AdminAuditService audit) {
+    TeacherService(
+        JdbcTemplate jdbc,
+        LearningMapService learningMap,
+        CourseLibraryService courseLibrary,
+        AdminAuditService audit
+    ) {
         this.jdbc = jdbc;
         this.learningMap = learningMap;
+        this.courseLibrary = courseLibrary;
         this.audit = audit;
     }
 
@@ -99,6 +124,52 @@ public class TeacherService {
         audit.recordRead(callerId, admin ? "ADMIN_VIEW_LEARNING_MAP" : "TEACHER_VIEW_LEARNING_MAP",
             "USER", String.valueOf(studentId), requestId);
         return learningMap.forUser(studentId);
+    }
+
+    /**
+     * One student's whole footprint for the teacher who teaches them. One call, one audit row: the page should not
+     * have to assemble a learner from five endpoints, and the ledger should not record five reads for one look.
+     */
+    public StudentFootprint studentFootprint(long studentId, long callerId, boolean admin, String requestId) {
+        if (!admin && !teachesStudent(studentId, callerId)) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "STUDENT_NOT_IN_YOUR_CLASS", "该学生不在你带的班里");
+        }
+        audit.recordRead(callerId, admin ? "ADMIN_VIEW_LEARNING_MAP" : "TEACHER_VIEW_LEARNING_FOOTPRINT",
+            "USER", String.valueOf(studentId), requestId);
+        List<String[]> identity = jdbc.query(
+            "SELECT username, email FROM users WHERE id = ?",
+            (row, index) -> new String[] { row.getString("username"), row.getString("email") },
+            studentId
+        );
+        if (identity.isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "没有这个学生。");
+        }
+        String[] parts = identity.get(0);
+        return new StudentFootprint(
+            studentId,
+            parts[0],
+            parts[1],
+            courseLibrary.list(studentId),
+            count("SELECT COUNT(*) FROM classroom_bookmarks WHERE user_id = ?", studentId),
+            count("SELECT COUNT(*) FROM classroom_sessions WHERE user_id = ?", studentId),
+            count("SELECT COUNT(*) FROM classroom_events e JOIN classroom_sessions s ON s.id = e.session_id WHERE s.user_id = ?", studentId),
+            lastActivity(studentId),
+            learningMap.forUser(studentId)
+        );
+    }
+
+    private String lastActivity(long userId) {
+        List<Timestamp> rows = jdbc.query(
+            "SELECT MAX(updated_at) FROM classroom_sessions WHERE user_id = ?",
+            (row, index) -> row.getTimestamp(1),
+            userId
+        );
+        return rows.isEmpty() ? null : timestamp(rows.get(0));
+    }
+
+    private long count(String sql, Object... args) {
+        Long value = jdbc.queryForObject(sql, Long.class, args);
+        return value == null ? 0 : value;
     }
 
     private void requireTeaching(String classId, long callerId, boolean admin) {

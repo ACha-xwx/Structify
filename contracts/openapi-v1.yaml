@@ -2159,7 +2159,7 @@ paths:
     get:
       tags: [Teacher]
       summary: The learning map of one student, the same computation the student sees
-      description: Refused unless the caller teaches a class the student is enrolled in.
+      description: Refused unless the caller teaches a class the student is enrolled in. Every successful read is audited.
       security: [{cookieAuth: []}, {bearerAuth: []}]
       parameters:
         - {$ref: '#/components/parameters/StudentId'}
@@ -2171,6 +2171,23 @@ paths:
               schema: {$ref: '#/components/schemas/LearningMap'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
+  /teacher/students/{studentId}/footprint:
+    get:
+      tags: [Teacher]
+      summary: One student's whole footprint for the teacher - courses, classroom work, bookmarks and the map
+      description: One call, one audit row. Spend and generation jobs are deliberately not part of this view; they belong to the operations console.
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/StudentId'}
+      responses:
+        '200':
+          description: The student's learning footprint
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TeacherStudentFootprint'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
 components:
   securitySchemes:
     cookieAuth:
@@ -3730,6 +3747,19 @@ components:
         tokensLast30Days: {type: integer, minimum: 0}
         callsLast30Days: {type: integer, minimum: 0}
         recentJobs: {type: array, items: {$ref: '#/components/schemas/AdminUserRecentJob'}, description: 'Latest few studyroom generation jobs of this user'}
+        learningMap: {$ref: '#/components/schemas/LearningMap'}
+    TeacherStudentFootprint:
+      type: object
+      required: [studentId, email, courses, bookmarks, classroomSessions, classroomEvents, learningMap]
+      properties:
+        studentId: {type: integer, format: int64, minimum: 1}
+        username: {type: string, nullable: true}
+        email: {type: string, format: email}
+        courses: {type: array, items: {$ref: '#/components/schemas/AdminUserCourse'}}
+        bookmarks: {type: integer, minimum: 0}
+        classroomSessions: {type: integer, minimum: 0}
+        classroomEvents: {type: integer, minimum: 0}
+        lastActivityAt: {type: string, format: date-time, nullable: true}
         learningMap: {$ref: '#/components/schemas/LearningMap'}
     AdminUserRecentJob:
       type: object

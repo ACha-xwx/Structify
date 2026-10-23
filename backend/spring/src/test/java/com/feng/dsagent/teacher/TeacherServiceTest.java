@@ -132,4 +132,49 @@ class TeacherServiceTest {
         assertThat(service.studentMap(studentId, adminId, true, "req-admin")).isNotNull();
         assertThat(auditRows("ADMIN_VIEW_LEARNING_MAP", String.valueOf(studentId), adminId)).isEqualTo(1);
     }
+
+    @Test
+    @DisplayName("the footprint gathers classroom work and the map in one audited read, and refuses outsiders")
+    void footprintIsOneAuditedRead() {
+        String chapterId = "ch-" + UUID.randomUUID();
+        jdbc.update(
+            "INSERT INTO chapters (id, chapter_number, title) VALUES (?, ?, ?)",
+            chapterId, (int) (System.currentTimeMillis() % 900000) + 200000, "足迹测试章"
+        );
+        String scriptId = "script-" + UUID.randomUUID();
+        jdbc.update(
+            "INSERT INTO classroom_scripts (id, chapter_id, title, script_json) VALUES (?, ?, ?, '{}')",
+            scriptId, chapterId, "足迹测试脚本"
+        );
+        String sessionId = "session-" + UUID.randomUUID();
+        jdbc.update(
+            "INSERT INTO classroom_sessions (id, user_id, script_id, state) VALUES (?, ?, ?, 'STEP')",
+            sessionId, studentId, scriptId
+        );
+        jdbc.update(
+            "INSERT INTO classroom_events (session_id, action, from_state, to_state) VALUES (?, 'ADVANCE', 'A', 'B')",
+            sessionId
+        );
+        jdbc.update(
+            "INSERT INTO classroom_bookmarks (user_id, session_id, step_index, title) VALUES (?, ?, 0, '回来看这里')",
+            studentId, sessionId
+        );
+
+        TeacherService.StudentFootprint footprint = service.studentFootprint(studentId, teacherId, false, "req-foot");
+
+        assertThat(footprint.studentId()).isEqualTo(studentId);
+        assertThat(footprint.email()).contains("@example.test");
+        assertThat(footprint.classroomSessions()).isEqualTo(1);
+        assertThat(footprint.classroomEvents()).isEqualTo(1);
+        assertThat(footprint.bookmarks()).isEqualTo(1);
+        assertThat(footprint.lastActivityAt()).isNotNull();
+        assertThat(footprint.courses()).isEmpty();
+        assertThat(footprint.learningMap()).isNotNull();
+        assertThat(auditRows("TEACHER_VIEW_LEARNING_FOOTPRINT", String.valueOf(studentId), teacherId)).isEqualTo(1);
+
+        assertThatThrownBy(() -> service.studentFootprint(studentId, outsiderId, false, ""))
+            .isInstanceOf(ApiException.class)
+            .hasMessageContaining("不在你带的班");
+        assertThat(auditRows("TEACHER_VIEW_LEARNING_FOOTPRINT", String.valueOf(studentId), outsiderId)).isZero();
+    }
 }

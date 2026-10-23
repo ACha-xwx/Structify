@@ -60,6 +60,19 @@ class TeacherController {
         return teacher.studentMap(studentId, user.userId(), user.hasRole("ADMIN"), requestId(servletRequest));
     }
 
+    /**
+     * One student's whole footprint - courses with progress, classroom work, bookmarks, and the mastery map -
+     * in a single audited read. Spend and generation jobs are deliberately not part of this view.
+     */
+    @GetMapping("/students/{studentId}/footprint")
+    TeacherService.StudentFootprint studentFootprint(
+        @PathVariable long studentId,
+        @AuthenticationPrincipal AuthenticatedUser user,
+        HttpServletRequest servletRequest
+    ) {
+        return teacher.studentFootprint(studentId, user.userId(), user.hasRole("ADMIN"), requestId(servletRequest));
+    }
+
     private String requestId(HttpServletRequest request) {
         Object value = request.getAttribute(RequestIdFilter.ATTRIBUTE);
         return value == null ? "" : value.toString();

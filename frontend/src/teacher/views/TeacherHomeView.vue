@@ -1,74 +1,51 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import AdminPageFrame from "../../admin/components/AdminPageFrame.vue";
-import { formatDate } from "../../admin/api";
-import { teacherApi, type TeacherClass, type TeacherStudent } from "../api";
-import type { LearningMap, LearningMapNode } from "../../shared/types/contracts";
+import { formatDateTime } from "../../shared/api";
+import LoadingState from "../../shared/components/LoadingState.vue";
+import ErrorState from "../../shared/components/ErrorState.vue";
+import RetryButton from "../../shared/components/RetryButton.vue";
+import LearningMapChapters from "../../shared/components/LearningMapChapters.vue";
+import { teacherApi, teacherErrorMessage, type TeacherClass, type TeacherStudent, type TeacherStudentFootprint } from "../api";
 
 /**
  * A teacher's own classes: who is in them, and how each student is doing.
  *
- * The list stays cheap on purpose - one row per student with last activity and classroom work - and the mastery
- * map is fetched only for the student the teacher actually opens. Reading somebody else's profile is the most
- * sensitive read in the product, so the server decides who is allowed; this page only asks.
+ * The roster stays cheap on purpose - one row per student with last activity and classroom work. Opening a
+ * student makes exactly one audited call for their whole footprint: courses with progress, classroom work,
+ * bookmarks and the mastery map. What a lesson costs never shows here; that is the operations console's job.
  */
 const classes = ref<TeacherClass[]>([]);
 const classId = ref("");
 const students = ref<TeacherStudent[]>([]);
 const picked = ref<TeacherStudent | null>(null);
-const map = ref<LearningMap | null>(null);
+const footprint = ref<TeacherStudentFootprint | null>(null);
 
 const loadingClasses = ref(true);
 const loadingStudents = ref(false);
-const loadingMap = ref(false);
+const loadingFootprint = ref(false);
 const error = ref("");
+const footprintError = ref("");
 
-const root = computed<LearningMapNode | null>(() => map.value?.nodes.find((node) => node.level === 0) ?? null);
+let footprintRequest = 0;
 
-/** A chapter with the lessons inside it; the map is two levels deep below the course root. */
-const chapters = computed<Array<{ node: LearningMapNode; lessons: LearningMapNode[] }>>(() => {
-  const nodes = map.value?.nodes ?? [];
-  return nodes
-    .filter((node) => node.level === 1)
-    .sort((left, right) => left.id.localeCompare(right.id))
-    .map((node) => ({
-      node,
-      lessons: nodes
-        .filter((lesson) => lesson.level === 2 && lesson.parentId === node.id)
-        .sort((left, right) => left.id.localeCompare(right.id)),
-    }));
-});
-
-// A cohort can hold dozens of lessons per chapter, so they open one chapter at a time.
-const expanded = ref<string[]>([]);
-const startedSomething = computed(() => (map.value?.nodes ?? []).some((node) => node.status !== "NOT_STARTED"));
-
-function toggleChapter(chapterId: string): void {
-  expanded.value = expanded.value.includes(chapterId)
-    ? expanded.value.filter((id) => id !== chapterId)
-    : [...expanded.value, chapterId];
-}
+const root = computed(() => footprint.value?.learningMap.nodes.find((node) => node.level === 0) ?? null);
 
 function percent(value: number | null | undefined): string {
   return value === null || value === undefined ? "—" : `${Math.round(value * 100)}%`;
 }
 
-function statusLabel(status: string): string {
-  if (status === "ESTIMATED") return "已估算";
-  if (status === "LOW_EVIDENCE") return "证据不足";
-  return "未开始";
-}
-
 async function loadClasses(): Promise<void> {
   loadingClasses.value = true;
+  error.value = "";
   try {
     classes.value = await teacherApi.classes();
     if (classes.value.length > 0) {
       classId.value = classes.value[0].id;
       await loadStudents();
     }
-  } catch {
-    error.value = "读取班级失败，请稍后重试。";
+  } catch (failure) {
+    error.value = teacherErrorMessage(failure, "读取班级");
   } finally {
     loadingClasses.value = false;
   }
@@ -81,27 +58,31 @@ async function loadStudents(): Promise<void> {
   }
   loadingStudents.value = true;
   picked.value = null;
-  map.value = null;
+  footprint.value = null;
   try {
     students.value = await teacherApi.students(classId.value);
-  } catch {
+  } catch (failure) {
     students.value = [];
-    error.value = "读取学生名单失败。";
+    error.value = teacherErrorMessage(failure, "读取学生名单");
   } finally {
     loadingStudents.value = false;
   }
 }
 
 async function open(student: TeacherStudent): Promise<void> {
+  const request = ++footprintRequest;
   picked.value = student;
-  map.value = null;
-  loadingMap.value = true;
+  footprint.value = null;
+  footprintError.value = "";
+  loadingFootprint.value = true;
   try {
-    map.value = await teacherApi.studentMap(student.id);
-  } catch {
-    error.value = "读取该学生的学习图谱失败（可能不在你带的班里）。";
+    const result = await teacherApi.studentFootprint(student.id);
+    if (request !== footprintRequest) return;
+    footprint.value = result;
+  } catch (failure) {
+    if (request === footprintRequest) footprintError.value = teacherErrorMessage(failure, "读取该学生的学习情况");
   } finally {
-    loadingMap.value = false;
+    if (request === footprintRequest) loadingFootprint.value = false;
   }
 }
 
@@ -111,7 +92,7 @@ onMounted(loadClasses);
 <template>
   <AdminPageFrame
     title="我的班级"
-    description="本班学生的学习情况。点开某个学生可以看到他的学习图谱——和该学生自己看到的是同一份计算。"
+    description="本班学生的学习情况。点开某个学生可以看到他的课程进度和学习图谱——和该学生自己看到的是同一份计算。"
   >
     <section class="tp">
       <div class="tp__bar">
@@ -128,9 +109,10 @@ onMounted(loadClasses);
         </p>
       </div>
 
-      <p v-if="error" class="admin-danger">{{ error }}</p>
+      <ErrorState v-if="error" title="读取失败" :message="error"><RetryButton @retry="loadClasses" /></ErrorState>
 
-      <div class="admin-data-surface">
+      <LoadingState v-if="loadingStudents" label="正在读取名单…" />
+      <div v-else class="admin-data-surface">
         <table class="tp__table">
           <thead>
             <tr>
@@ -147,13 +129,13 @@ onMounted(loadClasses);
               <td>{{ student.username ?? "未命名" }}</td>
               <td class="admin-muted">{{ student.email }}</td>
               <td>{{ student.status }}</td>
-              <td class="admin-nowrap">{{ formatDate(student.lastActivityAt) }}</td>
+              <td class="admin-nowrap">{{ formatDateTime(student.lastActivityAt) }}</td>
               <td>{{ student.classroomSteps }}</td>
               <td>
-                <button type="button" class="tp__open" @click="open(student)">学习图谱</button>
+                <button type="button" class="tp__open" @click="open(student)">学习情况</button>
               </td>
             </tr>
-            <tr v-if="!loadingStudents && students.length === 0">
+            <tr v-if="students.length === 0">
               <td colspan="6" class="admin-muted">这个班还没有学生。</td>
             </tr>
           </tbody>
@@ -161,44 +143,42 @@ onMounted(loadClasses);
       </div>
     </section>
 
-    <section v-if="picked" class="admin-panel tp">
+    <section v-if="picked" class="admin-panel tp" aria-label="学生学习情况">
       <header class="admin-section-head">
-        <h2>{{ picked.username ?? picked.email }} 的学习图谱</h2>
-        <p class="admin-muted">
-          {{ root ? `整体掌握 ${percent(root.mastery)} · 可信 ${percent(root.confidence)}` : "计算中…" }}
+        <h2>{{ picked.username ?? picked.email }} 的学习情况</h2>
+        <p v-if="root" class="admin-muted">
+          整体掌握 {{ percent(root.mastery) }} · 可信 {{ percent(root.confidence) }}
         </p>
       </header>
 
-      <p v-if="loadingMap" class="admin-muted">正在计算…</p>
-      <p v-else-if="!map" class="admin-muted">没有读到数据。</p>
-      <p v-else-if="!startedSomething" class="admin-muted">
-        这个学生还没有任何学习记录，所以每一章都是空的——不是 0 分，是还没开始。
-      </p>
+      <LoadingState v-if="loadingFootprint" label="正在计算…" />
+      <ErrorState v-else-if="footprintError" title="学习情况读取失败" :message="footprintError">
+        <RetryButton @retry="open(picked)" />
+      </ErrorState>
 
-      <ul v-else class="tp__chapters">
-        <li v-for="chapter in chapters" :key="chapter.node.id">
-          <div class="tp__chapter-head">
-            <span>{{ chapter.node.title }}</span>
-            <span class="admin-muted">{{ percent(chapter.node.mastery) }} · 可信 {{ percent(chapter.node.confidence) }}</span>
-          </div>
-          <div class="tp__bar-track">
-            <div class="tp__bar-fill" :style="{ width: `${Math.round((chapter.node.mastery ?? 0) * 100)}%` }" />
-          </div>
-          <button
-            v-if="chapter.lessons.length"
-            type="button"
-            class="tp__lessons-toggle"
-            :aria-expanded="expanded.includes(chapter.node.id)"
-            @click="toggleChapter(chapter.node.id)"
-          >{{ expanded.includes(chapter.node.id) ? "收起课时" : `${chapter.lessons.length} 个课时` }}</button>
-          <ul v-if="expanded.includes(chapter.node.id)" class="tp__lessons">
-            <li v-for="lesson in chapter.lessons" :key="lesson.id">
-              <span class="tp__lesson-title">{{ lesson.title }}</span>
-              <span class="admin-muted admin-nowrap">{{ percent(lesson.mastery) }} · {{ statusLabel(lesson.status) }}</span>
+      <template v-else-if="footprint">
+        <div class="signal-strip tp__strip">
+          <div class="signal-strip__item"><span class="signal-strip__label">课堂步数</span><strong>{{ footprint.classroomEvents }}</strong></div>
+          <div class="signal-strip__item"><span class="signal-strip__label">课堂会话</span><strong>{{ footprint.classroomSessions }}</strong></div>
+          <div class="signal-strip__item"><span class="signal-strip__label">书签</span><strong>{{ footprint.bookmarks }}</strong></div>
+          <div class="signal-strip__item"><span class="signal-strip__label">最近活跃</span><strong>{{ footprint.lastActivityAt ? formatDateTime(footprint.lastActivityAt) : "从未" }}</strong></div>
+        </div>
+
+        <template v-if="footprint.courses.length">
+          <h3 class="tp__sub">课程进度</h3>
+          <ul class="tp__courses">
+            <li v-for="course in footprint.courses" :key="course.id">
+              <span class="tp__course-title" :title="course.title">{{ course.title }}</span>
+              <span class="admin-muted admin-nowrap">
+                {{ course.completedPoints }}/{{ course.totalPoints }} 知识点<template v-if="course.lastPointTitle"> · 学到「{{ course.lastPointTitle }}」</template>
+              </span>
             </li>
           </ul>
-        </li>
-      </ul>
+        </template>
+
+        <h3 class="tp__sub">学习图谱</h3>
+        <LearningMapChapters :nodes="footprint.learningMap.nodes" expandable />
+      </template>
     </section>
   </AdminPageFrame>
 </template>
@@ -252,69 +232,35 @@ onMounted(loadClasses);
   background: rgba(8, 118, 111, 0.1);
 }
 
-.tp__chapters {
+.tp__strip {
+  margin-bottom: 12px;
+}
+
+.tp__sub {
+  margin: 14px 0 8px;
+  font-size: 15px;
+}
+
+.tp__courses {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 12px;
-}
-
-.tp__chapter-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 5px;
+  gap: 6px;
   font-size: 14px;
 }
 
-.tp__bar-track {
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(12, 44, 52, 0.1);
-  overflow: hidden;
-}
-
-.tp__bar-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(8, 118, 111, 0.55), rgba(8, 118, 111, 0.9));
-}
-
-.tp__lessons-toggle {
-  margin-top: 7px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--admin-muted);
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  text-decoration: underline;
-}
-
-.tp__lessons-toggle:hover {
-  color: var(--text);
-}
-
-.tp__lessons {
-  list-style: none;
-  margin: 8px 0 0;
-  padding: 0;
-  display: grid;
-  gap: 6px;
-}
-
-.tp__lessons li {
+.tp__courses li {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  padding: 4px 0 4px 12px;
-  border-left: 2px solid rgba(8, 118, 111, 0.28);
-  font-size: 13px;
+  gap: 10px;
+  align-items: center;
 }
 
-.tp__lesson-title {
+.tp__course-title {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
