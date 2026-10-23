@@ -1529,6 +1529,23 @@ paths:
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
         '409': {$ref: '#/components/responses/Conflict'}
+  /admin/users/{id}/learning:
+    get:
+      tags: [Admin]
+      summary: The learning footprint of one account, gathered in a single audited read
+      description: Courses, bookmarks, classroom work, tokens spent in the last 30 days, recent generation jobs and the mastery map. Every call writes an ADMIN_VIEW_LEARNING_MAP audit event.
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/AdminUserId'}
+      responses:
+        '200':
+          description: The learning footprint
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminUserLearning'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
   /admin/audit-events:
     get:
       tags: [Admin]
@@ -1991,7 +2008,7 @@ paths:
           description: The created class
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/AdminClass'}}
+              schema: {$ref: '#/components/schemas/AdminClass'}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
@@ -2041,7 +2058,7 @@ paths:
           description: The enrolment
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/AdminClassMember'}}
+              schema: {$ref: '#/components/schemas/AdminClassMember'}
         '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
@@ -2060,6 +2077,56 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+  /admin/observability/jobs:
+    get:
+      tags: [Admin]
+      summary: Both job ledgers (background tasks and studyroom generation) merged into one page
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      parameters:
+        - {name: source, in: query, required: false, schema: {type: string, enum: [BACKGROUND, STUDYROOM]}}
+        - {name: status, in: query, required: false, schema: {type: string}}
+        - {name: userId, in: query, required: false, schema: {type: integer, format: int64}}
+        - {name: page, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+        - {name: size, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 200, default: 20}}
+      responses:
+        '200':
+          description: Jobs newest first; source says which ledger a row came from
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminJobPage'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/observability/cost:
+    get:
+      tags: [Admin]
+      summary: Tokens actually spent between two days, grouped by day or by user
+      description: Only settled reservations count; a reservation that never completed is not a cost.
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      parameters:
+        - {name: from, in: query, required: false, schema: {type: string, format: date}}
+        - {name: to, in: query, required: false, schema: {type: string, format: date}}
+        - {name: groupBy, in: query, required: false, schema: {type: string, enum: [DAY, USER], default: DAY}}
+      responses:
+        '200':
+          description: The cost report, default window the last 30 days
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminCostReport'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/observability/modules:
+    get:
+      tags: [Admin]
+      summary: Availability and live counts for the studyroom, learning and quota modules
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      responses:
+        '200':
+          description: One entry per module with the counters an operator watches
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/AdminModuleState'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
   /teacher/classes:
     get:
       tags: [Teacher]
@@ -2101,7 +2168,7 @@ paths:
           description: The student's mastery map
           content:
             application/json:
-              schema: {$ref: '#/components/schemas/LearningMap'}}
+              schema: {$ref: '#/components/schemas/LearningMap'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
 components:
@@ -3586,6 +3653,93 @@ components:
         status: {type: string}
         lastActivityAt: {type: string, format: date-time, nullable: true}
         classroomSteps: {type: integer, minimum: 0}
+    AdminJobPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/AdminJobItem'}}
+        page: {type: integer, minimum: 0}
+        size: {type: integer, minimum: 1}
+        total: {type: integer, minimum: 0}
+    AdminJobItem:
+      type: object
+      required: [source, id, status, tokens]
+      properties:
+        source: {type: string, enum: [BACKGROUND, STUDYROOM]}
+        id: {type: string}
+        type: {type: string, nullable: true}
+        ownerUserId: {type: integer, format: int64, nullable: true}
+        status: {type: string}
+        createdAt: {type: string, format: date-time, nullable: true}
+        updatedAt: {type: string, format: date-time, nullable: true}
+        error: {type: string, nullable: true}
+        tokens: {type: integer, minimum: 0}
+    AdminCostReport:
+      type: object
+      required: [from, to, groupBy, calls, tokens, rows]
+      properties:
+        from: {type: string, format: date}
+        to: {type: string, format: date}
+        groupBy: {type: string, enum: [DAY, USER]}
+        calls: {type: integer, minimum: 0}
+        tokens: {type: integer, minimum: 0}
+        rows: {type: array, items: {$ref: '#/components/schemas/AdminCostRow'}}
+    AdminCostRow:
+      type: object
+      required: [calls, tokens]
+      properties:
+        bucket: {type: string, format: date, nullable: true}
+        userId: {type: integer, format: int64, nullable: true}
+        calls: {type: integer, minimum: 0}
+        tokens: {type: integer, minimum: 0}
+    AdminModuleState:
+      type: object
+      required: [module, available, status, counts]
+      properties:
+        module: {type: string, enum: [studyroom, learning, quota]}
+        available: {type: boolean}
+        status: {type: string}
+        reason: {type: string, nullable: true}
+        counts: {type: object, additionalProperties: {type: integer}}
+    AdminUserCourse:
+      type: object
+      required: [id, title, status, totalPoints, completedPoints, readableFragments]
+      properties:
+        id: {type: string}
+        title: {type: string}
+        status: {type: string}
+        totalPoints: {type: integer, minimum: 0}
+        completedPoints: {type: integer, minimum: 0}
+        readableFragments: {type: integer, minimum: 0}
+        lastPointTitle: {type: string, nullable: true}
+        lastLearningAt: {type: string, format: date-time, nullable: true}
+        activityAt: {type: string, format: date-time, nullable: true}
+    AdminUserLearning:
+      type: object
+      required: [userId, email, status, courses, bookmarks, classroomSessions, classroomEvents, tokensLast30Days, callsLast30Days, recentJobs, learningMap]
+      properties:
+        userId: {type: integer, format: int64, minimum: 1}
+        email: {type: string, format: email}
+        username: {type: string, nullable: true}
+        status: {type: string}
+        courses: {type: array, items: {$ref: '#/components/schemas/AdminUserCourse'}}
+        bookmarks: {type: integer, minimum: 0}
+        classroomSessions: {type: integer, minimum: 0}
+        classroomEvents: {type: integer, minimum: 0}
+        lastActivityAt: {type: string, format: date-time, nullable: true}
+        tokensLast30Days: {type: integer, minimum: 0}
+        callsLast30Days: {type: integer, minimum: 0}
+        recentJobs: {type: array, items: {$ref: '#/components/schemas/AdminUserRecentJob'}, description: 'Latest few studyroom generation jobs of this user'}
+        learningMap: {$ref: '#/components/schemas/LearningMap'}
+    AdminUserRecentJob:
+      type: object
+      required: [id, status, tokens]
+      properties:
+        id: {type: string}
+        type: {type: string, nullable: true}
+        status: {type: string}
+        createdAt: {type: string, format: date-time, nullable: true}
+        tokens: {type: integer, minimum: 0}
     LearningMap:
       type: object
       required: [generatedAt, nodes]
