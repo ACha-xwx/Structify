@@ -23,6 +23,21 @@ const leaving = ref(false);
 
 const signedIn = computed(() => Boolean(auth.state.user));
 
+/**
+ * A class teacher has nowhere to discover their class page: the administrator console is reached
+ * through its own host, and the learning choices belong to students. The account row carries the
+ * one link this role needs, and it is absent for everyone else.
+ */
+function holdsRole(role: "ADMIN" | "TEACHER"): boolean {
+  if (typeof auth.hasAnyRole === "function") return auth.hasAnyRole([role]);
+  return (auth.state.user?.roles ?? []).includes(role);
+}
+const staffEntry = computed(() => {
+  if (holdsRole("ADMIN")) return { to: "/admin", label: t("home.adminConsole") };
+  if (holdsRole("TEACHER")) return { to: "/teacher", label: t("home.myClasses") };
+  return null;
+});
+
 async function signOut() {
   if (leaving.value) return;
   leaving.value = true;
@@ -103,6 +118,7 @@ async function signOut() {
       </nav>
 
       <nav class="entry-links" :aria-label="t('home.account')">
+        <RouterLink v-if="staffEntry" class="entry__staff" :to="staffEntry.to">{{ staffEntry.label }}</RouterLink>
         <RouterLink class="entry__profile" to="/user">{{ t("home.profile") }}</RouterLink>
         <button v-if="signedIn" class="entry__signout" type="button" :disabled="leaving" @click="signOut">{{ t("common.signOut") }}</button>
       </nav>

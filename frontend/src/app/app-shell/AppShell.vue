@@ -8,7 +8,7 @@ import DirectionalArrowIcon from "../../shared/components/DirectionalArrowIcon.v
 import ExitArrowIcon from "../../shared/components/ExitArrowIcon.vue";
 import brandIcon from "../../favicon.svg";
 
-type NavigationIcon = "overview" | "users" | "reviews" | "tasks" | "audit" | "settings" | "mail" | "sandbox";
+type NavigationIcon = "overview" | "users" | "reviews" | "tasks" | "audit" | "settings" | "mail" | "sandbox" | "jobs" | "classes";
 type AdminNavigationItem = { to: string; label: string; icon: NavigationIcon };
 
 const route = useRoute();
@@ -31,11 +31,37 @@ const adminNavItems: AdminNavigationItem[] = [
   { to: "/admin/users", label: "用户", icon: "users" },
   { to: "/admin/reviews", label: "审核", icon: "reviews" },
   { to: "/admin/tasks", label: "后台任务", icon: "tasks" },
+  { to: "/admin/jobs", label: "作业与花费", icon: "jobs" },
   { to: "/admin/audit", label: "审计", icon: "audit" },
   { to: "/admin/settings", label: "模型设置", icon: "settings" },
   { to: "/admin/mail", label: "邮件设置", icon: "mail" },
   { to: "/admin/sandbox", label: "沙箱配置", icon: "sandbox" },
 ];
+const teacherNavItems: AdminNavigationItem[] = [
+  { to: "/teacher", label: "我的班级", icon: "classes" },
+];
+
+// A teacher shares the console chrome but may not open the administrator's work
+// areas, so the navigation is chosen from the signed-in role and never from the
+// route alone: an unmatched role sees an empty list instead of dead links.
+function holdsRole(role: "ADMIN" | "TEACHER"): boolean {
+  if (typeof auth.hasAnyRole === "function") return auth.hasAnyRole([role]);
+  return (auth.state.user?.roles ?? []).includes(role);
+}
+const canAdminister = computed(() => holdsRole("ADMIN"));
+const canTeach = computed(() => holdsRole("TEACHER"));
+const navItems = computed<AdminNavigationItem[]>(() => {
+  if (canAdminister.value) return adminNavItems;
+  if (canTeach.value) return teacherNavItems;
+  return [];
+});
+const chromeHome = computed(() => (canAdminister.value ? "/admin" : "/teacher"));
+const chromeTitle = computed(() => (canAdminister.value ? "管理后台" : "教师工作台"));
+const chromeNavLabel = computed(() => (canAdminister.value ? "管理端导航" : "教师端导航"));
+const pinAriaLabel = computed(() => {
+  if (desktopSidebarPinned.value) return canAdminister.value ? "取消固定管理端导航" : "取消固定教师端导航";
+  return canAdminister.value ? "固定管理端导航" : "固定教师端导航";
+});
 const navigationIconPaths: Record<NavigationIcon, string[]> = {
   overview: ["M4 4h6v6H4z", "M14 4h6v6h-6z", "M4 14h6v6H4z", "M14 14h6v6h-6z"],
   users: ["M16 20v-1.6a3.4 3.4 0 0 0-3.4-3.4H7.4A3.4 3.4 0 0 0 4 18.4V20", "M10 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7", "M16 4.5a3.5 3.5 0 0 1 0 6.8", "M20 20v-1.6a3.4 3.4 0 0 0-2.4-3.25"],
@@ -45,6 +71,8 @@ const navigationIconPaths: Record<NavigationIcon, string[]> = {
   settings: ["M4 6h16", "M4 12h16", "M4 18h16", "M8 4v4", "M16 10v4", "M10 16v4"],
   mail: ["M4 6h16v12H4z", "m4 7 8 6 8-6"],
   sandbox: ["M5 5h14v14H5z", "M8 9h.01", "M12 9h.01", "M16 9h.01", "M8 13h.01", "M12 13h.01", "M16 13h.01"],
+  jobs: ["M4 7h16", "M4 12h16", "M4 17h10", "M7 4v3", "M17 4v3", "M7 9v3", "M17 9v3"],
+  classes: ["M4 20v-1.6a3.4 3.4 0 0 1 3.4-3.4h5.2a3.4 3.4 0 0 1 3.4 3.4V20", "M10 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7", "M17 5.2a3.2 3.2 0 0 1 0 6.1", "M19 20v-1.5a3.3 3.3 0 0 0-2.2-3.1"],
 };
 
 const AdminNavIcon = (props: { name: NavigationIcon }) => h(
@@ -188,23 +216,23 @@ onBeforeUnmount(() => {
   <div class="app-frame" :class="{ 'app-frame--admin': isAdmin, 'app-frame--workbench': isWorkbenchSurface }">
     <template v-if="isAdmin">
       <header class="admin-mobile-bar">
-        <RouterLink class="admin-mobile-bar__brand" to="/admin" aria-label="返回管理总览">
-          <img class="admin-brand-mark" :src="brandIcon" width="32" height="32" alt="" aria-hidden="true" /><span>管理后台</span>
+        <RouterLink class="admin-mobile-bar__brand" :to="chromeHome" :aria-label="`返回${chromeTitle}`">
+          <img class="admin-brand-mark" :src="brandIcon" width="32" height="32" alt="" aria-hidden="true" /><span>{{ chromeTitle }}</span>
         </RouterLink>
         <div class="admin-mobile-bar__actions">
           <ThemeToggle />
-          <button ref="mobileMenuToggle" class="admin-menu-toggle" type="button" :aria-expanded="mobileNavOpen" aria-controls="admin-mobile-navigation" :aria-label="mobileNavOpen ? '关闭管理端导航' : '打开管理端导航'" @click="toggleMobileNav"><span></span><span></span><span></span></button>
+          <button ref="mobileMenuToggle" class="admin-menu-toggle" type="button" :aria-expanded="mobileNavOpen" aria-controls="admin-mobile-navigation" :aria-label="mobileNavOpen ? `关闭${chromeNavLabel}` : `打开${chromeNavLabel}`" @click="toggleMobileNav"><span></span><span></span><span></span></button>
         </div>
       </header>
 
       <Transition name="admin-menu">
-        <div v-if="mobileNavOpen" id="admin-mobile-navigation" ref="mobileNavLayer" class="admin-mobile-nav-layer" role="dialog" aria-modal="true" aria-label="管理端导航" tabindex="-1">
+        <div v-if="mobileNavOpen" id="admin-mobile-navigation" ref="mobileNavLayer" class="admin-mobile-nav-layer" role="dialog" aria-modal="true" :aria-label="chromeNavLabel" tabindex="-1">
           <div class="admin-mobile-nav-layer__topline">
-            <RouterLink class="admin-mobile-nav-layer__brand" to="/admin" aria-label="返回管理总览" @click="closeMobileNavWithoutRestoringFocus"><img class="admin-brand-mark" :src="brandIcon" width="32" height="32" alt="" aria-hidden="true" /><span>管理后台</span></RouterLink>
-            <button ref="mobileNavClose" class="admin-mobile-nav-layer__close" type="button" aria-label="关闭管理端导航" @click="closeMobileNav"><span aria-hidden="true">x</span></button>
+            <RouterLink class="admin-mobile-nav-layer__brand" :to="chromeHome" :aria-label="`返回${chromeTitle}`" @click="closeMobileNavWithoutRestoringFocus"><img class="admin-brand-mark" :src="brandIcon" width="32" height="32" alt="" aria-hidden="true" /><span>{{ chromeTitle }}</span></RouterLink>
+            <button ref="mobileNavClose" class="admin-mobile-nav-layer__close" type="button" :aria-label="`关闭${chromeNavLabel}`" @click="closeMobileNav"><span aria-hidden="true">x</span></button>
           </div>
-          <nav class="admin-mobile-nav" aria-label="管理端移动导航">
-            <RouterLink v-for="item in adminNavItems" :key="item.to" :to="item.to" :aria-label="item.label"><span class="admin-nav__mark"><AdminNavIcon :name="item.icon" /></span><span>{{ item.label }}</span></RouterLink>
+          <nav class="admin-mobile-nav" :aria-label="`${chromeNavLabel}，移动端`">
+            <RouterLink v-for="item in navItems" :key="item.to" :to="item.to" :aria-label="item.label"><span class="admin-nav__mark"><AdminNavIcon :name="item.icon" /></span><span>{{ item.label }}</span></RouterLink>
           </nav>
           <div class="admin-mobile-nav__footer">
             <div class="admin-mobile-nav__identity"><span class="admin-mobile-nav__email">{{ auth.state.user?.email || '访客' }}</span><ThemeToggle /></div>
@@ -215,9 +243,9 @@ onBeforeUnmount(() => {
       </Transition>
 
       <div class="admin-workspace" :class="{ 'is-sidebar-expanded': desktopSidebarVisible, 'is-sidebar-pinned': desktopSidebarPinned }">
-        <aside class="admin-sidebar admin-sidebar--fixed" data-layout="admin-sidebar" :aria-label="desktopSidebarPinned ? '管理端导航，已固定展开' : desktopSidebarVisible ? '管理端导航，已展开' : '管理端导航，已收拢'" @mouseenter="expandDesktopSidebar" @mouseleave="collapseDesktopSidebar" @focusin="expandDesktopSidebar" @focusout="handleDesktopSidebarFocusOut">
+        <aside class="admin-sidebar admin-sidebar--fixed" data-layout="admin-sidebar" :aria-label="desktopSidebarPinned ? `${chromeNavLabel}，已固定展开` : desktopSidebarVisible ? `${chromeNavLabel}，已展开` : `${chromeNavLabel}，已收拢`" @mouseenter="expandDesktopSidebar" @mouseleave="collapseDesktopSidebar" @focusin="expandDesktopSidebar" @focusout="handleDesktopSidebarFocusOut">
           <div class="admin-sidebar__brand-row">
-            <RouterLink class="admin-sidebar__brand" to="/admin" aria-label="返回管理总览" title="管理后台"><img class="admin-brand-mark" :src="brandIcon" width="32" height="32" alt="" aria-hidden="true" /><span class="admin-sidebar__label">管理后台</span></RouterLink>
+            <RouterLink class="admin-sidebar__brand" :to="chromeHome" :aria-label="`返回${chromeTitle}`" :title="chromeTitle"><img class="admin-brand-mark" :src="brandIcon" width="32" height="32" alt="" aria-hidden="true" /><span class="admin-sidebar__label">{{ chromeTitle }}</span></RouterLink>
             <button
               class="admin-sidebar__pin"
               type="button"
@@ -225,7 +253,7 @@ onBeforeUnmount(() => {
               :aria-hidden="!desktopSidebarVisible"
               :tabindex="desktopSidebarVisible ? 0 : -1"
               :disabled="!desktopSidebarVisible"
-              :aria-label="desktopSidebarPinned ? '取消固定管理端导航' : '固定管理端导航'"
+              :aria-label="pinAriaLabel"
               :title="desktopSidebarPinned ? '取消固定侧边栏' : '固定侧边栏'"
               @click.stop="toggleDesktopSidebarPinned"
             >
@@ -234,8 +262,8 @@ onBeforeUnmount(() => {
               </span>
             </button>
           </div>
-          <nav class="admin-sidebar__nav" aria-label="管理端导航">
-            <RouterLink v-for="item in adminNavItems" :key="item.to" :to="item.to" :aria-label="item.label" :title="desktopSidebarVisible ? undefined : item.label"><span class="admin-nav__mark"><AdminNavIcon :name="item.icon" /></span><span class="admin-sidebar__label">{{ item.label }}</span></RouterLink>
+          <nav class="admin-sidebar__nav" :aria-label="chromeNavLabel">
+            <RouterLink v-for="item in navItems" :key="item.to" :to="item.to" :aria-label="item.label" :title="desktopSidebarVisible ? undefined : item.label"><span class="admin-nav__mark"><AdminNavIcon :name="item.icon" /></span><span class="admin-sidebar__label">{{ item.label }}</span></RouterLink>
           </nav>
           <div class="admin-sidebar__footer">
             <div class="admin-sidebar__identity"><span class="admin-sidebar__email">{{ auth.state.user?.email || '访客' }}</span><ThemeToggle /></div>

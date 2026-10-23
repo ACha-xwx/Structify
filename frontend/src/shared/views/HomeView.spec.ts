@@ -23,6 +23,8 @@ function mountHome() {
       { path: "/compiler", component: { template: "<div />" } },
       { path: "/studyroom", component: { template: "<div />" } },
       { path: "/user", component: { template: "<div />" } },
+      { path: "/teacher", component: { template: "<div />" } },
+      { path: "/admin", component: { template: "<div />" } },
       { path: "/login", component: { template: "<div />" } },
     ],
   });
@@ -74,6 +76,33 @@ describe("entry page", () => {
       expect(router.currentRoute.value.path).toBe(path);
     }
     wrapper.unmount();
+  });
+
+  it("keeps the staff entry away from learners who have no class or console to open", async () => {
+    session.state.user = { email: "learner@example.com" } as never;
+
+    const { wrapper } = mountHome();
+    await flushPromises();
+
+    expect(wrapper.find(".entry__staff").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("opens the class page from the entry page for a teacher and the console for an administrator", async () => {
+    session.state.user = { email: "teacher@example.com", roles: ["TEACHER"] } as never;
+
+    const teacher = mountHome();
+    await flushPromises();
+    expect(teacher.wrapper.get(".entry__staff").text()).toBe("我的班级");
+    expect(teacher.wrapper.get(".entry__staff").attributes("href")).toBe("/teacher");
+    teacher.wrapper.unmount();
+
+    session.state.user = { email: "admin@example.com", roles: ["ADMIN"] } as never;
+    const admin = mountHome();
+    await flushPromises();
+    expect(admin.wrapper.get(".entry__staff").text()).toBe("管理后台");
+    expect(admin.wrapper.get(".entry__staff").attributes("href")).toBe("/admin");
+    admin.wrapper.unmount();
   });
 
   it("signs out from the entry page", async () => {

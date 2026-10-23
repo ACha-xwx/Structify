@@ -25,6 +25,7 @@ async function mountAdminShell() {
       { path: "/admin/reviews", component: { template: "<div />" }, meta: { layout: "admin" } },
       { path: "/admin/tasks", component: { template: "<div />" }, meta: { layout: "admin" } },
       { path: "/admin/audit", component: { template: "<div />" }, meta: { layout: "admin" } },
+      { path: "/admin/jobs", component: { template: "<div />" }, meta: { layout: "admin" } },
       { path: "/admin/settings", component: { template: "<div />" }, meta: { layout: "admin" } },
       { path: "/admin/mail", component: { template: "<div />" }, meta: { layout: "admin" } },
       { path: "/admin/sandbox", component: { template: "<div />" }, meta: { layout: "admin" } },
@@ -34,6 +35,22 @@ async function mountAdminShell() {
   await router.push("/admin");
   await router.isReady();
   authMock.state.user = { id: 1, email: "admin@example.com", roles: ["ADMIN"] };
+  return { router, wrapper: mount(AppShell, { attachTo: document.body, global: { plugins: [router] }, slots: { default: "<p>content</p>" } }) };
+}
+
+async function mountTeacherShell() {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: "/teacher", component: { template: "<div />" }, meta: { layout: "admin" } },
+      { path: "/admin", component: { template: "<div />" }, meta: { layout: "admin" } },
+      { path: "/admin/users", component: { template: "<div />" }, meta: { layout: "admin" } },
+      { path: "/login", component: { template: "<div />" } },
+    ],
+  });
+  await router.push("/teacher");
+  await router.isReady();
+  authMock.state.user = { id: 66, email: "teacher@example.com", roles: ["TEACHER"] };
   return { router, wrapper: mount(AppShell, { attachTo: document.body, global: { plugins: [router] }, slots: { default: "<p>content</p>" } }) };
 }
 
@@ -76,6 +93,7 @@ describe("AppShell retained session presentation", () => {
     expect(nav.find("a[href=\"/admin/users\"]").exists()).toBe(true);
     expect(nav.find("a[href=\"/admin/reviews\"]").exists()).toBe(true);
     expect(nav.find("a[href=\"/admin/tasks\"]").exists()).toBe(true);
+    expect(nav.find("a[href=\"/admin/jobs\"]").exists()).toBe(true);
     expect(nav.find("a[href=\"/admin/audit\"]").exists()).toBe(true);
     expect(nav.find("a[href=\"/admin/settings\"]").exists()).toBe(true);
     expect(nav.find("a[href=\"/admin/mail\"]").exists()).toBe(true);
@@ -88,8 +106,8 @@ describe("AppShell retained session presentation", () => {
     const marks = wrapper.get("aside[data-layout=\"admin-sidebar\"] nav").findAll(".admin-nav__mark");
     const icons = wrapper.get("aside[data-layout=\"admin-sidebar\"] nav").findAll("svg.admin-nav__icon");
 
-    expect(marks).toHaveLength(8);
-    expect(icons).toHaveLength(8);
+    expect(marks).toHaveLength(9);
+    expect(icons).toHaveLength(9);
     expect(marks.every((mark) => mark.text().trim() === "")).toBe(true);
     expect(icons.every((icon) => icon.attributes("aria-hidden") === "true")).toBe(true);
     wrapper.unmount();
@@ -233,6 +251,20 @@ describe("AppShell retained session presentation", () => {
     expect(logout.get(".liquid-metal-button__native").attributes("aria-label")).toBe("退出");
     expect(logout.find(".admin-signout-glyph").exists()).toBe(true);
     expect(logout.html()).toContain("M13 8L9 12");
+    wrapper.unmount();
+  });
+
+  it("gives a class teacher their own class area instead of the administrator work areas", async () => {
+    const { wrapper } = await mountTeacherShell();
+    const sidebar = wrapper.get("aside[data-layout=\"admin-sidebar\"]");
+    const nav = sidebar.get("nav[aria-label=\"教师端导航\"]");
+
+    expect(nav.find("a[href=\"/teacher\"]").exists()).toBe(true);
+    expect(nav.findAll("a")).toHaveLength(1);
+    expect(nav.find("a[href=\"/admin\"]").exists()).toBe(false);
+    expect(nav.find("a[href=\"/admin/users\"]").exists()).toBe(false);
+    expect(sidebar.get(".admin-sidebar__brand").attributes("href")).toBe("/teacher");
+    expect(sidebar.text()).toContain("教师工作台");
     wrapper.unmount();
   });
 });

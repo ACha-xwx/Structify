@@ -35,16 +35,19 @@ const titleByName: Record<string, { zh: string; en: string }> = {
   "admin-users": { zh: "用户与角色", en: "Users and roles" },
   "admin-reviews": { zh: "审核队列", en: "Review queue" },
   "admin-tasks": { zh: "后台任务", en: "Background tasks" },
+  "admin-jobs": { zh: "作业与花费", en: "Work and cost" },
   "admin-audit": { zh: "审计事件", en: "Audit events" },
   "admin-settings": { zh: "模型设置", en: "Model settings" },
   "admin-mail": { zh: "邮件投递", en: "Mail delivery" },
   "admin-sandbox": { zh: "代码沙箱", en: "Code sandbox" },
+  "teacher-home": { zh: "我的班级", en: "My classes" },
   forbidden: { zh: "无权访问", en: "Access denied" },
   "not-found": { zh: "页面不存在", en: "Not found" },
 };
 
 const titleByPath: Array<[RegExp, { zh: string; en: string }]> = [
   [/^\/admin(?:\/|$)/, { zh: "管理后台", en: "Admin" }],
+  [/^\/teacher(?:\/|$)/, { zh: "我的班级", en: "My classes" }],
   [/^\/user(?:\/|$)/, { zh: "学习台", en: "Workbench" }],
   [/^\/login$/, { zh: "登录", en: "Sign in" }],
   [/^\/register$/, { zh: "注册", en: "Register" }],

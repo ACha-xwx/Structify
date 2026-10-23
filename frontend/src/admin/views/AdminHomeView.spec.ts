@@ -31,6 +31,7 @@ describe("AdminHomeView", () => {
       { path: "/admin/users", component },
       { path: "/admin/reviews", component },
       { path: "/admin/tasks", component },
+      { path: "/admin/jobs", component },
       { path: "/admin/audit", component },
       { path: "/admin/settings", component },
       { path: "/admin/mail", component },
