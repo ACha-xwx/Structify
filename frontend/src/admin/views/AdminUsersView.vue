@@ -12,6 +12,7 @@ import StatusBadge from "../../shared/components/StatusBadge.vue";
 import InlineNotice from "../../shared/components/InlineNotice.vue";
 import RuntimeSelect, { type RuntimeSelectOption } from "../../shared/components/RuntimeSelect.vue";
 import DirectionalArrowIcon from "../../shared/components/DirectionalArrowIcon.vue";
+import LearningMapChapters from "../../shared/components/LearningMapChapters.vue";
 
 const page = ref(0); const size = 20; const total = ref(0); const items = ref<AdminUser[]>([]); const loading = ref(true); const error = ref(""); const notice = ref("");
 const filters = reactive({ search: "", status: "", role: "" });
@@ -68,19 +69,7 @@ function clearRows() { selectedIds.value = new Set(); }
 function noticeTone(value: string): "success" | "danger" { return value.includes("未完成") || value.includes("失败") ? "danger" : "success"; }
 
 const learningRoot = computed(() => learning.value?.learningMap.nodes.find((node) => node.level === 0) ?? null);
-const learningChapters = computed(() => {
-  if (!learning.value) return [];
-  return learning.value.learningMap.nodes
-    .filter((node) => node.level === 1)
-    .sort((left, right) => (right.mastery ?? -1) - (left.mastery ?? -1));
-});
-const startedSomething = computed(() =>
-  (learning.value?.learningMap.nodes ?? []).some((node) => node.status !== "NOT_STARTED")
-);
 function masteryPercent(value: number | null): string { return value == null ? "—" : `${Math.round(value * 100)}%`; }
-function nodeStatusLabel(status: string): string {
-  return status === "ESTIMATED" ? "已估算" : status === "LOW_EVIDENCE" ? "证据不足" : "未开始";
-}
 function jobStatusTone(status: string): "success" | "warning" | "danger" {
   const upper = status.toUpperCase();
   if (upper === "SUCCEEDED" || upper === "COMPLETED" || upper === "DONE") return "success";
@@ -299,18 +288,10 @@ onMounted(load);
                   30 天结算 {{ learning.callsLast30Days }} 次 · 课堂会话 {{ learning.classroomSessions }} 个
                 </p>
 
-                <template v-if="learningRoot && startedSomething">
+                <template v-if="learningRoot">
                   <p class="ulearn__line"><strong>整体掌握 {{ masteryPercent(learningRoot.mastery) }}</strong><span class="admin-muted">（可信度 {{ Math.round(learningRoot.confidence * 100) }}%）</span></p>
-                  <ul class="ulearn__chapters">
-                    <li v-for="chapter in learningChapters" :key="chapter.id">
-                      <span class="ulearn__chapter-title" :title="chapter.title">{{ chapter.title }}</span>
-                      <span class="ulearn__bar"><span class="ulearn__bar-fill" :style="{ width: `${Math.round((chapter.mastery ?? 0) * 100)}%` }"></span></span>
-                      <span class="ulearn__pct admin-code">{{ masteryPercent(chapter.mastery) }}</span>
-                      <span class="admin-muted">{{ nodeStatusLabel(chapter.status) }}</span>
-                    </li>
-                  </ul>
+                  <LearningMapChapters :nodes="learning.learningMap.nodes" />
                 </template>
-                <p v-else class="admin-muted ulearn__line">还没有任何学习记录——不是 0 分，是还没开始。</p>
 
                 <template v-if="learning.courses.length">
                   <h4 class="ulearn__sub">课程库</h4>
@@ -368,7 +349,6 @@ onMounted(load);
   font-size: 14px;
 }
 
-.ulearn__chapters,
 .ulearn__courses,
 .ulearn__jobs {
   list-style: none;
@@ -378,37 +358,6 @@ onMounted(load);
   flex-direction: column;
   gap: 6px;
   font-size: 14px;
-}
-
-.ulearn__chapters li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 90px 44px auto;
-  gap: 8px;
-  align-items: center;
-}
-
-.ulearn__chapter-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ulearn__bar {
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(12, 44, 52, 0.12);
-  overflow: hidden;
-}
-
-.ulearn__bar-fill {
-  display: block;
-  height: 100%;
-  border-radius: 999px;
-  background: rgba(8, 118, 111, 0.75);
-}
-
-.ulearn__pct {
-  text-align: right;
 }
 
 .ulearn__courses li,

@@ -1,6 +1,6 @@
 import type { IsoDateTime, Page } from "./api";
 import type { Role } from "./auth";
-import type { LearningMap } from "./contracts";
+import type { CourseLibraryEntry, LearningMap } from "./contracts";
 
 export type AdminModuleStatus = "AVAILABLE" | "UNAVAILABLE" | "NOT_CONFIGURED";
 export type AdminServiceStatusValue = "AVAILABLE" | "UNAVAILABLE";
@@ -381,18 +381,8 @@ export interface AddClassMemberResult {
   teacherRoleGranted: boolean;
 }
 
-/** One course in a learner's library, as the course library service reports it. */
-export interface AdminUserCourse {
-  id: string;
-  title: string;
-  status: string;
-  totalPoints: number;
-  completedPoints: number;
-  readableFragments: number;
-  lastPointTitle: string | null;
-  lastLearningAt: string | null;
-  activityAt: string | null;
-}
+/** One course in a learner's library; the shape lives in contracts.ts next to the learning map. */
+export type AdminUserCourse = CourseLibraryEntry;
 
 /** One recent studyroom generation job of the user, with what it cost. */
 export interface AdminUserRecentJob {

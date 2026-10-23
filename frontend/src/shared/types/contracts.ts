@@ -389,6 +389,18 @@ export interface LearningMapNode {
   components: LearningMapComponents; signals: LearningMapSignals;
 }
 export interface LearningMap { generatedAt: string; nodes: LearningMapNode[]; }
+/** One course in a learner's library, as the course library service reports it. Shared by admin and teacher views. */
+export interface CourseLibraryEntry {
+  id: string;
+  title: string;
+  status: string;
+  totalPoints: number;
+  completedPoints: number;
+  readableFragments: number;
+  lastPointTitle: string | null;
+  lastLearningAt: string | null;
+  activityAt: string | null;
+}
 export interface LessonCourseware {
   lessonId: string;
   coursewareKey: string;
