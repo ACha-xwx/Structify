@@ -68,4 +68,50 @@ describe("teacher home", () => {
 
     expect(wrapper.text()).toContain("你名下还没有班级");
   });
+
+  it("opens the lessons of a chapter only when the teacher asks for them", async () => {
+    studentMap.mockResolvedValue({
+      generatedAt: "2026-10-23T08:00:00Z",
+      nodes: [
+        { id: "root", parentId: null, level: 0, title: "数据结构", mastery: 0.4, confidence: 0.5, status: "ESTIMATED" },
+        { id: "01-introduction", parentId: "root", level: 1, title: "绪论", mastery: 0.4, confidence: 0.5, status: "ESTIMATED" },
+        { id: "01-introduction:01-01", parentId: "01-introduction", level: 2, title: "数据结构的基础概念", mastery: 0.8, confidence: 0.6, status: "ESTIMATED" },
+        { id: "01-introduction:01-02", parentId: "01-introduction", level: 2, title: "数据结构的内容", mastery: null, confidence: 0, status: "NOT_STARTED" },
+      ],
+    });
+    const wrapper = mount(TeacherHomeView);
+    await flushPromises();
+    await wrapper.findAll("button").find((button) => button.text().includes("学习图谱"))?.trigger("click");
+    await flushPromises();
+
+    // A chapter can hold dozens of lessons, so they stay folded until one is opened.
+    expect(wrapper.text()).not.toContain("数据结构的基础概念");
+    const toggle = wrapper.get(".tp__lessons-toggle");
+    expect(toggle.text()).toBe("2 个课时");
+    expect(toggle.attributes("aria-expanded")).toBe("false");
+
+    await toggle.trigger("click");
+
+    expect(wrapper.text()).toContain("数据结构的基础概念");
+    expect(wrapper.text()).toContain("80%");
+    expect(wrapper.text()).toContain("未开始");
+  });
+
+  it("says the student has no records yet instead of drawing empty chapters", async () => {
+    studentMap.mockResolvedValue({
+      generatedAt: "2026-10-23T08:00:00Z",
+      nodes: [
+        { id: "root", parentId: null, level: 0, title: "数据结构", mastery: null, confidence: 0, status: "NOT_STARTED" },
+        { id: "01-introduction", parentId: "root", level: 1, title: "绪论", mastery: null, confidence: 0, status: "NOT_STARTED" },
+        { id: "01-introduction:01-01", parentId: "01-introduction", level: 2, title: "数据结构的基础概念", mastery: null, confidence: 0, status: "NOT_STARTED" },
+      ],
+    });
+    const wrapper = mount(TeacherHomeView);
+    await flushPromises();
+    await wrapper.findAll("button").find((button) => button.text().includes("学习图谱"))?.trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("还没有任何学习记录");
+    expect(wrapper.find(".tp__chapters").exists()).toBe(false);
+  });
 });

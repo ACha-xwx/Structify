@@ -24,12 +24,39 @@ const loadingMap = ref(false);
 const error = ref("");
 
 const root = computed<LearningMapNode | null>(() => map.value?.nodes.find((node) => node.level === 0) ?? null);
-const chapters = computed<LearningMapNode[]>(() =>
-  (map.value?.nodes ?? []).filter((node) => node.level === 1).sort((left, right) => left.id.localeCompare(right.id))
-);
+
+/** A chapter with the lessons inside it; the map is two levels deep below the course root. */
+const chapters = computed<Array<{ node: LearningMapNode; lessons: LearningMapNode[] }>>(() => {
+  const nodes = map.value?.nodes ?? [];
+  return nodes
+    .filter((node) => node.level === 1)
+    .sort((left, right) => left.id.localeCompare(right.id))
+    .map((node) => ({
+      node,
+      lessons: nodes
+        .filter((lesson) => lesson.level === 2 && lesson.parentId === node.id)
+        .sort((left, right) => left.id.localeCompare(right.id)),
+    }));
+});
+
+// A cohort can hold dozens of lessons per chapter, so they open one chapter at a time.
+const expanded = ref<string[]>([]);
+const startedSomething = computed(() => (map.value?.nodes ?? []).some((node) => node.status !== "NOT_STARTED"));
+
+function toggleChapter(chapterId: string): void {
+  expanded.value = expanded.value.includes(chapterId)
+    ? expanded.value.filter((id) => id !== chapterId)
+    : [...expanded.value, chapterId];
+}
 
 function percent(value: number | null | undefined): string {
   return value === null || value === undefined ? "—" : `${Math.round(value * 100)}%`;
+}
+
+function statusLabel(status: string): string {
+  if (status === "ESTIMATED") return "已估算";
+  if (status === "LOW_EVIDENCE") return "证据不足";
+  return "未开始";
 }
 
 async function loadClasses(): Promise<void> {
@@ -144,16 +171,32 @@ onMounted(loadClasses);
 
       <p v-if="loadingMap" class="admin-muted">正在计算…</p>
       <p v-else-if="!map" class="admin-muted">没有读到数据。</p>
+      <p v-else-if="!startedSomething" class="admin-muted">
+        这个学生还没有任何学习记录，所以每一章都是空的——不是 0 分，是还没开始。
+      </p>
 
       <ul v-else class="tp__chapters">
-        <li v-for="chapter in chapters" :key="chapter.id">
+        <li v-for="chapter in chapters" :key="chapter.node.id">
           <div class="tp__chapter-head">
-            <span>{{ chapter.title }}</span>
-            <span class="admin-muted">{{ percent(chapter.mastery) }} · 可信 {{ percent(chapter.confidence) }}</span>
+            <span>{{ chapter.node.title }}</span>
+            <span class="admin-muted">{{ percent(chapter.node.mastery) }} · 可信 {{ percent(chapter.node.confidence) }}</span>
           </div>
           <div class="tp__bar-track">
-            <div class="tp__bar-fill" :style="{ width: `${Math.round((chapter.mastery ?? 0) * 100)}%` }" />
+            <div class="tp__bar-fill" :style="{ width: `${Math.round((chapter.node.mastery ?? 0) * 100)}%` }" />
           </div>
+          <button
+            v-if="chapter.lessons.length"
+            type="button"
+            class="tp__lessons-toggle"
+            :aria-expanded="expanded.includes(chapter.node.id)"
+            @click="toggleChapter(chapter.node.id)"
+          >{{ expanded.includes(chapter.node.id) ? "收起课时" : `${chapter.lessons.length} 个课时` }}</button>
+          <ul v-if="expanded.includes(chapter.node.id)" class="tp__lessons">
+            <li v-for="lesson in chapter.lessons" :key="lesson.id">
+              <span class="tp__lesson-title">{{ lesson.title }}</span>
+              <span class="admin-muted admin-nowrap">{{ percent(lesson.mastery) }} · {{ statusLabel(lesson.status) }}</span>
+            </li>
+          </ul>
         </li>
       </ul>
     </section>
@@ -236,5 +279,42 @@ onMounted(loadClasses);
   height: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, rgba(8, 118, 111, 0.55), rgba(8, 118, 111, 0.9));
+}
+
+.tp__lessons-toggle {
+  margin-top: 7px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--admin-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+}
+
+.tp__lessons-toggle:hover {
+  color: var(--text);
+}
+
+.tp__lessons {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.tp__lessons li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0 4px 12px;
+  border-left: 2px solid rgba(8, 118, 111, 0.28);
+  font-size: 13px;
+}
+
+.tp__lesson-title {
+  min-width: 0;
 }
 </style>
