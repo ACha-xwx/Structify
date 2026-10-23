@@ -107,8 +107,8 @@ describe("AppShell retained session presentation", () => {
     const marks = wrapper.get("aside[data-layout=\"admin-sidebar\"] nav").findAll(".admin-nav__mark");
     const icons = wrapper.get("aside[data-layout=\"admin-sidebar\"] nav").findAll("svg.admin-nav__icon");
 
-    expect(marks).toHaveLength(10);
-    expect(icons).toHaveLength(10);
+    expect(marks).toHaveLength(11);
+    expect(icons).toHaveLength(11);
     expect(marks.every((mark) => mark.text().trim() === "")).toBe(true);
     expect(icons.every((icon) => icon.attributes("aria-hidden") === "true")).toBe(true);
     wrapper.unmount();

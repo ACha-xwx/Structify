@@ -1,11 +1,15 @@
 package com.feng.dsagent.knowledge;
 
-final class KnowledgeEligibilitySql {
+/**
+ * The retrieval gate, shared by the snapshot loader, the per-query eligibility recheck, and the admin
+ * console's "is this chunk retrievable" flag. There must be exactly one definition of the chain.
+ */
+public final class KnowledgeEligibilitySql {
 
-    static final String EFFECTIVE_LICENSE_SCOPE =
+    public static final String EFFECTIVE_LICENSE_SCOPE =
         "CASE WHEN k.resource_id IS NULL THEN k.license_scope ELSE r.license_scope END";
 
-    static final String REVIEWED_SOURCE_CHAIN = """
+    public static final String REVIEWED_SOURCE_CHAIN = """
         k.review_status = 'VERIFIED'
           AND NULLIF(TRIM(k.source_path), '') IS NOT NULL
           AND (k.chapter_id IS NULL OR kc.status = 'PUBLISHED')

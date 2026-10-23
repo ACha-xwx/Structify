@@ -409,3 +409,112 @@ export interface AdminUserLearning {
   recentJobs: AdminUserRecentJob[];
   learningMap: LearningMap;
 }
+
+// ----- knowledge base console ---------------------------------------------------
+
+/** The retrieval tuning in effect. A saved admin row wins over the configuration defaults. */
+export interface KnowledgeMatchingSettings {
+  minimumScore: number;
+  searchLimit: number;
+  titleWeightLong: number;
+  titleWeightShort: number;
+}
+
+export interface KnowledgeSettingsView extends KnowledgeMatchingSettings {
+  /** True when an administrator has saved a row; false means the configuration defaults are in effect. */
+  customized: boolean;
+  defaults: KnowledgeMatchingSettings;
+}
+
+export interface KnowledgeOverview {
+  totalChunks: number;
+  byReviewStatus: Record<string, number>;
+  bySource: Record<string, number>;
+  snapshotChunks: number;
+  settingsCustomized: boolean;
+}
+
+export type KnowledgeReviewStatus = "DRAFT" | "PENDING" | "VERIFIED" | "REJECTED";
+export type KnowledgeLicenseScope = "PUBLIC" | "CLASSROOM_ONLY" | "TEAM_ONLY";
+
+export interface AdminKnowledgeChunkRow {
+  id: string;
+  chapterId: string | null;
+  title: string;
+  sourcePath: string;
+  pageLabel: string | null;
+  reviewStatus: KnowledgeReviewStatus | string;
+  licenseScope: KnowledgeLicenseScope | string;
+  /** Whether the live retrieval gate (review + source chain + chapter) would let this chunk through. */
+  retrievable: boolean;
+  /** True when the import pipeline owns this source and the next import would overwrite edits. */
+  importOwned: boolean;
+  contentLength: number;
+  createdAt: string | null;
+}
+
+export type AdminKnowledgeChunkPage = Page<AdminKnowledgeChunkRow>;
+
+export interface AdminKnowledgeChunkDetail {
+  id: string;
+  chapterId: string | null;
+  title: string;
+  content: string;
+  sourcePath: string;
+  pageLabel: string | null;
+  reviewStatus: KnowledgeReviewStatus | string;
+  licenseScope: KnowledgeLicenseScope | string;
+  retrievable: boolean;
+  importOwned: boolean;
+  createdAt: string | null;
+}
+
+export interface KnowledgeChunkQuery {
+  page?: number;
+  size?: number;
+  chapterId?: string;
+  status?: string;
+  sourcePrefix?: string;
+  q?: string;
+}
+
+export interface SaveKnowledgeSettingsRequest {
+  minimumScore: number;
+  searchLimit: number;
+  titleWeightLong: number;
+  titleWeightShort: number;
+}
+
+export interface TestKnowledgeSearchRequest {
+  query: string;
+  chapterId?: string;
+  audience?: "GUEST" | "STUDENT" | "TEAM";
+  minimumScore?: number;
+  searchLimit?: number;
+  titleWeightLong?: number;
+  titleWeightShort?: number;
+}
+
+export interface KnowledgeTestSearchHit {
+  chunkId: string;
+  title: string;
+  sourcePath: string;
+  pageLabel: string | null;
+  score: number;
+}
+
+export interface KnowledgeTestSearchResult {
+  effectiveSettings: KnowledgeMatchingSettings;
+  hits: KnowledgeTestSearchHit[];
+}
+
+export interface CreateKnowledgeChunkRequest {
+  chapterId?: string;
+  title: string;
+  content: string;
+  pageLabel?: string;
+  reviewStatus?: KnowledgeReviewStatus;
+  licenseScope?: KnowledgeLicenseScope;
+}
+
+export type PatchKnowledgeChunkRequest = Partial<CreateKnowledgeChunkRequest>;

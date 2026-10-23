@@ -8,7 +8,7 @@ import DirectionalArrowIcon from "../../shared/components/DirectionalArrowIcon.v
 import ExitArrowIcon from "../../shared/components/ExitArrowIcon.vue";
 import brandIcon from "../../favicon.svg";
 
-type NavigationIcon = "overview" | "users" | "reviews" | "tasks" | "audit" | "settings" | "mail" | "sandbox" | "jobs" | "classes";
+type NavigationIcon = "overview" | "users" | "reviews" | "tasks" | "audit" | "settings" | "mail" | "sandbox" | "jobs" | "classes" | "knowledge";
 type AdminNavigationItem = { to: string; label: string; icon: NavigationIcon };
 
 const route = useRoute();
@@ -33,6 +33,7 @@ const adminNavItems: AdminNavigationItem[] = [
   { to: "/admin/tasks", label: "后台任务", icon: "tasks" },
   { to: "/admin/jobs", label: "作业与花费", icon: "jobs" },
   { to: "/admin/classes", label: "班级", icon: "classes" },
+  { to: "/admin/knowledge", label: "知识库", icon: "knowledge" },
   { to: "/admin/audit", label: "审计", icon: "audit" },
   { to: "/admin/settings", label: "模型设置", icon: "settings" },
   { to: "/admin/mail", label: "邮件设置", icon: "mail" },
@@ -74,6 +75,7 @@ const navigationIconPaths: Record<NavigationIcon, string[]> = {
   sandbox: ["M5 5h14v14H5z", "M8 9h.01", "M12 9h.01", "M16 9h.01", "M8 13h.01", "M12 13h.01", "M16 13h.01"],
   jobs: ["M4 7h16", "M4 12h16", "M4 17h10", "M7 4v3", "M17 4v3", "M7 9v3", "M17 9v3"],
   classes: ["M4 20v-1.6a3.4 3.4 0 0 1 3.4-3.4h5.2a3.4 3.4 0 0 1 3.4 3.4V20", "M10 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7", "M17 5.2a3.2 3.2 0 0 1 0 6.1", "M19 20v-1.5a3.3 3.3 0 0 0-2.2-3.1"],
+  knowledge: ["M12 4c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3z", "M4 7v5c0 1.7 3.6 3 8 3s8-1.3 8-3V7", "M4 12v5c0 1.7 3.6 3 8 3s8-1.3 8-3v-5"],
 };
 
 const AdminNavIcon = (props: { name: NavigationIcon }) => h(

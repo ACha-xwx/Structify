@@ -1,4 +1,5 @@
 import { api } from "../app/providers/runtime";
+import type { Chapter } from "../shared/types/contracts";
 import type {
   AdminAuditEventPage,
   AdminCapability,
@@ -34,6 +35,16 @@ import type {
   ReviewItem,
   ReviewItemPage,
   ReviewStatusRequest,
+  AdminKnowledgeChunkDetail,
+  AdminKnowledgeChunkPage,
+  CreateKnowledgeChunkRequest,
+  KnowledgeChunkQuery,
+  KnowledgeOverview,
+  KnowledgeSettingsView,
+  KnowledgeTestSearchResult,
+  PatchKnowledgeChunkRequest,
+  SaveKnowledgeSettingsRequest,
+  TestKnowledgeSearchRequest,
 } from "../shared/types";
 import { ApiClientError, formatDateTime, staffErrorMessage, type ApiResponse } from "../shared/api";
 
@@ -171,6 +182,42 @@ export const adminApi = {
   },
   async deleteClass(classId: string): Promise<void> {
     await api.delete(`/admin/classes/${encodeURIComponent(classId)}`);
+  },
+  /** The knowledge console: what the AI may quote, and how loosely it matches. */
+  async knowledgeOverview(): Promise<KnowledgeOverview> {
+    return jsonData(await api.get<KnowledgeOverview>("/admin/knowledge/overview"));
+  },
+  async knowledgeSettings(): Promise<KnowledgeSettingsView> {
+    return jsonData(await api.get<KnowledgeSettingsView>("/admin/knowledge/settings"));
+  },
+  async saveKnowledgeSettings(payload: SaveKnowledgeSettingsRequest): Promise<KnowledgeSettingsView> {
+    return jsonData(await api.put<KnowledgeSettingsView>("/admin/knowledge/settings", payload));
+  },
+  async resetKnowledgeSettings(): Promise<KnowledgeSettingsView> {
+    return jsonData(await api.delete<KnowledgeSettingsView>("/admin/knowledge/settings"));
+  },
+  /** Try a query against the live snapshot with explicit tuning, without saving anything. */
+  async testKnowledgeSearch(payload: TestKnowledgeSearchRequest): Promise<KnowledgeTestSearchResult> {
+    return jsonData(await api.post<KnowledgeTestSearchResult>("/admin/knowledge/test-search", payload));
+  },
+  async knowledgeChunks(query: KnowledgeChunkQuery = {}): Promise<AdminKnowledgeChunkPage> {
+    return jsonData(await api.get<AdminKnowledgeChunkPage>("/admin/knowledge/chunks", { query: compactQuery(query) }));
+  },
+  async knowledgeChunk(id: string): Promise<AdminKnowledgeChunkDetail> {
+    return jsonData(await api.get<AdminKnowledgeChunkDetail>(`/admin/knowledge/chunks/${encodeURIComponent(id)}`));
+  },
+  async createKnowledgeChunk(payload: CreateKnowledgeChunkRequest): Promise<AdminKnowledgeChunkDetail> {
+    return jsonData(await api.post<AdminKnowledgeChunkDetail>("/admin/knowledge/chunks", payload));
+  },
+  async updateKnowledgeChunk(id: string, payload: PatchKnowledgeChunkRequest): Promise<AdminKnowledgeChunkDetail> {
+    return jsonData(await api.patch<AdminKnowledgeChunkDetail>(`/admin/knowledge/chunks/${encodeURIComponent(id)}`, payload));
+  },
+  async deleteKnowledgeChunk(id: string): Promise<void> {
+    await api.delete(`/admin/knowledge/chunks/${encodeURIComponent(id)}`);
+  },
+  /** Chapter names for the knowledge console's dropdowns; the shared chapter catalog. */
+  async knowledgeChapters(): Promise<Chapter[]> {
+    return jsonData(await api.get<Chapter[]>("/chapters"));
   },
 };
 

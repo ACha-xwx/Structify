@@ -51,6 +51,8 @@ class AdminService {
         modules.put("learning", new AdminModuleCapability(true, "AVAILABLE", null));
         modules.put("quota", new AdminModuleCapability(true, "AVAILABLE", null));
         modules.put("classes", new AdminModuleCapability(true, "AVAILABLE", null));
+        // The knowledge console owns chunk CRUD and the retrieval tuning; both write through here.
+        modules.put("knowledge", new AdminModuleCapability(true, "AVAILABLE", null));
         ModelConfigService.CapabilityState modelSettings = modelConfig.capabilityState();
         modules.put(
             "modelSettings",

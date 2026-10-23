@@ -2127,6 +2127,170 @@ paths:
               schema: {type: array, items: {$ref: '#/components/schemas/AdminModuleState'}}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/knowledge/overview:
+    get:
+      tags: [Admin]
+      summary: Knowledge corpus counts and the size of the live retrieval snapshot
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      responses:
+        '200':
+          description: Totals by review status and source bucket, plus the snapshot the search actually reads
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminKnowledgeOverview'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/knowledge/settings:
+    get:
+      tags: [Admin]
+      summary: The retrieval tuning in effect, and whether it is a saved override or the defaults
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      responses:
+        '200':
+          description: Current settings, the customized flag, and the configuration defaults
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminKnowledgeSettingsView'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    put:
+      tags: [Admin]
+      summary: Save the retrieval tuning; the next search uses it without a restart
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SaveKnowledgeSettingsRequest'}
+      responses:
+        '200':
+          description: The settings now in effect
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminKnowledgeSettingsView'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    delete:
+      tags: [Admin]
+      summary: Drop the saved tuning row so the configuration defaults apply again
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      responses:
+        '200':
+          description: The settings now in effect (the defaults)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminKnowledgeSettingsView'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/knowledge/test-search:
+    post:
+      tags: [Admin]
+      summary: Run the retrieval pipeline with explicit tuning, without saving anything
+      description: Eligibility and license checks still apply; only the matching knobs are overridden.
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AdminKnowledgeTestSearchRequest'}
+      responses:
+        '200':
+          description: The effective settings and the hits they produced
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminKnowledgeTestSearchResult'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/knowledge/chunks:
+    get:
+      tags: [Admin]
+      summary: Knowledge chunks, filtered and paged, each with its live retrievability flag
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      parameters:
+        - {name: page, in: query, required: false, schema: {type: integer, minimum: 0, default: 0}}
+        - {name: size, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+        - {name: chapterId, in: query, required: false, schema: {type: string}}
+        - {name: status, in: query, required: false, schema: {type: string, enum: [DRAFT, PENDING, VERIFIED, REJECTED]}}
+        - {name: sourcePrefix, in: query, required: false, schema: {type: string, description: 'Source bucket prefix such as textbook, courseware or admin'}}
+        - {name: q, in: query, required: false, schema: {type: string, description: 'Free text over title and content'}}
+      responses:
+        '200':
+          description: Newest chunks first
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminKnowledgeChunkPage'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Admin]
+      summary: Create a manual chunk under the admin/ source, where no import can overwrite it
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateKnowledgeChunkRequest'}
+      responses:
+        '201':
+          description: The created chunk
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminKnowledgeChunkDetail'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/knowledge/chunks/{chunkId}:
+    get:
+      tags: [Admin]
+      summary: One chunk with its full content and live retrievability
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/KnowledgeChunkId'}
+      responses:
+        '200':
+          description: The chunk
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminKnowledgeChunkDetail'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [Admin]
+      summary: Edit a chunk; the retrieval snapshot rebuilds before the response returns
+      description: Editing an import-owned chunk is allowed but the next import overwrites it.
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/KnowledgeChunkId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PatchKnowledgeChunkRequest'}
+      responses:
+        '200':
+          description: The chunk after the edit
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminKnowledgeChunkDetail'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    delete:
+      tags: [Admin]
+      summary: Delete a chunk; retrieval stops quoting it immediately
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/KnowledgeChunkId'}
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
   /teacher/classes:
     get:
       tags: [Teacher]
@@ -2238,6 +2402,11 @@ components:
       in: path
       required: true
       schema: {type: integer, format: int64, minimum: 1}
+    KnowledgeChunkId:
+      name: chunkId
+      in: path
+      required: true
+      schema: {type: string, maxLength: 96}
     StudentId:
       name: studentId
       in: path
@@ -3652,6 +3821,117 @@ components:
       properties:
         identifier: {type: string, minLength: 1, maxLength: 255, description: 'Account email or username'}
         roleInClass: {type: string, enum: [STUDENT, TEACHER]}
+    KnowledgeMatchingSettings:
+      type: object
+      required: [minimumScore, searchLimit, titleWeightLong, titleWeightShort]
+      properties:
+        minimumScore: {type: number, format: double, minimum: 0, maximum: 100, description: 'Chunks scoring below this never join an answer'}
+        searchLimit: {type: integer, minimum: 1, maximum: 12, description: 'The most chunks one retrieval may return'}
+        titleWeightLong: {type: number, format: double, minimum: 0.5, maximum: 20, description: 'Per-occurrence title bonus for tokens of length 3 or more'}
+        titleWeightShort: {type: number, format: double, minimum: 0.5, maximum: 20, description: 'Per-occurrence title bonus for shorter tokens'}
+    AdminKnowledgeSettingsView:
+      allOf:
+        - $ref: '#/components/schemas/KnowledgeMatchingSettings'
+        - type: object
+          required: [customized, defaults]
+          properties:
+            customized: {type: boolean, description: 'True when a saved admin row wins over the configuration defaults'}
+            defaults: {$ref: '#/components/schemas/KnowledgeMatchingSettings'}
+    SaveKnowledgeSettingsRequest:
+      allOf:
+        - $ref: '#/components/schemas/KnowledgeMatchingSettings'
+    AdminKnowledgeOverview:
+      type: object
+      required: [totalChunks, byReviewStatus, bySource, snapshotChunks, settingsCustomized]
+      properties:
+        totalChunks: {type: integer, format: int64, minimum: 0}
+        byReviewStatus: {type: object, additionalProperties: {type: integer, format: int64}}
+        bySource: {type: object, additionalProperties: {type: integer, format: int64}}
+        snapshotChunks: {type: integer, minimum: 0, description: 'Chunks in the in-memory snapshot the search reads'}
+        settingsCustomized: {type: boolean}
+    AdminKnowledgeChunkRow:
+      type: object
+      required: [id, title, sourcePath, reviewStatus, licenseScope, retrievable, importOwned, contentLength]
+      properties:
+        id: {type: string, maxLength: 96}
+        chapterId: {type: string, nullable: true}
+        title: {type: string, maxLength: 300}
+        sourcePath: {type: string}
+        pageLabel: {type: string, nullable: true}
+        reviewStatus: {type: string, enum: [DRAFT, PENDING, VERIFIED, REJECTED]}
+        licenseScope: {type: string, enum: [PUBLIC, CLASSROOM_ONLY, TEAM_ONLY]}
+        retrievable: {type: boolean, description: 'Whether the live retrieval gate would let this chunk through right now'}
+        importOwned: {type: boolean, description: 'True when the next textbook or courseware import overwrites this row'}
+        contentLength: {type: integer, minimum: 0}
+        createdAt: {type: string, format: date-time, nullable: true}
+    AdminKnowledgeChunkPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/AdminKnowledgeChunkRow'}}
+        page: {type: integer, minimum: 0}
+        size: {type: integer, minimum: 1}
+        total: {type: integer, format: int64, minimum: 0}
+    AdminKnowledgeChunkDetail:
+      type: object
+      required: [id, title, content, sourcePath, reviewStatus, licenseScope, retrievable, importOwned]
+      properties:
+        id: {type: string, maxLength: 96}
+        chapterId: {type: string, nullable: true}
+        title: {type: string, maxLength: 300}
+        content: {type: string}
+        sourcePath: {type: string}
+        pageLabel: {type: string, nullable: true}
+        reviewStatus: {type: string, enum: [DRAFT, PENDING, VERIFIED, REJECTED]}
+        licenseScope: {type: string, enum: [PUBLIC, CLASSROOM_ONLY, TEAM_ONLY]}
+        retrievable: {type: boolean}
+        importOwned: {type: boolean}
+        createdAt: {type: string, format: date-time, nullable: true}
+    CreateKnowledgeChunkRequest:
+      type: object
+      required: [title, content]
+      properties:
+        chapterId: {type: string}
+        title: {type: string, minLength: 1, maxLength: 300}
+        content: {type: string, minLength: 1, maxLength: 50000}
+        pageLabel: {type: string, maxLength: 120}
+        reviewStatus: {type: string, enum: [DRAFT, PENDING, VERIFIED, REJECTED], default: VERIFIED}
+        licenseScope: {type: string, enum: [PUBLIC, CLASSROOM_ONLY, TEAM_ONLY], default: CLASSROOM_ONLY}
+    PatchKnowledgeChunkRequest:
+      type: object
+      properties:
+        chapterId: {type: string}
+        title: {type: string, minLength: 1, maxLength: 300}
+        content: {type: string, minLength: 1, maxLength: 50000}
+        pageLabel: {type: string, maxLength: 120}
+        reviewStatus: {type: string, enum: [DRAFT, PENDING, VERIFIED, REJECTED]}
+        licenseScope: {type: string, enum: [PUBLIC, CLASSROOM_ONLY, TEAM_ONLY]}
+    AdminKnowledgeTestSearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query: {type: string, minLength: 1}
+        chapterId: {type: string}
+        audience: {type: string, enum: [GUEST, STUDENT, TEAM], default: TEAM}
+        minimumScore: {type: number, format: double, minimum: 0, maximum: 100}
+        searchLimit: {type: integer, minimum: 1, maximum: 12}
+        titleWeightLong: {type: number, format: double, minimum: 0.5, maximum: 20}
+        titleWeightShort: {type: number, format: double, minimum: 0.5, maximum: 20}
+    AdminKnowledgeTestSearchHit:
+      type: object
+      required: [chunkId, title, sourcePath, score]
+      properties:
+        chunkId: {type: string}
+        title: {type: string}
+        sourcePath: {type: string}
+        pageLabel: {type: string, nullable: true}
+        score: {type: number, format: double}
+    AdminKnowledgeTestSearchResult:
+      type: object
+      required: [effectiveSettings, hits]
+      properties:
+        effectiveSettings: {$ref: '#/components/schemas/KnowledgeMatchingSettings'}
+        hits: {type: array, items: {$ref: '#/components/schemas/AdminKnowledgeTestSearchHit'}}
     TeacherClass:
       type: object
       required: [id, name, students]

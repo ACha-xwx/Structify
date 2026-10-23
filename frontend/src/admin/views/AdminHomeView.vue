@@ -29,6 +29,7 @@ const modules = computed(() => {
     learning: { title: "学习证据", description: "课堂步数、代码运行与动画记录的总量，用来看学习链路是否有人用。", path: "/admin/jobs" },
     quota: { title: "模型花费", description: "按天或按用户汇总已结算的 token 消耗。", path: "/admin/jobs" },
     classes: { title: "班级", description: "建班、指派任课老师、维护名单——老师能看谁，由这里决定。", path: "/admin/classes" },
+    knowledge: { title: "知识库", description: "维护 RAG 检索用的知识条目，调节匹配门槛并即时试搜。", path: "/admin/knowledge" },
   };
   return Object.entries(labels).map(([key, info]) => ({
     key,
