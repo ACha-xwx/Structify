@@ -16,9 +16,13 @@ import org.springframework.stereotype.Service;
  * Classes and who is in them, maintained by an administrator.
  *
  * <p>Nothing here decides what a teacher may read - that rule lives in {@code TeacherService}. This service only keeps
- * the roster truthful: a class has a name, and a person is in it as either a student or a teacher. Adding a teacher is
- * what grants them the right to see the learners of that class, so it is deliberately a separate, explicit step from
- * giving somebody the TEACHER role.
+ * the roster truthful: a class has a name, and a person is in it as either a student or a teacher.
+ *
+ * <p>Adding somebody as a teacher of a class is meant to be the whole job, so it also ensures their account carries
+ * the TEACHER role: an administrator who enrols a teacher expects that person to open the teacher console, not to
+ * hit a 403 until somebody thinks of a second switch on the users page. Removing a member only withdraws the class;
+ * the platform role stays, because the same person may teach other classes. Every change is written to the audit
+ * ledger with the acting administrator.
  */
 @Service
 public class AdminClassService {
@@ -32,10 +36,18 @@ public class AdminClassService {
     /** One person in a class. */
     public record MemberRow(long userId, String username, String email, String roleInClass, String joinedAt) {}
 
-    private final JdbcTemplate jdbc;
+    /**
+     * The enrolment that just happened, plus whether this call also granted the platform TEACHER role -
+     * the console says so explicitly, because "can see the class" depends on both sides.
+     */
+    public record AddMemberResult(MemberRow member, boolean teacherRoleGranted) {}
 
-    AdminClassService(JdbcTemplate jdbc) {
+    private final JdbcTemplate jdbc;
+    private final AdminAuditService audit;
+
+    AdminClassService(JdbcTemplate jdbc, AdminAuditService audit) {
         this.jdbc = jdbc;
+        this.audit = audit;
     }
 
     public List<ClassRow> classes() {
@@ -63,11 +75,13 @@ public class AdminClassService {
         );
     }
 
-    public ClassRow create(String name, String term) {
+    public ClassRow create(String name, String term, long actorUserId, String requestId) {
         String cleanName = requireText(name, MAX_NAME, "CLASS_NAME_REQUIRED", "班级名称不能为空。");
         String cleanTerm = optionalText(term, MAX_TERM, "CLASS_TERM_TOO_LONG", "学期名称太长。");
         String id = UUID.randomUUID().toString();
         jdbc.update("INSERT INTO classes (id, name, term) VALUES (?, ?, ?)", id, cleanName, cleanTerm);
+        audit.record(actorUserId, "CLASS_CREATE", "CLASS", id, "SUCCESS", requestId,
+            null, "name=" + cleanName + (cleanTerm == null ? "" : " term=" + cleanTerm));
         return new ClassRow(id, cleanName, cleanTerm, 0, List.of());
     }
 
@@ -89,7 +103,7 @@ public class AdminClassService {
     }
 
     /** Adds a person found by email or username; that is what an administrator actually knows about them. */
-    public MemberRow addMember(String classId, String identifier, String roleInClass) {
+    public AddMemberResult addMember(String classId, String identifier, String roleInClass, long actorUserId, String requestId) {
         requireClass(classId);
         String role = requireRole(roleInClass);
         String who = requireText(identifier, 255, "IDENTIFIER_REQUIRED", "请填写邮箱或用户名。");
@@ -109,17 +123,38 @@ public class AdminClassService {
         } catch (DuplicateKeyException duplicate) {
             throw new ApiException(HttpStatus.CONFLICT, "ALREADY_ENROLLED", "这个账号已经在这个班里了。");
         }
-        return member(classId, userId);
+        boolean granted = "TEACHER".equals(role) && ensureTeacherRole(userId);
+        audit.record(actorUserId, "CLASS_ADD_MEMBER", "CLASS", classId, "SUCCESS", requestId,
+            null, "userId=" + userId + " role=" + role + (granted ? " teacherRoleGranted" : ""));
+        return new AddMemberResult(member(classId, userId), granted);
     }
 
-    public void removeMember(String classId, long userId) {
+    public void removeMember(String classId, long userId, long actorUserId, String requestId) {
         requireClass(classId);
-        jdbc.update("DELETE FROM class_enrollments WHERE class_id = ? AND user_id = ?", classId, userId);
+        int removed = jdbc.update("DELETE FROM class_enrollments WHERE class_id = ? AND user_id = ?", classId, userId);
+        if (removed > 0) {
+            audit.record(actorUserId, "CLASS_REMOVE_MEMBER", "CLASS", classId, "SUCCESS", requestId,
+                "userId=" + userId, null);
+        }
     }
 
-    public void delete(String classId) {
+    public void delete(String classId, long actorUserId, String requestId) {
         requireClass(classId);
         jdbc.update("DELETE FROM classes WHERE id = ?", classId);
+        audit.record(actorUserId, "CLASS_DELETE", "CLASS", classId, "SUCCESS", requestId, null, null);
+    }
+
+    /**
+     * Makes sure the account carries the TEACHER role; returns true when this call actually granted it.
+     * The role is deliberately not taken away on removal - it belongs to the account, not to one class.
+     */
+    private boolean ensureTeacherRole(long userId) {
+        try {
+            jdbc.update("INSERT INTO user_roles (user_id, role) VALUES (?, 'TEACHER')", userId);
+            return true;
+        } catch (DuplicateKeyException alreadyHasIt) {
+            return false;
+        }
     }
 
     private MemberRow member(String classId, long userId) {

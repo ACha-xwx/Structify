@@ -98,8 +98,8 @@ describe("AdminClassesView", () => {
     wrapper.unmount();
   });
 
-  it("adds a teacher by email, which is what grants them the right to see the class", async () => {
-    addClassMember.mockResolvedValue(roster[1]);
+  it("adds a teacher by email and says when the platform role came with it", async () => {
+    addClassMember.mockResolvedValue({ member: roster[1], teacherRoleGranted: true });
     const wrapper = await mountPage();
     await wrapper.findAll("tbody tr")[0].trigger("click");
     await flushPromises();
@@ -110,7 +110,22 @@ describe("AdminClassesView", () => {
     await flushPromises();
 
     expect(addClassMember).toHaveBeenCalledWith("class-1", { identifier: "teacher@example.test", roleInClass: "TEACHER" });
-    expect(wrapper.text()).toContain("该教师现在可以看到本班学生");
+    expect(wrapper.text()).toContain("已为他开通教师身份");
+    wrapper.unmount();
+  });
+
+  it("says the teacher already had the role when nothing new was granted", async () => {
+    addClassMember.mockResolvedValue({ member: roster[1], teacherRoleGranted: false });
+    const wrapper = await mountPage();
+    await wrapper.findAll("tbody tr")[0].trigger("click");
+    await flushPromises();
+
+    await wrapper.get('input[placeholder="learner@example.com"]').setValue("teacher@example.test");
+    await wrapper.get("select").setValue("TEACHER");
+    await wrapper.get('[data-testid="add-class-member"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("本来就有教师身份");
     wrapper.unmount();
   });
 

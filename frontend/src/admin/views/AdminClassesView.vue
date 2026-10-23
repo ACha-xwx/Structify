@@ -8,8 +8,9 @@ import type { AdminClass, AdminClassMember, ClassRole } from "../../shared/types
  * Classes and who is in them.
  *
  * A teacher can only see the learners of a class they are enrolled in, so this page is where that permission is
- * actually granted: putting somebody in a class as a teacher is a separate, deliberate act from giving them the
- * TEACHER role, and removing them takes the access away again.
+ * actually granted. Adding somebody as a teacher is the whole job in one step: the server also switches on their
+ * platform TEACHER role and says whether it did. Removing a member withdraws the class but keeps the role, because
+ * the same account may teach other classes.
  */
 const classes = ref<AdminClass[]>([]);
 const members = ref<AdminClassMember[]>([]);
@@ -91,9 +92,15 @@ async function addMember(): Promise<void> {
   error.value = "";
   notice.value = "";
   try {
-    await adminApi.addClassMember(selected.value, { identifier, roleInClass: memberRole.value });
+    const result = await adminApi.addClassMember(selected.value, { identifier, roleInClass: memberRole.value });
     memberIdentifier.value = "";
-    notice.value = memberRole.value === "TEACHER" ? "已加入，该教师现在可以看到本班学生。" : "已加入本班。";
+    if (memberRole.value === "TEACHER") {
+      notice.value = result.teacherRoleGranted
+        ? "已加入，并已为他开通教师身份——现在就能在教师端看到本班学生。"
+        : "已加入。他本来就有教师身份，现在可以看到本班学生。";
+    } else {
+      notice.value = "已加入本班。";
+    }
     await Promise.all([loadMembers(), loadClasses()]);
   } catch (failure) {
     error.value = adminErrorMessage(failure, "添加成员");
@@ -146,7 +153,7 @@ onMounted(loadClasses);
 <template>
   <AdminPageFrame
     title="班级"
-    description="建班、指派任课老师、维护名单。把一个人以「教师」身份加进班级，他才能看到这个班学生的学习情况；移出即收回。"
+    description="建班、指派任课老师、维护名单。以「教师」身份加入班级会同时开通教师身份，他随即能在教师端看到本班学生；移出只收回这个班。"
   >
     <template #actions>
       <button class="admin-primary" type="button" :disabled="loading" @click="loadClasses">刷新</button>
