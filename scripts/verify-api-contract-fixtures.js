@@ -14,6 +14,23 @@ assert.equal(classroomFixture.contract,"openapi-v1");
 fixture.cases.push(...classroomFixture.cases);
 
 assertNoIllegalBacktickScalars(openapi);
+
+// The contract must be real YAML, not just text containing the right words. The extraction below works on
+// plain text, which once let a stray closing brace survive for days while every check reported green.
+const parsedContract = require("js-yaml").load(openapi);
+assert.ok(
+  parsedContract && typeof parsedContract === "object" && parsedContract.paths && typeof parsedContract.paths === "object",
+  "openapi-v1.yaml must parse as YAML and contain a paths map"
+);
+// Every referenced component must exist; a typo in a $ref is invisible to the text scan.
+for (const match of openapi.matchAll(/#\/components\/(schemas|responses|parameters)\/([A-Za-z0-9_]+)/g)) {
+  const section = parsedContract.components?.[match[1]] ?? {};
+  assert.ok(
+    Object.hasOwn(section, match[2]),
+    `openapi-v1.yaml references #/components/${match[1]}/${match[2]} but does not define it`
+  );
+}
+
 const documentedOperations = extractDocumentedOperations(openapi);
 
 const documentedPaths = [
