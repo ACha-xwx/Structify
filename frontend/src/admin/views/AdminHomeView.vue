@@ -11,6 +11,7 @@ import RetryButton from "../../shared/components/RetryButton.vue";
 import StatusBadge from "../../shared/components/StatusBadge.vue";
 
 const capability = ref<AdminCapability | null>(null);
+  const reported = ref<Record<string, AdminModuleCapability>>({});
 const loading = ref(true);
 const error = ref("");
 let loadRequest = 0;
@@ -24,6 +25,9 @@ const modules = computed(() => {
     modelSettings: { title: "模型配置", description: "配置后端管理的模型连接，浏览器不会直接接触 provider。", path: "/admin/settings" },
     mailSettings: { title: "邮件发送设置", description: "配置服务端托管的验证码邮件投递、模板和连接测试。", path: "/admin/mail" },
     sandboxSettings: { title: "沙箱配置", description: "登记代码执行器地址并检查服务端运行状态，不在浏览器直连执行器。", path: "/admin/sandbox" },
+    studyroom: { title: "课程生成链路", description: "大纲、生成作业与碎片的状态和花费，失败原因一屏可见。", path: "/admin/jobs" },
+    learning: { title: "学习证据", description: "课堂步数、代码运行与动画记录的总量，用来看学习链路是否有人用。", path: "/admin/jobs" },
+    quota: { title: "模型花费", description: "按天或按用户汇总已结算的 token 消耗。", path: "/admin/jobs" },
   };
   return Object.entries(labels).map(([key, info]) => ({
     key,
@@ -31,7 +35,7 @@ const modules = computed(() => {
     // The server describes every module it knows, sandbox included, and reports its own reason when a
     // module is unavailable. A local fallback for one key only meant that key could disagree with the
     // server - it claimed the interface was missing long after the endpoint shipped.
-    status: capability.value?.modules?.[key],
+    status: capability.value?.modules?.[key] ?? reported.value[key],
   }));
 });
 
@@ -43,6 +47,19 @@ async function load(): Promise<boolean> {
     const nextCapability = await adminApi.capabilities();
     if (request !== loadRequest) return false;
     capability.value = nextCapability;
+    // The console reports its own modules; the studyroom, learning and quota counts come from the
+    // observability endpoint. A failure there must not hide the rest of the page.
+    try {
+      const extras = await adminApi.observabilityModules();
+      reported.value = Object.fromEntries(
+        extras.map((entry) => [
+          entry.module,
+          { available: entry.available, status: entry.status, reason: entry.reason } as AdminModuleCapability,
+        ])
+      );
+    } catch {
+      reported.value = {};
+    }
     return true;
   } catch (failure) {
     if (request === loadRequest) error.value = adminErrorMessage(failure, "读取管理能力");

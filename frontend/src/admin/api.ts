@@ -2,6 +2,9 @@ import { api } from "../app/providers/runtime";
 import type {
   AdminAuditEventPage,
   AdminCapability,
+  AdminCostReport,
+  AdminJobPage,
+  AdminObservabilityModule,
   AdminUser,
   AdminUserPage,
   AdminUserRolesRequest,
@@ -40,6 +43,9 @@ export interface AdminQuery {
   status?: string;
   role?: string;
   type?: string;
+  source?: string;
+  groupBy?: string;
+  userId?: number;
   taskType?: string;
   action?: string;
   targetType?: string;
@@ -125,6 +131,15 @@ export const adminApi = {
   },
   async cancelTask(id: number): Promise<BackgroundTask> {
     return jsonData(await api.post<BackgroundTask>(`/admin/background-tasks/${encodeURIComponent(id)}/cancel`));
+  },
+  async jobs(query: AdminQuery = {}): Promise<AdminJobPage> {
+    return jsonData(await api.get<AdminJobPage>("/admin/observability/jobs", { query: compactQuery(query) }));
+  },
+  async cost(query: AdminQuery = {}): Promise<AdminCostReport> {
+    return jsonData(await api.get<AdminCostReport>("/admin/observability/cost", { query: compactQuery(query) }));
+  },
+  async observabilityModules(): Promise<AdminObservabilityModule[]> {
+    return jsonData(await api.get<AdminObservabilityModule[]>("/admin/observability/modules"));
   },
   async auditEvents(query: AdminQuery = {}): Promise<AdminAuditEventPage> {
     return jsonData(await api.get<AdminAuditEventPage>("/admin/audit-events", { query: compactQuery(query) }));

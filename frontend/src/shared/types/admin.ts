@@ -294,3 +294,49 @@ export interface SandboxConnectionTest {
   connected: boolean;
   code: string;
 }
+
+export type AdminJobSource = "BACKGROUND" | "STUDYROOM";
+
+/** A row of the merged job list: the maintenance ledger and the studyroom's own job table. */
+export interface AdminJobItem {
+  source: AdminJobSource;
+  id: string;
+  type: string;
+  ownerUserId: number | null;
+  status: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+  error: string | null;
+  tokens: number;
+}
+
+export interface AdminJobPage {
+  items: AdminJobItem[];
+  page: number;
+  size: number;
+  total: number;
+}
+
+export interface AdminCostRow {
+  bucket: string | null;
+  userId: number | null;
+  calls: number;
+  tokens: number;
+}
+
+export interface AdminCostReport {
+  from: string;
+  to: string;
+  groupBy: "DAY" | "USER";
+  calls: number;
+  tokens: number;
+  rows: AdminCostRow[];
+}
+
+export interface AdminObservabilityModule {
+  module: string;
+  available: boolean;
+  status: string;
+  reason: string | null;
+  counts: Record<string, number>;
+}
