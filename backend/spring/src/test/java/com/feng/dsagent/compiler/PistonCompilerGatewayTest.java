@@ -34,7 +34,9 @@ class PistonCompilerGatewayTest {
     @Test
     void mapsCToTheFixedGccRuntimeAndForwardsStandardInput() throws Exception {
         AtomicReference<JsonNode> capturedRequest = new AtomicReference<>();
+        AtomicReference<String> upgrade = new AtomicReference<>();
         startServer(exchange -> {
+            upgrade.set(exchange.getRequestHeaders().getFirst("Upgrade"));
             capturedRequest.set(objectMapper.readTree(exchange.getRequestBody()));
             respond(exchange, 200, """
                 {"language":"c","version":"14.1.0","run":{"stdout":"42\\n","stderr":"","code":0,"signal":null}}
@@ -52,6 +54,7 @@ class PistonCompilerGatewayTest {
         assertThat(capturedRequest.get().get("files").get(0).get("name").asText()).isEqualTo("main.c");
         assertThat(execution.status()).isEqualTo("success");
         assertThat(execution.stdout()).isEqualTo("42\n");
+        assertThat(upgrade.get()).isNull();
     }
 
     @Test

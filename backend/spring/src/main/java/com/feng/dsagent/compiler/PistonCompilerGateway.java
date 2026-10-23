@@ -52,6 +52,8 @@ final class PistonCompilerGateway implements CompilerGateway {
         this.objectMapper = objectMapper;
         this.runtimeSettings = runtimeSettings;
         this.httpClient = HttpClient.newBuilder()
+            // Piston's Node HTTP server rejects Java's cleartext h2c upgrade on POST.
+            .version(HttpClient.Version.HTTP_1_1)
             .connectTimeout(properties.timeout())
             .followRedirects(HttpClient.Redirect.NEVER)
             .build();

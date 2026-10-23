@@ -80,3 +80,19 @@ voice audibility/quality cannot be inferred from the automated speech double.
 Regions are explicitly drawn and saved, not automatically OCR-derived. Lecture
 cursors and voice preferences are local to the device. Generation leases,
 publication revisions and model accounting were not changed.
+
+## Bounded outline presentation (2026-10-22)
+
+Generation uses a small stage with real incremental preview items; the review
+keeps each knowledge point and its objective together. Course-wide goals and
+material details are disclosures; content scrolls internally above persistent
+approval controls. Polling the same draft/job no longer restarts the SSE
+subscription, and stale operation callbacks are fenced. The visualizer uses an
+explicit transition type independent of its looping animation.
+
+Frontend scope passed 703 tests and build/types. All 13 Edge browser regressions
+passed, including an 18-point synthetic outline at desktop, phone and short
+landscape sizes, visibility of approval controls and returning from revisions.
+Screenshots and a WebM recording are retained in ignored
+`.superpowers/audit/outline-flow/`. No paid model calls or development database
+mutations were used. Smoothness on every device is not inferred from screenshots.

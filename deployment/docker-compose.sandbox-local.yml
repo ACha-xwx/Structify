@@ -1,0 +1,12 @@
+services:
+  piston:
+    image: ghcr.io/engineer-man/piston@sha256:2f66b7456189c4d713aa986d98eccd0b6ee16d26c7ec5f21b30e942756fd127a
+    container_name: structify-piston-local
+    privileged: true
+    ports:
+      - "127.0.0.1:2001:2000"
+    volumes:
+      - piston-data:/piston
+volumes:
+  piston-data:
+    name: structify-piston-local-data
