@@ -39,12 +39,37 @@ const identityInput = ref<HTMLInputElement | null>(null);
 const passwordInput = ref<HTMLInputElement | null>(null);
 let cooldownTimer: number | undefined;
 
+const requestedRedirect = computed(() => (typeof route.query.redirect === "string" ? route.query.redirect : ""));
 const isAdminEntry = computed(() => {
-  const redirect = typeof route.query.redirect === "string" ? route.query.redirect : "";
-  const isAdminRedirect = /^\/admin(?:\/|$)/.test(redirect);
+  const isAdminRedirect = /^\/admin(?:\/|$)/.test(requestedRedirect.value);
   const isAdminHost = typeof window !== "undefined" && /^admin\.structify\.cn$/i.test(window.location.hostname);
   return isAdminRedirect || isAdminHost;
 });
+const isTeacherEntry = computed(() => /^\/teacher(?:\/|$)/.test(requestedRedirect.value));
+// The console shell is the same stage with a calmer frame; a teacher signs in to their own
+// console, so they get the same treatment the administrator entry already had.
+const isStaffEntry = computed(() => isAdminEntry.value || isTeacherEntry.value);
+
+/**
+ * Which door the account may actually open. The entry a person clicked is only an intention -
+ * the account's roles decide. A learner who wanders into the teacher entry is taken back to the
+ * learning entry rather than into a page that would refuse them.
+ */
+function canOpen(path: string, roles: string[]): boolean {
+  if (/^\/teacher(?:\/|$)/.test(path)) return roles.includes("TEACHER") || roles.includes("ADMIN");
+  if (/^\/admin(?:\/|$)/.test(path)) return roles.includes("ADMIN");
+  return true;
+}
+
+function destinationAfterLogin(roles: string[]): string {
+  const redirect = requestedRedirect.value;
+  if (redirect && canOpen(redirect, roles)) return redirect;
+  // A teacher has no reason to walk through the learning entry: their class page is the work.
+  if (roles.includes("TEACHER")) return "/teacher";
+  // The requested door stays closed to this account, so it is dropped rather than honoured
+  // into a page that would only refuse it.
+  return "/begin";
+}
 const isLogin = computed(() => props.mode === "login");
 const emailValid = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim()));
 const identityValid = computed(() => isLogin.value ? email.value.trim().length > 0 : emailValid.value);
@@ -61,7 +86,11 @@ const identityPlaceholder = computed(() => props.mode === "login" ? t("auth.iden
 
 const title = computed(() => {
   if (authStep.value === "identity") {
-    if (props.mode === "login") return isAdminEntry.value ? t("auth.title.loginAdmin") : t("auth.title.login");
+    if (props.mode === "login") {
+      if (isAdminEntry.value) return t("auth.title.loginAdmin");
+      if (isTeacherEntry.value) return t("auth.title.loginTeacher");
+      return t("auth.title.login");
+    }
     return props.mode === "register" ? t("auth.title.register") : t("auth.title.reset");
   }
   if (props.mode === "login") return t("auth.title.password");
@@ -70,7 +99,11 @@ const title = computed(() => {
 
 const subtitle = computed(() => {
   if (authStep.value === "identity") {
-    if (props.mode === "login") return isAdminEntry.value ? t("auth.subtitle.loginAdmin") : t("auth.subtitle.login");
+    if (props.mode === "login") {
+      if (isAdminEntry.value) return t("auth.subtitle.loginAdmin");
+      if (isTeacherEntry.value) return t("auth.subtitle.loginTeacher");
+      return t("auth.subtitle.login");
+    }
     return props.mode === "register" ? t("auth.subtitle.register") : t("auth.subtitle.reset");
   }
   if (props.mode === "login") return t("auth.subtitle.password");
@@ -171,13 +204,15 @@ async function submit() {
   feedback.value = "";
   error.value = "";
   try {
+    let signedInRoles: string[] = [];
     if (props.mode === "login") {
       const identity = loginIdentifier.value;
-      await auth.login(emailValid.value ? { email: identity, password: password.value } : { username: identity, password: password.value });
+      const account = await auth.login(emailValid.value ? { email: identity, password: password.value } : { username: identity, password: password.value });
+      signedInRoles = account?.roles ?? [];
     }
     if (props.mode === "register") await auth.register({ email: email.value.trim(), code: code.value.trim(), password: password.value });
     if (props.mode === "reset") await auth.resetPassword({ email: email.value.trim(), code: code.value.trim(), password: password.value });
-    await router.replace(typeof route.query.redirect === "string" ? route.query.redirect : "/begin");
+    await router.replace(props.mode === "login" ? destinationAfterLogin(signedInRoles) : (requestedRedirect.value || "/begin"));
   } catch (cause) {
     error.value = userFacingError(cause);
   } finally {
@@ -196,7 +231,7 @@ onBeforeUnmount(clearCooldown);
 </script>
 
 <template>
-  <main class="auth-stage auth-screen" :class="{ 'auth-stage--admin': isAdminEntry, 'auth-screen--admin': isAdminEntry }" aria-labelledby="auth-title">
+  <main class="auth-stage auth-screen" :class="{ 'auth-stage--admin': isStaffEntry, 'auth-screen--admin': isStaffEntry }" aria-labelledby="auth-title">
     <header class="auth-brand">
       <RouterLink class="auth-brand__link" to="/" :aria-label="t('common.brand')">
         <img class="auth-brand__mark" :src="brandIcon" width="32" height="32" alt="" aria-hidden="true" />
@@ -318,6 +353,12 @@ onBeforeUnmount(clearCooldown);
 
         <button v-if="isCredentialsStep" class="auth-back" type="button" :disabled="pending" @click="goBack"><DirectionalArrowIcon direction="left" /> {{ t("auth.back") }}</button>
       </form>
+
+      <nav v-if="isLogin && !isCredentialsStep" class="auth-entry" :aria-label="t('auth.entry.label')">
+        <RouterLink class="auth-entry__option" to="/login" :aria-current="isStaffEntry ? undefined : 'page'">{{ t("auth.entry.student") }}</RouterLink>
+        <RouterLink class="auth-entry__option" to="/login?redirect=/teacher" :aria-current="isTeacherEntry ? 'page' : undefined">{{ t("auth.entry.teacher") }}</RouterLink>
+        <RouterLink class="auth-entry__option" to="/login?redirect=/admin" :aria-current="isAdminEntry && !isTeacherEntry ? 'page' : undefined">{{ t("auth.entry.admin") }}</RouterLink>
+      </nav>
 
       <nav class="auth-links" :aria-label="t('auth.links')">
         <RouterLink v-if="props.mode !== 'login'" to="/login">{{ t("auth.link.signIn") }}</RouterLink>
@@ -478,6 +519,12 @@ onBeforeUnmount(clearCooldown);
 .auth-back .directional-arrow-icon { width: 17px; height: 17px; }
 .auth-back:hover:not(:disabled) { color: var(--auth-ink); transform: translateX(-2px); }
 .auth-back:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.auth-entry { display: flex; width: 100%; justify-content: center; gap: 8px; padding-top: 2px; }
+.auth-entry__option { padding: 5px 13px; border: 1px solid color-mix(in srgb, var(--text) 18%, transparent); border-radius: 999px; color: var(--auth-muted); font-size: 13px; font-weight: 650; text-decoration: none; transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease; }
+.auth-entry__option:hover { color: var(--text); border-color: color-mix(in srgb, var(--text) 34%, transparent); }
+.auth-entry__option:focus-visible { color: var(--text); outline: 2px solid var(--auth-ink); outline-offset: 2px; }
+.auth-entry__option[aria-current="page"] { color: var(--text); border-color: color-mix(in srgb, var(--text) 46%, transparent); background: color-mix(in srgb, var(--text) 8%, transparent); }
 
 .auth-links { display: flex; width: 100%; justify-content: space-between; gap: 16px; padding-top: 4px; color: var(--text-muted); font-size: 13px; font-weight: 650; text-align: left; }
 .auth-links a { position: relative; display: inline-flex; color: inherit; text-decoration: none; transition: color 150ms ease, transform 150ms var(--auth-ease); }

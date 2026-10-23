@@ -18,6 +18,7 @@ function createTestRouter() {
     routes: [
       { path: "/", component: { template: "<div>home</div>" } },
       { path: "/begin", component: { template: "<div>learning entry</div>" } },
+      { path: "/teacher", component: { template: "<div>teacher console</div>" } },
       { path: "/login", component: AuthView, props: { mode: "login" } },
       { path: "/register", component: AuthView, props: { mode: "register" } },
       { path: "/reset-password", component: AuthView, props: { mode: "reset" } },
@@ -170,5 +171,49 @@ describe("verification-code auth flow", () => {
     expect(toggle.attributes("aria-label")).toBe("隐藏密码");
     expect(toggle.find(".auth-field__toggle-icon--open").exists()).toBe(true);
     expect(passwordField.attributes("type")).toBe("text");
+  });
+
+  it("offers the three sign-in doors and marks the teacher one when it was asked for", async () => {
+    const router = createTestRouter();
+    await router.push("/login?redirect=/teacher");
+    await router.isReady();
+    const wrapper = mount(AuthView, { props: { mode: "login" }, global: { plugins: [router] } });
+
+    const options = wrapper.findAll(".auth-entry__option");
+    expect(options.map((option) => option.text())).toEqual(["学生", "老师", "管理员"]);
+    expect(options.map((option) => option.attributes("href"))).toEqual(["/login", "/login?redirect=/teacher", "/login?redirect=/admin"]);
+    expect(options[1].attributes("aria-current")).toBe("page");
+    expect(wrapper.classes()).toContain("auth-screen--admin");
+    expect(wrapper.get("#auth-title").text()).toBe("登录教师端");
+    wrapper.unmount();
+  });
+
+  it("sends a teacher to their own console even when they sign in from the ordinary door", async () => {
+    authMock.login.mockResolvedValueOnce({ id: 66, email: "teacher@example.com", roles: ["TEACHER"] });
+    const wrapper = await mountAuth("login");
+
+    await wrapper.get('input[autocomplete="username"]').setValue("teacher@example.com");
+    await wrapper.get('input[type="password"]').setValue("correct-horse-battery-staple");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.vm.$router.currentRoute.value.path).toBe("/teacher");
+    wrapper.unmount();
+  });
+
+  it("does not walk a learner into a console that would refuse them", async () => {
+    authMock.login.mockResolvedValueOnce({ id: 7, email: "learner@example.com", roles: ["STUDENT"] });
+    const router = createTestRouter();
+    await router.push("/login?redirect=/teacher");
+    await router.isReady();
+    const wrapper = mount(AuthView, { props: { mode: "login" }, global: { plugins: [router] } });
+
+    await wrapper.get('input[autocomplete="username"]').setValue("learner@example.com");
+    await wrapper.get('input[type="password"]').setValue("correct-horse-battery-staple");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.vm.$router.currentRoute.value.path).toBe("/begin");
+    wrapper.unmount();
   });
 });
