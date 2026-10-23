@@ -15,6 +15,7 @@ const StudyroomOutlineView = () => import("../user/views/StudyroomOutlineView.vu
 const StudyroomView = () => import("../user/views/StudyroomView.vue");
 import { userRoutes } from "../user/routes";
 import { adminRoutes } from "../admin/routes";
+import { teacherRoutes } from "../teacher/routes";
 
 /**
  * The public root introduces the site; /begin holds the signed-in learning choices.
@@ -41,6 +42,7 @@ export const routes: RouteRecordRaw[] = [
   { path: "/reset-password", name: "reset-password", component: AuthView, props: { mode: "reset" }, meta: { layout: "auth" } },
   ...userRoutes,
   ...adminRoutes,
+  ...teacherRoutes,
   { path: "/403", name: "forbidden", component: ForbiddenView, meta: { layout: "minimal" } },
   { path: "/404", name: "not-found", component: NotFoundView, meta: { layout: "minimal" } },
   { path: "/:pathMatch(.*)*", redirect: "/404" },
