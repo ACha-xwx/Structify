@@ -1,7 +1,9 @@
 package com.feng.dsagent.teacher;
 
+import com.feng.dsagent.common.RequestIdFilter;
 import com.feng.dsagent.learning.LearningMapService;
 import com.feng.dsagent.security.AuthenticatedUser;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -37,9 +39,10 @@ class TeacherController {
     @GetMapping("/classes/{classId}/students")
     List<TeacherService.StudentRow> students(
         @PathVariable String classId,
-        @AuthenticationPrincipal AuthenticatedUser user
+        @AuthenticationPrincipal AuthenticatedUser user,
+        HttpServletRequest servletRequest
     ) {
-        return teacher.students(classId, user.userId(), user.hasRole("ADMIN"));
+        return teacher.students(classId, user.userId(), user.hasRole("ADMIN"), requestId(servletRequest));
     }
 
     /**
@@ -51,8 +54,14 @@ class TeacherController {
     @GetMapping("/students/{studentId}/learning-map")
     LearningMapService.LearningMap studentMap(
         @PathVariable long studentId,
-        @AuthenticationPrincipal AuthenticatedUser user
+        @AuthenticationPrincipal AuthenticatedUser user,
+        HttpServletRequest servletRequest
     ) {
-        return teacher.studentMap(studentId, user.userId(), user.hasRole("ADMIN"));
+        return teacher.studentMap(studentId, user.userId(), user.hasRole("ADMIN"), requestId(servletRequest));
+    }
+
+    private String requestId(HttpServletRequest request) {
+        Object value = request.getAttribute(RequestIdFilter.ATTRIBUTE);
+        return value == null ? "" : value.toString();
     }
 }

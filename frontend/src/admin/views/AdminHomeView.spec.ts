@@ -18,8 +18,14 @@ const capabilities = vi.hoisted(() => vi.fn(async () => ({
   },
 })));
 
+const observabilityModules = vi.hoisted(() => vi.fn(async () => ([
+  { module: "studyroom", available: true, status: "AVAILABLE", reason: null, counts: { jobs: 34 } },
+  { module: "learning", available: true, status: "AVAILABLE", reason: null, counts: { classroomEvents: 1009 } },
+  { module: "quota", available: true, status: "AVAILABLE", reason: null, counts: { reservationsToday: 3 } },
+])));
+
 vi.mock("../api", () => ({
-  adminApi: { capabilities },
+  adminApi: { capabilities, observabilityModules },
   adminErrorMessage: () => "读取管理能力未完成（NETWORK_ERROR）。",
 }));
 
@@ -32,6 +38,7 @@ describe("AdminHomeView", () => {
       { path: "/admin/reviews", component },
       { path: "/admin/tasks", component },
       { path: "/admin/jobs", component },
+      { path: "/admin/classes", component },
       { path: "/admin/audit", component },
       { path: "/admin/settings", component },
       { path: "/admin/mail", component },
@@ -50,5 +57,8 @@ describe("AdminHomeView", () => {
     expect(wrapper.text()).toContain("服务端尚未提供沙箱配置管理接口");
     expect(wrapper.text()).toContain("邮件配置服务暂时不可用");
     expect(wrapper.text()).not.toMatch(/总用户|待审核|任务总数/);
+    // The console home lists the studyroom, learning, quota and classes modules the old capabilities never reported.
+    expect(wrapper.get("a[href='/admin/jobs']").text()).toContain("课程生成链路");
+    expect(wrapper.get("a[href='/admin/classes']").text()).toContain("班级");
   });
 });

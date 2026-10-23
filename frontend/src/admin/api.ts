@@ -5,11 +5,13 @@ import type {
   AdminClass,
   AdminClassMember,
   AddClassMemberRequest,
+  AddClassMemberResult,
   CreateClassRequest,
   AdminCostReport,
   AdminJobPage,
   AdminObservabilityModule,
   AdminUser,
+  AdminUserLearning,
   AdminUserPage,
   AdminUserRolesRequest,
   AdminUserStatusRequest,
@@ -103,6 +105,10 @@ export const adminApi = {
   async user(id: number): Promise<AdminUser> {
     return jsonData(await api.get<AdminUser>(`/admin/users/${encodeURIComponent(id)}`));
   },
+  /** The learning footprint of one account: courses, classroom work, spend, jobs, and the mastery map. */
+  async userLearning(id: number): Promise<AdminUserLearning> {
+    return jsonData(await api.get<AdminUserLearning>(`/admin/users/${encodeURIComponent(id)}/learning`));
+  },
   async updateUserStatus(id: number, payload: AdminUserStatusRequest): Promise<AdminUser> {
     return jsonData(await api.patch<AdminUser>(`/admin/users/${encodeURIComponent(id)}/status`, payload));
   },
@@ -157,8 +163,8 @@ export const adminApi = {
   async classMembers(classId: string): Promise<AdminClassMember[]> {
     return jsonData(await api.get<AdminClassMember[]>(`/admin/classes/${encodeURIComponent(classId)}/members`));
   },
-  async addClassMember(classId: string, payload: AddClassMemberRequest): Promise<AdminClassMember> {
-    return jsonData(await api.post<AdminClassMember>(`/admin/classes/${encodeURIComponent(classId)}/members`, payload));
+  async addClassMember(classId: string, payload: AddClassMemberRequest): Promise<AddClassMemberResult> {
+    return jsonData(await api.post<AddClassMemberResult>(`/admin/classes/${encodeURIComponent(classId)}/members`, payload));
   },
   async removeClassMember(classId: string, userId: number): Promise<void> {
     await api.delete(`/admin/classes/${encodeURIComponent(classId)}/members/${encodeURIComponent(userId)}`);

@@ -17,6 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
  * A teacher may read a student's profile only when the two of them share a class. That rule is the whole point
  * of this service, so it is tested from the outside: the same call succeeds for one caller and is refused for
  * another, with nothing else different.
+ *
+ * <p>The second promise pinned here: a successful read of somebody else's data is always written to the audit
+ * ledger, by the teacher and by an administrator alike.
  */
 @SpringBootTest
 @Transactional
@@ -63,6 +66,13 @@ class TeacherServiceTest {
         );
     }
 
+    private long auditRows(String action, String targetId, long actorId) {
+        return jdbc.queryForObject(
+            "SELECT COUNT(*) FROM admin_audit_events WHERE action = ? AND target_id = ? AND actor_user_id = ?",
+            Long.class, action, targetId, actorId
+        );
+    }
+
     @Test
     @DisplayName("a teacher sees only the classes they teach, an administrator sees all")
     void classesFollowTheTeacher() {
@@ -82,32 +92,44 @@ class TeacherServiceTest {
     }
 
     @Test
-    @DisplayName("the class roster lists its students and nobody else")
+    @DisplayName("the class roster lists its students and nobody else, and the read is audited")
     void rosterIsScopedToTheClass() {
-        assertThat(service.students(classId, teacherId, false))
+        assertThat(service.students(classId, teacherId, false, "req-roster"))
             .extracting(TeacherService.StudentRow::id)
             .containsExactly(studentId);
+        assertThat(auditRows("TEACHER_LIST_STUDENTS", classId, teacherId)).isEqualTo(1);
     }
 
     @Test
-    @DisplayName("a teacher who does not teach the class is refused the roster")
+    @DisplayName("a teacher who does not teach the class is refused the roster, and nothing is audited")
     void otherTeacherCannotReadTheRoster() {
         String foreignClass = UUID.randomUUID().toString();
         jdbc.update("INSERT INTO classes (id, name) VALUES (?, ?)", foreignClass, "不属于他");
         enroll(foreignClass, studentId, "STUDENT");
 
-        assertThatThrownBy(() -> service.students(foreignClass, teacherId, false))
+        assertThatThrownBy(() -> service.students(foreignClass, teacherId, false, ""))
             .isInstanceOf(ApiException.class)
             .hasMessageContaining("这个班不在你名下");
+        assertThat(auditRows("TEACHER_LIST_STUDENTS", foreignClass, teacherId)).isZero();
     }
 
     @Test
     @DisplayName("a student's map opens for the teacher of that class and for nobody else")
     void mapRequiresSharedClass() {
-        assertThat(service.studentMap(studentId, teacherId, false)).isNotNull();
+        assertThat(service.studentMap(studentId, teacherId, false, "req-map")).isNotNull();
+        assertThat(auditRows("TEACHER_VIEW_LEARNING_MAP", String.valueOf(studentId), teacherId)).isEqualTo(1);
 
-        assertThatThrownBy(() -> service.studentMap(studentId, outsiderId, false))
+        assertThatThrownBy(() -> service.studentMap(studentId, outsiderId, false, ""))
             .isInstanceOf(ApiException.class)
             .hasMessageContaining("不在你带的班");
+        assertThat(auditRows("TEACHER_VIEW_LEARNING_MAP", String.valueOf(studentId), outsiderId)).isZero();
+    }
+
+    @Test
+    @DisplayName("an administrator bypasses the class check, and that bypass is audited under its own action")
+    void adminBypassIsAudited() {
+        long adminId = user("admin");
+        assertThat(service.studentMap(studentId, adminId, true, "req-admin")).isNotNull();
+        assertThat(auditRows("ADMIN_VIEW_LEARNING_MAP", String.valueOf(studentId), adminId)).isEqualTo(1);
     }
 }

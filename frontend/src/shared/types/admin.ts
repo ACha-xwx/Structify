@@ -1,5 +1,6 @@
 import type { IsoDateTime, Page } from "./api";
 import type { Role } from "./auth";
+import type { LearningMap } from "./contracts";
 
 export type AdminModuleStatus = "AVAILABLE" | "UNAVAILABLE" | "NOT_CONFIGURED";
 export type AdminServiceStatusValue = "AVAILABLE" | "UNAVAILABLE";
@@ -369,4 +370,52 @@ export interface CreateClassRequest {
 export interface AddClassMemberRequest {
   identifier: string;
   roleInClass: ClassRole;
+}
+
+/**
+ * The enrolment that just happened. `teacherRoleGranted` is true when this call also switched on the platform
+ * TEACHER role for the account - the console reports it so nobody wonders whether one more step is needed.
+ */
+export interface AddClassMemberResult {
+  member: AdminClassMember;
+  teacherRoleGranted: boolean;
+}
+
+/** One course in a learner's library, as the course library service reports it. */
+export interface AdminUserCourse {
+  id: string;
+  title: string;
+  status: string;
+  totalPoints: number;
+  completedPoints: number;
+  readableFragments: number;
+  lastPointTitle: string | null;
+  lastLearningAt: string | null;
+  activityAt: string | null;
+}
+
+/** One recent studyroom generation job of the user, with what it cost. */
+export interface AdminUserRecentJob {
+  id: string;
+  type: string | null;
+  status: string;
+  createdAt: string | null;
+  tokens: number;
+}
+
+/** The learning footprint of one account, gathered for the administrator in a single read. */
+export interface AdminUserLearning {
+  userId: number;
+  email: string;
+  username: string | null;
+  status: string;
+  courses: AdminUserCourse[];
+  bookmarks: number;
+  classroomSessions: number;
+  classroomEvents: number;
+  lastActivityAt: string | null;
+  tokensLast30Days: number;
+  callsLast30Days: number;
+  recentJobs: AdminUserRecentJob[];
+  learningMap: LearningMap;
 }

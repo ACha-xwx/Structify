@@ -46,6 +46,11 @@ class AdminService {
         modules.put("audit", new AdminModuleCapability(true, "AVAILABLE", null));
         modules.put("reviewQueue", new AdminModuleCapability(true, "AVAILABLE", null));
         modules.put("backgroundTasks", new AdminModuleCapability(true, "AVAILABLE", null));
+        // The studyroom redesign keeps its own ledgers; the console now reads them, so say so here.
+        modules.put("studyroom", new AdminModuleCapability(true, "AVAILABLE", null));
+        modules.put("learning", new AdminModuleCapability(true, "AVAILABLE", null));
+        modules.put("quota", new AdminModuleCapability(true, "AVAILABLE", null));
+        modules.put("classes", new AdminModuleCapability(true, "AVAILABLE", null));
         ModelConfigService.CapabilityState modelSettings = modelConfig.capabilityState();
         modules.put(
             "modelSettings",

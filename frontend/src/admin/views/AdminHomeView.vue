@@ -28,6 +28,7 @@ const modules = computed(() => {
     studyroom: { title: "课程生成链路", description: "大纲、生成作业与碎片的状态和花费，失败原因一屏可见。", path: "/admin/jobs" },
     learning: { title: "学习证据", description: "课堂步数、代码运行与动画记录的总量，用来看学习链路是否有人用。", path: "/admin/jobs" },
     quota: { title: "模型花费", description: "按天或按用户汇总已结算的 token 消耗。", path: "/admin/jobs" },
+    classes: { title: "班级", description: "建班、指派任课老师、维护名单——老师能看谁，由这里决定。", path: "/admin/classes" },
   };
   return Object.entries(labels).map(([key, info]) => ({
     key,

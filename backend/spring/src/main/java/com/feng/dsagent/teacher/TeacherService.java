@@ -1,5 +1,6 @@
 package com.feng.dsagent.teacher;
 
+import com.feng.dsagent.admin.AdminAuditService;
 import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.learning.LearningMapService;
 import java.sql.Timestamp;
@@ -13,7 +14,8 @@ import org.springframework.stereotype.Service;
  *
  * <p>Reading another person's learning profile is the most sensitive read in the product, so the rule lives here
  * rather than in the page: a request succeeds only when the caller teaches a class the student is enrolled in.
- * Administrators bypass that check on purpose and are expected to be audited when they do.
+ * Administrators bypass that check on purpose. Either way the read is written to the audit ledger - the promise
+ * that "somebody looked at this learner" must be answerable from data, not from trust.
  */
 @Service
 public class TeacherService {
@@ -33,10 +35,12 @@ public class TeacherService {
 
     private final JdbcTemplate jdbc;
     private final LearningMapService learningMap;
+    private final AdminAuditService audit;
 
-    TeacherService(JdbcTemplate jdbc, LearningMapService learningMap) {
+    TeacherService(JdbcTemplate jdbc, LearningMapService learningMap, AdminAuditService audit) {
         this.jdbc = jdbc;
         this.learningMap = learningMap;
+        this.audit = audit;
     }
 
     /** Classes the caller teaches; an administrator sees every class. */
@@ -59,9 +63,10 @@ public class TeacherService {
         );
     }
 
-    /** Students of one class, most recently active first. */
-    public List<StudentRow> students(String classId, long callerId, boolean admin) {
+    /** Students of one class, most recently active first. The read is audited: a roster is still learner data. */
+    public List<StudentRow> students(String classId, long callerId, boolean admin, String requestId) {
         requireTeaching(classId, callerId, admin);
+        audit.recordRead(callerId, "TEACHER_LIST_STUDENTS", "CLASS", classId, requestId);
         // Ordering is done outside a derived table: NULL ordering differs between MySQL and the in-memory database
         // the tests use, and "never started" has to sort last in both.
         return jdbc.query(
@@ -86,11 +91,13 @@ public class TeacherService {
         );
     }
 
-    /** The learning map of one student, which the caller must share a class with. */
-    public LearningMapService.LearningMap studentMap(long studentId, long callerId, boolean admin) {
+    /** The learning map of one student, which the caller must share a class with. The read is audited. */
+    public LearningMapService.LearningMap studentMap(long studentId, long callerId, boolean admin, String requestId) {
         if (!admin && !teachesStudent(studentId, callerId)) {
             throw new ApiException(HttpStatus.FORBIDDEN, "STUDENT_NOT_IN_YOUR_CLASS", "该学生不在你带的班里");
         }
+        audit.recordRead(callerId, admin ? "ADMIN_VIEW_LEARNING_MAP" : "TEACHER_VIEW_LEARNING_MAP",
+            "USER", String.valueOf(studentId), requestId);
         return learningMap.forUser(studentId);
     }
 

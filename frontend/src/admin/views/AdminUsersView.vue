@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import AdminPageFrame from "../components/AdminPageFrame.vue";
 import AdminTableControls from "../components/AdminTableControls.vue";
 import { adminApi, adminErrorMessage, formatDate } from "../api";
-import type { AdminUser, Role } from "../../shared/types";
+import type { AdminUser, AdminUserLearning, Role } from "../../shared/types";
 import LoadingState from "../../shared/components/LoadingState.vue";
 import ErrorState from "../../shared/components/ErrorState.vue";
 import EmptyState from "../../shared/components/EmptyState.vue";
@@ -18,6 +18,7 @@ const filters = reactive({ search: "", status: "", role: "" });
 const userStatusOptions: RuntimeSelectOption[] = [{ value: "", label: "全部状态" }, { value: "ACTIVE", label: "启用" }, { value: "DISABLED", label: "已禁用" }];
 const userRoleOptions: RuntimeSelectOption[] = [{ value: "", label: "全部角色" }, { value: "STUDENT", label: "学生" }, { value: "TEACHER", label: "教师" }, { value: "ADMIN", label: "管理员" }];
 const selected = ref<AdminUser | null>(null); const rolesDraft = ref<Role[]>([]); const actionBusy = ref<number | null>(null); const detailBusy = ref(false); const detailError = ref("");
+const learning = ref<AdminUserLearning | null>(null); const learningBusy = ref(false); const learningError = ref("");
 const tableFilter = ref("");
 const sortKey = ref("user");
 const sortDirection = ref<"asc" | "desc">("asc");
@@ -66,12 +67,36 @@ function clearRows() { selectedIds.value = new Set(); }
 
 function noticeTone(value: string): "success" | "danger" { return value.includes("未完成") || value.includes("失败") ? "danger" : "success"; }
 
+const learningRoot = computed(() => learning.value?.learningMap.nodes.find((node) => node.level === 0) ?? null);
+const learningChapters = computed(() => {
+  if (!learning.value) return [];
+  return learning.value.learningMap.nodes
+    .filter((node) => node.level === 1)
+    .sort((left, right) => (right.mastery ?? -1) - (left.mastery ?? -1));
+});
+const startedSomething = computed(() =>
+  (learning.value?.learningMap.nodes ?? []).some((node) => node.status !== "NOT_STARTED")
+);
+function masteryPercent(value: number | null): string { return value == null ? "—" : `${Math.round(value * 100)}%`; }
+function nodeStatusLabel(status: string): string {
+  return status === "ESTIMATED" ? "已估算" : status === "LOW_EVIDENCE" ? "证据不足" : "未开始";
+}
+function jobStatusTone(status: string): "success" | "warning" | "danger" {
+  const upper = status.toUpperCase();
+  if (upper === "SUCCEEDED" || upper === "COMPLETED" || upper === "DONE") return "success";
+  if (upper === "FAILED" || upper === "DEAD" || upper === "ERROR" || upper === "CANCELED" || upper === "CANCELLED") return "danger";
+  return "warning";
+}
+
 function clearSelection() {
   detailRequest += 1;
   selected.value = null;
   rolesDraft.value = [];
   detailBusy.value = false;
   detailError.value = "";
+  learning.value = null;
+  learningBusy.value = false;
+  learningError.value = "";
 }
 
 async function load({ clearCurrentSelection = false } = {}): Promise<boolean> {
@@ -102,6 +127,10 @@ function selectUser(user: AdminUser) {
   detailRequest += 1;
   selected.value = user;
   rolesDraft.value = [...user.roles];
+  // The footprint belongs to the previously opened account; it must not linger under somebody else's name.
+  learning.value = null;
+  learningBusy.value = false;
+  learningError.value = "";
 }
 
 async function openUser(user: AdminUser) {
@@ -110,6 +139,9 @@ async function openUser(user: AdminUser) {
   rolesDraft.value = [...user.roles];
   detailBusy.value = true;
   detailError.value = "";
+  learning.value = null;
+  learningBusy.value = true;
+  learningError.value = "";
   try {
     const detail = await adminApi.user(user.id);
     if (request !== detailRequest) return;
@@ -119,6 +151,16 @@ async function openUser(user: AdminUser) {
     if (request === detailRequest) detailError.value = adminErrorMessage(failure, "读取用户详情");
   } finally {
     if (request === detailRequest) detailBusy.value = false;
+  }
+  // The learning footprint is a privileged read and is audited server-side on every call; that is the point.
+  try {
+    const footprint = await adminApi.userLearning(user.id);
+    if (request !== detailRequest) return;
+    learning.value = footprint;
+  } catch (failure) {
+    if (request === detailRequest) learningError.value = adminErrorMessage(failure, "读取学习情况");
+  } finally {
+    if (request === detailRequest) learningBusy.value = false;
   }
 }
 
@@ -240,6 +282,57 @@ onMounted(load);
           <template v-else>
             <div class="admin-inspector__identity"><span class="admin-identity__signal" aria-hidden="true"></span><strong>{{ selected.username || selected.email }}</strong><StatusBadge :label="selected.status" :tone="selected.status === 'ACTIVE' ? 'success' : 'warning'" /></div>
             <dl><dt>用户名</dt><dd>{{ selected.username || "未设置" }}</dd><dt>邮箱</dt><dd>{{ selected.email }}</dd><dt>状态</dt><dd>{{ selected.status }}</dd><dt>禁用时间</dt><dd>{{ formatDate(selected.disabledAt) }}</dd><dt>更新时间</dt><dd>{{ formatDate(selected.updatedAt) }}</dd></dl>
+
+            <section class="ulearn" aria-label="学习情况">
+              <h3 class="ulearn__head">学习情况</h3>
+              <LoadingState v-if="learningBusy" label="正在读取学习情况…" />
+              <ErrorState v-else-if="learningError" title="学习情况读取失败" :message="learningError"><RetryButton @retry="openUser(selected)" /></ErrorState>
+              <template v-else-if="learning">
+                <div class="signal-strip ulearn__strip">
+                  <div class="signal-strip__item"><span class="signal-strip__label">课程</span><strong>{{ learning.courses.length }}</strong></div>
+                  <div class="signal-strip__item"><span class="signal-strip__label">书签</span><strong>{{ learning.bookmarks }}</strong></div>
+                  <div class="signal-strip__item"><span class="signal-strip__label">课堂步数</span><strong>{{ learning.classroomEvents }}</strong></div>
+                  <div class="signal-strip__item"><span class="signal-strip__label">30 天花费</span><strong>{{ learning.tokensLast30Days.toLocaleString() }} token</strong></div>
+                </div>
+                <p class="admin-muted ulearn__line">
+                  最近活跃：{{ learning.lastActivityAt ? formatDate(learning.lastActivityAt) : "从未" }} ·
+                  30 天结算 {{ learning.callsLast30Days }} 次 · 课堂会话 {{ learning.classroomSessions }} 个
+                </p>
+
+                <template v-if="learningRoot && startedSomething">
+                  <p class="ulearn__line"><strong>整体掌握 {{ masteryPercent(learningRoot.mastery) }}</strong><span class="admin-muted">（可信度 {{ Math.round(learningRoot.confidence * 100) }}%）</span></p>
+                  <ul class="ulearn__chapters">
+                    <li v-for="chapter in learningChapters" :key="chapter.id">
+                      <span class="ulearn__chapter-title" :title="chapter.title">{{ chapter.title }}</span>
+                      <span class="ulearn__bar"><span class="ulearn__bar-fill" :style="{ width: `${Math.round((chapter.mastery ?? 0) * 100)}%` }"></span></span>
+                      <span class="ulearn__pct admin-code">{{ masteryPercent(chapter.mastery) }}</span>
+                      <span class="admin-muted">{{ nodeStatusLabel(chapter.status) }}</span>
+                    </li>
+                  </ul>
+                </template>
+                <p v-else class="admin-muted ulearn__line">还没有任何学习记录——不是 0 分，是还没开始。</p>
+
+                <template v-if="learning.courses.length">
+                  <h4 class="ulearn__sub">课程库</h4>
+                  <ul class="ulearn__courses">
+                    <li v-for="course in learning.courses" :key="course.id">
+                      <span :title="course.title">{{ course.title }}</span>
+                      <span class="admin-muted">{{ course.completedPoints }}/{{ course.totalPoints }} 知识点 · {{ course.status }}</span>
+                    </li>
+                  </ul>
+                </template>
+
+                <template v-if="learning.recentJobs.length">
+                  <h4 class="ulearn__sub">最近生成作业</h4>
+                  <ul class="ulearn__jobs">
+                    <li v-for="job in learning.recentJobs" :key="job.id">
+                      <StatusBadge :label="job.status" :tone="jobStatusTone(job.status)" />
+                      <span class="admin-muted">{{ job.type ?? "作业" }} · {{ formatDate(job.createdAt) }} · {{ job.tokens.toLocaleString() }} token</span>
+                    </li>
+                  </ul>
+                </template>
+              </template>
+            </section>
           </template>
         </section>
       </div>
@@ -248,3 +341,81 @@ onMounted(load);
     </template>
   </AdminPageFrame>
 </template>
+
+<style scoped>
+.ulearn {
+  margin-top: 14px;
+  border-top: 1px solid rgba(12, 44, 52, 0.12);
+  padding-top: 12px;
+}
+
+.ulearn__head {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.ulearn__sub {
+  margin: 12px 0 6px;
+  font-size: 14px;
+}
+
+.ulearn__strip {
+  margin-bottom: 8px;
+}
+
+.ulearn__line {
+  margin: 6px 0;
+  font-size: 14px;
+}
+
+.ulearn__chapters,
+.ulearn__courses,
+.ulearn__jobs {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.ulearn__chapters li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px 44px auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.ulearn__chapter-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ulearn__bar {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(12, 44, 52, 0.12);
+  overflow: hidden;
+}
+
+.ulearn__bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(8, 118, 111, 0.75);
+}
+
+.ulearn__pct {
+  text-align: right;
+}
+
+.ulearn__courses li,
+.ulearn__jobs li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+</style>
