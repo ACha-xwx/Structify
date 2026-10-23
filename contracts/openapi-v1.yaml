@@ -1964,6 +1964,146 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /admin/classes:
+    get:
+      tags: [Admin]
+      summary: List every class with its student count and teachers
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      responses:
+        '200':
+          description: Classes, newest first
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/AdminClass'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Admin]
+      summary: Create an empty class
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateClassRequest'}
+      responses:
+        '201':
+          description: The created class
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminClass'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/classes/{classId}:
+    delete:
+      tags: [Admin]
+      summary: Delete a class and its enrolments
+      description: Learning records belong to the learner, not to the class, so they are untouched.
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/ClassId'}
+      responses:
+        '204': {description: Deleted}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /admin/classes/{classId}/members:
+    get:
+      tags: [Admin]
+      summary: List the people enrolled in a class
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/ClassId'}
+      responses:
+        '200':
+          description: Enrolled people, teachers first
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/AdminClassMember'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    post:
+      tags: [Admin]
+      summary: Enrol a person found by email or username
+      description: Adding somebody as a teacher is what lets them read those learners, so it is an administrator action.
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/ClassId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AddClassMemberRequest'}
+      responses:
+        '201':
+          description: The enrolment
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminClassMember'}}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /admin/classes/{classId}/members/{userId}:
+    delete:
+      tags: [Admin]
+      summary: Remove a person from a class, which withdraws their access to its learners
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/ClassId'}
+        - {$ref: '#/components/parameters/ClassUserId'}
+      responses:
+        '204': {description: Removed}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /teacher/classes:
+    get:
+      tags: [Teacher]
+      summary: Classes the caller teaches; an administrator sees every class
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      responses:
+        '200':
+          description: Classes the caller may open
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/TeacherClass'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /teacher/classes/{classId}/students:
+    get:
+      tags: [Teacher]
+      summary: Cheap roster of one class, refused unless the caller teaches it
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/ClassId'}
+      responses:
+        '200':
+          description: One row per student with last activity and classroom steps, but no mastery map
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/TeacherStudent'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /teacher/students/{studentId}/learning-map:
+    get:
+      tags: [Teacher]
+      summary: The learning map of one student, the same computation the student sees
+      description: Refused unless the caller teaches a class the student is enrolled in.
+      security: [{cookieAuth: []}, {bearerAuth: []}]
+      parameters:
+        - {$ref: '#/components/parameters/StudentId'}
+      responses:
+        '200':
+          description: The student's mastery map
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/LearningMap'}}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
 components:
   securitySchemes:
     cookieAuth:
@@ -2001,6 +2141,21 @@ components:
       schema: {type: integer, minimum: 1, maximum: 100, default: 20}
     AdminUserId:
       name: id
+      in: path
+      required: true
+      schema: {type: integer, format: int64, minimum: 1}
+    ClassId:
+      name: classId
+      in: path
+      required: true
+      schema: {type: string, maxLength: 36}
+    ClassUserId:
+      name: userId
+      in: path
+      required: true
+      schema: {type: integer, format: int64, minimum: 1}
+    StudentId:
+      name: studentId
       in: path
       required: true
       schema: {type: integer, format: int64, minimum: 1}
@@ -3383,3 +3538,72 @@ components:
       properties:
         sent: {type: boolean}
         code: {type: string, pattern: '^[A-Z0-9_]{1,64}$'}
+    AdminClass:
+      type: object
+      required: [id, name, students, teachers]
+      properties:
+        id: {type: string, maxLength: 36}
+        name: {type: string, maxLength: 120}
+        term: {type: string, maxLength: 40, nullable: true}
+        students: {type: integer, minimum: 0}
+        teachers: {type: array, items: {type: string}}
+    AdminClassMember:
+      type: object
+      required: [userId, email, roleInClass]
+      properties:
+        userId: {type: integer, format: int64, minimum: 1}
+        username: {type: string, nullable: true}
+        email: {type: string, format: email}
+        roleInClass: {type: string, enum: [STUDENT, TEACHER]}
+        joinedAt: {type: string, format: date-time, nullable: true}
+    CreateClassRequest:
+      type: object
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        term: {type: string, maxLength: 40}
+    AddClassMemberRequest:
+      type: object
+      required: [identifier, roleInClass]
+      properties:
+        identifier: {type: string, minLength: 1, maxLength: 255, description: 'Account email or username'}
+        roleInClass: {type: string, enum: [STUDENT, TEACHER]}
+    TeacherClass:
+      type: object
+      required: [id, name, students]
+      properties:
+        id: {type: string, maxLength: 36}
+        name: {type: string, maxLength: 120}
+        term: {type: string, maxLength: 40, nullable: true}
+        students: {type: integer, minimum: 0}
+    TeacherStudent:
+      type: object
+      required: [id, email, classroomSteps]
+      properties:
+        id: {type: integer, format: int64, minimum: 1}
+        username: {type: string, nullable: true}
+        email: {type: string, format: email}
+        status: {type: string}
+        lastActivityAt: {type: string, format: date-time, nullable: true}
+        classroomSteps: {type: integer, minimum: 0}
+    LearningMap:
+      type: object
+      required: [generatedAt, nodes]
+      properties:
+        generatedAt: {type: string, format: date-time}
+        nodes:
+          type: array
+          items: {$ref: '#/components/schemas/LearningMapNode'}
+    LearningMapNode:
+      type: object
+      required: [id, level, title, confidence, status]
+      properties:
+        id: {type: string}
+        parentId: {type: string, nullable: true}
+        level: {type: integer, minimum: 0}
+        title: {type: string}
+        mastery: {type: number, nullable: true}
+        confidence: {type: number}
+        status: {type: string}
+        components: {type: object, nullable: true}
+        signals: {type: object, nullable: true}

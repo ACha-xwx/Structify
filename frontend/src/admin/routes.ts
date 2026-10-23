@@ -8,6 +8,7 @@ const AdminSettingsView = () => import("./views/AdminSettingsView.vue");
 const AdminMailConfigView = () => import("./views/AdminMailConfigView.vue");
 const AdminSandboxConfigView = () => import("./views/AdminSandboxConfigView.vue");
 const AdminJobsView = () => import("./views/AdminJobsView.vue");
+const AdminClassesView = () => import("./views/AdminClassesView.vue");
 
 const adminMeta = { requiresAuth: true, roles: ["ADMIN"], layout: "admin" } as const;
 
@@ -21,4 +22,5 @@ export const adminRoutes: RouteRecordRaw[] = [
   { path: "/admin/mail", name: "admin-mail", component: AdminMailConfigView, meta: { ...adminMeta, module: "Mail delivery" } },
   { path: "/admin/sandbox", name: "admin-sandbox", component: AdminSandboxConfigView, meta: { ...adminMeta, module: "Code sandbox" } },
   { path: "/admin/jobs", name: "admin-jobs", component: AdminJobsView, meta: { ...adminMeta, module: "Work and cost" } },
+  { path: "/admin/classes", name: "admin-classes", component: AdminClassesView, meta: { ...adminMeta, module: "Classes" } },
 ];

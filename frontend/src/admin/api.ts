@@ -2,6 +2,10 @@ import { api } from "../app/providers/runtime";
 import type {
   AdminAuditEventPage,
   AdminCapability,
+  AdminClass,
+  AdminClassMember,
+  AddClassMemberRequest,
+  CreateClassRequest,
   AdminCostReport,
   AdminJobPage,
   AdminObservabilityModule,
@@ -143,6 +147,24 @@ export const adminApi = {
   },
   async auditEvents(query: AdminQuery = {}): Promise<AdminAuditEventPage> {
     return jsonData(await api.get<AdminAuditEventPage>("/admin/audit-events", { query: compactQuery(query) }));
+  },
+  async classes(): Promise<AdminClass[]> {
+    return jsonData(await api.get<AdminClass[]>("/admin/classes"));
+  },
+  async createClass(payload: CreateClassRequest): Promise<AdminClass> {
+    return jsonData(await api.post<AdminClass>("/admin/classes", payload));
+  },
+  async classMembers(classId: string): Promise<AdminClassMember[]> {
+    return jsonData(await api.get<AdminClassMember[]>(`/admin/classes/${encodeURIComponent(classId)}/members`));
+  },
+  async addClassMember(classId: string, payload: AddClassMemberRequest): Promise<AdminClassMember> {
+    return jsonData(await api.post<AdminClassMember>(`/admin/classes/${encodeURIComponent(classId)}/members`, payload));
+  },
+  async removeClassMember(classId: string, userId: number): Promise<void> {
+    await api.delete(`/admin/classes/${encodeURIComponent(classId)}/members/${encodeURIComponent(userId)}`);
+  },
+  async deleteClass(classId: string): Promise<void> {
+    await api.delete(`/admin/classes/${encodeURIComponent(classId)}`);
   },
 };
 

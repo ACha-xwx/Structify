@@ -36,6 +36,7 @@ const titleByName: Record<string, { zh: string; en: string }> = {
   "admin-reviews": { zh: "审核队列", en: "Review queue" },
   "admin-tasks": { zh: "后台任务", en: "Background tasks" },
   "admin-jobs": { zh: "作业与花费", en: "Work and cost" },
+  "admin-classes": { zh: "班级", en: "Classes" },
   "admin-audit": { zh: "审计事件", en: "Audit events" },
   "admin-settings": { zh: "模型设置", en: "Model settings" },
   "admin-mail": { zh: "邮件投递", en: "Mail delivery" },

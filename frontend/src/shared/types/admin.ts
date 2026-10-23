@@ -340,3 +340,33 @@ export interface AdminObservabilityModule {
   reason: string | null;
   counts: Record<string, number>;
 }
+
+/** A class as the administrator maintains it. */
+export interface AdminClass {
+  id: string;
+  name: string;
+  term: string | null;
+  students: number;
+  teachers: string[];
+}
+
+export type ClassRole = "STUDENT" | "TEACHER";
+
+/** One person enrolled in a class. */
+export interface AdminClassMember {
+  userId: number;
+  username: string | null;
+  email: string;
+  roleInClass: ClassRole;
+  joinedAt: string | null;
+}
+
+export interface CreateClassRequest {
+  name: string;
+  term?: string;
+}
+
+export interface AddClassMemberRequest {
+  identifier: string;
+  roleInClass: ClassRole;
+}

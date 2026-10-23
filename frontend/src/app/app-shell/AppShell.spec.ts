@@ -26,6 +26,7 @@ async function mountAdminShell() {
       { path: "/admin/tasks", component: { template: "<div />" }, meta: { layout: "admin" } },
       { path: "/admin/audit", component: { template: "<div />" }, meta: { layout: "admin" } },
       { path: "/admin/jobs", component: { template: "<div />" }, meta: { layout: "admin" } },
+      { path: "/admin/classes", component: { template: "<div />" }, meta: { layout: "admin" } },
       { path: "/admin/settings", component: { template: "<div />" }, meta: { layout: "admin" } },
       { path: "/admin/mail", component: { template: "<div />" }, meta: { layout: "admin" } },
       { path: "/admin/sandbox", component: { template: "<div />" }, meta: { layout: "admin" } },
@@ -106,8 +107,8 @@ describe("AppShell retained session presentation", () => {
     const marks = wrapper.get("aside[data-layout=\"admin-sidebar\"] nav").findAll(".admin-nav__mark");
     const icons = wrapper.get("aside[data-layout=\"admin-sidebar\"] nav").findAll("svg.admin-nav__icon");
 
-    expect(marks).toHaveLength(9);
-    expect(icons).toHaveLength(9);
+    expect(marks).toHaveLength(10);
+    expect(icons).toHaveLength(10);
     expect(marks.every((mark) => mark.text().trim() === "")).toBe(true);
     expect(icons.every((icon) => icon.attributes("aria-hidden") === "true")).toBe(true);
     wrapper.unmount();

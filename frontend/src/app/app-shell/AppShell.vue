@@ -32,6 +32,7 @@ const adminNavItems: AdminNavigationItem[] = [
   { to: "/admin/reviews", label: "审核", icon: "reviews" },
   { to: "/admin/tasks", label: "后台任务", icon: "tasks" },
   { to: "/admin/jobs", label: "作业与花费", icon: "jobs" },
+  { to: "/admin/classes", label: "班级", icon: "classes" },
   { to: "/admin/audit", label: "审计", icon: "audit" },
   { to: "/admin/settings", label: "模型设置", icon: "settings" },
   { to: "/admin/mail", label: "邮件设置", icon: "mail" },
