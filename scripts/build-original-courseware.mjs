@@ -3,12 +3,13 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const workspace = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const knowledgeRoot = path.join(workspace, '知识库');
 const imageRoot = path.join(workspace, 'WebP');
 const manifest = JSON.parse(fs.readFileSync(path.join(knowledgeRoot, '转换清单.json'), 'utf8'));
 const chapterIds = new Map([
   ['第一章绪论', '01'], ['第二章线性表', '02'], ['第三章限定性线性表', '03'],
+  ['第四章串', '04'],
   ['第五章数组和广义表', '05'], ['第六章树和二叉树', '06'], ['第七章图', '07'],
   ['第八章查找', '08'], ['第九章排序', '09'],
 ]);
@@ -31,7 +32,8 @@ for (const deck of [...manifest.decks].sort((a, b) => a.source < b.source ? -1 :
   // Include source text and every image in the revision so immutable URLs always identify the bytes.
   const hash = crypto.createHash('sha256').update(markdown);
   const images = pages.map((page) => {
-    const relative = `${deck.chapter}/${title}/slide-${String(page[1]).padStart(3, '0')}.webp`;
+    const directory = deck.webp_dir ? deck.webp_dir.replace(/^WebP\//, '') : `${deck.chapter}/${title}`;
+    const relative = `${directory}/slide-${String(page[1]).padStart(3, '0')}.webp`;
     const file = path.resolve(imageRoot, relative);
     if (!file.startsWith(imageRoot + path.sep)) throw new Error('Image escapes WebP root');
     const bytes = fs.readFileSync(file);

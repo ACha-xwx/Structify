@@ -10,6 +10,17 @@ import tools.jackson.databind.json.JsonMapper;
 class CoursewareKnowledgeLoaderTest {
     @TempDir Path root;
 
+    @Test void loadsTheNewStringChapter() throws Exception {
+        Files.writeString(root.resolve("串.md"), "## 第 1 页：串\n串是有限字符序列。\n");
+        Files.writeString(root.resolve("转换清单.json"), """
+            {"decks":[{"chapter":"第四章串","source":"第四章串/串.pptx","slides":1,"markdown":"串.md"}]}
+            """);
+        var corpus = new KnowledgeCorpusLoader(JsonMapper.builder().build()).load(root, 1100);
+        assertThat(corpus.stats().available()).isTrue();
+        assertThat(corpus.chunks()).hasSize(1);
+        assertThat(corpus.chunks().getFirst().chapterId()).isEqualTo("04-string");
+    }
+
     @Test void loadsOriginalPagesWithSlideProvenanceInsteadOfMockText() throws Exception {
         Files.createDirectories(root.resolve("课件/第三章限定性线性表"));
         Files.writeString(root.resolve("课件/第三章限定性线性表/栈01.md"), """

@@ -15,6 +15,7 @@ final class CoursewareKnowledgeLoader {
     private static final Map<String, String> CHAPTERS = Map.of(
         "第一章绪论", "01-introduction", "第二章线性表", "02-linear-list",
         "第三章限定性线性表", "03-stack-queue", "第五章数组和广义表", "05-array-generalized-list",
+        "第四章串", "04-string",
         "第六章树和二叉树", "06-tree", "第七章图", "07-graph",
         "第八章查找", "08-search", "第九章排序", "09-internal-sort");
     private final ObjectMapper mapper;
