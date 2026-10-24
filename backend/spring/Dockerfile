@@ -28,6 +28,11 @@ RUN install -d -m 700 -o appuser -g appuser /app/chat-attachments
 COPY --from=build /workspace/target/ds-agent-server-*.jar app.jar
 COPY --from=node-runtime /usr/local/bin/node /usr/local/bin/node
 COPY dsvp /dsvp
+# The release archive ships every entry with the 0600 mode zipfile writes by default, so the
+# engine lands here readable only by root while the API runs as appuser. Without this the child
+# process dies with EACCES on open before it reads a single request, and every animation answers
+# DSVP_ENGINE_UNAVAILABLE - a permission error that looks exactly like a missing engine.
+RUN chmod -R a+rX /dsvp
 
 # The interactive console compiles and runs learner programs here, in-process, instead of shipping
 # them to a batch sandbox that cannot wait for input. gcc alone is not enough: without libc6-dev

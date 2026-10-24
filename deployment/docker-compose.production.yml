@@ -131,6 +131,11 @@ services:
         NODE_RUNTIME_IMAGE: ${NODE_BASE_IMAGE:-node:22-bookworm-slim}
     restart: unless-stopped
     init: true
+    # Four containers share this budget and the low-memory profile caps their combined hard limits
+    # at 896 MiB, so this service keeps its 320m. A compiler fits without it: the reading already
+    # includes reclaimable page cache, and four simultaneous builds measured 298 of 320 MiB with no
+    # OOM kill, because the kernel gives back cache instead. The runner also compiles no more
+    # programs at once than there are cores, which is what keeps that true under a whole class.
     mem_limit: ${SPRING_MEMORY_LIMIT:-320m}
     mem_reservation: ${SPRING_MEMORY_RESERVATION:-256m}
     depends_on:
@@ -210,8 +215,10 @@ services:
       EXECUTE_MAX_CONCURRENT_PER_CLIENT: ${EXECUTE_MAX_CONCURRENT_PER_CLIENT:-8}
       EXECUTE_COMPILE_TIMEOUT_MS: ${EXECUTE_COMPILE_TIMEOUT_MS:-10000}
       EXECUTE_RUN_TIMEOUT_MS: ${EXECUTE_RUN_TIMEOUT_MS:-3000}
-      # The interactive console runs learner programs in this container, so it stays off unless the
-      # host has turned it on (and the image ships a compiler).
+      # Turning this on moves both learner consoles into this container: the interactive one, and the
+      # batch "run" button that otherwise posts every program to a remote sandbox across a slow public
+      # link. It stays off unless the host has turned it on, because running learner-compiled programs
+      # here is a deliberate choice about this machine, not a default.
       SANDBOX_ENABLED: ${SANDBOX_ENABLED:-false}
       SANDBOX_WORK_DIRECTORY: ${SANDBOX_WORK_DIRECTORY:-}
       SANDBOX_MAX_SESSIONS: ${SANDBOX_MAX_SESSIONS:-32}
