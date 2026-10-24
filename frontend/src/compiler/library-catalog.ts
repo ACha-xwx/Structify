@@ -14,6 +14,7 @@ export interface LibraryEntry {
   origin: string;
   sourceFile: string;
   chapterId: string;
+  apiChapterId?: string;
   topicId: string;
   code: string;
   stdin: string;
@@ -116,6 +117,12 @@ export const compilerChapters: Chapter[] = [
 
 const otherLabel: Label = { zh: "其他代码", en: "Other code" };
 const unknownChapter: Chapter = { id: "other", label: { zh: "其他章节", en: "Other chapters" }, topics: [] };
+
+/** Published chapter identity stays separate from the menu, which combines chapters 9 and 10. */
+export function codeChapterId(source: string, chapters: {id:string;chapterNumber:number}[]): string | undefined {
+  const number = /^(?:ch)?(\d{1,2})(?:\D|$)/i.exec(source)?.[1];
+  return number ? chapters.find(chapter => chapter.chapterNumber === Number(number))?.id : undefined;
+}
 
 export function classifyCode(chapter: string, sourceFile: string, title: string, id: string) {
   const file = sourceFile.replace(/\\/g, "/");
