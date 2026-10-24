@@ -175,6 +175,11 @@ public class AiQuotaExecutionService implements AiQuotaExecution {
         }
         ledger.recoverExpiredReservations();
         AiQuotaAccount account = ledger.account(userId);
+        if (ledger.isUnlimited(userId)) {
+            boolean available = account.activeReservations() < properties.maximumConcurrentRequests();
+            return new Availability(null, null, account.activeReservations(),
+                available ? "UNLIMITED" : "CONCURRENCY_LIMITED", available);
+        }
         long dailyTokenQuota = state.dailyTokenQuota();
         long remaining = Math.max(0L, dailyTokenQuota - account.reservedTokens() - account.consumedTokens());
         String status = remaining < 1

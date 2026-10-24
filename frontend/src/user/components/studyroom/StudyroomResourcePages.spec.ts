@@ -1,0 +1,50 @@
+import {expect,it} from 'vitest';
+import {mount} from '@vue/test-utils';
+import StudyroomResourcePages from './StudyroomResourcePages.vue';
+import type {StudyroomStep} from '../../../shared/types/studyroom';
+import type {LectureStageAdapter} from '../../lecture-types';
+import {defineComponent,onMounted} from 'vue';
+const step={id:'s',title:'知识点',explanation:'解释',resources:[],orchestration:{schemaVersion:2,intent:'CONCEPT',objective:'目标',primary:{id:'text',kind:'TEXT',purpose:'讲述',items:[]},supplementary:[]}} as unknown as StudyroomStep;
+it('captures and restores the visible text container after visiting a retained quiz',async()=>{
+ const wrapper=mount(StudyroomResourcePages,{props:{step,revision:1,active:true,hasChecks:true},slots:{checks:'<p>小测</p>'}});
+ const pages=wrapper.vm as unknown as {selectPage:(id:string)=>boolean;capture:()=>{scrollTop:number};restore:(position:{kind:'TEXT';scrollTop:number;presentationPageId:string})=>Promise<void>};
+ const text=wrapper.get('.text-page-scroll').element;text.scrollTop=40;
+ pages.selectPage('s:1:quiz');await wrapper.vm.$nextTick();
+ const quiz=wrapper.get('.quiz-page').element;quiz.scrollTop=110;
+ pages.selectPage('s:1:empty');await wrapper.vm.$nextTick();
+ expect(pages.capture().scrollTop).toBe(40);
+ await pages.restore({kind:'TEXT',scrollTop:77,presentationPageId:'s:1:empty'});
+ expect(text.scrollTop).toBe(77);expect(quiz.scrollTop).toBe(110);
+ pages.selectPage('s:1:quiz');await wrapper.vm.$nextTick();
+ expect(pages.capture().scrollTop).toBe(110);wrapper.unmount();
+});
+it('gives quizzes a single complete stage and retains their state across material navigation',async()=>{
+ let mounts=0;
+ const Checks=defineComponent({setup(){onMounted(()=>mounts++);return{};},template:'<input aria-label="保留作答" />'});
+ const wrapper=mount(StudyroomResourcePages,{props:{step,revision:1,active:true,hasChecks:true},slots:{checks:Checks}});
+ const pages=wrapper.vm as unknown as {selectPage:(id:string)=>boolean};
+ pages.selectPage('s:1:quiz');await wrapper.vm.$nextTick();
+ expect(wrapper.findAll('.resource-page').filter(page=>page.isVisible())).toHaveLength(1);
+ await wrapper.get('input').setValue('已选答案');
+ pages.selectPage('s:1:empty');await wrapper.vm.$nextTick();
+ pages.selectPage('s:1:quiz');await wrapper.vm.$nextTick();
+ expect(mounts).toBe(1);
+ expect((wrapper.get('input').element as HTMLInputElement).value).toBe('已选答案');
+ wrapper.unmount();
+});
+it('does not switch an inactive reader to a quiz from a late cue',async()=>{
+ const wrapper=mount(StudyroomResourcePages,{props:{step,revision:1,active:false,hasChecks:true}});
+ const stage=wrapper.vm as unknown as LectureStageAdapter;
+ expect(await stage.lecture({id:'late',kind:'CHECK',text:'小测'},new AbortController().signal)).toBe(false);
+ expect(wrapper.find('[role="status"]').exists()).toBe(true);
+ wrapper.unmount();
+});
+it('rejects a cue invalidated while switching pages',async()=>{
+ const wrapper=mount(StudyroomResourcePages,{props:{step,revision:1,active:true,hasChecks:true}});
+ const stage=wrapper.vm as unknown as LectureStageAdapter;
+ const controller=new AbortController();
+ const pending=stage.lecture({id:'late',kind:'CHECK',text:'小测'},controller.signal);
+ controller.abort();
+ expect(await pending).toBe(false);
+ wrapper.unmount();
+});

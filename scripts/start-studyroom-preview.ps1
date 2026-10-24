@@ -8,6 +8,14 @@ if (-not $env:DB_URL) {
     $env:DB_URL = "jdbc:h2:file:${taskDatabasePath};MODE=MySQL;DATABASE_TO_LOWER=TRUE"
 }
 $env:SERVER_PORT = [string]$Port
+# Private optional question-bank settings; absent configuration uses bounded AI quizzes.
+$taskBankSettings = Join-Path $taskRepoRoot 'private/studyroom-question-bank/local-settings.json'
+if (Test-Path -LiteralPath $taskBankSettings) {
+    $taskBank = Get-Content -LiteralPath $taskBankSettings -Raw | ConvertFrom-Json
+    if (-not $env:STUDYROOM_QUESTION_BANK_PATH) { $env:STUDYROOM_QUESTION_BANK_PATH = $taskBank.path }
+    if (-not $env:STUDYROOM_QUESTION_BANK_BINDINGS_PATH) { $env:STUDYROOM_QUESTION_BANK_BINDINGS_PATH = $taskBank.bindingsPath }
+    if (-not $env:STUDYROOM_QUESTION_BANK_ALLOW_DRAFT -and $taskBank.allowDraft -eq $true) { $env:STUDYROOM_QUESTION_BANK_ALLOW_DRAFT = 'true' }
+}
 $taskCoursewareRoot = Join-Path $taskRepoRoot 'private/courseware-latest'
 if (Test-Path -LiteralPath (Join-Path $taskCoursewareRoot '知识库/转换清单.json')) {
     if (-not $env:KNOWLEDGE_DIR) { $env:KNOWLEDGE_DIR = Join-Path $taskCoursewareRoot '知识库' }

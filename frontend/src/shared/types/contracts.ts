@@ -286,7 +286,7 @@ export interface LearningEvent { id: number; eventType: string; chapterId: strin
 
 export type AiOperation = "CHAT" | "CODE_ANALYSIS" | "ANIMATION_GENERATION";
 export type AiModelReason = "PERSISTED_CONFIGURATION_READY" | "PERSISTED_CONFIGURATION_DISABLED" | "PERSISTED_QUOTA_NOT_CONFIGURED" | "PERSISTED_CONFIGURATION_UNAVAILABLE" | "ENVIRONMENT_CONFIGURATION_READY" | "ENVIRONMENT_QUOTA_NOT_CONFIGURED" | "ENVIRONMENT_CONFIGURATION_INCOMPLETE";
-export type AiQuotaStatus = "NOT_CONFIGURED" | "AVAILABLE" | "EXHAUSTED" | "CONCURRENCY_LIMITED";
+export type AiQuotaStatus = "NOT_CONFIGURED" | "AVAILABLE" | "UNLIMITED" | "EXHAUSTED" | "CONCURRENCY_LIMITED";
 export interface AiCurrentContext { chapterId: string | null; queryScoped: boolean }
 export interface AiReadiness {
   operation: AiOperation;

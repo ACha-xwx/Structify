@@ -18,7 +18,7 @@ import { ApiClientError } from "../shared/api";
 import { compilerTemplates, type CompilerTemplate } from "./templates";
 import CodeLibraryMenu from "./CodeLibraryMenu.vue";
 import CCodeEditor from "./CCodeEditor.vue";
-import { buildLibraryGroups, classifyCode, type LibraryEntry } from "./library-catalog";
+import { buildLibraryGroups, classifyCode, codeChapterId, type LibraryEntry } from "./library-catalog";
 import { cFileName, cSourceFileName, decodeCSource } from "./code-files";
 
 /**
@@ -331,7 +331,7 @@ async function loadRelated() {
   const entry = current.value;
   if (!entry) return;
   try {
-    const found = await userApi.searchKnowledge({ query: entry.title, chapterId: entry.chapterId, limit: 3 });
+    const found = await userApi.searchKnowledge({ query: entry.title, chapterId: entry.apiChapterId, limit: 3 });
     related.value = found.results ?? [];
   } catch {
     related.value = [];
@@ -381,7 +381,7 @@ async function explain() {
         stdout: mode.value === "live" ? output.value : result.value?.stdout ?? "",
         stderr: mode.value === "live" ? errors.value : result.value?.stderr ?? "",
         status: mode.value === "live" ? "unknown" : result.value?.status ?? "unknown",
-        chapterId: current.value?.chapterId || undefined,
+        chapterId: current.value?.apiChapterId,
       });
     analysis.value = response.analysis;
     void loadRelated();
@@ -416,7 +416,7 @@ async function load() {
   loading.value = true;
   loadError.value = "";
   try {
-    const [samples, library] = await Promise.all([userApi.listCodeSamples(), userApi.getCodeLibrary()]);
+    const [samples, library, chapters] = await Promise.all([userApi.listCodeSamples(), userApi.getCodeLibrary(), userApi.listChapters().catch(() => [])]);
     const sampleEntries: LibraryEntry[] = samples.lessons.flatMap((lesson) =>
       lesson.samples.map((sample) => ({
         id: sample.id,
@@ -425,6 +425,7 @@ async function load() {
         origin: lesson.lessonTitle,
         sourceFile: sample.sourceFile,
         ...classifyCode(lesson.chapterId, sample.sourceFile, sample.title, sample.id),
+        apiChapterId: codeChapterId(lesson.chapterId, chapters),
         code: sample.code,
         stdin: sample.stdin,
         kind: "sample" as const,
@@ -440,6 +441,7 @@ async function load() {
         origin: `${chapter.title} · ${fragment.file}`,
         sourceFile: fragment.file,
         ...classifyCode(chapter.chapter, fragment.file, fragment.title, fragment.id),
+        apiChapterId: codeChapterId(chapter.chapter, chapters),
         code: fragment.code,
         stdin: "",
         kind: fragment.kind === "type" ? ("type" as const) : ("algorithm" as const),

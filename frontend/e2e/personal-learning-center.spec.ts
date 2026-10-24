@@ -6,15 +6,17 @@ test('keeps drafts, resumes learning, renames and deletes owned courses',async({
  await page.getByRole('button',{name:'生成大纲',exact:true}).click();
  await expect(page).toHaveURL(/\/studyroom\/outlines\//);
  const draftUrl=page.url();
+ await page.getByRole('button',{name:/^(点击审阅|审阅大纲)$/}).click();
  await expect(page.getByRole('button',{name:'确认大纲，开始学习'})).toBeEnabled();
  await page.goto('/user');
  const draft=page.getByTestId('course-card').filter({has:page.getByRole('link',{name:'继续编辑大纲'})}).first();
  await expect(draft).toBeVisible();
  await draft.getByRole('link',{name:'继续编辑大纲'}).click();
  await expect(page).toHaveURL(draftUrl);
+ await page.getByRole('button',{name:/^(点击审阅|审阅大纲)$/}).click();
  await page.getByRole('button',{name:'确认大纲，开始学习'}).click();
  await expect(page).toHaveURL(/\/studyroom\/[a-f0-9-]+$/);
- await expect(page.locator('.explanation:visible').filter({hasText:'最后进入的元素最先离开。'})).toBeVisible();
+ await page.getByRole('button',{name:'完整讲述',exact:true}).click();await expect(page.locator('.notes-scroll:visible').filter({hasText:'最后进入的元素最先离开。'})).toBeVisible();
  const roomUrl=page.url();
  await expect.poll(async()=>{
   const response=await page.request.get('/api/v1/users/courses');

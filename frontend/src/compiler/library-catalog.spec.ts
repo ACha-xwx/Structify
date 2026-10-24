@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildLibraryGroups, classifyCode, type LibraryEntry } from "./library-catalog";
+import { buildLibraryGroups, classifyCode, codeChapterId, type LibraryEntry } from "./library-catalog";
 import { compilerTemplates } from "./templates";
 
 interface SampleCatalog {
@@ -32,6 +32,15 @@ const entries: LibraryEntry[] = [
 ];
 
 describe("compiler catalog classification", () => {
+  it('resolves published chapter IDs without using menu grouping or obsolete source slugs',()=>{
+    const chapters=[{id:'02-linear-list',chapterNumber:2},{id:'05-array-generalized-list',chapterNumber:5},{id:'09-internal-sort',chapterNumber:9},{id:'10-external-sort',chapterNumber:10}];
+    expect(codeChapterId('02-linear-list',chapters)).toBe('02-linear-list');
+    expect(codeChapterId('05-array-glist',chapters)).toBe('05-array-generalized-list');
+    expect(classifyCode('ch10','merge.c','外部排序','ch10-merge').chapterId).toBe('09');
+    expect(codeChapterId('ch10',chapters)).toBe('10-external-sort');
+    expect(codeChapterId('ch11',chapters)).toBeUndefined();
+    expect(codeChapterId('ch02',[])).toBeUndefined();
+  });
   it("places every current backend entry exactly once without an unclassified fallback", () => {
     const groups = buildLibraryGroups(entries, "", "zh-CN");
     expect(groups.map((group) => group.count)).toEqual([112, 99, 5]);

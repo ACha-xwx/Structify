@@ -1,17 +1,21 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import {List,Maximize,Minimize,NotebookText,MessageCircle,PanelLeftClose,ArrowLeft,X} from '@lucide/vue';
 import { useRoute } from 'vue-router';
 import type { StudyroomView as Classroom, StudyroomFollowUpContext } from '../../shared/types/studyroom';
 import type { LearningFragment, StudyroomRun } from '../../shared/types/outline';
 import { userApi } from '../runtime';
 import { outlineApi } from '../outline-runtime';
 import { fragmentApi } from '../studyroom-fragment-runtime';
-import StudyroomKnowledgeRoute from '../components/studyroom/StudyroomKnowledgeRoute.vue';
+import {classroomPages} from '../classroom-pages';
+import StudyroomPageDirectory from '../components/studyroom/StudyroomPageDirectory.vue';
 import StudyroomFragmentReader from '../components/studyroom/StudyroomFragmentReader.vue';
 import StudyroomClassroomLayout from '../components/studyroom/StudyroomClassroomLayout.vue';
 import StudyroomQuestionPanel from '../components/studyroom/StudyroomQuestionPanel.vue';
 import {useTeachingActions} from '../use-teaching-actions';
-import AiTitle from '../../shared/components/AiTitle.vue';
+import BrandName from '../../shared/components/BrandName.vue';
+import ThemeToggle from '../../shared/design/ThemeToggle.vue';
+import brandIcon from '../../favicon.svg';
 import BrandStage from '../../shared/components/BrandStage.vue';
 import {useClassroomQuestion} from '../use-classroom-question';
 import {useClassroomSession} from '../use-classroom-session';
@@ -23,7 +27,77 @@ const unitId=ref('');const fragmentId=ref('');const waitingFor=ref('');
 const visited=ref(new Set<string>());const question=ref('');const error=ref('');const busy=ref(false);
 const context=ref<StudyroomFollowUpContext>();
 const questionOpen=ref(false);const questionTrigger=ref<HTMLButtonElement>();const readers=new Map<string,ClassroomMaterialAdapter>();
-const navigationOpen=ref(window.innerWidth>900);
+const navigationOpen=ref(window.innerWidth>900);const directoryTrigger=ref<HTMLButtonElement>();const directoryClose=ref<HTMLButtonElement>();const notesOpen=ref(false);let resumeNotes=false;const notesTrigger=ref<HTMLButtonElement>();
+const classroomRoot=ref<HTMLElement>();const fullscreen=ref(false);
+let fullscreenLayout:{navigation:boolean;notes:boolean;question:boolean}|null=null;
+const reachedEnd=ref(false);const currentPageId=ref('');const selectedPages=new Map<string,string>();
+const coursePages=computed(()=>run.value?.knowledgePoints.flatMap(point=>point.fragments.flatMap((fragment,index)=>{const step=room.value?.steps.find(item=>item.id===fragment.stepId);if(!step)return [];return [...classroomPages(step,fragment.contentRevision).map(page=>page.id),...(index===point.fragments.length-1&&point.fragments.every(item=>item.stepId)?[`${step.id}:${fragment.contentRevision}:quiz`]:[])];}))??[]);
+const coursePageIndex=computed(()=>Math.max(0,coursePages.value.indexOf(currentPageId.value)));
+const seenPages=new Set<string>();const completing=new Set<string>();
+const settledReaders=new Set<string>();
+interface PageReader extends ClassroomMaterialAdapter{selectPage:(id:string,manual?:boolean)=>boolean;navigate:(delta:number)=>void;pageState:()=>{id:string;index:number;count:number}}
+let pageNavigation=0;
+async function selectPage(unit:string,fragment?:string,page?:string){
+ const navigation=++pageNavigation;
+ if(unitId.value!==unit)await selectPoint(unit);
+ if(navigation!==pageNavigation||unitId.value!==unit)return;
+ if(fragment)choose(fragment);
+ await nextTick();if(navigation!==pageNavigation)return;if(page)(readers.get(fragmentId.value) as PageReader|undefined)?.selectPage(page);
+}
+function pageChanged(fragment:string,id:string){
+ if(fragment===fragmentId.value)currentPageId.value=id;
+ if(fragment===fragmentId.value&&settledReaders.has(fragment)){seenPages.add(id);}
+ if(!settledReaders.has(fragment)&&selectedPages.has(fragment))return;
+ selectedPages.set(fragment,id);
+ try{localStorage.setItem(`structify.pages.${roomId.value}`,JSON.stringify(Object.fromEntries(selectedPages)));}catch{}
+}
+async function saveReadCompletion(){
+ const state=run.value,knowledge=point.value,content=room.value;
+ if(!state||!knowledge||!content||knowledge.completed||knowledge.hasPendingContent||completing.has(knowledge.id))return;
+ const expected=knowledge.fragments.flatMap((fragment,index)=>{
+  const step=content.steps.find(step=>step.id===fragment.stepId);if(!step)return ['not-published'];
+  return [...classroomPages(step,fragment.contentRevision).map(page=>page.id),...(index===knowledge.fragments.length-1?[`${step.id}:${fragment.contentRevision}:quiz`]:[])];
+ });
+ if(!expected.length||!expected.every(id=>seenPages.has(id)))return;
+ const last=knowledge.fragments.at(-1);if(!last?.stepId)return;
+ const revisions=Object.fromEntries(knowledge.fragments.map(fragment=>[fragment.id,fragment.contentRevision]));
+ const signature=JSON.stringify(revisions);
+ completing.add(knowledge.id);
+ try{await fragmentApi.progress(state.id,knowledge.id,last.id,true);if(run.value?.id===state.id){const current=run.value.knowledgePoints.find(point=>point.id===knowledge.id);if(current&&JSON.stringify(Object.fromEntries(current.fragments.map(fragment=>[fragment.id,fragment.contentRevision])))===signature)current.completed=true;}}
+ catch{error.value='页面已浏览，进度暂未保存，请稍后重试。';}
+ finally{completing.delete(knowledge.id);}
+}
+async function boundary(direction:number){
+ if(direction>0){await continueLearning();return;}
+ reachedEnd.value=false;
+ if(index.value>0){const fragment=point.value!.fragments[index.value-1]!;choose(fragment.id);await selectLastPage(fragment);return;}
+ const previous=run.value?.knowledgePoints[(run.value?.knowledgePoints.findIndex(p=>p.id===unitId.value)??0)-1];
+ if(previous){await selectPoint(previous.id);const last=previous.fragments.at(-1);if(last?.stepId){choose(last.id);await selectLastPage(last);}}
+}
+async function selectLastPage(fragment:LearningFragment){
+ const step=room.value?.steps.find(step=>step.id===fragment.stepId);if(!step)return;
+ const knowledge=run.value?.knowledgePoints.find(point=>point.fragments.some(item=>item.id===fragment.id));
+ const quiz=knowledge?.fragments.at(-1)?.id===fragment.id&&knowledge.fragments.every(item=>item.stepId);
+ const page=quiz?`${step.id}:${fragment.contentRevision}:quiz`:classroomPages(step,fragment.contentRevision).at(-1)?.id;
+ await nextTick();if(fragmentId.value===fragment.id&&page)(readers.get(fragment.id) as PageReader|undefined)?.selectPage(page);
+}
+function syncFullscreen(){
+ const active=document.fullscreenElement===classroomRoot.value;
+ if(active&&!fullscreen.value){
+  fullscreenLayout={navigation:navigationOpen.value,notes:notesOpen.value,question:questionOpen.value};
+  navigationOpen.value=false;notesOpen.value=false;questionOpen.value=false;
+ }else if(!active&&fullscreen.value&&fullscreenLayout){
+  navigationOpen.value=fullscreenLayout.navigation;notesOpen.value=fullscreenLayout.notes;questionOpen.value=fullscreenLayout.question;fullscreenLayout=null;
+ }
+ fullscreen.value=active;
+}
+async function toggleFullscreen(){try{if(document.fullscreenElement)await document.exitFullscreen();else{if(!classroomRoot.value?.requestFullscreen)throw new Error('Fullscreen unavailable');await classroomRoot.value.requestFullscreen();}}catch{error.value='当前浏览器暂不支持全屏，请使用浏览器全屏模式。';}}
+onMounted(()=>document.addEventListener('fullscreenchange',syncFullscreen));
+async function toggleDirectory(){navigationOpen.value=!navigationOpen.value;await nextTick();(navigationOpen.value?directoryClose.value:directoryTrigger.value)?.focus({preventScroll:true});}
+async function closeDirectory(){navigationOpen.value=false;await nextTick();directoryTrigger.value?.focus({preventScroll:true});}
+function toggleNotes(){notesOpen.value=!notesOpen.value;if(notesOpen.value){questionOpen.value=false;readers.get(fragmentId.value)?.pause();}}
+function closeNotes(){notesOpen.value=false;notesTrigger.value?.focus({preventScroll:true});}
+function classroomKey(event:KeyboardEvent){if(event.key!=='Escape')return;if(notesOpen.value){event.preventDefault();closeNotes();}else if(navigationOpen.value){event.preventDefault();void closeDirectory();}}
 const autoplayFragmentId=ref('');
 const questionRuntime=useClassroomQuestion(()=>{session.answered();if(roomId.value)void load(roomId.value);});
 const session=useClassroomSession(()=>materialIdentity.value,()=>readers.get(fragmentId.value));
@@ -48,11 +122,19 @@ const questionSource=computed(()=>{
  }
  return [...new Set([point.value?.title,activeStep.value?.title,context.value?.resourceId?activeStep.value?.resources.find(resource=>resource.id===context.value?.resourceId)?.title:null].filter(Boolean))].join(' · ');
 });
-function registerReader(id:string,value:unknown){if(value)readers.set(id,value as ClassroomMaterialAdapter);else readers.delete(id);}
-function openQuestion(){autoplayFragmentId.value='';session.ask();questionOpen.value=true;}
-function materialNavigation(){autoplayFragmentId.value='';session.navigated();}
+function registerReader(id:string,value:unknown){
+ if(value){
+  if(readers.get(id)===value)return;readers.set(id,value as PageReader);settledReaders.delete(id);const saved=selectedPages.get(id);
+  void nextTick(async()=>{if(readers.get(id)!==value)return;if(saved)(value as PageReader).selectPage(saved,false);await nextTick();if(readers.get(id)!==value)return;settledReaders.add(id);const current=(value as PageReader).pageState();if(current.id)pageChanged(id,current.id);});
+ }else{readers.delete(id);settledReaders.delete(id);}
+}
+function setQuestionTrigger(value:unknown){if(value instanceof HTMLButtonElement)questionTrigger.value=value;}
+function setNotesTrigger(value:unknown){if(value instanceof HTMLButtonElement)notesTrigger.value=value;}
+function setDirectoryTrigger(value:unknown){if(value instanceof HTMLButtonElement)directoryTrigger.value=value;}
+function openQuestion(){autoplayFragmentId.value='';resumeNotes=notesOpen.value;notesOpen.value=false;session.ask();questionOpen.value=true;}
+function materialNavigation(){reachedEnd.value=false;autoplayFragmentId.value='';session.navigated();}
 function lectureEnded(){if(!next.value)return;autoplayFragmentId.value=next.value.id;if(next.value.stepId)choose(next.value.id,true,true);else waitingFor.value=next.value.id;}
-async function resumeLearning(){questionOpen.value=false;await session.resume();questionTrigger.value?.focus({preventScroll:true});}
+async function resumeLearning(){questionOpen.value=false;notesOpen.value=resumeNotes;resumeNotes=false;await session.resume();questionTrigger.value?.focus({preventScroll:true});}
 function choose(id:string,persist=true,automatic=false){
   const selected=allFragments.value.find(f=>f.id===id);if(!selected)return;
   if(!automatic)autoplayFragmentId.value='';
@@ -90,10 +172,10 @@ async function continueLearning(){
   if(next.value){if(next.value.stepId)choose(next.value.id);else waitingFor.value=next.value.id;return;}
   if(!active.value.stepId)return;
   try{
-    await fragmentApi.progress(run.value.id,point.value.id,active.value.id,true);
+    await saveReadCompletion();
     const position=run.value.knowledgePoints.findIndex(p=>p.id===unitId.value);
     const following=run.value.knowledgePoints[position+1];
-    if(following)await selectPoint(following.id);else await load(roomId.value);
+    if(following)await selectPoint(following.id);else {reachedEnd.value=true;await load(roomId.value);}
   }catch(cause){error.value=cause instanceof Error?cause.message:'学习进度暂未保存。';}
 }
 async function retry(fragment:LearningFragment,regenerate=false){
@@ -111,41 +193,57 @@ async function ask(){
   if(await questionRuntime.ask(room.value.id,{question:question.value.trim(),runId:run.value.id,fragmentId:active.value.id,contentRevision:active.value.contentRevision,...(context.value?{context:context.value}:{})}))question.value='';
 }
 function setContext(value:StudyroomFollowUpContext){if(value.stepId===activeStep.value?.id){if(context.value&&(context.value.sceneId!==value.sceneId||context.value.resourceId!==value.resourceId)&&!teaching.applying.value)session.navigated();context.value=value;}}
-watch(roomId,id=>{epoch++;clearTimeout(timer);questionRuntime.stop();session.reset();question.value='';questionOpen.value=false;room.value=null;run.value=null;unitId.value='';fragmentId.value='';visited.value=new Set();waitingFor.value='';focusSequence=0;if(id)void load(id);},{immediate:true});
-onBeforeUnmount(()=>{epoch++;clearTimeout(timer);});
+watch(roomId,id=>{epoch++;clearTimeout(timer);questionRuntime.stop();session.reset();question.value='';questionOpen.value=false;notesOpen.value=false;selectedPages.clear();seenPages.clear();completing.clear();pageNavigation++;try{const saved=JSON.parse(localStorage.getItem('structify.pages.'+id)??'{}');if(saved&&typeof saved==='object')for(const [fragment,page] of Object.entries(saved))if(typeof page==='string')selectedPages.set(fragment,page);}catch{}currentPageId.value='';room.value=null;run.value=null;unitId.value='';fragmentId.value='';visited.value=new Set();waitingFor.value='';focusSequence=0;if(id)void load(id);},{immediate:true});
+onBeforeUnmount(()=>{epoch++;clearTimeout(timer);document.removeEventListener('fullscreenchange',syncFullscreen);});
 </script>
 <template>
- <BrandStage wide fixed class="classroom-shell">
-  <main class="studyroom">
-    <header class="studyroom-header"><div class="course-title"><AiTitle><h1>{{room?.title||'正在打开课堂'}}</h1></AiTitle><span v-if="run" class="course-progress">{{run.knowledgePoints.filter(p=>p.completed).length}} / {{run.knowledgePoints.length}} 个知识点已完成</span></div><div class="course-tools"><details v-if="room&&run" class="course-info"><summary>课程信息</summary><div class="course-info-content"><p class="summary">{{room.summary}}</p><strong>已确认的大纲与范围</strong><ol><li v-for="unit in run.outline.units" :key="unit.id"><strong>{{unit.title}}</strong>：{{unit.objective}}</li></ol><p v-if="run.outline.exclusions?.length">本次不覆盖：{{run.outline.exclusions.join('；')}}</p><p v-if="run.codeExecutionAvailable===false">当前可阅读、编辑 C 代码；代码运行服务尚未配置。</p><RouterLink :to="{path:'/studyroom',query:{question:room.initialQuestion,sourceRoomId:room.id}}">调整学习路线</RouterLink></div></details><RouterLink to="/begin">返回学习入口</RouterLink></div></header>
-    <template v-if="room&&run">
-      <div class="classroom-toolbar"><button type="button" class="directory-toggle" :aria-expanded="navigationOpen" @click="navigationOpen=!navigationOpen">☰ <span>课程目录</span></button><span class="current-point">{{point?.title}}</span><button ref="questionTrigger" type="button" data-action="open-question" :aria-expanded="questionOpen" :disabled="!activeStep" @click="openQuestion">{{questionRuntime.busy.value?'查看回答':'对这里提问'}} ↗</button></div>
-      <StudyroomClassroomLayout :question-open="questionOpen" :navigation-open="navigationOpen">
-      <template #navigation><StudyroomKnowledgeRoute :points="run.knowledgePoints" :active-id="unitId" @select="selectPoint"/></template>
-      <div class="lesson-panel"><StudyroomFragmentReader v-for="fragment in visibleReaders" v-show="fragment.id===fragmentId" :key="`${room.id}:${fragment.id}:${fragment.contentRevision}`" :ref="value=>registerReader(fragment.id,value)" :fragment="fragment" :step="room.steps.find(s=>s.id===fragment.stepId)" :chapter-id="room.chapterId??undefined" :active="fragment.id===fragmentId" :run-id="run.id" :lecture-blocked="questionOpen" :unit-id="run.knowledgePoints.find(point=>point.fragments.some(item=>item.id===fragment.id))?.id" :can-prepare-checks="point?.fragments.every(item=>!!item.stepId)" @navigate="materialNavigation" :auto-start="autoplayFragmentId===fragment.id" @lecture-ended="lectureEnded" :busy="busy" @retry="retry($event)" @regenerate="retry($event,true)" @context="setContext"/>
-      <div v-if="waiting&&!waiting.stepId" class="waiting-panel"><p class="preparation-note">下一段尚未就绪，当前内容可以继续阅读。</p><StudyroomFragmentReader :fragment="waiting" :active="false" :busy="busy" @retry="retry($event)" @regenerate="retry($event,true)"/></div></div>
-      <template #question><StudyroomQuestionPanel :open="questionOpen" v-model:draft="question" :busy="questionRuntime.busy.value" :source="questionSource" :question="questionRuntime.question.value" :messages="room.messages" :error="questionRuntime.error.value" :connection-error="questionRuntime.connectionError.value" :can-ask="!!activeStep" @ask="ask" @cancel="questionRuntime.cancel(roomId)" @close="resumeLearning" @resume="resumeLearning"/></template>
-      </StudyroomClassroomLayout>
-      <footer v-if="point&&active" class="learning-actions"><button type="button" :disabled="index<=0" @click="choose(point.fragments[index-1]!.id)">回看前段</button><span v-if="point.hasPendingContent" role="status">正在准备后续内容</span><span v-else class="fragment-progress">本知识点 · {{index+1}} / {{point.fragments.length}} 段</span><button class="primary" type="button" data-action="continue" :disabled="!active.stepId||busy" @click="continueLearning">{{next?'继续学习':point.completed?'再次完成本知识点':'完成本知识点'}}</button></footer>
-      <p v-if="teaching.notice.value" class="preparation-note" role="status">{{teaching.notice.value}}</p>
+ <BrandStage wide fixed :show-brand="false" :show-theme="false" class="classroom-shell">
+  <main ref="classroomRoot" class="studyroom" @keydown="classroomKey">
+   <StudyroomClassroomLayout :question-open="questionOpen" :navigation-open="navigationOpen" :notes-open="notesOpen" :fullscreen="fullscreen">
+    <template #brand>
+     <RouterLink class="course-brand" to="/" aria-label="数筑 Structify 首页"><img :src="brandIcon" width="28" height="28" alt=""/><BrandName/></RouterLink>
+     <button ref="directoryClose" type="button" class="rail-toggle" aria-label="收起课程目录" title="收起课程目录" @click="closeDirectory"><PanelLeftClose :size="18"/></button>
     </template>
-    <p v-else role="status">正在读取课堂…</p>
+    <template #navigation><StudyroomPageDirectory v-if="room&&run" :run="run" :steps="room.steps" :active-id="unitId" :page-id="currentPageId" @select="selectPage" @close="closeDirectory"/><div v-else class="directory-loading" aria-hidden="true"><span/><span/><span/></div></template>
+    <template #progress><span v-if="run">已浏览 {{run.knowledgePoints.filter(p=>p.completed).length}} / {{run.knowledgePoints.length}} 个知识点</span><span v-else>正在读取课程…</span></template>
+    <template #header>
+     <header class="studyroom-header">
+      <RouterLink class="return-entry" to="/begin" aria-label="返回学习入口" title="返回学习入口"><ArrowLeft :size="20"/></RouterLink>
+      <div class="course-title"><span class="course-name" :title="room?.title">{{room?.title||'正在打开课堂'}}</span><h1>{{point?.title||'正在读取学习内容'}}</h1></div>
+      <div class="course-tools"><ThemeToggle/></div>
+     </header>
+    </template>
+    <template v-if="room&&run">
+     <div class="lesson-panel"><p v-if="reachedEnd" class="preparation-note" role="status">已到达课程末页，可以回看资源或继续提问。</p>
+      <StudyroomFragmentReader v-for="fragment in visibleReaders" v-show="fragment.id===fragmentId" :key="`${room.id}:${fragment.id}:${fragment.contentRevision}`" :ref="value=>registerReader(fragment.id,value)" :fragment="fragment" :step="room.steps.find(s=>s.id===fragment.stepId)" :chapter-id="room.chapterId??undefined" :active="fragment.id===fragmentId" :run-id="run.id" :lecture-blocked="questionOpen" :unit-id="run.knowledgePoints.find(point=>point.fragments.some(item=>item.id===fragment.id))?.id" :can-prepare-checks="run.knowledgePoints.some(point=>point.fragments.at(-1)?.id===fragment.id&&point.fragments.every(item=>!!item.stepId))" :global-index="coursePageIndex" :global-count="coursePages.length" :has-previous="index>0||run.knowledgePoints[0]?.id!==unitId" :has-next="!!next||run.knowledgePoints.at(-1)?.id!==unitId" @boundary="boundary" @page="id=>pageChanged(fragment.id,id)" @navigate="materialNavigation" :auto-start="autoplayFragmentId===fragment.id" @lecture-ended="lectureEnded" :busy="busy" @retry="retry($event)" @regenerate="retry($event,true)" @context="setContext">
+       <template #directory><button v-if="fragment.id===fragmentId" :ref="setDirectoryTrigger" type="button" class="directory-toggle" aria-label="课程目录" title="课程目录" :aria-expanded="navigationOpen" @click="toggleDirectory"><List :size="18"/></button></template>
+       <template #tools><template v-if="fragment.id===fragmentId"><button type="button" :aria-label="fullscreen?'退出全屏':'全屏'" :title="fullscreen?'退出全屏':'全屏'" @click="toggleFullscreen"><component :is="fullscreen?Minimize:Maximize" :size="18"/></button><button :ref="setNotesTrigger" type="button" aria-label="完整讲述" title="完整讲述" :aria-expanded="notesOpen" @click="toggleNotes"><NotebookText :size="18"/></button><button :ref="setQuestionTrigger" type="button" aria-label="对这里提问 ↗" title="对这里提问" data-action="open-question" :aria-expanded="questionOpen" :disabled="!activeStep" @click="openQuestion"><MessageCircle :size="18"/></button></template></template>
+      </StudyroomFragmentReader>
+      <div v-if="waiting&&!waiting.stepId" class="waiting-panel"><p class="preparation-note">下一段尚未就绪，当前内容可以继续阅读。</p><StudyroomFragmentReader :fragment="waiting" :active="false" :busy="busy" @retry="retry($event)" @regenerate="retry($event,true)"/></div>
+     </div>
+     <p v-if="teaching.notice.value" class="preparation-note" role="status">{{teaching.notice.value}}</p>
+    </template>
+    <div v-else class="classroom-loading" role="status"><div class="loading-canvas" aria-hidden="true"/><p>正在读取课堂…</p><div class="loading-narration" aria-hidden="true"/></div>
     <p v-if="error" class="error" role="alert">{{error}} <button type="button" @click="load(roomId)">重新读取</button></p>
+    <template #notes><div class="course-notes"><header><strong>完整讲述</strong><button type="button" @click="openQuestion">课堂提问</button><button type="button" class="close-notes" aria-label="收起完整讲述" @click="closeNotes"><X :size="18"/></button></header><div class="notes-scroll" tabindex="0" aria-label="完整讲解正文"><section v-for="knowledge in run?.knowledgePoints??[]" :key="knowledge.id" :aria-current="knowledge.id===unitId?'step':undefined"><h2>{{knowledge.title}}</h2><template v-for="fragment in knowledge.fragments" :key="fragment.id"><article v-if="room?.steps.find(step=>step.id===fragment.stepId)"><h3>{{room.steps.find(step=>step.id===fragment.stepId)?.title}}</h3><p>{{room.steps.find(step=>step.id===fragment.stepId)?.explanation}}</p></article><p v-else class="notes-pending">这一段尚未就绪。</p></template></section></div></div></template>
+    <template #question><StudyroomQuestionPanel v-if="room" :open="questionOpen" v-model:draft="question" :busy="questionRuntime.busy.value" :source="questionSource" :question="questionRuntime.question.value" :messages="room.messages" :error="questionRuntime.error.value" :connection-error="questionRuntime.connectionError.value" :can-ask="!!activeStep" @ask="ask" @cancel="questionRuntime.cancel(roomId)" @close="resumeLearning" @resume="resumeLearning"/></template>
+   </StudyroomClassroomLayout>
   </main>
  </BrandStage>
 </template>
 <style scoped>
-.classroom-shell{padding:72px clamp(14px,2.4vw,34px) 14px}
-.studyroom{width:min(1600px,100%);height:100%;min-height:0;margin:0 auto;display:flex;flex-direction:column;gap:12px;color:var(--text)}.studyroom>*{min-width:0}
-.studyroom-header{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-shrink:0}
-.course-title{display:flex;align-items:center;min-width:0;gap:20px}.course-title :deep(.workbench-title){font-size:24px}.course-title :deep(.ai-title){min-width:0}h1{font-size:24px;font-weight:550;letter-spacing:-.025em;margin:0;line-height:1.3}.course-progress{font-size:12px;color:var(--text-muted);white-space:nowrap}
-.course-tools{display:flex;align-items:center;gap:20px;flex-shrink:0}a{color:var(--text-muted);font-size:12px;white-space:nowrap;text-underline-offset:4px}.course-info{position:relative;font-size:12px;color:var(--text-muted)}summary{cursor:pointer}.course-info-content{position:absolute;z-index:35;right:0;top:28px;width:min(440px,calc(100vw - 32px));max-height:60dvh;overflow:auto;overscroll-behavior:contain;padding:22px;border:1px solid var(--line);border-radius:18px;background:var(--surface);box-shadow:0 12px 40px color-mix(in srgb,var(--text) 12%,transparent);font-size:13px;line-height:1.8}.summary{margin:0 0 18px}.course-info-content ol{padding-left:20px}.course-info-content li{margin-bottom:10px}
-.classroom-toolbar{display:flex;align-items:center;gap:14px;padding:7px 10px;border:1px solid var(--line);border-radius:99px;background:var(--surface);flex-shrink:0}.classroom-toolbar button{border-radius:99px;white-space:nowrap;padding:9px 14px}.classroom-toolbar>button:last-child{margin-left:auto}.current-point{font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.classroom-tabs{display:flex;gap:2px;flex-shrink:0}.classroom-tabs button{border:0;background:transparent;color:var(--text-muted)}.classroom-tabs button[aria-pressed=true]{background:var(--text);color:var(--surface)}.directory-toggle{border-color:transparent}
-.lesson-panel{display:flex;flex-direction:column;flex:1;min-height:0;gap:8px}.waiting-panel{max-height:40%;overflow:auto;flex-shrink:0}.preparation-note{font-size:12px;color:var(--text-muted);line-height:1.7;margin:0}.check-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 24px 24px;border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--surface)}.check-scroll :deep(.check-panel){border:0}
-.learning-actions{display:flex;align-items:center;gap:16px;flex-shrink:0}.learning-actions span{font-size:12px;color:var(--text-muted)}button{font:inherit;font-size:13px;padding:10px 16px;border:1px solid var(--line);border-radius:var(--radius-md);background:var(--surface);color:var(--text);cursor:pointer}button.primary{margin-left:auto;background:var(--text);color:var(--surface);border-color:var(--text)}button:disabled{opacity:.45;cursor:default}button:focus-visible,summary:focus-visible,.check-scroll:focus-visible{outline:2px solid var(--text);outline-offset:-2px}.error{font-size:13px;margin:0;max-height:80px;overflow:auto;line-height:1.7;flex-shrink:0}
-@media(max-width:1100px){.course-title{display:block}.course-progress{display:block;margin-top:4px}}
-@media(max-width:600px){.classroom-shell{padding:70px 12px 12px}.studyroom{gap:10px}.studyroom-header{align-items:flex-start;gap:10px}.course-title{flex:1}.course-info-content{position:fixed;top:130px;right:12px}.course-title h1{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.course-title :deep(.workbench-title),h1{font-size:20px;line-height:1.3}.course-tools{flex-direction:column;align-items:flex-end;gap:8px}.course-progress{font-size:11px}.classroom-toolbar{gap:2px;padding:5px}.classroom-toolbar button{font-size:12px;padding:8px 10px}.directory-toggle span,.current-point{display:none}.learning-actions{gap:8px}.learning-actions button{font-size:12px;padding:10px 12px}.fragment-progress{display:none}.check-scroll{padding:0 14px 14px}}
-</style>
-<style scoped>
-@media(max-height:600px){.classroom-shell{padding-top:60px;padding-bottom:8px}.studyroom{gap:8px}.course-title{display:flex;gap:12px;align-items:center}.course-title h1{font-size:18px}.course-progress{margin:0}.studyroom-header{gap:12px}.classroom-toolbar{padding:4px 8px}.classroom-toolbar button{padding:6px 10px}.learning-actions button{padding:7px 12px}.course-title :deep(.ai-ball){--ai-ball-size:30px}}
+.classroom-shell{padding:0}.studyroom{height:100%;min-width:0;min-height:0;display:flex;color:var(--text)}
+.studyroom:fullscreen{background:var(--bg);width:100%;height:100%;overflow:hidden}
+.course-brand{display:inline-flex;align-items:center;gap:8px;color:var(--text);text-decoration:none;font-size:16px;font-weight:650;min-width:0;white-space:nowrap}.course-brand img{flex-shrink:0}.course-brand :deep(.brand-name){gap:0;letter-spacing:-.025em}
+.rail-toggle,.return-entry{width:32px;height:34px;flex-shrink:0;padding:0;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:var(--surface-subtle);color:var(--text-muted);cursor:pointer}.return-entry{background:transparent;text-decoration:none}.rail-toggle:hover,.return-entry:hover{background:var(--line);color:var(--text)}
+.studyroom-header{height:76px;display:flex;align-items:center;gap:14px;padding:0 24px;min-width:0}.course-title{min-width:0;display:flex;flex-direction:column;gap:4px}.course-name{font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:560px}h1{font-size:20px;line-height:1.3;font-weight:600;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0}.course-tools{margin-left:auto;flex-shrink:0;padding-left:8px}.course-tools :deep(.theme-toggle){position:static}
+.lesson-panel{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;gap:8px}.waiting-panel{max-height:35%;overflow:auto;flex-shrink:0}.preparation-note{font-size:12px;color:var(--text-muted);line-height:1.7;margin:0}.error{position:absolute;z-index:36;bottom:20px;left:24px;max-width:calc(100% - 48px);padding:12px 16px;margin:0;background:var(--surface);border:1px solid var(--line);border-radius:12px;font-size:13px;line-height:1.7}.error button{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer}
+.course-notes{display:flex;flex-direction:column;height:100%;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden}.course-notes header{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid var(--line);font-size:12px;min-height:54px;flex-shrink:0}.course-notes header strong{margin-right:auto}.course-notes header button{font:inherit;font-size:11px;background:transparent;border:0;padding:4px 0;color:var(--text-muted);cursor:pointer}.course-notes .close-notes{display:flex;align-items:center;justify-content:center;width:24px;min-width:24px;height:24px;padding:0}.notes-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;padding:20px;scrollbar-width:thin}.notes-scroll h2{font-size:17px;font-weight:550;line-height:1.5;margin:0 0 8px}.notes-scroll h3{font-size:13px;line-height:1.6;margin:18px 0 8px}.notes-scroll p{font-size:14px;line-height:1.95;white-space:pre-wrap;overflow-wrap:anywhere}.notes-scroll section+section{border-top:1px solid var(--line);margin-top:24px;padding-top:24px}.notes-scroll .notes-pending{font-size:12px;color:var(--text-muted)}.notes-scroll section[aria-current]{border-left:2px solid var(--text-muted);padding-left:12px}
+.classroom-loading{display:flex;flex-direction:column;flex:1;min-height:0;border:1px solid var(--line);border-radius:16px;overflow:hidden;background:var(--surface)}.loading-canvas{flex:1;min-height:0;background:color-mix(in srgb,var(--surface) 70%,var(--surface-subtle))}.classroom-loading p{font-size:13px;color:var(--text-muted);padding:14px 24px;margin:0;border-top:1px solid var(--line)}.loading-narration{height:110px;flex-shrink:0;border-top:1px solid var(--line)}.directory-loading{padding:20px;display:grid;gap:24px}.directory-loading span{height:110px;border-radius:8px;background:var(--surface-subtle)}
+button,a{transition:background 150ms ease,color 150ms ease,transform 150ms ease}button:active:not(:disabled){transform:scale(.97)}button:focus-visible,a:focus-visible,.notes-scroll:focus-visible{outline:2px solid var(--text);outline-offset:2px}
+@media(max-width:1100px){.studyroom-header{padding:0 16px;gap:10px}.course-brand{font-size:14px;gap:6px}.course-brand img{width:25px;height:25px}h1{font-size:18px}.course-name{max-width:340px}}
+@media(max-width:900px){.studyroom-header{gap:8px}.course-tools :deep(.theme-toggle){gap:6px}}
+@media(max-width:600px){.studyroom-header{height:66px;padding:0 10px;gap:6px}.rail-toggle,.return-entry{width:27px;height:30px}.course-tools{padding-left:0}.course-tools :deep(.theme-toggle){transform:scale(.78);transform-origin:right center;margin-left:-38px}.course-name{font-size:10px;max-width:180px}h1{font-size:15px}.course-title{gap:3px}.notes-scroll{padding:16px}.notes-scroll p{font-size:13px}.loading-narration{height:100px}}
+@media(max-height:600px){.studyroom-header{height:62px}.course-name{font-size:10px}h1{font-size:16px}.loading-narration{height:78px}}
+@media(prefers-reduced-motion:reduce){button,a{transition:none}button:active:not(:disabled){transform:none}}
 </style>

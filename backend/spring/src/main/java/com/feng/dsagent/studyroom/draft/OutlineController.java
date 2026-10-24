@@ -62,6 +62,21 @@ public class OutlineController {
                                 key));
     }
 
+    @PostMapping("/study-outlines/{id}/manual-revisions")
+    Map<String, Object> manualRevision(
+            @AuthenticationPrincipal AuthenticatedUser user, @PathVariable String id,
+            @RequestHeader("Idempotency-Key") String key,
+            @Valid @RequestBody ManualRevision body) {
+        return outlines.manualRevision(user.userId(), id, body.baseRevision(), body.units(), key);
+    }
+
+    public record ManualRevision(@Min(1) int baseRevision,
+            @NotEmpty @Size(max=24) List<@NotNull @Valid ManualUnit> units) {}
+    public record ManualUnit(
+            @NotBlank @Pattern(regexp="[A-Za-z0-9][A-Za-z0-9._:-]{0,79}") String id,
+            @NotBlank @Size(max=160) String title,
+            @NotBlank @Size(max=400) String objective) {}
+
     @PostMapping("/study-outlines/{id}/confirm")
     Map<String, Object> confirm(
             @AuthenticationPrincipal AuthenticatedUser user,

@@ -22,6 +22,7 @@ for(const viewport of [{width:1366,height:768},{width:390,height:844},{width:844
  test(`bounded generation and objective-linked review at ${viewport.width}x${viewport.height}`,async({page},testInfo)=>{
   await page.setViewportSize(viewport);
   const units=Array.from({length:18},(_,i)=>({id:`u${i}`,title:`知识点 ${i+1}：栈的操作与应用`,objective:`目标 ${i+1}：理解当前操作对栈顶指针与存储空间的影响。`,materials:[{kind:'ANIMATION',availability:'AVAILABLE',purpose:'观察栈顶移动',candidateIds:[],requirement:'OPTIONAL'}]}));
+  units[0]!.title='栈的操作、存储结构与边界条件的综合分析'.repeat(5);
   let generating=true;let polls=0;
   await page.route('**/api/v1/study-outlines/outline-presentation',route=>{
    polls++;
@@ -32,17 +33,21 @@ for(const viewport of [{width:1366,height:768},{width:390,height:844},{width:844
   const feedback=page.getByLabel('课堂生成进度');
   await expect(feedback).toBeVisible();
   await expect(feedback).toContainText('已编排 8 个知识点');
-  await expect(page.locator('.visual-sheet')).toBeVisible();
-  await expect(page.locator('.visual-sheet')).not.toHaveClass(/stage-change-leave-active/);
-  await expect(page.locator('.generation-preview li')).toHaveCount(3);
-  await expect(page.locator('.outline-unit')).toHaveCount(0);
-  await expect(page.locator('.outline-actions')).toBeInViewport();
+  await expect(feedback.getByRole('list', {name:'生成阶段'})).toBeVisible();
+  await expect(feedback.locator('.paper-point')).toHaveCount(4);
+  await expect(feedback).toContainText('知识点 2：栈的操作与应用');
+  await expect(page.locator('.outline-unit:visible')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'点击审阅',exact:true})).toBeInViewport();
   await expect.poll(()=>polls).toBeGreaterThan(1);
   await expect(feedback).toContainText('已编排 8 个知识点');
   await page.screenshot({path:testInfo.outputPath('outline-generation.png')});
   generating=false;
+  await expect(page.getByRole('button',{name:'审阅大纲',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'审阅大纲',exact:true}).click();
   await expect(page.locator('.outline-unit')).toHaveCount(18);
-  await expect(page.locator('.outline-unit').first()).toContainText('目标 1：');
+  await expect(page.getByLabel('知识点目标',{exact:true}).first()).toHaveValue(/^目标 1：/);
+  const title=page.getByLabel('知识点标题',{exact:true}).first();
+  expect(await title.evaluate(element=>element.scrollHeight<=element.clientHeight+2)).toBe(true);
   await expect(page.locator('[data-course-goals]')).not.toHaveAttribute('open');
   const action=page.getByRole('button',{name:'确认大纲，开始学习'});
   await expect(action).toBeEnabled();await expect(action).toBeInViewport();
@@ -59,5 +64,6 @@ for(const viewport of [{width:1366,height:768},{width:390,height:844},{width:844
   await page.screenshot({path:testInfo.outputPath('outline-review.png')});
   await page.emulateMedia({reducedMotion:'reduce'});
   expect(await page.locator('.outline-flow').evaluate(element=>getComputedStyle(element).overflow)).toBe('hidden');
+  expect(await page.locator('.outline-flow').evaluate(element=>getComputedStyle(element).transitionDuration)).toBe('0s');
  });
 }

@@ -16,6 +16,7 @@ enableAutoUnmount(afterEach);
 const runCode = vi.fn();
 const listCodeSamples = vi.fn();
 const getCodeLibrary = vi.fn();
+const listChapters = vi.fn();
 const startCodeSession = vi.fn();
 const streamCodeSession = vi.fn();
 const typeInCodeSession = vi.fn();
@@ -28,6 +29,7 @@ vi.mock("../user/runtime", () => ({
     runCode: (...args: unknown[]) => runCode(...args),
     listCodeSamples: (...args: unknown[]) => listCodeSamples(...args),
     getCodeLibrary: (...args: unknown[]) => getCodeLibrary(...args),
+    listChapters: (...args: unknown[]) => listChapters(...args),
     startCodeSession: (...args: unknown[]) => startCodeSession(...args),
     streamCodeSession: (...args: unknown[]) => streamCodeSession(...args),
     typeInCodeSession: (...args: unknown[]) => typeInCodeSession(...args),
@@ -76,6 +78,7 @@ beforeEach(() => {
   runCode.mockReset();
   listCodeSamples.mockReset();
   getCodeLibrary.mockReset();
+  listChapters.mockResolvedValue([{id:'03-stack-queue',chapterNumber:3,title:'栈与队列',summary:''}]);
   startCodeSession.mockReset();
   streamCodeSession.mockReset();
   typeInCodeSession.mockReset();
@@ -447,13 +450,29 @@ describe("code library page", () => {
     await explain!.trigger("click");
     await flush();
 
-    expect(analyzeCode).toHaveBeenCalledWith(expect.objectContaining({ language: "c", code: expect.stringContaining("main(void)") }));
+    expect(analyzeCode).toHaveBeenCalledWith(expect.objectContaining({ language: "c", code: expect.stringContaining("main(void)"), chapterId:'03-stack-queue' }));
     expect(wrapper.get(".analysis__text").text()).toBe("这段代码构造了一个空的顺序栈。");
     // The passage carries its lesson number, so the link opens that lesson's courseware.
     const links = wrapper.findAllComponents(RouterLinkStub).map((link) => link.props("to"));
     expect(links).toContainEqual({ path: "/courseware", query: { courseware: "03-01" } });
-    expect(searchKnowledge).toHaveBeenCalledWith(expect.objectContaining({ query: "3.1 · 构造一个空栈S" }));
+    expect(searchKnowledge).toHaveBeenCalledWith(expect.objectContaining({ query: "3.1 · 构造一个空栈S",chapterId:'03-stack-queue' }));
     wrapper.unmount();
+  });
+
+  it('uses the published chapter ID when explaining a runnable sample',async()=>{
+    analyzeCode.mockResolvedValue({analysis:'后进先出'});
+    const wrapper=await mountView();await selectSample(wrapper);
+    await wrapper.findAll('.library__chip').find(node=>node.text()==='解释这段代码')!.trigger('click');await flush();
+    expect(analyzeCode).toHaveBeenLastCalledWith(expect.objectContaining({chapterId:'03-stack-queue'}));
+    expect(searchKnowledge).toHaveBeenLastCalledWith(expect.objectContaining({chapterId:'03-stack-queue'}));
+  });
+
+  it('keeps code explanations available without inventing a chapter when the catalog is unavailable',async()=>{
+    listChapters.mockRejectedValueOnce(new Error('offline'));analyzeCode.mockResolvedValue({analysis:'后进先出'});
+    const wrapper=await mountView();await selectSample(wrapper);
+    await wrapper.findAll('.library__chip').find(node=>node.text()==='解释这段代码')!.trigger('click');await flush();
+    expect(analyzeCode).toHaveBeenLastCalledWith(expect.objectContaining({chapterId:undefined}));
+    expect(wrapper.get('.analysis__text').text()).toBe('后进先出');
   });
 
   it("reports a refusal to explain instead of an empty panel", async () => {

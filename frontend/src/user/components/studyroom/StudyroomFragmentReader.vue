@@ -1,45 +1,38 @@
 <script setup lang="ts">
-import {computed,nextTick,ref,watch} from 'vue';
+import {ref} from 'vue';
+import {ChevronLeft,ChevronRight} from '@lucide/vue';
 import type {LearningFragment} from '../../../shared/types/outline';
 import type {StudyroomStep,StudyroomFollowUpContext} from '../../../shared/types/studyroom';
 import type {ClassroomMaterialAdapter} from '../../classroom-materials';
-import type {MaterialPosition,TeachingAction} from '../../../shared/types/classroom-experience';
-import StudyroomSceneStage from './StudyroomSceneStage.vue';
+import type {LectureCue,LecturePlan,LectureRegion,LectureStageAdapter} from '../../lecture-types';
+import StudyroomResourcePages from './StudyroomResourcePages.vue';
 import StudyroomLectureControls from './StudyroomLectureControls.vue';
 import StudyroomCheckPanel from './StudyroomCheckPanel.vue';
 import {lectureApi} from '../../lecture-runtime';
-import type {LectureCue,LecturePlan,LectureRegion,LectureStageAdapter} from '../../lecture-types';
-const props=defineProps<{fragment:LearningFragment;step?:StudyroomStep;chapterId?:string;active:boolean;busy:boolean;runId?:string;unitId?:string;canPrepareChecks?:boolean;lectureBlocked?:boolean;autoStart?:boolean}>();
-defineEmits<{retry:[fragment:LearningFragment];regenerate:[fragment:LearningFragment];context:[value:StudyroomFollowUpContext];navigate:[];lectureEnded:[]}>();
-const stage=ref<ClassroomMaterialAdapter&LectureStageAdapter>();
-const lecture=ref<{pause:()=>void;reload:()=>Promise<void>}>();const plan=ref<LecturePlan>();const regionError=ref('');
-const checkActive=ref(false);
+const props=defineProps<{fragment:LearningFragment;step?:StudyroomStep;chapterId?:string;active:boolean;busy:boolean;runId?:string;unitId?:string;canPrepareChecks?:boolean;lectureBlocked?:boolean;autoStart?:boolean;globalIndex?:number;globalCount?:number;hasPrevious?:boolean;hasNext?:boolean}>();
+const emit=defineEmits<{retry:[fragment:LearningFragment];regenerate:[fragment:LearningFragment];context:[value:StudyroomFollowUpContext];navigate:[];lectureEnded:[];boundary:[direction:number];page:[id:string,index:number,count:number]}>();
+interface PagesAdapter extends ClassroomMaterialAdapter,LectureStageAdapter{navigate:(direction:number)=>boolean;selectPage:(id:string,manual?:boolean)=>boolean}
+const stage=ref<PagesAdapter>();const lecture=ref<{pause:()=>void;reload:()=>Promise<void>}>();
+const plan=ref<LecturePlan>();const error=ref('');const page=ref({id:'',index:0,count:1});
+function pageChanged(id:string,index:number,count:number){page.value={id,index,count};emit('page',id,index,count);}
+function navigate(direction:number){lecture.value?.pause();if(!stage.value?.navigate(direction))emit('boundary',direction);}
+async function saveRegion(region:LectureRegion){if(!props.runId)return;lecture.value?.pause();error.value='';try{await lectureApi.save(props.runId,props.fragment.id,props.fragment.contentRevision,region);await lecture.value?.reload();}catch(cause){error.value=cause instanceof Error?cause.message:'区域暂未保存，请重试';}}
+async function removeRegion(id:string){if(!props.runId)return;lecture.value?.pause();error.value='';try{await lectureApi.remove(props.runId,props.fragment.id,props.fragment.contentRevision,id);await lecture.value?.reload();}catch(cause){error.value=cause instanceof Error?cause.message:'区域暂未移除';}}
 async function applyCue(cue:LectureCue,signal:AbortSignal){return await stage.value?.lecture(cue,signal)??false;}
-async function saveRegion(region:LectureRegion){if(!props.runId)return;lecture.value?.pause();regionError.value='';try{await lectureApi.save(props.runId,props.fragment.id,props.fragment.contentRevision,region);await lecture.value?.reload();}catch(cause){regionError.value=cause instanceof Error?cause.message:'区域暂未保存，请重试';}}
-async function removeRegion(id:string){if(!props.runId)return;lecture.value?.pause();regionError.value='';try{await lectureApi.remove(props.runId,props.fragment.id,props.fragment.contentRevision,id);await lecture.value?.reload();}catch(cause){regionError.value=cause instanceof Error?cause.message:'区域暂未移除';}}
-const explanation=ref<HTMLElement>();
-const hasMaterial=computed(()=>!!props.step?.orchestration&&[props.step.orchestration.primary,...props.step.orchestration.supplementary].some(scene=>scene.kind!=='TEXT'));
-const panel=ref<'material'|'explanation'>('explanation');
-watch(hasMaterial,available=>{panel.value=available?'material':'explanation';},{immediate:true});
-function readExplanation(){stage.value?.pause();panel.value='explanation';}
-defineExpose({
- capture:():MaterialPosition=>panel.value==='explanation'?{kind:'TEXT',scrollTop:explanation.value?.scrollTop??0}:stage.value?.capture()??{kind:'TEXT',scrollTop:0},
- pause:()=>{lecture.value?.pause();stage.value?.pause();},
- restore:async(position:MaterialPosition)=>{if(position.kind==='TEXT'){panel.value='explanation';await nextTick();if(explanation.value)explanation.value.scrollTop=position.scrollTop;}else{panel.value='material';await nextTick();await stage.value?.restore(position);}},
- supports:(action:TeachingAction)=>stage.value?.supports(action)??false,
- apply:async(action:TeachingAction)=>{panel.value='material';await nextTick();return stage.value?.apply(action)??false;},
-});
+function pause(){lecture.value?.pause();stage.value?.pause();}
+defineExpose({pageState:()=>page.value,capture:()=>stage.value?.capture()??{kind:'TEXT' as const,scrollTop:0},pause,restore:async(position:Parameters<ClassroomMaterialAdapter['restore']>[0])=>stage.value?.restore(position),supports:(action:Parameters<ClassroomMaterialAdapter['supports']>[0])=>stage.value?.supports(action)??false,apply:async(action:Parameters<ClassroomMaterialAdapter['apply']>[0])=>stage.value?.apply(action)??false,selectPage:(id:string,manual=true)=>{if(manual)pause();return stage.value?.selectPage(id,manual);},navigate});
 </script>
 <template>
- <section class="fragment-reader" :class="{'has-lecture':!!runId}" :aria-label="step?'知识点讲解':'准备当前讲解'">
+ <section class="fragment-reader" :aria-label="step?'知识点讲解':'准备当前讲解'">
   <template v-if="step">
-   <header class="reader-heading"><h2>{{step.title}}</h2></header>
-   <StudyroomLectureControls v-if="runId" ref="lecture" :run-id="runId" :fragment-id="fragment.id" :revision="fragment.contentRevision" :active="active&&!lectureBlocked" :auto-start="autoStart" :apply-cue="applyCue" @plan="plan=$event" @finished="$emit('lectureEnded')"/>
-   <p v-if="regionError" class="fragment-status" role="alert">{{regionError}}</p>
-   <div class="reader-stage"><StudyroomSceneStage ref="stage" :step="step" :chapter-id="chapterId" :active="active" :explanation-open="panel==='explanation'" :has-checks="!!runId&&!!unitId" :regions="plan?.regions" prefer-materials @check-active="checkActive=$event" @explanation="readExplanation" @material="panel='material'" @navigate="lecture?.pause();$emit('navigate')" @save-region="saveRegion" @remove-region="removeRegion" @context="$emit('context',$event)">
-    <template #explanation><div ref="explanation" class="explanation-scroll" tabindex="0" aria-label="完整讲解正文"><p class="explanation">{{step.explanation}}</p></div></template>
-    <template #checks><StudyroomCheckPanel v-if="runId&&unitId" :run-id="runId" :unit-id="unitId" :can-prepare="!!canPrepareChecks" :active="active&&checkActive"/></template>
-   </StudyroomSceneStage></div>
+   <div class="reader-stage"><StudyroomResourcePages ref="stage" :step="step" :revision="fragment.contentRevision" :chapter-id="chapterId" :active="active" :regions="plan?.regions" :has-checks="!!runId&&!!unitId&&canPrepareChecks" @page="pageChanged" @navigate="pause();$emit('navigate')" @context="$emit('context',$event)" @save-region="saveRegion" @remove-region="removeRegion"><template #checks><StudyroomCheckPanel v-if="runId&&unitId" :run-id="runId" :unit-id="unitId" :can-prepare="!!canPrepareChecks" :active="active&&page.id.endsWith(':quiz')"/></template></StudyroomResourcePages></div>
+   <p v-if="error" class="fragment-status" role="alert">{{error}}</p>
+   <StudyroomLectureControls v-if="runId" ref="lecture" :run-id="runId" :fragment-id="fragment.id" :revision="fragment.contentRevision" :active="active&&!lectureBlocked" :auto-start="autoStart" :apply-cue="applyCue" @plan="plan=$event" @finished="$emit('lectureEnded')">
+    <template #before><slot name="directory"/><span class="page-position" aria-live="polite">{{(globalIndex??page.index)+1}} / {{globalCount??page.count}} 页</span></template>
+    <template #previous><button type="button" aria-label="上一页" title="上一页" :disabled="!hasPrevious&&page.index===0" @click="navigate(-1)"><ChevronLeft :size="18"/></button></template>
+    <template #after-play><button type="button" aria-label="下一页" title="下一页"  @click="navigate(1)"><ChevronRight :size="18"/></button></template>
+    <template #tools><slot name="tools"/></template>
+   </StudyroomLectureControls>
   </template>
   <div v-if="fragment.status==='FAILED'" class="fragment-status" role="alert"><p>{{fragment.error?.message||'这段讲解暂未准备完成，已就绪的内容仍可阅读。'}}</p><button v-if="fragment.error?.retryable!==false" :disabled="busy" type="button" @click="$emit('retry',fragment)">重新准备这段内容</button><button :disabled="busy" type="button" @click="$emit('regenerate',fragment)">重新生成该片段，可能使用模型额度</button></div>
   <p v-else-if="!step" class="fragment-status" role="status">{{fragment.status==='PENDING'?'即将准备当前讲解…':'正在准备讲解与所需材料…'}}内容就绪后会在这里显示。</p>
@@ -47,21 +40,6 @@ defineExpose({
  </section>
 </template>
 <style scoped>
-.fragment-reader{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;padding:20px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden}
-.reader-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0;margin-bottom:16px}
-h2{font-size:19px;font-weight:550;margin:0;line-height:1.4;min-width:0}
-.reader-switch{display:flex;flex-shrink:0;gap:4px;padding:3px;border:1px solid var(--line);border-radius:99px}.reader-switch button{border:0;border-radius:99px;padding:7px 12px;margin:0;font-size:12px;color:var(--text-muted)}.reader-switch button[aria-pressed=true]{background:var(--text);color:var(--surface)}
-.explanation-scroll,.reader-stage{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
-.explanation{max-width:72ch;font-size:16px;line-height:1.95;white-space:pre-wrap;margin:0 auto;padding:8px 8px 28px}
-.reader-stage{display:flex;flex-direction:column}.reader-stage :deep(.scene-stage){flex:1;min-height:0}
-.fragment-status{flex-shrink:0;max-height:40%;overflow:auto;line-height:1.75;font-size:13px;color:var(--text-muted)}
-button{font:inherit;color:var(--text);background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-md);padding:10px 14px;cursor:pointer;margin-right:10px}button:disabled{opacity:.5;cursor:default}button:focus-visible,.explanation-scroll:focus-visible{outline:2px solid var(--text);outline-offset:-2px}
-@media(max-width:600px){.fragment-reader{padding:14px}.reader-heading{align-items:flex-start;flex-direction:column;gap:10px;margin-bottom:10px}h2{font-size:18px}.explanation{font-size:15px;padding:0 2px 20px}.reader-switch button{padding:6px 12px}}
-</style>
-<style scoped>
-.has-lecture{padding:16px;position:relative}.has-lecture .reader-heading{position:absolute;width:1px;height:1px;padding:0;margin:0;overflow:hidden;clip-path:inset(50%)}
-@media(max-width:600px){.has-lecture{padding:12px}}@media(max-height:600px){.has-lecture{padding:10px}}
-</style>
-<style scoped>
-@media(max-height:600px){.fragment-reader{padding:10px}.reader-heading{margin-bottom:5px}h2{font-size:16px}}
+.fragment-reader{container:fragment-reader / inline-size;display:flex;flex-direction:column;flex:1;min-height:0;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden}.reader-stage{display:flex;flex:1;min-height:0;min-width:0;padding:12px;overflow:hidden}.fragment-status{padding:12px 18px;font-size:13px;line-height:1.7;max-height:45%;overflow:auto}.page-position{font:11px var(--font-mono);color:var(--text-muted);white-space:nowrap}.fragment-reader :deep(.lecture-controls){margin:0;padding:0;border:0;border-top:1px solid var(--line)}.fragment-status button{font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);cursor:pointer}
+@media(max-width:600px){.reader-stage{padding:8px}.fragment-reader :deep(.lecture-controls){padding:0}.page-position{font-size:10px}}@media(max-height:600px){.reader-stage{padding:6px}.fragment-reader :deep(.lecture-controls){padding:0}}
 </style>

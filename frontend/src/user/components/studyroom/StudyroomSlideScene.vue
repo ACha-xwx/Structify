@@ -5,7 +5,7 @@ import type { StudyroomResource, StudyroomScene } from '../../../shared/types/st
 import { userApi } from '../../runtime';
 import StudyroomSlideRegions from './StudyroomSlideRegions.vue';
 import type {LectureRegion} from '../../lecture-types';
-const props = defineProps<{ scene: StudyroomScene; resources: StudyroomResource[]; bounded?:boolean;regions?:LectureRegion[] }>();
+const props = defineProps<{ scene: StudyroomScene; resources: StudyroomResource[]; bounded?:boolean;singlePage?:boolean;regions?:LectureRegion[] }>();
 const emit = defineEmits<{ context: [resourceId: string];saveRegion:[value:LectureRegion];removeRegion:[id:string];interact:[] }>();
 const imageSize=ref({width:0,height:0});const focusRegion=ref('');
 const index = ref(0);
@@ -48,8 +48,8 @@ defineExpose({
 </script>
 <template>
   <section ref="frame" class="slide-scene" aria-label="本步课件">
-    <header class="slide-toolbar" @click="emit('interact')">
-      <div class="slide-pages"><button type="button" aria-label="上一页" :disabled="index === 0" @click="changePage(index - 1)">←</button><span aria-live="polite">{{ index + 1 }} / {{ scene.items.length }}</span><button type="button" aria-label="下一页" :disabled="index >= scene.items.length - 1" @click="changePage(index + 1)">→</button></div>
+    <header v-if="!bounded||!singlePage" class="slide-toolbar" @click="emit('interact')">
+      <div v-if="!singlePage" class="slide-pages"><button type="button" aria-label="上一页" :disabled="index === 0" @click="changePage(index - 1)">←</button><span aria-live="polite">{{ index + 1 }} / {{ scene.items.length }}</span><button type="button" aria-label="下一页" :disabled="index >= scene.items.length - 1" @click="changePage(index + 1)">→</button></div>
       <div class="slide-zoom"><button type="button" aria-label="缩小" :disabled="zoom <= 1" @click="zoom = Math.max(1, zoom - .25)">−</button><span>{{ Math.round(zoom * 100) }}%</span><button type="button" aria-label="放大" :disabled="zoom >= 3" @click="zoom = Math.min(3, zoom + .25)">＋</button><button type="button" aria-label="恢复整页" @click="zoom = 1">整页</button><button type="button" aria-label="全屏阅读" @click="fullscreen">全屏</button></div>
     </header>
     <div ref="viewport" class="studyroom-slide-viewport" :class="{ 'is-zoomed': zoom > 1 }" @pointerdown="pointerDown" @pointermove="pointerMove" @pointerup="drag = null" @pointercancel="drag = null" @lostpointercapture="drag = null">
@@ -58,9 +58,9 @@ defineExpose({
       <div v-else class="slide-canvas" :style="{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }"><img v-if="page" :key="`${page.resourceId}:${retries[page.resourceId] ?? 0}`" class="studyroom__slide" :src="url" :alt="resource?.title || '课程课件'" draggable="false" @load="imageSize={width:($event.target as HTMLImageElement).naturalWidth,height:($event.target as HTMLImageElement).naturalHeight}" @error="failed.add(page.resourceId)"><StudyroomSlideRegions v-if="bounded&&page&&regions" :scene-id="scene.id" :resource-id="page.resourceId" :regions="regions.filter(region=>region.sceneId===scene.id&&region.resourceId===page?.resourceId)" :focus-id="focusRegion" :natural-width="imageSize.width" :natural-height="imageSize.height" @save="emit('saveRegion',$event)" @remove="emit('removeRegion',$event)" @interact="emit('interact')"/></div>
     </div>
     <p v-if="fullScreenHint" role="status">{{ fullScreenHint }}</p>
-    <div class="slide-caption"><strong>{{ resource?.title }}</strong><span v-if="originalPage">原课件第 {{ originalPage }} 页</span></div>
+    <div v-if="!bounded" class="slide-caption"><strong>{{ resource?.title }}</strong><span v-if="originalPage">原课件第 {{ originalPage }} 页</span></div>
     <p v-if="!bounded&&page?.explanation" class="slide-narration">{{ page.explanation }}</p>
-    <details v-if="scene.items.length > 1||(bounded&&page?.explanation)" class="slide-directory"><summary>{{bounded?'本页讲解与课件目录':'本步课件目录'}} · {{ scene.items.length }} 页</summary><p v-if="bounded&&page?.explanation" class="slide-narration">{{page.explanation}}</p><nav v-if="scene.items.length>1" aria-label="课件页目录"><button v-for="(item, i) in scene.items" :key="item.resourceId" type="button" :aria-current="i === index ? 'page' : undefined" @click="changePage(i)"><img :src="userApi.coursewareImageUrl(item.resourceId)" alt="" loading="lazy"><span>{{ i + 1 }} · {{ resources.find(r => r.id === item.resourceId)?.title || '课件页' }}</span></button></nav></details>
+    <details v-if="!singlePage&&scene.items.length > 1" class="slide-directory"><summary>本步课件目录 · {{ scene.items.length }} 页</summary><nav aria-label="课件页目录"><button v-for="(item, i) in scene.items" :key="item.resourceId" type="button" :aria-current="i === index ? 'page' : undefined" @click="changePage(i)"><img :src="userApi.coursewareImageUrl(item.resourceId)" alt="" loading="lazy"><span>{{ i + 1 }} · {{ resources.find(r => r.id === item.resourceId)?.title || '课件页' }}</span></button></nav></details>
   </section>
 </template>
 <style scoped>

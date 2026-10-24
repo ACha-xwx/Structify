@@ -25,6 +25,17 @@ public class AiQuotaLedgerService {
     private final JdbcAiQuotaLedgerRepository repository;
     private final Clock clock;
 
+    private DevTestAccountQuotaPolicy testAccountPolicy;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void configureTestAccountQuota(DevTestAccountQuotaPolicy policy) {
+        this.testAccountPolicy = policy;
+    }
+
+    public boolean isUnlimited(long userId) {
+        return testAccountPolicy != null && testAccountPolicy.isUnlimited(userId);
+    }
+
     AiQuotaLedgerService(JdbcAiQuotaLedgerRepository repository, Clock clock) {
         this.repository = repository;
         this.clock = clock;
@@ -313,6 +324,9 @@ public class AiQuotaLedgerService {
     }
 
     private boolean hasCapacity(AiQuotaBucket bucket, long estimatedTokens) {
+        if (isUnlimited(bucket.userId())) {
+            return true;
+        }
         if (bucket.consumedTokens() > bucket.dailyTokenQuota()) {
             return false;
         }
@@ -324,6 +338,9 @@ public class AiQuotaLedgerService {
     }
 
     private long remaining(AiQuotaBucket bucket) {
+        if (isUnlimited(bucket.userId())) {
+            return Long.MAX_VALUE;
+        }
         if (!hasCapacity(bucket, 0)) {
             return 0;
         }
