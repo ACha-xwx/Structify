@@ -61,10 +61,17 @@ function canOpen(path: string, roles: string[]): boolean {
   return true;
 }
 
+/**
+ * The door a person picked names its destination, and honouring it keeps the account's roles
+ * from overriding a deliberate choice: an administrator who also teaches and signs in through
+ * the learner door came here to learn, not to open a class page. The learner door therefore
+ * carries /begin instead of arriving with no name at all.
+ */
 function destinationAfterLogin(roles: string[]): string {
   const redirect = requestedRedirect.value;
   if (redirect && canOpen(redirect, roles)) return redirect;
-  // A teacher has no reason to walk through the learning entry: their class page is the work.
+  // No door was named, so the account's roles decide. A teacher has no reason to walk through
+  // the learning entry: their class page is the work.
   if (roles.includes("TEACHER")) return "/teacher";
   // The requested door stays closed to this account, so it is dropped rather than honoured
   // into a page that would only refuse it.
@@ -355,7 +362,7 @@ onBeforeUnmount(clearCooldown);
       </form>
 
       <nav v-if="isLogin && !isCredentialsStep" class="auth-entry" :aria-label="t('auth.entry.label')">
-        <RouterLink class="auth-entry__option" to="/login" :aria-current="isStaffEntry ? undefined : 'page'">{{ t("auth.entry.student") }}</RouterLink>
+        <RouterLink class="auth-entry__option" to="/login?redirect=/begin" :aria-current="isStaffEntry ? undefined : 'page'">{{ t("auth.entry.student") }}</RouterLink>
         <RouterLink class="auth-entry__option" to="/login?redirect=/teacher" :aria-current="isTeacherEntry ? 'page' : undefined">{{ t("auth.entry.teacher") }}</RouterLink>
         <RouterLink class="auth-entry__option" to="/login?redirect=/admin" :aria-current="isAdminEntry && !isTeacherEntry ? 'page' : undefined">{{ t("auth.entry.admin") }}</RouterLink>
       </nav>

@@ -25,17 +25,18 @@ const signedIn = computed(() => Boolean(auth.state.user));
 
 /**
  * A class teacher has nowhere to discover their class page: the administrator console is reached
- * through its own host, and the learning choices belong to students. The account row carries the
- * one link this role needs, and it is absent for everyone else.
+ * through its own host, and the learning choices belong to students. One account can hold both
+ * staff roles, so every console it may open is listed rather than only the first one that fits.
  */
 function holdsRole(role: "ADMIN" | "TEACHER"): boolean {
   if (typeof auth.hasAnyRole === "function") return auth.hasAnyRole([role]);
   return (auth.state.user?.roles ?? []).includes(role);
 }
-const staffEntry = computed(() => {
-  if (holdsRole("ADMIN")) return { to: "/admin", label: t("home.adminConsole") };
-  if (holdsRole("TEACHER")) return { to: "/teacher", label: t("home.myClasses") };
-  return null;
+const staffEntries = computed(() => {
+  const entries: { to: string; label: string }[] = [];
+  if (holdsRole("ADMIN")) entries.push({ to: "/admin", label: t("home.adminConsole") });
+  if (holdsRole("TEACHER")) entries.push({ to: "/teacher", label: t("home.myClasses") });
+  return entries;
 });
 
 async function signOut() {
@@ -118,7 +119,7 @@ async function signOut() {
       </nav>
 
       <nav class="entry-links" :aria-label="t('home.account')">
-        <RouterLink v-if="staffEntry" class="entry__staff" :to="staffEntry.to">{{ staffEntry.label }}</RouterLink>
+        <RouterLink v-for="entry in staffEntries" :key="entry.to" class="entry__staff" :to="entry.to">{{ entry.label }}</RouterLink>
         <RouterLink class="entry__profile" to="/user">{{ t("home.profile") }}</RouterLink>
         <button v-if="signedIn" class="entry__signout" type="button" :disabled="leaving" @click="signOut">{{ t("common.signOut") }}</button>
       </nav>

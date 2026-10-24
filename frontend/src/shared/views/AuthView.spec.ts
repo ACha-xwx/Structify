@@ -19,6 +19,7 @@ function createTestRouter() {
       { path: "/", component: { template: "<div>home</div>" } },
       { path: "/begin", component: { template: "<div>learning entry</div>" } },
       { path: "/teacher", component: { template: "<div>teacher console</div>" } },
+      { path: "/admin", component: { template: "<div>admin console</div>" } },
       { path: "/login", component: AuthView, props: { mode: "login" } },
       { path: "/register", component: AuthView, props: { mode: "register" } },
       { path: "/reset-password", component: AuthView, props: { mode: "reset" } },
@@ -181,7 +182,7 @@ describe("verification-code auth flow", () => {
 
     const options = wrapper.findAll(".auth-entry__option");
     expect(options.map((option) => option.text())).toEqual(["学生", "老师", "管理员"]);
-    expect(options.map((option) => option.attributes("href"))).toEqual(["/login", "/login?redirect=/teacher", "/login?redirect=/admin"]);
+    expect(options.map((option) => option.attributes("href"))).toEqual(["/login?redirect=/begin", "/login?redirect=/teacher", "/login?redirect=/admin"]);
     expect(options[1].attributes("aria-current")).toBe("page");
     expect(wrapper.classes()).toContain("auth-screen--admin");
     expect(wrapper.get("#auth-title").text()).toBe("登录教师端");
@@ -198,6 +199,38 @@ describe("verification-code auth flow", () => {
     await flushPromises();
 
     expect(wrapper.vm.$router.currentRoute.value.path).toBe("/teacher");
+    wrapper.unmount();
+  });
+
+  it("sends an administrator who also teaches to the learning entry when they pick the learner door", async () => {
+    authMock.login.mockResolvedValueOnce({ id: 88, email: "staff@example.com", roles: ["ADMIN", "TEACHER"] });
+    const router = createTestRouter();
+    await router.push("/login?redirect=/begin");
+    await router.isReady();
+    const wrapper = mount(AuthView, { props: { mode: "login" }, global: { plugins: [router] } });
+
+    await wrapper.get('input[autocomplete="username"]').setValue("staff@example.com");
+    await wrapper.get('input[type="password"]').setValue("correct-horse-battery-staple");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.vm.$router.currentRoute.value.path).toBe("/begin");
+    wrapper.unmount();
+  });
+
+  it("still opens the management console for an administrator who also teaches and picks that door", async () => {
+    authMock.login.mockResolvedValueOnce({ id: 89, email: "staff@example.com", roles: ["ADMIN", "TEACHER"] });
+    const router = createTestRouter();
+    await router.push("/login?redirect=/admin");
+    await router.isReady();
+    const wrapper = mount(AuthView, { props: { mode: "login" }, global: { plugins: [router] } });
+
+    await wrapper.get('input[autocomplete="username"]').setValue("staff@example.com");
+    await wrapper.get('input[type="password"]').setValue("correct-horse-battery-staple");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    expect(wrapper.vm.$router.currentRoute.value.path).toBe("/admin");
     wrapper.unmount();
   });
 

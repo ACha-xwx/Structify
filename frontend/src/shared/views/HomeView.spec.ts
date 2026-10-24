@@ -105,6 +105,19 @@ describe("entry page", () => {
     admin.wrapper.unmount();
   });
 
+  it("offers both consoles on the entry page when one account teaches and administers", async () => {
+    session.state.user = { email: "staff@example.com", roles: ["ADMIN", "TEACHER"] } as never;
+
+    const { wrapper } = mountHome();
+    await flushPromises();
+
+    expect(wrapper.findAll(".entry__staff").map((link) => [link.text(), link.attributes("href")])).toEqual([
+      ["管理后台", "/admin"],
+      ["我的班级", "/teacher"],
+    ]);
+    wrapper.unmount();
+  });
+
   it("signs out from the entry page", async () => {
     session.state.user = { email: "learner@example.com" };
 
