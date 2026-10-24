@@ -48,7 +48,7 @@ public class StudyroomHarnessConfiguration {
                 if(target!=null&&"C_CODE".equals(target.path("materialKind").asString()))return new ModelResponse(mapper.writeValueAsString(Map.of("actions",List.of(Map.of("kind","CODE_HIGHLIGHT","sceneId",target.path("sceneId").asString(),"resourceId",target.path("resourceId").asString(),"startLine",1,"endLine",Math.min(3,target.path("lineCount").asInt()))))),15L);
                 return new ModelResponse("{\"actions\":[]}",15L);
             }
-            if(system.startsWith("只根据提供的已发布课程"))return new ModelResponse("{\"checks\":[{\"prompt\":\"依次入栈1和2，首先弹出哪一个？\",\"options\":[{\"id\":\"a\",\"text\":\"1\"},{\"id\":\"b\",\"text\":\"2\"}],\"answerOption\":\"b\",\"analysis\":\"后进入的2先离开栈。\"}]}",30L);
+            if(system.startsWith("只根据提供的已发布课程"))return new ModelResponse(mapper.writeValueAsString(Map.of("checks",java.util.stream.IntStream.range(0,3).mapToObj(i->Map.of("prompt","依次入栈1和"+(i+2)+"，首先弹出哪一个？","options",List.of(Map.of("id","a","text","1"),Map.of("id","b","text",String.valueOf(i+2))),"answerOption","b","analysis","后进入的元素先离开栈。")).toList())),30L);
             if(system.contains("学习设计师")) {
                 var unit1=new ReviewedOutline.Unit("definition","栈是什么","理解栈的后进先出特性",List.of("stack.definition"),"EXPLAIN",List.of("CONCEPT"),List.of());
                 var unit2=new ReviewedOutline.Unit("implementation","阅读 C 实现","对照栈源码理解基本操作",List.of("stack.implementation"),"EXPLAIN",List.of("IMPLEMENTATION"),

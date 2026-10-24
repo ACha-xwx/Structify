@@ -207,6 +207,53 @@ public class OutlineService {
         return Map.of("draftId", id, "jobId", job);
     }
 
+    @Transactional
+    public Map<String, Object> manualRevision(long user, String id, int base,
+            List<OutlineController.ManualUnit> edits, String key) {
+        store.owned(user,id,false);
+        store.lockUser(user);
+        String payload=json.write(Arrays.asList(id,base,edits));
+        String prior=store.key(user,"outline_manual",key,payload);
+        if(prior!=null) return Map.of("draftId",id,"revision",Integer.parseInt(prior));
+        var draft=store.owned(user,id,true);
+        requireEditable(draft,base);
+        OutlineJson.require(!"GENERATING".equals(draft.get("status")),"OUTLINE_GENERATING","大纲正在生成，请等待完成");
+        OutlineJson.require(draft.get("confirmed_run_id")==null && !"CONFIRMED".equals(draft.get("status")),"OUTLINE_ALREADY_CONFIRMED","已确认的大纲不能编辑");
+        var before=json.read((String)store.revision(id,base).get("outline_json"),ReviewedOutline.class);
+        var originals=new HashMap<String,ReviewedOutline.Unit>();
+        before.units().forEach(u->originals.put(u.id(),u));
+        if(edits==null || edits.isEmpty() || edits.size()>24)
+            throw OutlineJson.error(HttpStatus.BAD_REQUEST,"INVALID_OUTLINE_REQUEST","知识点数量必须为1到24");
+        var units=new ArrayList<ReviewedOutline.Unit>();
+        for(var edit:edits) {
+            if(edit==null) throw OutlineJson.error(HttpStatus.BAD_REQUEST,"INVALID_OUTLINE_REQUEST","知识点不能为空");
+            var old=originals.get(edit.id());
+            units.add(new ReviewedOutline.Unit(edit.id(),edit.title(),edit.objective(),
+                old==null?List.of("manual:"+edit.id()):old.coverageKeys(),
+                old==null?"EXPLAIN":old.expansion(),
+                old==null?List.of("CONCEPT"):old.activities(),old==null?List.of():old.materials()));
+        }
+        var edited=new ReviewedOutline(before.schemaVersion(),before.depth(),before.title(),before.objectives(),
+            before.prerequisites(),units,before.excludedCoverageKeys(),before.exclusions(),before.evidenceIds(),
+            before.curriculumVersion(),before.coverageAssessment());
+        try { validator.validate(edited,before.depth()); }
+        catch(IllegalArgumentException error) { throw OutlineJson.error(HttpStatus.BAD_REQUEST,"INVALID_OUTLINE_REQUEST",error.getMessage()); }
+        var assessment=feasibility.assess(edited,(String)draft.get("question"),(String)draft.get("chapter_id"));
+        try {
+            validator.validate(assessment.outline(),before.depth());
+            compiler.preview(assessment.outline());
+            compiler.hash(assessment.outline(),json);
+        } catch(IllegalArgumentException error) { throw OutlineJson.error(HttpStatus.BAD_REQUEST,"INVALID_OUTLINE_REQUEST",error.getMessage()); }
+        int revision=base+1;
+        store.db().update("INSERT INTO study_outline_revisions(id,draft_id,revision,base_revision,outline_json,issues_json,change_summary_json,feedback,curriculum_version) VALUES(?,?,?,?,?,?,?,?,?)",
+            OutlineJson.id(),id,revision,base,json.write(assessment.outline()),json.write(assessment.issues()),
+            json.write(OutlineDiff.between(before,assessment.outline())),"人工编辑",assessment.outline().curriculumVersion());
+        store.db().update("UPDATE study_outline_drafts SET latest_revision=?,status='REVIEWABLE',updated_at=CURRENT_TIMESTAMP,activity_at=CURRENT_TIMESTAMP WHERE id=?",revision,id);
+        store.message(id,"USER","人工编辑大纲",revision);
+        store.saveKey(user,"outline_manual",key,payload,Integer.toString(revision));
+        return Map.of("draftId",id,"revision",revision);
+    }
+
     private void requireEditable(Map<String, Object> draft, int base) {
         OutlineJson.require(
                 draft.get("pending_job_id") == null, "OUTLINE_GENERATING", "大纲正在生成，请等待完成");

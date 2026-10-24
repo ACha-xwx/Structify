@@ -67,6 +67,33 @@ class ReviewedOutlineWorkflowTest {
     }
 
     @Test
+    void manualRevisionPreservesHistoryAndFreezesOrderWithoutModelCalls() {
+        String id=create();
+        assertThatThrownBy(()->service.manualRevision(user,id,1,List.of(new OutlineController.ManualUnit("concept","Title","Objective")),"pending")).isInstanceOf(ApiException.class);
+        worker.runOnce();clearInvocations(model);
+        var hash=service.get(user,id).get("planHash");
+        var edits=List.of(new OutlineController.ManualUnit("new-unit","Added","Understand added"),
+            new OutlineController.ManualUnit("concept","Edited","Understand edited"));
+        var result=service.manualRevision(user,id,1,edits,"manual");
+        assertThat(result).containsEntry("revision",2);
+        assertThat(service.manualRevision(user,id,1,edits,"manual")).isEqualTo(result);
+        verifyNoInteractions(model);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM studyroom_generation_jobs WHERE draft_id=?",Integer.class,id)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM study_outline_revisions WHERE draft_id=?",Integer.class,id)).isEqualTo(2);
+        assertThat(service.get(user,id).get("planHash")).isNotEqualTo(hash);
+        assertThatThrownBy(()->service.manualRevision(user,id,1,edits,"stale")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->service.manualRevision(user+1,id,2,edits,"foreign")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->service.manualRevision(user,id,2,List.of(edits.get(0),edits.get(0)),"duplicate")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->service.manualRevision(user,id,2,List.of(),"empty")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->service.manualRevision(user,id,2,List.of(new OutlineController.ManualUnit("concept"," ","Objective")),"blank")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->service.manualRevision(user,id,2,List.of(new OutlineController.ManualUnit("invalid id","Title","Objective")),"bad-id")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->service.manualRevision(user,id,2,edits,"manual")).isInstanceOf(ApiException.class);
+        var run=service.confirm(user,id,2,"confirm-manual",(String)service.get(user,id).get("planHash"));
+        assertThat(jdbc.queryForList("SELECT unit_key FROM studyroom_units WHERE run_id=? ORDER BY unit_order",String.class,run.get("runId"))).containsExactly("new-unit","concept");
+        assertThatThrownBy(()->service.manualRevision(user,id,2,edits,"confirmed")).isInstanceOf(ApiException.class);
+    }
+
+    @Test
     void onlyPlansBeforeConfirmationAndConfirmationIsIdempotent() {
         String id = create();
         verifyNoInteractions(model);

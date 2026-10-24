@@ -249,6 +249,28 @@
       "method": "DELETE",
       "path": "/studyroom-runs/{id}/fragments/{fragmentId}/lecture/regions/{regionId}",
       "response": {}
+    },
+    {
+      "method": "POST",
+      "path": "/study-outlines/{id}/manual-revisions",
+      "status": 200,
+      "headers": {
+        "Idempotency-Key": "synthetic-manual-1"
+      },
+      "request": {
+        "baseRevision": 1,
+        "units": [
+          {
+            "id": "concept",
+            "title": "Edited concept",
+            "objective": "Explain concept"
+          }
+        ]
+      },
+      "response": {
+        "draftId": "synthetic-draft",
+        "revision": 2
+      }
     }
   ]
 }

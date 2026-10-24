@@ -15,6 +15,7 @@ app:
   auth:
     expose-development-code: ${AUTH_EXPOSE_DEV_CODE:true}
   dev-test-account:
+    unlimited-ai-quota: ${DEV_TEST_ACCOUNT_UNLIMITED_AI_QUOTA:true}
     email: ${DEV_TEST_ACCOUNT_EMAIL:student@structify.test}
     username: ${DEV_TEST_ACCOUNT_USERNAME:StructifyTest}
     password: ${DEV_TEST_ACCOUNT_PASSWORD:StructifyTest123!}

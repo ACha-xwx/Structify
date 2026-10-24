@@ -83,6 +83,31 @@ class AiQuotaLedgerIntegrationTest {
     }
 
     @Test
+    void unlimitedDevelopmentAccountStillRecordsUsageAndEnforcesConcurrency() {
+        long userId = userId();
+        String email = jdbc.queryForObject("SELECT email FROM users WHERE id = ?", String.class, userId);
+        var users = org.mockito.Mockito.mock(com.feng.dsagent.auth.UserRepository.class);
+        org.mockito.Mockito.when(users.findById(userId)).thenReturn(java.util.Optional.of(
+            new com.feng.dsagent.auth.UserAccount(userId, email, "Student", "hash", java.util.Set.of("STUDENT"))));
+        var environment = new org.springframework.mock.env.MockEnvironment();
+        environment.setActiveProfiles("dev");
+        var unlimitedLedger = new AiQuotaLedgerService(new JdbcAiQuotaLedgerRepository(jdbc), clock);
+        unlimitedLedger.configureTestAccountQuota(new DevTestAccountQuotaPolicy(users, environment, true, email));
+
+        var first = unlimitedLedger.reserve(request(userId, 10, 100, 1, "unlimited-first", Duration.ofMinutes(2)));
+        assertThatThrownBy(() -> unlimitedLedger.reserve(
+            request(userId, 10, 100, 1, "unlimited-concurrent", Duration.ofMinutes(2))))
+            .isInstanceOfSatisfying(ApiException.class,
+                error -> assertThat(error.code()).isEqualTo("AI_QUOTA_CONCURRENCY_LIMITED"));
+        unlimitedLedger.settle(first.id(), 200);
+        assertThat(unlimitedLedger.account(userId).consumedTokens()).isEqualTo(200);
+        var second = unlimitedLedger.reserve(request(userId, 10, 100, 1, "unlimited-second", Duration.ofMinutes(2)));
+        unlimitedLedger.settle(second.id(), 150);
+        assertThat(unlimitedLedger.account(userId).consumedTokens()).isEqualTo(350);
+        assertThat(unlimitedLedger.account(userId).reservedTokens()).isZero();
+    }
+
+    @Test
     void duplicateRequestIsIdempotentAndConcurrencyCapIsEnforcedPerUser() {
         long userId = userId();
 

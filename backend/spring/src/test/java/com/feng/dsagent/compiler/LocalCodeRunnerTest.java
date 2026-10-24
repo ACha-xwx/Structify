@@ -110,7 +110,7 @@ class LocalCodeRunnerTest {
             ""
         );
         assertThat(ok.status()).isEqualTo("success");
-        assertThat(ok.stdout()).isEqualTo("hi\n");
+        assertThat(ok.stdout()).isEqualToNormalizingNewlines("hi\n");
         assertThat(ok.stderr()).isEmpty();
 
         CompilerExecution broken = runner.execute(SupportedLanguage.C, "int main(void){return", "");
@@ -141,7 +141,7 @@ class LocalCodeRunnerTest {
             ""
         );
         assertThat(chinese.status()).isEqualTo("success");
-        assertThat(chinese.stdout()).isEqualTo("链表中文输出\n");
+        assertThat(chinese.stdout()).isEqualToNormalizingNewlines("链表中文输出\n");
 
         CompilerExecution scanning = runner.execute(
             SupportedLanguage.C,
@@ -149,7 +149,7 @@ class LocalCodeRunnerTest {
             "21\n"
         );
         assertThat(scanning.status()).isEqualTo("success");
-        assertThat(scanning.stdout()).isEqualTo("42\n");
+        assertThat(scanning.stdout()).isEqualToNormalizingNewlines("42\n");
     }
 
     @Test

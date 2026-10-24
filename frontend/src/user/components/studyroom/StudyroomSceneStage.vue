@@ -108,3 +108,11 @@ defineExpose({
 .material-workspace :deep(.slide-narration){max-height:64px;overflow:auto;flex-shrink:0;font-size:13px;line-height:1.65;margin:8px 0}
 .material-workspace :deep(.slide-directory){flex-shrink:0;max-height:100px;overflow:auto;margin-top:8px;padding-top:8px}
 </style>
+
+<style scoped>
+.material-workspace .scene-choices{gap:4px;align-items:center;margin-bottom:10px;padding:0 0 8px;border-bottom:1px solid var(--line)}
+.material-workspace .scene-choices button{border:0;background:transparent;min-height:30px;border-radius:7px;padding:5px 10px;font-size:11px;color:var(--text-muted)}
+.material-workspace .scene-choices button[aria-pressed=true]{background:var(--surface-subtle);color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
+.material-workspace :deep(.slide-toolbar){gap:6px;font-size:11px;padding-bottom:8px}.material-workspace :deep(.slide-toolbar button){min-height:28px;padding:4px 9px;font-size:11px;border-radius:7px;background:transparent}.material-workspace :deep(.slide-caption){font-size:10px;margin-top:6px}.material-workspace :deep(.slide-directory){font-size:11px;margin-top:5px;padding-top:5px}
+@media(max-height:600px){.material-workspace .scene-choices{margin-bottom:4px;padding-bottom:4px}.material-workspace .scene-choices button{min-height:24px;padding:3px 8px;font-size:10px}}
+</style>

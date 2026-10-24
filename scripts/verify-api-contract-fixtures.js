@@ -34,6 +34,7 @@ for (const match of openapi.matchAll(/#\/components\/(schemas|responses|paramete
 const documentedOperations = extractDocumentedOperations(openapi);
 
 const documentedPaths = [
+  "/study-outlines/{id}/manual-revisions",
   "/studyroom-runs/{id}/fragments/{fragmentId}/lecture",
   "/studyroom-runs/{id}/fragments/{fragmentId}/lecture/regions",
   "/studyroom-runs/{id}/fragments/{fragmentId}/lecture/regions/{regionId}",

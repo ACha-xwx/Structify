@@ -6,6 +6,7 @@ async function read<T>(path:string,body?:unknown,key?:string,signal?:AbortSignal
  return response.data;
 }
 export const outlineApi={
+ manualRevise:(id:string,body:{baseRevision:number;units:Array<{id:string;title:string;objective:string}>},key:string)=>read<{draftId:string;revision:number}>(`/study-outlines/${encodeURIComponent(id)}/manual-revisions`,body,key),
  create:(body:{question:string;depth:LearningDepth;chapterId?:string;sourceRoomId?:string},key:string)=>read<{draftId:string}>("/study-outlines",body,key),
  retry:(id:string,key:string)=>read<{jobId:string}>(`/study-outlines/${encodeURIComponent(id)}/retry`,{},key),
  restore:(id:string,baseRevision:number,targetRevision:number,key:string)=>read<{revision:number}>(`/study-outlines/${encodeURIComponent(id)}/restore`,{baseRevision,targetRevision},key),

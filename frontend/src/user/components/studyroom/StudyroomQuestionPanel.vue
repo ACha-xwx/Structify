@@ -8,7 +8,12 @@ const input=ref<HTMLTextAreaElement>();
 const transcript=ref<HTMLElement>();const followLatest=ref(true);
 function trackScroll(){const element=transcript.value;if(element)followLatest.value=element.scrollHeight-element.scrollTop-element.clientHeight<48;}
 async function scrollLatest(){await nextTick();if(transcript.value)transcript.value.scrollTop=transcript.value.scrollHeight;}
-watch(()=>props.open,async open=>{if(open){followLatest.value=true;await scrollLatest();input.value?.focus({preventScroll:true});}});
+watch(()=>props.open,async(open,_,onCleanup)=>{
+ let cancelled=false;onCleanup(()=>{cancelled=true;});
+ if(!open)return;
+ followLatest.value=true;await scrollLatest();
+ if(!cancelled&&props.open)input.value?.focus({preventScroll:true});
+},{flush:'post'});
 watch(()=>[props.messages.at(-1)?.id,props.question?.answer,props.question?.status],()=>{if(followLatest.value)void scrollLatest();});
 </script>
 <template>

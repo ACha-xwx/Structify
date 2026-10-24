@@ -16,7 +16,7 @@ class ClassroomCheckServiceTest {
         new PreparationScheduler(new JdbcFragmentRepository(db.store,db.json),jobs,db.json).reconcile(db.user,"run");
         var job=jobs.claim(Instant.now());
         db.jdbc.update("UPDATE studyroom_fragments SET content_revision=1,step_id='step-f',status='READY' WHERE id='f'");
-        var checks=new ClassroomCheckService(db.store,db.json,jobs);checks.publish(job,QUIZ);
+        var checks=new ClassroomCheckService(db.store,db.json,jobs);var items=new ArrayList<Object>();for(int i=0;i<3;i++){var q=new LinkedHashMap<>((Map<String,Object>)((List<?>)db.json.object(QUIZ).get("checks")).getFirst());q.put("prompt","题目"+i);items.add(q);}checks.publish(job,db.json.write(Map.of("checks",items)));
         var state=checks.get(db.user,"run","u");
         String serialized=db.json.write(state);assertFalse(serialized.contains("answerOption"));assertFalse(serialized.contains("analysis"));
         var question=(Map<?,?>)((List<?>)state.get("questions")).getFirst();String id=(String)question.get("id");

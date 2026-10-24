@@ -20,7 +20,8 @@ const props = withDefaults(defineProps<{
   wide?: boolean;
   fixed?: boolean;
   showBrand?: boolean;
-}>(), { wide: false, fixed: false, showBrand: true });
+  showTheme?: boolean;
+}>(), { wide: false, fixed: false, showBrand: true, showTheme: true });
 
 const { t } = useI18n();
 </script>
@@ -33,7 +34,7 @@ const { t } = useI18n();
         <BrandName class="stage__name" />
       </RouterLink>
     </div>
-    <div class="stage__theme"><ThemeToggle /></div>
+    <div v-if="props.showTheme" class="stage__theme"><ThemeToggle /></div>
     <div class="stage__body"><slot /></div>
   </div>
 </template>

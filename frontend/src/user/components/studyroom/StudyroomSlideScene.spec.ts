@@ -3,6 +3,14 @@ import { describe, it, expect, vi } from 'vitest';
 import StudyroomSlideScene from './StudyroomSlideScene.vue';
 vi.mock('../../runtime', () => ({ userApi: { coursewareImageUrl: (id: string) => `/slides/${id}` } }));
 describe('step slide collection', () => {
+  it('uses the shared classroom toolbar instead of duplicate tools and slide metadata',()=>{
+    const wrapper=mount(StudyroomSlideScene,{props:{bounded:true,singlePage:true,scene:{id:'main',kind:'PPT',purpose:'定义',items:[{resourceId:'p1',explanation:'解释'}]},resources:[{id:'p1',type:'PPT',title:'幻灯片标题',description:'原始页码=3',available:true,parameters:{}}]}});
+    expect(wrapper.find('.slide-toolbar').exists()).toBe(false);
+    expect(wrapper.find('.slide-caption').exists()).toBe(false);
+    expect(wrapper.find('.slide-directory').exists()).toBe(false);
+    expect(wrapper.get('img.studyroom__slide').attributes('alt')).toBe('幻灯片标题');
+    wrapper.unmount();
+  });
   it('changes page and explanation together and supports zoom reset', async () => {
     const wrapper = mount(StudyroomSlideScene, { props: {
       scene: { id: 'main', kind: 'PPT', purpose: '观察遍历', items: [{ resourceId: 'p1', explanation: '先看规则' }, { resourceId: 'p2', explanation: '再看例子' }] },

@@ -167,7 +167,7 @@ paths:
       - {name: unitId, in: path, required: true, schema: {type: string}}
     post:
       tags: [Classroom]
-      summary: Explicitly prepare checks within a separate bounded generation job
+      summary: Prepare three related single-choice quizzes, preferring the bank and supplementing missing questions through bounded AI generation
       security: [{bearerAuth: []}, {cookieAuth: []}]
       parameters:
         - {name: Idempotency-Key, in: header, required: true, schema: {type: string, maxLength: 128}}
@@ -332,6 +332,50 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {description: Draft absent or foreign}
         '409': {description: Stale revision, generation pending, unavailable required material or idempotency conflict}
+  /study-outlines/{id}/manual-revisions:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [Classroom]
+      summary: Save an immutable manual outline revision without model generation
+      security: [{bearerAuth: []}, {cookieAuth: []}]
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [baseRevision, units]
+              properties:
+                baseRevision: {type: integer, minimum: 1}
+                units:
+                  type: array
+                  minItems: 1
+                  maxItems: 24
+                  items:
+                    type: object
+                    required: [id, title, objective]
+                    properties:
+                      id: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$'}
+                      title: {type: string, minLength: 1, maxLength: 160}
+                      objective: {type: string, minLength: 1, maxLength: 400}
+      responses:
+        '200':
+          description: Saved revision; repeated keys return the same result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [draftId, revision]
+                properties:
+                  draftId: {type: string}
+                  revision: {type: integer}
+        '400': {description: Invalid units or duplicate identifiers}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: Draft absent or foreign}
+        '409': {description: Stale revision, generation pending, confirmed draft or idempotency conflict}
   /study-outlines/{id}/confirm:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}
@@ -3365,11 +3409,11 @@ components:
           format: int64
           minimum: 0
           nullable: true
-          description: Null when the caller is not eligible for an active configured quota; otherwise the current server-side reservation ledger balance.
+          description: Null when the caller has unlimited development quota or is not eligible for an active configured quota; otherwise the current server-side reservation ledger balance.
         quotaStatus:
           type: string
           description: A controlled quota capability state derived from the atomic reservation ledger.
-          enum: [NOT_CONFIGURED, AVAILABLE, EXHAUSTED, CONCURRENCY_LIMITED]
+          enum: [NOT_CONFIGURED, AVAILABLE, UNLIMITED, EXHAUSTED, CONCURRENCY_LIMITED]
         allowFormalGeneration: {type: boolean}
         blockingReasons:
           type: array

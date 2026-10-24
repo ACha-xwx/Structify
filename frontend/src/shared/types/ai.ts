@@ -1,7 +1,7 @@
 import type { JsonRecord } from "./api";
 
 export type AiOperation = "CHAT" | "CODE_ANALYSIS" | "ANIMATION_GENERATION";
-export type AiQuotaStatus = "NOT_CONFIGURED" | "AVAILABLE" | "EXHAUSTED" | "CONCURRENCY_LIMITED";
+export type AiQuotaStatus = "NOT_CONFIGURED" | "AVAILABLE" | "UNLIMITED" | "EXHAUSTED" | "CONCURRENCY_LIMITED";
 export type AiEvidenceReason = "QUESTION_EVIDENCE_UNAVAILABLE" | "CONTEXT_EVIDENCE_UNAVAILABLE";
 
 export type AiModelReason =
