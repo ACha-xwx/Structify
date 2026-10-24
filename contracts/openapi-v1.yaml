@@ -1260,7 +1260,15 @@ paths:
   /code/runs:
     post:
       tags: [Code]
-      summary: Run C or Python through the configured Piston sandbox
+      summary: Run C or Python through the configured sandbox
+      description: |
+        C is compiled and run on the API host itself wherever the interactive sandbox is enabled, as a
+        child process beside the service; Python is still posted to the configured remote sandbox.
+        Either way the program is cut off at the service's own deadline and its work directory is
+        deleted with it, so a stray loop cannot outlive the request.
+        With the sandbox enabled, a local run whose toolchain or work directory is unusable answers
+        503 rather than falling back to the remote sandbox; a local run cut off by its deadline is
+        reported as a `runtime_error` in the normal 200 body, not as a gateway failure.
       security:
         - {}
         - cookieAuth: []
@@ -1280,12 +1288,13 @@ paths:
         '413': {$ref: '#/components/responses/PayloadTooLarge'}
         '429': {$ref: '#/components/responses/TooManyRequests'}
         '502': {$ref: '#/components/responses/BadGateway'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
         '504': {$ref: '#/components/responses/GatewayTimeout'}
   /code/run:
     post:
       tags: [Code]
-      summary: Run C or Python through the configured Piston sandbox (deprecated alias)
-      description: Deprecated compatibility alias for `/code/runs`. New clients must call the plural resource path. It has the same guest-or-authenticated access boundary, request validation, rate limit, and response shape as `/code/runs`.
+      summary: Run C or Python through the configured sandbox (deprecated alias)
+      description: Deprecated compatibility alias for `/code/runs`. New clients must call the plural resource path. It has the same guest-or-authenticated access boundary, request validation, rate limit, execution routing, and response shape as `/code/runs`.
       deprecated: true
       security:
         - {}
@@ -1306,6 +1315,7 @@ paths:
         '413': {$ref: '#/components/responses/PayloadTooLarge'}
         '429': {$ref: '#/components/responses/TooManyRequests'}
         '502': {$ref: '#/components/responses/BadGateway'}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
         '504': {$ref: '#/components/responses/GatewayTimeout'}
   /code/analyze:
     post:
