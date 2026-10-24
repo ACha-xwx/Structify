@@ -20,9 +20,11 @@ open the development H2 file together. Database sandbox configuration, if any,
 takes precedence over this environment variable. `GET /api/v2/runtimes` shows
 the runtimes whose installation has completed.
 
-This local service exercises real compilation through `/api/v1/code/runs`.
-Successful local execution does not establish the cause of the production 504:
-the production provider and address have not yet been inspected.
+This local service exercises real compilation through `/api/v1/code/runs`, and it is
+the way to work on the Piston path itself - the gateway's HTTP/1.1 handling, provider
+failover, and any language the API container cannot compile. It is a development
+machine's sandbox, not the shape production runs in; see the production section below,
+which is where the production 504 was actually found and fixed.
 
 ## Verification on 2026-10-23
 
@@ -41,5 +43,41 @@ Through Vite `/api/v1/code/runs`, a C program reading 21 returned `result=42`;
 invalid source returned `compile_error`; an infinite loop returned
 `runtime_error` after 3.21 seconds. Pausing only the sandbox container produced
 HTTP 504 with `COMPILER_UPSTREAM_TIMEOUT` after 15.14 seconds. The container was
-unpaused in a finally block. Production returned a different, plain-text 504,
-so matching its root cause still requires production configuration and logs.
+unpaused in a finally block.
+
+The plain-text 504 production returned was a different failure, and it is now
+explained: see below.
+
+## Production path: C no longer leaves the host (2026-10-24)
+
+The production 504 was not a Piston problem. C was being posted to the public Judge0
+instance over a slow public link, where a submission that compiles and runs in
+milliseconds spent 5.5 to 5.9 seconds in the network and, when the public instance was
+busy, outlived the 15 second gateway deadline and reached the learner as a 504.
+
+C is now compiled and run inside the API container by
+`backend/spring/src/main/java/com/feng/dsagent/compiler/LocalCodeRunner.java`, as a
+child process beside the service, whenever `SANDBOX_ENABLED` is on. The image already
+carried gcc 15.2.0 for the interactive console, so no new dependency was added. Python
+still goes through the gateway, which remains the only reason to point
+`PISTON_BASE_URL` anywhere.
+
+Measured on production after the `v2.2.1` release, through `/api/v1/code/runs`:
+
+| Program | Result | Server-side time |
+| --- | --- | --- |
+| Reads a number, prints Chinese | `链表长度=42` | 167 ms |
+| Invalid source | `compile_error`, gcc's own words | 30 ms |
+| Infinite loop | `runtime_error`, killed at the local deadline | 5.36 s |
+
+Three things keep it honest rather than merely local. A program that outlives the
+deadline is killed, not left spinning. Its work directory is deleted with it. And a
+broken toolchain answers 503 instead of quietly falling back upstream, because that
+fallback is the path this exists to remove.
+
+The container keeps its 320 MiB limit. Four simultaneous builds measured 298 of
+320 MiB with no OOM kill, because the cgroup reading includes reclaimable page cache
+and the kernel gives cache back instead of killing anything; the runner also starts no
+more compiles at once than the host has cores. The four containers already total the
+896 MiB that the low-memory profile allows, so raising one of them would be refused by
+preflight rather than help.
