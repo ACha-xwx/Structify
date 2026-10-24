@@ -13,16 +13,27 @@ public final class CompilerService {
     private final CompilerProperties properties;
     private final CompilerGateway gateway;
     private final CodeRunRepository runs;
+    private final LocalCodeRunner local;
 
     CompilerService(CompilerProperties properties, CompilerGateway gateway) {
-        this(properties, gateway, null);
+        this(properties, gateway, null, null);
+    }
+
+    CompilerService(CompilerProperties properties, CompilerGateway gateway, CodeRunRepository runs) {
+        this(properties, gateway, runs, null);
     }
 
     @Autowired
-    CompilerService(CompilerProperties properties, CompilerGateway gateway, CodeRunRepository runs) {
+    CompilerService(
+        CompilerProperties properties,
+        CompilerGateway gateway,
+        CodeRunRepository runs,
+        LocalCodeRunner local
+    ) {
         this.properties = properties;
         this.gateway = gateway;
         this.runs = runs;
+        this.local = local;
     }
 
     public RunCodeResponse run(RunCodeRequest request) {
@@ -61,7 +72,11 @@ public final class CompilerService {
         }
 
         long startedAt = System.nanoTime();
-        CompilerExecution execution = gateway.execute(language, code, stdin);
+        // A local run answers in milliseconds, so it always wins where it is possible. The remote
+        // gateway only takes the languages this host cannot compile itself.
+        CompilerExecution execution = local != null && local.canExecute(language)
+            ? local.execute(language, code, stdin)
+            : gateway.execute(language, code, stdin);
         long durationMs = Math.max(0L, (System.nanoTime() - startedAt) / 1_000_000L);
         RunCodeResponse response = new RunCodeResponse(
             language.apiName(),
