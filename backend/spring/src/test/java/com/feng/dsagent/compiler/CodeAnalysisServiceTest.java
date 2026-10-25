@@ -1,11 +1,13 @@
 package com.feng.dsagent.compiler;
 
+import com.feng.dsagent.compiler.service.CodeAnalysisService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.learning.LearningEventRepository;
-import com.feng.dsagent.learning.LearningEventService;
+import com.feng.dsagent.learning.service.LearningEventService;
 import com.feng.dsagent.learning.LearningEventView;
 import com.feng.dsagent.model.ModelClient;
 import com.feng.dsagent.model.ModelRequest;

@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
  * hides until a tester tries to register. This check logs the exact remedy at startup.
  */
 @Component
-final class MailConfigStartupCheck {
+public final class MailConfigStartupCheck {
 
     private static final Logger log = LoggerFactory.getLogger(MailConfigStartupCheck.class);
 
@@ -24,7 +24,7 @@ final class MailConfigStartupCheck {
     private final MailConfigMasterKeySource masterKeySource;
     private final MailConfigCrypto crypto;
 
-    MailConfigStartupCheck(
+    public MailConfigStartupCheck(
         MailConfigRepository repository,
         MailConfigMasterKeySource masterKeySource,
         MailConfigCrypto crypto
@@ -35,7 +35,7 @@ final class MailConfigStartupCheck {
     }
 
     @EventListener(ApplicationReadyEvent.class)
-    void check() {
+    public void check() {
         MailConfigRepository.StoredMailConfig stored = repository.find().orElse(null);
         if (stored == null || !stored.enabled()) {
             return;

@@ -1,12 +1,14 @@
 package com.feng.dsagent.admin;
 
+import com.feng.dsagent.admin.service.AdminKnowledgeService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.knowledge.KnowledgeChunk;
-import com.feng.dsagent.knowledge.KnowledgeSearchService;
-import com.feng.dsagent.knowledge.KnowledgeSettingsService;
+import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
+import com.feng.dsagent.knowledge.service.KnowledgeSettingsService;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;

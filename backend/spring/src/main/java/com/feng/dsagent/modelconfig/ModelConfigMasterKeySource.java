@@ -3,7 +3,7 @@ package com.feng.dsagent.modelconfig;
 import java.util.Optional;
 import javax.crypto.SecretKey;
 
-interface ModelConfigMasterKeySource {
+public interface ModelConfigMasterKeySource {
 
-    Optional<SecretKey> masterKey();
+    public Optional<SecretKey> masterKey();
 }

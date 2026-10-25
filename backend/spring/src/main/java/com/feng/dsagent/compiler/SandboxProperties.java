@@ -39,12 +39,12 @@ public record SandboxProperties(
         }
     }
 
-    String compilerFor(SupportedLanguage language) {
+    public String compilerFor(SupportedLanguage language) {
         return language == SupportedLanguage.C ? gccCommand : pythonCommand;
     }
 
     /** Null when the host did not name one, which means "use the system temporary directory". */
-    java.nio.file.Path workDirectoryPathOrNull() {
+    public java.nio.file.Path workDirectoryPathOrNull() {
         if (workDirectory == null || workDirectory.isBlank()) {
             return null;
         }

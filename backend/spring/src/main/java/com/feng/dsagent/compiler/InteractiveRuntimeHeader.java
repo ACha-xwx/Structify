@@ -8,7 +8,7 @@ package com.feng.dsagent.compiler;
  * before {@code main} runs fixes that without allocating a pseudo terminal, which is what makes
  * this sandbox cheap enough to run inside the API process.
  */
-final class InteractiveRuntimeHeader {
+public final class InteractiveRuntimeHeader {
 
     static final String CONTENT = """
         #ifndef STRUCTIFY_IO_H

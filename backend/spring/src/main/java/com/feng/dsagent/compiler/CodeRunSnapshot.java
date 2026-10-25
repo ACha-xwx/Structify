@@ -1,6 +1,6 @@
 package com.feng.dsagent.compiler;
 
-record CodeRunSnapshot(
+public record CodeRunSnapshot(
     String id,
     String chapterId,
     String language,

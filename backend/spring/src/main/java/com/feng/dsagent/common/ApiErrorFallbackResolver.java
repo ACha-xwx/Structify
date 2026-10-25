@@ -32,13 +32,13 @@ import tools.jackson.databind.ObjectMapper;
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
-final class ApiErrorFallbackResolver implements HandlerExceptionResolver {
+public final class ApiErrorFallbackResolver implements HandlerExceptionResolver {
 
     private static final Logger log = LoggerFactory.getLogger(ApiErrorFallbackResolver.class);
 
     private final ObjectMapper objectMapper;
 
-    ApiErrorFallbackResolver(ObjectMapper objectMapper) {
+    public ApiErrorFallbackResolver(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
 

@@ -48,7 +48,7 @@ public class StudyroomResourceCatalog {
         this.fixedCandidates = null;
     }
 
-    StudyroomResourceCatalog(List<Candidate> candidates) {
+    public StudyroomResourceCatalog(List<Candidate> candidates) {
         this.presentations = null;
         this.animationEngine = null;
         this.codeCatalog = null;
@@ -77,7 +77,7 @@ public class StudyroomResourceCatalog {
         validate(output.steps(), authorizedCandidates);
     }
 
-    void validate(List<StudyroomModelOutput.Step> steps) {
+    public void validate(List<StudyroomModelOutput.Step> steps) {
         validate(steps, fixedCandidates == null ? List.of() : fixedCandidates);
     }
 

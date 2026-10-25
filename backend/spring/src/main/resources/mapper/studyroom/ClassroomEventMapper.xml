@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.studyroom.events.mapper.ClassroomEventMapper">
+  <select id="lockUser" resultType="long">SELECT id FROM users WHERE id=#{userId} FOR UPDATE</select>
+  <select id="selectStream" resultType="map">
+    SELECT * FROM studyroom_event_streams WHERE stream_id=#{streamId}
+    <if test="lock"> FOR UPDATE</if>
+  </select>
+  <select id="selectOwnedStream" resultType="map">
+    SELECT * FROM studyroom_event_streams WHERE stream_id=#{streamId} AND user_id=#{userId}
+    <if test="lock"> FOR UPDATE</if>
+  </select>
+  <select id="selectOutlineAccessible" resultType="map">
+    SELECT id FROM study_outline_drafts WHERE id=#{entityId} AND user_id=#{userId} AND deleted_at IS NULL
+  </select>
+  <select id="selectRunAccessible" resultType="map">
+    SELECT r.id FROM studyroom_runs r
+    JOIN study_rooms s ON s.current_run_id=r.id
+    JOIN study_outline_drafts d ON d.id=r.draft_id
+    WHERE r.id=#{runId} AND r.user_id=#{userId} AND s.deleted_at IS NULL AND d.deleted_at IS NULL
+  </select>
+  <select id="selectOwnedDraft" resultType="map">
+    SELECT * FROM study_outline_drafts WHERE id=#{draftId} AND user_id=#{userId} AND deleted_at IS NULL
+  </select>
+  <select id="selectCurrentRun" resultType="map">
+    SELECT r.* FROM studyroom_runs r
+    JOIN study_rooms s ON s.current_run_id=r.id
+    JOIN study_outline_drafts d ON d.id=r.draft_id
+    WHERE r.id=#{runId} AND r.user_id=#{userId} AND s.deleted_at IS NULL AND d.deleted_at IS NULL
+  </select>
+  <select id="selectFirstReadableFragment" resultType="map">
+    SELECT f.id FROM studyroom_fragments f JOIN studyroom_units u ON u.id=f.unit_id
+    WHERE f.run_id=#{runId} AND f.step_id IS NOT NULL ORDER BY u.unit_order,f.fragment_order LIMIT 1
+  </select>
+  <select id="selectActiveLease" resultType="map">
+    SELECT id FROM studyroom_generation_jobs
+    WHERE id=#{jobId} AND user_id=#{userId} AND status='RUNNING' AND attempt=#{attempt}
+      AND lease_token=#{leaseToken} AND lease_until&gt;CURRENT_TIMESTAMP FOR UPDATE
+  </select>
+  <update id="updateStreamAttempt">
+    UPDATE studyroom_event_streams SET operation_id=#{operationId},attempt=#{attempt},run_id=#{runId},revision=#{revision},
+      snapshot_json=#{snapshotJson},state_version=state_version+1,terminal=FALSE,terminal_at=NULL,floor_sequence=last_sequence
+    WHERE stream_id=#{streamId}
+  </update>
+  <insert id="insertStream">
+    INSERT INTO studyroom_event_streams(stream_id,user_id,room_id,entity_kind,entity_id,operation_id,attempt,run_id,revision,snapshot_json)
+    VALUES(#{streamId},#{userId},#{roomId},#{entityKind},#{entityId},#{operationId},#{attempt},#{runId},#{revision},#{snapshotJson})
+  </insert>
+  <insert id="insertEvent">
+    INSERT INTO studyroom_events(stream_id,sequence,kind,operation_id,attempt,state_version,run_id,revision,payload_json)
+    VALUES(#{streamId},#{sequence},#{kind},#{operationId},#{attempt},#{stateVersion},#{runId},#{revision},#{payloadJson})
+  </insert>
+  <update id="updateStreamAfterAppend">
+    UPDATE studyroom_event_streams SET last_sequence=#{sequence},state_version=#{stateVersion},snapshot_json=#{snapshotJson},
+      terminal=#{terminal},terminal_at=#{terminalAt} WHERE stream_id=#{streamId}
+  </update>
+  <select id="selectJob" resultType="map">
+    SELECT * FROM studyroom_generation_jobs WHERE id=#{jobId} AND user_id=#{userId}
+  </select>
+  <update id="markStreamTerminal">
+    UPDATE studyroom_event_streams SET terminal=TRUE,terminal_at=CURRENT_TIMESTAMP WHERE stream_id=#{streamId}
+  </update>
+  <select id="selectEvents" resultType="map">
+    SELECT * FROM studyroom_events WHERE stream_id=#{streamId} AND sequence&gt;#{since} AND sequence&lt;=#{cursor}
+    ORDER BY sequence LIMIT 100
+  </select>
+  <select id="selectExpiredTerminalStreams" resultType="map">
+    SELECT stream_id,user_id FROM studyroom_event_streams WHERE terminal=TRUE AND terminal_at&lt;#{before}
+  </select>
+  <select id="selectTerminalStreamForCleanup" resultType="map">
+    SELECT * FROM studyroom_event_streams WHERE stream_id=#{streamId} AND terminal=TRUE AND terminal_at&lt;#{before} FOR UPDATE
+  </select>
+  <delete id="deleteEvents">DELETE FROM studyroom_events WHERE stream_id=#{streamId}</delete>
+  <update id="raiseFloor">UPDATE studyroom_event_streams SET floor_sequence=last_sequence WHERE stream_id=#{streamId}</update>
+</mapper>

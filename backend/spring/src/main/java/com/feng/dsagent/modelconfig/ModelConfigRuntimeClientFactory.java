@@ -3,7 +3,7 @@ package com.feng.dsagent.modelconfig;
 import com.feng.dsagent.model.ModelClient;
 
 @FunctionalInterface
-interface ModelConfigRuntimeClientFactory {
+public interface ModelConfigRuntimeClientFactory {
 
-    ModelClient create(ModelConfigRuntimeSettings settings);
+    public ModelClient create(ModelConfigRuntimeSettings settings);
 }

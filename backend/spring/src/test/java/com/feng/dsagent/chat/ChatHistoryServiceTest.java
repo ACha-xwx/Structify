@@ -1,5 +1,7 @@
 package com.feng.dsagent.chat;
 
+import com.feng.dsagent.chat.service.ChatHistoryService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 

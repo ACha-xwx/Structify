@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 @Repository
-class JdbcChatRepository implements ChatRepository, ChatHistoryRepository {
+public class JdbcChatRepository implements ChatRepository, ChatHistoryRepository {
 
     private static final int MAX_SESSION_RESULTS = 50;
     private static final int MAX_SESSION_MESSAGES = 200;
@@ -27,7 +27,7 @@ class JdbcChatRepository implements ChatRepository, ChatHistoryRepository {
     private final ObjectMapper objectMapper;
     private final ChatAttachmentStorage attachmentStorage;
 
-    JdbcChatRepository(JdbcTemplate jdbc, ObjectMapper objectMapper, ChatAttachmentStorage attachmentStorage) {
+    public JdbcChatRepository(JdbcTemplate jdbc, ObjectMapper objectMapper, ChatAttachmentStorage attachmentStorage) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.attachmentStorage = attachmentStorage;

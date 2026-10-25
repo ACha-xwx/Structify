@@ -1,5 +1,9 @@
 package com.feng.dsagent.review;
 
+import com.feng.dsagent.review.service.ReviewHistoryView;
+import com.feng.dsagent.review.service.ReviewPage;
+import com.feng.dsagent.review.service.ReviewType;
+
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -13,15 +17,15 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-class ReviewRepository {
+public class ReviewRepository {
 
     private final JdbcTemplate jdbc;
 
-    ReviewRepository(JdbcTemplate jdbc) {
+    public ReviewRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
-    ReviewPage<ReviewEntity> list(ReviewQuery query) {
+    public ReviewPage<ReviewEntity> list(ReviewQuery query) {
         List<Object> parameters = new ArrayList<>();
         String where = where(query, parameters);
         String candidates = candidates(query.types());
@@ -43,22 +47,22 @@ class ReviewRepository {
         return new ReviewPage<>(items, query.page(), query.size(), total);
     }
 
-    Optional<ReviewEntity> find(ReviewType type, String id) {
+    public Optional<ReviewEntity> find(ReviewType type, String id) {
         return queryOne("SELECT * FROM (" + queryFor(type) + ") q WHERE content_id = ?", id);
     }
 
-    Optional<ReviewEntity> findPresentationPageBySourceRef(String sourceRef) {
+    public Optional<ReviewEntity> findPresentationPageBySourceRef(String sourceRef) {
         return queryOne(
             "SELECT * FROM (" + queryFor(ReviewType.PRESENTATION_PAGE) + ") q WHERE source_ref = ?",
             sourceRef
         );
     }
 
-    Optional<ReviewEntity> lock(ReviewType type, String id) {
+    public Optional<ReviewEntity> lock(ReviewType type, String id) {
         return queryOne("SELECT * FROM (" + queryFor(type) + ") q WHERE content_id = ? FOR UPDATE", id);
     }
 
-    Optional<ReviewSourceEntity> chapter(String id) {
+    public Optional<ReviewSourceEntity> chapter(String id) {
         if (id == null || id.isBlank()) {
             return Optional.empty();
         }
@@ -75,7 +79,7 @@ class ReviewRepository {
         return rows.stream().findFirst();
     }
 
-    void updateStatus(ReviewType type, String id, String status) {
+    public void updateStatus(ReviewType type, String id, String status) {
         String statement = switch (type) {
             case RESOURCE -> "UPDATE resources SET review_status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?";
             case KNOWLEDGE_CHUNK -> "UPDATE knowledge_chunks SET review_status = ? WHERE id = ?";
@@ -86,7 +90,7 @@ class ReviewRepository {
         jdbc.update(statement, status, id);
     }
 
-    void appendReviewEvent(
+    public void appendReviewEvent(
         ReviewType type,
         String id,
         String previousStatus,
@@ -105,7 +109,7 @@ class ReviewRepository {
         );
     }
 
-    void appendAdminAudit(
+    public void appendAdminAudit(
         long actorUserId,
         ReviewType type,
         String id,
@@ -125,7 +129,7 @@ class ReviewRepository {
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    void appendRejectedAdminAudit(
+    public void appendRejectedAdminAudit(
         long actorUserId,
         ReviewType type,
         String id,
@@ -136,7 +140,7 @@ class ReviewRepository {
         appendAdminAudit(actorUserId, type, id, "REJECTED", requestId, beforeSummary, afterSummary);
     }
 
-    List<ReviewHistoryView> history(ReviewType type, String id) {
+    public List<ReviewHistoryView> history(ReviewType type, String id) {
         return jdbc.query(
             """
                 SELECT id, previous_status, next_status, note, reviewer_user_id, request_id, created_at
@@ -244,27 +248,4 @@ class ReviewRepository {
     private static Instant instant(Timestamp timestamp) {
         return timestamp == null ? null : timestamp.toInstant();
     }
-}
-
-record ReviewEntity(
-    ReviewType type,
-    String id,
-    String title,
-    String status,
-    String chapterId,
-    String versionLabel,
-    String sourceName,
-    String sourcePath,
-    String parentId,
-    String sourceType,
-    String sourceRef,
-    String contentHash,
-    Instant updatedAt
-) {
-}
-
-record ReviewSourceEntity(String type, String id, String title, String status) {
-}
-
-record ReviewQuery(int page, int size, List<ReviewType> types, String status, String search) {
 }

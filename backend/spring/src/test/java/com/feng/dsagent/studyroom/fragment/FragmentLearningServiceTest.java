@@ -1,5 +1,11 @@
 package com.feng.dsagent.studyroom.fragment;
 
+import static org.mockito.Mockito.mock;
+
+import com.feng.dsagent.studyroom.fragment.mapper.FragmentLearningMapper;
+
+import com.feng.dsagent.studyroom.fragment.service.FragmentLearningService;
+
 import static org.assertj.core.api.Assertions.*;
 import com.feng.dsagent.studyroom.generation.*;
 import java.util.Map;
@@ -15,7 +21,7 @@ class FragmentLearningServiceTest {
         db.jdbc.update("UPDATE studyroom_fragments SET status='FAILED' WHERE id='f'");
         db.jdbc.update("UPDATE studyroom_generation_jobs SET status='FAILED' WHERE fragment_id='f'");
         db.jdbc.update("UPDATE studyroom_fragment_versions SET consumed_calls=2 WHERE fragment_id='f'");
-        var service=new FragmentLearningService(repo,jobs,scheduler,db.json);
+        var service=new FragmentLearningService(mock(FragmentLearningMapper.class),scheduler,db.json);
         var retry=service.retry(db.user,"run","f","key",null);
         assertThat(service.retry(db.user,"run","f","key",null)).isEqualTo(retry);
         assertThat(db.jdbc.queryForObject("SELECT consumed_calls FROM studyroom_fragment_versions WHERE fragment_id='f' AND revision=1",Integer.class)).isEqualTo(2);

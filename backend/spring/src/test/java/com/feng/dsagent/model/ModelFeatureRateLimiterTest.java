@@ -1,5 +1,7 @@
 package com.feng.dsagent.model;
 
+import com.feng.dsagent.common.ModelFeatureRateLimiter;
+
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.feng.dsagent.common.ApiException;

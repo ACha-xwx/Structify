@@ -5,11 +5,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
-class JdbcAnimationRepository implements AnimationRepository, AnimationObservationRepository {
+public class JdbcAnimationRepository implements AnimationRepository, AnimationObservationRepository {
 
     private final JdbcTemplate jdbc;
 
-    JdbcAnimationRepository(JdbcTemplate jdbc) {
+    public JdbcAnimationRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 

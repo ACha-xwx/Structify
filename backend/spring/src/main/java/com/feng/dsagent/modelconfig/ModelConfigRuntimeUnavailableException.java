@@ -1,4 +1,4 @@
 package com.feng.dsagent.modelconfig;
 
-final class ModelConfigRuntimeUnavailableException extends RuntimeException {
+public final class ModelConfigRuntimeUnavailableException extends RuntimeException {
 }

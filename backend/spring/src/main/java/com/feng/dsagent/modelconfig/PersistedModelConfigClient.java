@@ -12,13 +12,13 @@ import org.springframework.stereotype.Component;
 
 @Component
 @Primary
-class PersistedModelConfigClient implements ModelClient {
+public class PersistedModelConfigClient implements ModelClient {
 
     private final ModelClient environmentClient;
     private final ModelConfigRuntimeSettingsSource settings;
     private final ModelConfigRuntimeClientFactory configuredClientFactory;
 
-    PersistedModelConfigClient(
+    public PersistedModelConfigClient(
         @Qualifier("openAiCompatibleModelClient") ModelClient environmentClient,
         ModelConfigRuntimeSettingsSource settings,
         ModelConfigRuntimeClientFactory configuredClientFactory

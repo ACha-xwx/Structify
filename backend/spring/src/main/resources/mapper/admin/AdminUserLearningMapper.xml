@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.admin.mapper.AdminUserLearningMapper">
+
+  <select id="selectRecentJobs" resultType="com.feng.dsagent.admin.mapper.AdminUserLearningMapper$RecentJobRow">
+    SELECT j.id, j.job_type AS jobType, j.status, j.created_at AS createdAt,
+      (SELECT COALESCE(SUM(COALESCE(q.actual_tokens, q.estimated_tokens)), 0)
+         FROM studyroom_generation_calls c
+         JOIN ai_quota_reservations q ON q.request_id = c.quota_request_id
+        WHERE c.job_id = j.id) AS tokens
+    FROM studyroom_generation_jobs j WHERE j.user_id = #{userId}
+    ORDER BY j.created_at DESC LIMIT #{limit}
+  </select>
+
+  <select id="selectUser" resultType="com.feng.dsagent.admin.mapper.AdminUserLearningMapper$UserRowData">
+    SELECT id, email, username, status FROM users WHERE id = #{userId}
+  </select>
+
+  <select id="countBookmarks" resultType="long">
+    SELECT COUNT(*) FROM classroom_bookmarks WHERE user_id = #{userId}
+  </select>
+
+  <select id="countClassroomSessions" resultType="long">
+    SELECT COUNT(*) FROM classroom_sessions WHERE user_id = #{userId}
+  </select>
+
+  <select id="countClassroomEvents" resultType="long">
+    SELECT COUNT(*) FROM classroom_events e
+    JOIN classroom_sessions s ON s.id = e.session_id
+    WHERE s.user_id = #{userId}
+  </select>
+
+  <select id="selectLastActivity" resultType="java.sql.Timestamp">
+    SELECT MAX(updated_at) FROM classroom_sessions WHERE user_id = #{userId}
+  </select>
+
+  <select id="sumTokensSince" resultType="long">
+    SELECT COALESCE(SUM(COALESCE(actual_tokens, estimated_tokens)), 0)
+    FROM ai_quota_reservations
+    WHERE user_id = #{userId} AND completed_at IS NOT NULL AND quota_date &gt;= #{since}
+  </select>
+
+  <select id="countCallsSince" resultType="long">
+    SELECT COUNT(*)
+    FROM ai_quota_reservations
+    WHERE user_id = #{userId} AND completed_at IS NOT NULL AND quota_date &gt;= #{since}
+  </select>
+</mapper>

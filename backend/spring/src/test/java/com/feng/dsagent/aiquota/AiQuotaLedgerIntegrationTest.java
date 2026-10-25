@@ -1,5 +1,9 @@
 package com.feng.dsagent.aiquota;
 
+import com.feng.dsagent.aiquota.service.AiQuotaLedgerService;
+import com.feng.dsagent.auth.UserAccount;
+import com.feng.dsagent.auth.UserRepository;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 

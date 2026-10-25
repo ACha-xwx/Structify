@@ -1,5 +1,8 @@
 package com.feng.dsagent.security;
 
+import com.feng.dsagent.presentation.controller.PresentationController;
+import com.feng.dsagent.security.service.JwtTokenService;
+
 import com.feng.dsagent.auth.RolePolicy;
 import com.feng.dsagent.common.ApiErrors;
 import jakarta.servlet.http.HttpServletRequest;
@@ -39,7 +42,7 @@ public class SecurityConfig {
     };
 
     @Bean
-    JwtTokenService jwtTokenService(SecurityProperties properties, ObjectMapper objectMapper, Clock clock) {
+    public JwtTokenService jwtTokenService(SecurityProperties properties, ObjectMapper objectMapper, Clock clock) {
         return new JwtTokenService(
             properties.jwtSecret(),
             properties.tokenTtl(),
@@ -50,17 +53,17 @@ public class SecurityConfig {
     }
 
     @Bean
-    PasswordEncoder passwordEncoder() {
+    public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
 
     @Bean
-    RolePolicy rolePolicy(SecurityProperties properties) {
+    public RolePolicy rolePolicy(SecurityProperties properties) {
         return new RolePolicy(properties.bootstrapAdminEmail(), properties.teacherEmails());
     }
 
     @Bean
-    CorsConfigurationSource corsConfigurationSource(SecurityProperties properties) {
+    public CorsConfigurationSource corsConfigurationSource(SecurityProperties properties) {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(parseOrigins(properties.corsAllowedOrigins()));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
@@ -75,7 +78,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain securityFilterChain(
+    public SecurityFilterChain securityFilterChain(
         HttpSecurity http,
         JwtAuthenticationFilter jwtFilter,
         ObjectMapper objectMapper
@@ -132,7 +135,7 @@ public class SecurityConfig {
      * difference between one round trip and none. Everything else, including credentials, per-user payloads
      * and classroom state, keeps the no-store guarantee, so no intermediary can start reusing it.
      */
-    static final class ApiCacheControlHeaderWriter implements HeaderWriter {
+    public static final class ApiCacheControlHeaderWriter implements HeaderWriter {
 
         /** The exact value the default writer stamps, kept in one place so the two cannot drift apart. */
         static final String NO_STORE = "no-cache, no-store, max-age=0, must-revalidate";

@@ -1,5 +1,9 @@
 package com.feng.dsagent.studyroom.fragment;
 
+import com.feng.dsagent.studyroom.fragment.mapper.FragmentReadMapper;
+
+import com.feng.dsagent.studyroom.fragment.service.FragmentReadService;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import java.util.List;
@@ -13,7 +17,7 @@ class FragmentReadServiceTest {
         db.unit("u",0);
         db.fragment("first","u",0,"READY");
         db.fragment("second","u",1,"FAILED");
-        var reader = new FragmentReadService(new JdbcFragmentRepository(db.store,db.json),db.json,mock(CodeExecutionReadiness.class));
+        var reader = new FragmentReadService(mock(FragmentReadMapper.class),db.json,mock(CodeExecutionReadiness.class));
         var result = reader.get(db.user,"run");
         var unit = ((List<Map<String,Object>>) result.get("knowledgePoints")).getFirst();
         assertThat(unit.get("status")).isEqualTo("PARTIAL");

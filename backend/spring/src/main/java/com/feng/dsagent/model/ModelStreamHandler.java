@@ -3,7 +3,7 @@ package com.feng.dsagent.model;
 @FunctionalInterface
 public interface ModelStreamHandler {
 
-    void onContent(String content);
+    public void onContent(String content);
 
     /** Provider reasoning is separate from the answer and is never added to conversation history. */
     default void onReasoning(String content) {

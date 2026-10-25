@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.admin.mapper.AdminKnowledgeMapper">
+
+  <sql id="reviewedSourceChain">
+    k.review_status = 'VERIFIED'
+      AND NULLIF(TRIM(k.source_path), '') IS NOT NULL
+      AND (k.chapter_id IS NULL OR kc.status = 'PUBLISHED')
+      AND (k.resource_id IS NULL OR (
+        r.review_status = 'VERIFIED'
+        AND rc.status = 'PUBLISHED'
+        AND NULLIF(TRIM(r.source_name), '') IS NOT NULL
+        AND NULLIF(TRIM(r.version_label), '') IS NOT NULL
+      ))
+  </sql>
+
+  <sql id="chunkJoins">
+    FROM knowledge_chunks k
+    LEFT JOIN chapters kc ON kc.id = k.chapter_id
+    LEFT JOIN resources r ON r.id = k.resource_id
+    LEFT JOIN chapters rc ON rc.id = r.chapter_id
+  </sql>
+
+  <sql id="chunkFilters">
+    <where>
+      <if test="chapterId != null">
+        AND k.chapter_id = #{chapterId}
+      </if>
+      <if test="status != null">
+        AND k.review_status = #{status}
+      </if>
+      <if test="sourceLike != null">
+        AND k.source_path LIKE #{sourceLike}
+      </if>
+      <if test="queryLike != null">
+        AND (k.title LIKE #{queryLike} OR k.content LIKE #{queryLike})
+      </if>
+    </where>
+  </sql>
+
+  <select id="countAllChunks" resultType="long">
+    SELECT COUNT(*) FROM knowledge_chunks
+  </select>
+
+  <select id="countByReviewStatus" resultType="com.feng.dsagent.admin.mapper.AdminKnowledgeMapper$CountBucketRow">
+    SELECT review_status AS bucket, COUNT(*) AS n
+    FROM knowledge_chunks GROUP BY review_status ORDER BY review_status
+  </select>
+
+  <select id="countBySourceBucket" resultType="com.feng.dsagent.admin.mapper.AdminKnowledgeMapper$CountBucketRow">
+    SELECT CASE
+             WHEN source_path LIKE 'textbook/%' THEN 'textbook'
+             WHEN source_path LIKE 'courseware/%' THEN 'courseware'
+             WHEN source_path LIKE 'dev-mock/%' THEN 'dev-mock'
+             WHEN source_path LIKE 'admin/%' THEN 'admin'
+             ELSE 'other'
+           END AS bucket,
+           COUNT(*) AS n
+    FROM knowledge_chunks
+    GROUP BY bucket
+    ORDER BY bucket
+  </select>
+
+  <select id="countChunksFiltered" resultType="long">
+    SELECT COUNT(*) FROM knowledge_chunks k
+    <include refid="chunkFilters"/>
+  </select>
+
+  <select id="selectChunksFiltered" resultType="com.feng.dsagent.admin.mapper.AdminKnowledgeMapper$ChunkListRow">
+    SELECT k.id, k.chapter_id AS chapterId, k.title, k.source_path AS sourcePath, k.page_label AS pageLabel,
+           k.review_status AS reviewStatus, k.license_scope AS licenseScope,
+           CASE WHEN <include refid="reviewedSourceChain"/> THEN 1 ELSE 0 END AS retrievable,
+           CHAR_LENGTH(k.content) AS contentLength, k.created_at AS createdAt
+    <include refid="chunkJoins"/>
+    <include refid="chunkFilters"/>
+    ORDER BY k.created_at DESC, k.id
+    LIMIT #{limit} OFFSET #{offset}
+  </select>
+
+  <select id="selectChunkById" resultType="com.feng.dsagent.admin.mapper.AdminKnowledgeMapper$ChunkDetailRow">
+    SELECT k.id, k.chapter_id AS chapterId, k.title, k.content, k.source_path AS sourcePath,
+           k.page_label AS pageLabel, k.review_status AS reviewStatus, k.license_scope AS licenseScope,
+           CASE WHEN <include refid="reviewedSourceChain"/> THEN 1 ELSE 0 END AS retrievable,
+           k.created_at AS createdAt
+    <include refid="chunkJoins"/>
+    WHERE k.id = #{chunkId}
+  </select>
+
+  <insert id="insertChunk">
+    INSERT INTO knowledge_chunks (id, chapter_id, title, content, source_path, page_label, review_status, license_scope)
+    VALUES (#{id}, #{chapterId}, #{title}, #{content}, #{sourcePath}, #{pageLabel}, #{reviewStatus}, #{licenseScope})
+  </insert>
+
+  <update id="updateChunk">
+    UPDATE knowledge_chunks SET chapter_id = #{chapterId}, title = #{title}, content = #{content},
+      page_label = #{pageLabel}, review_status = #{reviewStatus}, license_scope = #{licenseScope}
+    WHERE id = #{chunkId}
+  </update>
+
+  <delete id="deleteChunk">
+    DELETE FROM knowledge_chunks WHERE id = #{chunkId}
+  </delete>
+
+  <select id="countChapterById" resultType="int">
+    SELECT COUNT(*) FROM chapters WHERE id = #{chapterId}
+  </select>
+</mapper>

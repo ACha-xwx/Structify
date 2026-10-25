@@ -16,15 +16,15 @@ import org.springframework.stereotype.Component;
 
 /** Private, non-static storage for the original bytes of chat attachments. */
 @Component
-final class ChatAttachmentStorage {
+public final class ChatAttachmentStorage {
 
     private final ChatAttachmentProperties properties;
 
-    ChatAttachmentStorage(ChatAttachmentProperties properties) {
+    public ChatAttachmentStorage(ChatAttachmentProperties properties) {
         this.properties = properties;
     }
 
-    StoredChatAttachment store(long userId, long messageId, ChatAttachment attachment) {
+    public StoredChatAttachment store(long userId, long messageId, ChatAttachment attachment) {
         byte[] bytes = bytesOf(attachment);
         String id = UUID.randomUUID().toString();
         String storageKey = userId + "/" + id + ".bin";
@@ -40,14 +40,14 @@ final class ChatAttachmentStorage {
         }
     }
 
-    StoredChatAttachment copy(long userId, long messageId, StoredChatAttachment source) {
+    public StoredChatAttachment copy(long userId, long messageId, StoredChatAttachment source) {
         if (source.userId() != userId) throw new IllegalArgumentException("Attachment owner mismatch");
         return new StoredChatAttachment(UUID.randomUUID().toString(), userId, messageId, source.name(),
             source.type(), source.mimeType(), source.encoding(), source.byteSize(), source.sha256(),
             source.storageKey(), Instant.now());
     }
 
-    byte[] read(StoredChatAttachment attachment) {
+    public byte[] read(StoredChatAttachment attachment) {
         try {
             return Files.readAllBytes(path(attachment.storageKey()));
         } catch (IOException error) {
@@ -55,12 +55,12 @@ final class ChatAttachmentStorage {
         }
     }
 
-    void delete(StoredChatAttachment attachment) {
+    public void delete(StoredChatAttachment attachment) {
         try { Files.deleteIfExists(path(attachment.storageKey())); }
         catch (IOException error) { throw new IllegalStateException("Unable to delete chat attachment", error); }
     }
 
-    ChatAttachment hydrate(StoredChatAttachment stored) {
+    public ChatAttachment hydrate(StoredChatAttachment stored) {
         byte[] bytes = read(stored);
         String content;
         if ("image".equals(stored.type())) {
@@ -72,7 +72,7 @@ final class ChatAttachmentStorage {
             stored.encoding(), stored.byteSize(), stored.id(), "/api/v1/chat/attachments/" + stored.id());
     }
 
-    ChatAttachment hydrateForModel(StoredChatAttachment stored) {
+    public ChatAttachment hydrateForModel(StoredChatAttachment stored) {
         return hydrate(stored);
     }
 

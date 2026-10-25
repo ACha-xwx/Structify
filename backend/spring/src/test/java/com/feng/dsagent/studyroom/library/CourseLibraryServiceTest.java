@@ -1,5 +1,11 @@
 package com.feng.dsagent.studyroom.library;
 
+import static org.mockito.Mockito.mock;
+
+import com.feng.dsagent.studyroom.library.mapper.CourseLibraryMapper;
+
+import com.feng.dsagent.studyroom.library.service.CourseLibraryService;
+
 import static org.assertj.core.api.Assertions.*;
 import com.feng.dsagent.studyroom.draft.*;
 import com.feng.dsagent.studyroom.generation.JdbcGenerationRepository;
@@ -21,7 +27,7 @@ class CourseLibraryServiceTest {
         Flyway.configure().dataSource(source).locations("classpath:db/migration").load().migrate();
         db=new JdbcTemplate(source);store=new JdbcOutlineRepository(db);
         var json=new OutlineJson(JsonMapper.builder().build());
-        library=new CourseLibraryService(store,json);
+        library=new CourseLibraryService(mock(CourseLibraryMapper.class),json);
         jobs=new JdbcGenerationRepository(store,json,new DataSourceTransactionManager(source));
         db.update("INSERT INTO users(id,email,password_hash) VALUES(101,'library@example.test','hash'),(102,'other@example.test','hash')");
         draft("draft",101);

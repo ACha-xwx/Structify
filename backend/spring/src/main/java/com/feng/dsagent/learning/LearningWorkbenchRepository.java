@@ -3,11 +3,11 @@ package com.feng.dsagent.learning;
 import java.time.Instant;
 import java.util.List;
 
-interface LearningWorkbenchRepository {
+public interface LearningWorkbenchRepository {
 
-    List<PersistedSceneCandidate> findLatestOwnedDsvpScenes(long userId);
+    public List<PersistedSceneCandidate> findLatestOwnedDsvpScenes(long userId);
 
-    record PersistedSceneCandidate(
+    public record PersistedSceneCandidate(
         String recordId,
         String chapterId,
         String payloadJson,

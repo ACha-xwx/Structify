@@ -9,7 +9,7 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
 
 @Repository
-class JdbcClassroomBookmarkRepository implements ClassroomBookmarkRepository {
+public class JdbcClassroomBookmarkRepository implements ClassroomBookmarkRepository {
 
     private static final String COLUMNS =
         "id, session_id, lesson_id, lesson_title, chapter_id, step_index, slide_id, title, created_at";
@@ -28,7 +28,7 @@ class JdbcClassroomBookmarkRepository implements ClassroomBookmarkRepository {
 
     private final JdbcTemplate jdbc;
 
-    JdbcClassroomBookmarkRepository(JdbcTemplate jdbc) {
+    public JdbcClassroomBookmarkRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 

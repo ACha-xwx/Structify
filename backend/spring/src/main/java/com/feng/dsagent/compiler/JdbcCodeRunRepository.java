@@ -5,11 +5,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
-class JdbcCodeRunRepository implements CodeRunRepository {
+public class JdbcCodeRunRepository implements CodeRunRepository {
 
     private final JdbcTemplate jdbc;
 
-    JdbcCodeRunRepository(JdbcTemplate jdbc) {
+    public JdbcCodeRunRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 

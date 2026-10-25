@@ -2,6 +2,8 @@
 
 `backend/spring` is the Spring Boot backend for the data-structure learning agent. It is a modular monolith designed for the team's first vertical slice: approved stack-and-queue content, course-grounded chat, a script-driven classroom, structured animations, and sandboxed code experiments.
 
+Engineering conventions (layering, MyBatis Mapper + XML, API/error rules, ArchUnit allowlists): [`docs/architecture/backend-standards.md`](../../docs/architecture/backend-standards.md).
+
 The existing Node.js prototype remains a reference implementation during migration. The Spring API uses `/api/v1/*` on port `8792`; it does not replace the legacy `/api/*` endpoints until the new frontend has completed integration.
 
 ## Implemented modules
@@ -71,15 +73,15 @@ For implicit TLS, normally on port 465, set `SMTP_SSL=true`, `SMTP_STARTTLS=fals
 
 The complete `structify.cn` and `admin.structify.cn` deployment, including Caddy routing, Node 8791,
 Spring 8792, MySQL, private course/PPT paths, backups, smoke checks, and
-rollback is documented in [`PRODUCTION_DEPLOYMENT_GUIDE.md`](../../PRODUCTION_DEPLOYMENT_GUIDE.md).
+rollback is documented in [`docs/部署与运维.md`](../../docs/部署与运维.md)
+(historical handbook: [`docs/archive/operations/PRODUCTION_DEPLOYMENT_GUIDE.md`](../../docs/archive/operations/PRODUCTION_DEPLOYMENT_GUIDE.md)).
 The executable Compose topology is [`deployment/docker-compose.production.yml`](../../deployment/docker-compose.production.yml).
 Use the deployment template only outside source control and keep the real file
 at `/etc/structify/structify.env` with mode `0600`.
 
 During migration, Caddy sends `/api/v1/*` to this service and the legacy
 `/api/*` surface to Node. The exact route and persistence differences are in
-[`docs/api-node-spring-differences.md`](../../docs/api-node-spring-differences.md)
-and [`docs/data-model-node-spring-differences.md`](../../docs/data-model-node-spring-differences.md).
+[`docs/architecture/node-spring-compat.md`](../../docs/architecture/node-spring-compat.md).
 
 Production defaults fail closed: real `JWT_SECRET` and `NODE_COMPAT_JWT_SECRET`
 values plus MySQL URL/credentials are required. SMTP, model, and remote sandbox
@@ -112,7 +114,7 @@ Classroom scripts are also versioned MySQL records. New content should follow th
 - [`contracts/animation.schema.json`](../../contracts/animation.schema.json)
 - [`contracts/examples`](../../contracts/examples)
 
-The detailed handoff for the classroom and content owners is in [`docs/content-import-guide.md`](../../docs/content-import-guide.md).
+The detailed handoff for the classroom and content owners is in [`docs/guides/content-import-guide.md`](../../docs/guides/content-import-guide.md).
 
 ## Trusted learning evidence
 
@@ -172,7 +174,7 @@ Per-step candidate budgets: PPT 12, animation 4, code 6. Search uses the origina
 
 ## 学习大纲审阅预览
 
-课程问答使用“选择详细程度 → 生成大纲 → 学生修改/确认 → 按单元准备”流程。新增接口与状态见 `../../contracts/openapi-v1.yaml`；实施、恢复策略与验证边界见 [验收记录](../../docs/project/studyroom-reviewed-outline-acceptance-2026-10-18.md)。
+课程问答使用“选择详细程度 → 生成大纲 → 学生修改/确认 → 按单元准备”流程。新增接口与状态见 `../../contracts/openapi-v1.yaml`；实施、恢复策略与验证边界见 [验收记录](../../docs/archive/verification/studyroom-reviewed-outline-acceptance-2026-10-18.md)。
 
 从仓库根目录运行 `./scripts/start-studyroom-preview.ps1`，在未设置 DB_URL 时使用 `private/dev-db/reviewed-outline` 文件库，使草稿、任务与课堂在重启后保留。已有外部数据库配置优先。普通 `spring-boot:run` 仍遵循 application.yml 的数据库配置。
 

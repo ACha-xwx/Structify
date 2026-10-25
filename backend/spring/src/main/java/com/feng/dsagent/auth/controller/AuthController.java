@@ -1,0 +1,170 @@
+package com.feng.dsagent.auth.controller;
+
+import com.feng.dsagent.auth.AuthRequestRateLimiter;
+import com.feng.dsagent.auth.AuthSession;
+import com.feng.dsagent.auth.UserView;
+
+import com.feng.dsagent.auth.service.AuthService;
+
+import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.security.SecurityProperties;
+import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.NodeCompatibilityTokenIssuer;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+
+@RestController
+@RequestMapping("/api/v1/auth")
+public class AuthController {
+
+    private final AuthService auth;
+    private final SecurityProperties security;
+    private final AuthRequestRateLimiter rateLimiter;
+    private final NodeCompatibilityTokenIssuer nodeCompatibilityTokens;
+
+    public AuthController(
+        AuthService auth,
+        SecurityProperties security,
+        AuthRequestRateLimiter rateLimiter,
+        NodeCompatibilityTokenIssuer nodeCompatibilityTokens
+    ) {
+        this.auth = auth;
+        this.security = security;
+        this.rateLimiter = rateLimiter;
+        this.nodeCompatibilityTokens = nodeCompatibilityTokens;
+    }
+
+    @PostMapping("/request-code")
+    public VerificationCodeResponse requestCode(
+        @Valid @RequestBody RequestCodeRequest request,
+        HttpServletRequest servletRequest
+    ) {
+        rateLimiter.checkCodeRequest(request.email(), servletRequest.getRemoteAddr());
+        // Keep the delivery result (and any test-only in-memory code) inside the
+        // service boundary. Verification codes must never cross the HTTP boundary.
+        return new VerificationCodeResponse(
+            auth.requestCode(request.email(), request.purpose()).message()
+        );
+    }
+
+    @PostMapping("/register")
+    public ResponseEntity<AuthResponse> register(
+        @Valid @RequestBody RegisterRequest request,
+        HttpServletRequest servletRequest
+    ) {
+        rateLimiter.checkCodeAttempt(request.email(), servletRequest.getRemoteAddr());
+        return authenticated(auth.register(request.email(), request.username(), request.code(), request.password()));
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<AuthResponse> login(
+        @Valid @RequestBody LoginRequest request,
+        HttpServletRequest servletRequest
+    ) {
+        String identity = request.identifier();
+        rateLimiter.checkLogin(identity, servletRequest.getRemoteAddr());
+        return authenticated(auth.login(identity, request.password()));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<AuthResponse> resetPassword(
+        @Valid @RequestBody ResetPasswordRequest request,
+        HttpServletRequest servletRequest
+    ) {
+        rateLimiter.checkCodeAttempt(request.email(), servletRequest.getRemoteAddr());
+        return authenticated(auth.resetPassword(request.email(), request.code(), request.password()));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout() {
+        ResponseCookie cookie = ResponseCookie.from(security.cookieName(), "")
+            .httpOnly(true)
+            .secure(security.cookieSecure())
+            .sameSite("Strict")
+            .path("/")
+            .maxAge(0)
+            .build();
+        return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, cookie.toString()).build();
+    }
+
+    @org.springframework.web.bind.annotation.GetMapping("/node-compat-token")
+    public NodeCompatibilityTokenResponse nodeCompatibilityToken(@AuthenticationPrincipal AuthenticatedUser user) {
+        if (!nodeCompatibilityTokens.enabled()) {
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "NODE_COMPAT_DISABLED", "课件兼容服务尚未启用");
+        }
+        var issued = nodeCompatibilityTokens.issue(user);
+        return new NodeCompatibilityTokenResponse(issued.token(), issued.ttl().toSeconds());
+    }
+
+    private ResponseEntity<AuthResponse> authenticated(AuthSession session) {
+        ResponseCookie cookie = ResponseCookie.from(security.cookieName(), session.token())
+            .httpOnly(true)
+            .secure(security.cookieSecure())
+            .sameSite("Strict")
+            .path("/")
+            .maxAge(session.tokenTtl())
+            .build();
+        return ResponseEntity.ok()
+            .header(HttpHeaders.SET_COOKIE, cookie.toString())
+            .body(new AuthResponse(session.token(), session.user()));
+    }
+
+    public record RequestCodeRequest(@Email @NotBlank String email, @NotBlank String purpose) {
+    }
+
+    public record RegisterRequest(
+        @Email @NotBlank String email,
+        @Size(max = 32) String username,
+        @NotBlank @Size(min = 6, max = 6) String code,
+        @NotBlank @Size(min = 8, max = 128) String password
+    ) {
+    }
+
+    public record LoginRequest(
+        @Size(max = 254) String email,
+        @Size(max = 32) String username,
+        @NotBlank @Size(max = 128) String password
+    ) {
+
+        public String identifier() {
+            boolean hasEmail = email != null && !email.isBlank();
+            boolean hasUsername = username != null && !username.isBlank();
+            if (hasEmail == hasUsername) {
+                throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "AUTH_LOGIN_IDENTIFIER_INVALID",
+                    "请提供邮箱或用户名之一"
+                );
+            }
+            return hasUsername ? username : email;
+        }
+    }
+
+    public record ResetPasswordRequest(
+        @Email @NotBlank String email,
+        @NotBlank @Size(min = 6, max = 6) String code,
+        @NotBlank @Size(min = 8, max = 128) String password
+    ) {
+    }
+
+    public record AuthResponse(String token, UserView user) {
+    }
+
+    public record NodeCompatibilityTokenResponse(String token, long expiresInSeconds) {
+    }
+
+    public record VerificationCodeResponse(String message) {
+    }
+}

@@ -3,11 +3,11 @@ package com.feng.dsagent.resource;
 import java.util.List;
 import java.util.Optional;
 
-interface ResourceRepository {
+public interface ResourceRepository {
 
-    List<ChapterView> findPublishedChapters();
+    public List<ChapterView> findPublishedChapters();
 
-    List<ResourceAsset> findPublishedByChapterId(String chapterId, ResourceAudience audience);
+    public List<ResourceAsset> findPublishedByChapterId(String chapterId, ResourceAudience audience);
 
-    Optional<ResourceAsset> findPublishedById(String id, ResourceAudience audience);
+    public Optional<ResourceAsset> findPublishedById(String id, ResourceAudience audience);
 }

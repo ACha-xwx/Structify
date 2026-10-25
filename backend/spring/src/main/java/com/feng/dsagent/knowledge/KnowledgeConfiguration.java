@@ -1,5 +1,8 @@
 package com.feng.dsagent.knowledge;
 
+import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
+import com.feng.dsagent.knowledge.service.KnowledgeSettingsService;
+
 import java.nio.file.Path;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
@@ -10,12 +13,12 @@ import tools.jackson.databind.ObjectMapper;
 public class KnowledgeConfiguration {
 
     @Bean
-    KnowledgeCorpusLoader knowledgeCorpusLoader(ObjectMapper mapper) {
+    public KnowledgeCorpusLoader knowledgeCorpusLoader(ObjectMapper mapper) {
         return new KnowledgeCorpusLoader(mapper);
     }
 
     @Bean
-    KnowledgeCorpus knowledgeCorpus(KnowledgeProperties properties, KnowledgeCorpusLoader loader) {
+    public KnowledgeCorpus knowledgeCorpus(KnowledgeProperties properties, KnowledgeCorpusLoader loader) {
         if (!properties.enabled() || !properties.autoPublishLocal()) {
             return KnowledgeCorpus.empty();
         }
@@ -26,12 +29,12 @@ public class KnowledgeConfiguration {
     }
 
     @Bean
-    KnowledgeCorpusStats knowledgeCorpusStats(KnowledgeCorpus corpus) {
+    public KnowledgeCorpusStats knowledgeCorpusStats(KnowledgeCorpus corpus) {
         return corpus.stats();
     }
 
     @Bean
-    KnowledgeSearchService knowledgeSearchService(
+    public KnowledgeSearchService knowledgeSearchService(
         KnowledgeCorpus corpus,
         KnowledgeProperties properties,
         KnowledgeChunkRepository repository,

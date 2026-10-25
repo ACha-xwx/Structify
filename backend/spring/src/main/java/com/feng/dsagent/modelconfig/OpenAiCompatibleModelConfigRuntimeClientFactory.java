@@ -6,13 +6,13 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 @Component
-class OpenAiCompatibleModelConfigRuntimeClientFactory implements ModelConfigRuntimeClientFactory {
+public class OpenAiCompatibleModelConfigRuntimeClientFactory implements ModelConfigRuntimeClientFactory {
 
     private final ModelProperties defaults;
     private final ObjectMapper objectMapper;
     private final PinnedHttpsTransport transport;
 
-    OpenAiCompatibleModelConfigRuntimeClientFactory(
+    public OpenAiCompatibleModelConfigRuntimeClientFactory(
         ModelProperties defaults,
         ObjectMapper objectMapper,
         PinnedHttpsTransport transport

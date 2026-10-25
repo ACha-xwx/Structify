@@ -19,7 +19,7 @@ public record KnowledgeCorpusStats(
         rejections = List.copyOf(rejections);
     }
 
-    static KnowledgeCorpusStats empty() {
+    public static KnowledgeCorpusStats empty() {
         return new KnowledgeCorpusStats(false, 0, 0, List.of());
     }
 }

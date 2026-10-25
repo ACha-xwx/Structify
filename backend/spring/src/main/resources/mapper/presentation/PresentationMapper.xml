@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.presentation.mapper.PresentationMapper">
+
+  <select id="selectTextbookLessons" resultType="com.feng.dsagent.presentation.mapper.PresentationMapper$SourceLessonRow">
+    SELECT k.chapter_id AS chapterId, k.source_path AS sourcePath, MIN(k.title) AS title
+    FROM knowledge_chunks k JOIN chapters c ON c.id = k.chapter_id
+    WHERE (k.source_path LIKE 'textbook/%' OR k.source_path LIKE 'courseware/%') AND k.review_status = 'VERIFIED'
+      AND k.resource_id IS NULL AND k.license_scope IN ('PUBLIC','CLASSROOM_ONLY') AND c.status = 'PUBLISHED'
+    GROUP BY k.chapter_id, k.source_path ORDER BY k.source_path
+  </select>
+</mapper>

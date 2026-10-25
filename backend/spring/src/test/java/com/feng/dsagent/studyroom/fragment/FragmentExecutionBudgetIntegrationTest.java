@@ -1,5 +1,13 @@
 package com.feng.dsagent.studyroom.fragment;
 
+import static org.mockito.Mockito.mock;
+
+import org.springframework.transaction.PlatformTransactionManager;
+
+import com.feng.dsagent.studyroom.generation.mapper.GenerationCallMapper;
+
+import com.feng.dsagent.studyroom.generation.service.GenerationCallService;
+
 import static org.assertj.core.api.Assertions.*;
 import com.feng.dsagent.aiquota.AiQuotaExecution;
 import com.feng.dsagent.model.ModelResponse;
@@ -17,7 +25,7 @@ class FragmentExecutionBudgetIntegrationTest {
         var job=jobs.claim(Instant.now());String id=(String)job.get("id");
         var calls=new AtomicInteger();
         AiQuotaExecution model=(u,op,key,request)->{calls.incrementAndGet();return new ModelResponse("{}",10L);};
-        var execution=new GenerationCallService(jobs,model);
+        var execution=new GenerationCallService(mock(GenerationCallMapper.class), mock(PlatformTransactionManager.class), model);
         execution.complete(db.user,id,"generate","system","prompt",100);
         execution.complete(db.user,id,"generate","system","prompt",100);
         execution.complete(db.user,id,"review","system","prompt",100);

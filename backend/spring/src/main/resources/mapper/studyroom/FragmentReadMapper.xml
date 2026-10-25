@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.studyroom.fragment.mapper.FragmentReadMapper">
+
+  <select id="selectCurrentRunId" resultType="map">
+    SELECT current_run_id FROM study_rooms WHERE id=#{roomId} AND user_id=#{userId}
+  </select>
+
+  <select id="selectOwnedRun" resultType="map">
+    SELECT r.* FROM studyroom_runs r
+    JOIN study_rooms s ON s.id=r.room_id
+    WHERE r.id=#{runId} AND r.user_id=#{userId} AND s.deleted_at IS NULL
+  </select>
+
+  <select id="selectUnits" resultType="map">
+    SELECT * FROM studyroom_units WHERE run_id=#{runId} ORDER BY unit_order
+  </select>
+
+  <select id="selectFragmentsByUnit" resultType="map">
+    SELECT * FROM studyroom_fragments WHERE unit_id=#{unitId} ORDER BY fragment_order
+  </select>
+
+  <select id="selectCompletedKnowledge" resultType="map">
+    SELECT unit_id FROM studyroom_completed_knowledge
+    WHERE user_id=#{userId} AND run_id=#{runId} AND unit_id=#{unitId}
+  </select>
+
+  <select id="selectLearningProgress" resultType="map">
+    SELECT * FROM studyroom_learning_progress WHERE user_id=#{userId} AND run_id=#{runId}
+  </select>
+</mapper>

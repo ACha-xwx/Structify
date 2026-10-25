@@ -9,15 +9,15 @@ import tools.jackson.databind.JsonNode;
 
 /** Resolves DSVP context from rows the current user is allowed to reference. */
 @Component
-final class DsvpEvidenceResolver {
+public final class DsvpEvidenceResolver {
 
     private final JdbcTemplate jdbc;
 
-    DsvpEvidenceResolver(JdbcTemplate jdbc) {
+    public DsvpEvidenceResolver(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
-    DsvpEvidenceResolution resolve(
+    public DsvpEvidenceResolution resolve(
         long userId,
         Set<String> roles,
         JsonNode request,

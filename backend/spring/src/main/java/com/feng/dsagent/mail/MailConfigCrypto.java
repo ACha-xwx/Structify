@@ -11,7 +11,7 @@ import javax.crypto.spec.GCMParameterSpec;
 import org.springframework.stereotype.Component;
 
 @Component
-final class MailConfigCrypto {
+public final class MailConfigCrypto {
 
     private static final String VERSION = "v1";
     private static final int IV_BYTES = 12;
@@ -19,7 +19,7 @@ final class MailConfigCrypto {
 
     private final SecureRandom random = new SecureRandom();
 
-    String encrypt(String value, SecretKey key, MailConfigKeyBinding binding) {
+    public String encrypt(String value, SecretKey key, MailConfigKeyBinding binding) {
         if (value == null) {
             throw new CryptoFailure();
         }
@@ -36,7 +36,7 @@ final class MailConfigCrypto {
         }
     }
 
-    String decrypt(String storedValue, SecretKey key, MailConfigKeyBinding binding) {
+    public String decrypt(String storedValue, SecretKey key, MailConfigKeyBinding binding) {
         String[] parts = storedValue == null ? new String[0] : storedValue.split(":", -1);
         if (parts.length != 3 || !VERSION.equals(parts[0])) {
             throw new CryptoFailure();
@@ -75,6 +75,6 @@ final class MailConfigCrypto {
         return Base64.getUrlDecoder().decode(value);
     }
 
-    static final class CryptoFailure extends RuntimeException {
+    public static final class CryptoFailure extends RuntimeException {
     }
 }

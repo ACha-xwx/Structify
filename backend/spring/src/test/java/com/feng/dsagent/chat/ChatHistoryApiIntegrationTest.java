@@ -10,7 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.security.JwtTokenService;
+import com.feng.dsagent.security.service.JwtTokenService;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.nio.charset.StandardCharsets;

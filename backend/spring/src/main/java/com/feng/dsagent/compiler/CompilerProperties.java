@@ -33,11 +33,11 @@ public record CompilerProperties(
         }
     }
 
-    boolean configured() {
+    public boolean configured() {
         return pistonBaseUrl != null && !pistonBaseUrl.isBlank();
     }
 
-    URI executeUri() {
+    public URI executeUri() {
         if (!configured()) {
             throw new IllegalStateException("pistonBaseUrl must be configured before execution");
         }

@@ -8,17 +8,17 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
-class MailConfigRepository {
+public class MailConfigRepository {
 
-    static final long CONFIGURATION_ID = 1L;
+    public static final long CONFIGURATION_ID = 1L;
 
     private final JdbcTemplate jdbc;
 
-    MailConfigRepository(JdbcTemplate jdbc) {
+    public MailConfigRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
-    Optional<StoredMailConfig> find() {
+    public Optional<StoredMailConfig> find() {
         return jdbc.query(
             """
                 SELECT id, site_name, enabled, smtp_host, smtp_port, security_mode, smtp_username,
@@ -53,7 +53,7 @@ class MailConfigRepository {
         ).stream().findFirst();
     }
 
-    StoredMailConfig save(StoredMailConfig config) {
+    public StoredMailConfig save(StoredMailConfig config) {
         int updated = jdbc.update(
             """
                 UPDATE mail_configurations
@@ -94,7 +94,7 @@ class MailConfigRepository {
         return find().orElseThrow(() -> new IllegalStateException("Mail configuration was not persisted"));
     }
 
-    StoredMailConfig recordConnectionTest(String status) {
+    public StoredMailConfig recordConnectionTest(String status) {
         jdbc.update(
             """
                 UPDATE mail_configurations
@@ -107,7 +107,7 @@ class MailConfigRepository {
         return find().orElseThrow(() -> new IllegalStateException("Mail configuration was not persisted"));
     }
 
-    void appendAuditEvent(
+    public void appendAuditEvent(
         long actorUserId,
         String action,
         String targetId,
@@ -130,7 +130,7 @@ class MailConfigRepository {
         return value == null ? null : value.toInstant();
     }
 
-    record StoredMailConfig(
+    public record StoredMailConfig(
         long id,
         String siteName,
         boolean enabled,

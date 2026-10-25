@@ -10,11 +10,11 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-class JdbcVerificationCodeRepository implements VerificationCodeRepository {
+public class JdbcVerificationCodeRepository implements VerificationCodeRepository {
 
     private final JdbcTemplate jdbc;
 
-    JdbcVerificationCodeRepository(JdbcTemplate jdbc) {
+    public JdbcVerificationCodeRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 

@@ -143,7 +143,7 @@ public final class KnowledgeCorpusLoader {
     }
 
     /** Recovers the exact text of every {@code ### 教材页 N（PDF页 M）} block, in file order. */
-    static List<KnowledgeImportManifest.LessonPageBlock> pageBlocks(String markdown) {
+    public static List<KnowledgeImportManifest.LessonPageBlock> pageBlocks(String markdown) {
         List<String> lines = List.of(markdown.replace("\r\n", "\n").replace('\r', '\n').split("\n", -1));
         List<KnowledgeImportManifest.LessonPageBlock> blocks = new ArrayList<>();
         for (int index = 0; index < lines.size(); index++) {
@@ -242,7 +242,7 @@ public final class KnowledgeCorpusLoader {
         return matcher.find() ? matcher.group(1).trim() : fallback;
     }
 
-    static String sha256(byte[] content) {
+    public static String sha256(byte[] content) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(digest.digest(content));
@@ -256,7 +256,7 @@ public final class KnowledgeCorpusLoader {
     }
 
     /** Exposed for diagnostics and tests; keeps the chapter prefix mapping in one place. */
-    static Set<String> knownChapterIds() {
+    public static Set<String> knownChapterIds() {
         return new LinkedHashSet<>(CHAPTER_IDS.values());
     }
 }

@@ -12,7 +12,7 @@
 - 已核验页清单：`private/reviewed-textbook/import-manifest.json`（本机私有，不要打包公开）
 - 当前课堂课时查询：`backend/spring/src/main/java/com/feng/dsagent/classroom/ClassroomPreparation.java`
 - 当前课堂页面：`frontend/src/classroom/ClassroomView.vue`
-- 教材导入参考：`scripts/plan-reviewed-textbook-import.mjs`、`docs/content-import-guide.md`
-- 项目工作日志：`docs/project/00-current-status.md`
+- 教材导入参考：`scripts/plan-reviewed-textbook-import.mjs`、`docs/guides/content-import-guide.md`
+- 项目工作日志：`docs/archive/project/00-current-status.md`
 
 此目录只整理交接说明和文件索引；源码留在原位置，避免破坏构建。API Key、密码、私有教材正文、PDF 未复制进来。

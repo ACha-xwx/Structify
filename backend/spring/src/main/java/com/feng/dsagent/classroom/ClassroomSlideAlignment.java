@@ -2,7 +2,7 @@ package com.feng.dsagent.classroom;
 
 import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.presentation.PresentationCatalog;
-import com.feng.dsagent.presentation.PresentationService;
+import com.feng.dsagent.presentation.service.PresentationService;
 import com.feng.dsagent.presentation.PresentationSlide;
 import com.feng.dsagent.presentation.SlidePlanner;
 import java.util.*;

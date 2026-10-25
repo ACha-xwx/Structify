@@ -1,6 +1,6 @@
 package com.feng.dsagent.compiler;
 
-interface CompilerGateway {
+public interface CompilerGateway {
 
-    CompilerExecution execute(SupportedLanguage language, String code, String stdin);
+    public CompilerExecution execute(SupportedLanguage language, String code, String stdin);
 }

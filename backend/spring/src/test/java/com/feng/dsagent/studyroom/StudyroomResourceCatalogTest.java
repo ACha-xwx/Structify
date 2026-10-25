@@ -1,5 +1,9 @@
 package com.feng.dsagent.studyroom;
 
+import com.feng.dsagent.compiler.ClassroomCodeLesson;
+import com.feng.dsagent.compiler.ClassroomCodeSample;
+import com.feng.dsagent.compiler.ClassroomCodeStudyroomCatalog;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 

@@ -38,20 +38,20 @@ public class PresentationCatalog {
     public record SubLessonPlan(String lessonId, String title, List<ScenePlan> scenes) {
     }
 
-    static final class Snapshot {
-        final boolean ready;
-        final String builtAt;
-        final List<PresentationSlide> slides;
-        final Map<String, PresentationSlide> byId;
-        final Map<String, Deck> decks;
-        final Map<String, List<String>> deckOrder;
-        final Map<String, List<String>> lessonOrder;
-        final Map<String, String> slideImagePaths;
-        final long slidesStamp;
-        final long plansStamp;
-        final Map<String, SubLessonPlan> subLessons;
+    public static final class Snapshot {
+        public final boolean ready;
+        public final String builtAt;
+        public final List<PresentationSlide> slides;
+        public final Map<String, PresentationSlide> byId;
+        public final Map<String, Deck> decks;
+        public final Map<String, List<String>> deckOrder;
+        public final Map<String, List<String>> lessonOrder;
+        public final Map<String, String> slideImagePaths;
+        public final long slidesStamp;
+        public final long plansStamp;
+        public final Map<String, SubLessonPlan> subLessons;
 
-        Snapshot(boolean ready, String builtAt, List<PresentationSlide> slides, Map<String, PresentationSlide> byId,
+        public Snapshot(boolean ready, String builtAt, List<PresentationSlide> slides, Map<String, PresentationSlide> byId,
                  Map<String, Deck> decks, Map<String, List<String>> deckOrder, Map<String, List<String>> lessonOrder,
                  Map<String, String> slideImagePaths, long slidesStamp, long plansStamp,
                  Map<String, SubLessonPlan> subLessons) {
@@ -68,23 +68,23 @@ public class PresentationCatalog {
             this.subLessons = subLessons;
         }
 
-        Map<String, String> slideImagePaths() {
+        public Map<String, String> slideImagePaths() {
             return slideImagePaths;
         }
 
-        Map<String, PresentationSlide> byId() {
+        public Map<String, PresentationSlide> byId() {
             return byId;
         }
 
-        Map<String, Deck> decks() {
+        public Map<String, Deck> decks() {
             return decks;
         }
 
-        Map<String, List<String>> deckOrder() {
+        public Map<String, List<String>> deckOrder() {
             return deckOrder;
         }
 
-        Map<String, SubLessonPlan> subLessons() {
+        public Map<String, SubLessonPlan> subLessons() {
             return subLessons;
         }
     }

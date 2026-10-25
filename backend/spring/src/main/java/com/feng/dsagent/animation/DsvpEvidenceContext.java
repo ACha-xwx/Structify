@@ -3,7 +3,7 @@ package com.feng.dsagent.animation;
 import tools.jackson.databind.JsonNode;
 
 /** Normalized, client-supplied hints that are resolved against server-owned rows. */
-record DsvpEvidenceContext(
+public record DsvpEvidenceContext(
     String chapterId,
     String lessonId,
     String presentationId,
@@ -13,7 +13,7 @@ record DsvpEvidenceContext(
     String sourceRef
 ) {
 
-    static DsvpEvidenceContext from(JsonNode request) {
+    public static DsvpEvidenceContext from(JsonNode request) {
         JsonNode context = request == null ? null : request.path("context");
         if (context == null || !context.isObject()) {
             return new DsvpEvidenceContext(null, null, null, null, null, null, null);

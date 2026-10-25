@@ -17,7 +17,7 @@ public final class ModelGenerationReadiness {
     private final ModelProperties environment;
     private final AiQuotaExecutionProperties aiQuota;
 
-    ModelGenerationReadiness(
+    public ModelGenerationReadiness(
         ModelConfigRepository repository,
         ModelConfigMasterKeySource masterKeySource,
         ModelConfigCrypto crypto,
@@ -37,7 +37,7 @@ public final class ModelGenerationReadiness {
         return persisted().orElseGet(this::environmentState);
     }
 
-    Optional<State> persisted() {
+    public Optional<State> persisted() {
         return repository.find().map(this::persistedState);
     }
 

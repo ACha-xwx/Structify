@@ -1,5 +1,7 @@
 package com.feng.dsagent.admin;
 
+import com.feng.dsagent.admin.service.AdminClassService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 

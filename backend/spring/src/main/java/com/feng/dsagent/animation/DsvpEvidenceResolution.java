@@ -1,16 +1,16 @@
 package com.feng.dsagent.animation;
 
-record DsvpEvidenceResolution(
+public record DsvpEvidenceResolution(
     String chapterId,
     String sourceRef,
     String matchSource
 ) {
 
-    static DsvpEvidenceResolution preview() {
+    public static DsvpEvidenceResolution preview() {
         return new DsvpEvidenceResolution(null, null, "NONE");
     }
 
-    boolean persistable() {
+    public boolean persistable() {
         return chapterId != null && !chapterId.isBlank();
     }
 }

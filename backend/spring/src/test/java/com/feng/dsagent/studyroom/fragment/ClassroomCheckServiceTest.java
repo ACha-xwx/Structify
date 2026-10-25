@@ -1,5 +1,11 @@
 package com.feng.dsagent.studyroom.fragment;
 
+import static org.mockito.Mockito.mock;
+
+import com.feng.dsagent.studyroom.checks.mapper.ClassroomCheckMapper;
+
+import com.feng.dsagent.studyroom.checks.service.ClassroomCheckService;
+
 import com.feng.dsagent.studyroom.checks.*;
 import com.feng.dsagent.studyroom.generation.*;
 import java.time.Instant;
@@ -16,7 +22,7 @@ class ClassroomCheckServiceTest {
         new PreparationScheduler(new JdbcFragmentRepository(db.store,db.json),jobs,db.json).reconcile(db.user,"run");
         var job=jobs.claim(Instant.now());
         db.jdbc.update("UPDATE studyroom_fragments SET content_revision=1,step_id='step-f',status='READY' WHERE id='f'");
-        var checks=new ClassroomCheckService(db.store,db.json,jobs);var items=new ArrayList<Object>();for(int i=0;i<3;i++){var q=new LinkedHashMap<>((Map<String,Object>)((List<?>)db.json.object(QUIZ).get("checks")).getFirst());q.put("prompt","题目"+i);items.add(q);}checks.publish(job,db.json.write(Map.of("checks",items)));
+        var checks=new ClassroomCheckService(db.store,mock(ClassroomCheckMapper.class),db.json,jobs);var items=new ArrayList<Object>();for(int i=0;i<3;i++){var q=new LinkedHashMap<>((Map<String,Object>)((List<?>)db.json.object(QUIZ).get("checks")).getFirst());q.put("prompt","题目"+i);items.add(q);}checks.publish(job,db.json.write(Map.of("checks",items)));
         var state=checks.get(db.user,"run","u");
         String serialized=db.json.write(state);assertFalse(serialized.contains("answerOption"));assertFalse(serialized.contains("analysis"));
         var question=(Map<?,?>)((List<?>)state.get("questions")).getFirst();String id=(String)question.get("id");
@@ -31,7 +37,7 @@ class ClassroomCheckServiceTest {
         assertThrows(RuntimeException.class,()->checks.attempt(db.user,"run",id,"b","stale"));
     }
     @Test void rejectsAmbiguousOptionsAndStripsOnlyOptionalChecks() {
-        var db=new FragmentTestDatabase();var service=new ClassroomCheckService(db.store,db.json,new JdbcGenerationRepository(db.store,db.json,new DataSourceTransactionManager(db.source)));
+        var db=new FragmentTestDatabase();var service=new ClassroomCheckService(db.store,mock(ClassroomCheckMapper.class),db.json,new JdbcGenerationRepository(db.store,db.json,new DataSourceTransactionManager(db.source)));
         assertThrows(RuntimeException.class,()->service.validate(db.json.object(QUIZ.replace("\"b\",\"text\":\"2\"","\"a\",\"text\":\"2\"")).get("checks")));
         assertEquals("{\"title\":\"讲解\"}",service.core("{\"title\":\"讲解\",\"checks\":[]} "));
     }

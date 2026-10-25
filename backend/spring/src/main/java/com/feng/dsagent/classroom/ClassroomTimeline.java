@@ -1,8 +1,11 @@
 package com.feng.dsagent.classroom;
 
+import com.feng.dsagent.animation.DsvpAnimationAdapter;
+import com.feng.dsagent.animation.DsvpModelContract;
+
 import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.learning.LearningEventCommand;
-import com.feng.dsagent.learning.LearningEventService;
+import com.feng.dsagent.learning.service.LearningEventService;
 import java.util.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;

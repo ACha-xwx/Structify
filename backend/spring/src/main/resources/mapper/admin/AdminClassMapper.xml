@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.admin.mapper.AdminClassMapper">
+
+  <select id="selectTeacherNames" resultType="com.feng.dsagent.admin.mapper.AdminClassMapper$TeacherNameRow">
+    SELECT e.class_id AS classId, COALESCE(u.username, u.email) AS who
+    FROM class_enrollments e JOIN users u ON u.id = e.user_id
+    WHERE e.role_in_class = 'TEACHER' ORDER BY e.class_id, u.id
+  </select>
+
+  <select id="selectClasses" resultType="com.feng.dsagent.admin.mapper.AdminClassMapper$ClassSummaryRow">
+    SELECT c.id, c.name, c.term,
+      (SELECT COUNT(*) FROM class_enrollments e WHERE e.class_id = c.id AND e.role_in_class = 'STUDENT') AS students
+    FROM classes c ORDER BY c.created_at DESC, c.id
+  </select>
+
+  <insert id="insertClass">
+    INSERT INTO classes (id, name, term) VALUES (#{id}, #{name}, #{term})
+  </insert>
+
+  <select id="selectMembers" resultType="com.feng.dsagent.admin.mapper.AdminClassMapper$MemberRowData">
+    SELECT u.id, u.username, u.email, e.role_in_class AS roleInClass, e.joined_at AS joinedAt
+    FROM class_enrollments e JOIN users u ON u.id = e.user_id
+    WHERE e.class_id = #{classId} ORDER BY e.role_in_class, e.joined_at, u.id
+  </select>
+
+  <select id="findUserIdsByIdentifier" resultType="long">
+    SELECT id FROM users
+    WHERE LOWER(email) = LOWER(#{who}) OR LOWER(username) = LOWER(#{who})
+    ORDER BY id
+  </select>
+
+  <insert id="insertEnrollment">
+    INSERT INTO class_enrollments (class_id, user_id, role_in_class)
+    VALUES (#{classId}, #{userId}, #{roleInClass})
+  </insert>
+
+  <delete id="deleteEnrollment">
+    DELETE FROM class_enrollments WHERE class_id = #{classId} AND user_id = #{userId}
+  </delete>
+
+  <delete id="deleteClass">
+    DELETE FROM classes WHERE id = #{classId}
+  </delete>
+
+  <insert id="insertTeacherRole">
+    INSERT INTO user_roles (user_id, role) VALUES (#{userId}, 'TEACHER')
+  </insert>
+
+  <select id="selectMember" resultType="com.feng.dsagent.admin.mapper.AdminClassMapper$MemberRowData">
+    SELECT u.id, u.username, u.email, e.role_in_class AS roleInClass, e.joined_at AS joinedAt
+    FROM class_enrollments e JOIN users u ON u.id = e.user_id
+    WHERE e.class_id = #{classId} AND u.id = #{userId}
+  </select>
+
+  <select id="countClass" resultType="long">
+    SELECT COUNT(*) FROM classes WHERE id = #{classId}
+  </select>
+</mapper>

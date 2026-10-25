@@ -4,9 +4,9 @@ import java.time.Instant;
 
 public interface LearningEventRepository {
 
-    boolean isPublishedChapter(String chapterId);
+    public boolean isPublishedChapter(String chapterId);
 
-    LearningEventView save(
+    public LearningEventView save(
         long userId,
         String eventType,
         String chapterId,

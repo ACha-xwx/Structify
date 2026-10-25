@@ -1,9 +1,9 @@
 package com.feng.dsagent.studyroom.events;
 
-import com.feng.dsagent.security.JwtTokenService;
+import com.feng.dsagent.security.service.JwtTokenService;
 import com.feng.dsagent.studyroom.*;
 import com.feng.dsagent.studyroom.draft.OutlineJson;
-import com.feng.dsagent.studyroom.checks.ClassroomCheckService;
+import com.feng.dsagent.studyroom.checks.service.ClassroomCheckService;
 import java.nio.file.*;
 import java.util.*;
 import org.junit.jupiter.api.*;

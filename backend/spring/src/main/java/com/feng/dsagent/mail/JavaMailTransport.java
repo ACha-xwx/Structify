@@ -7,11 +7,11 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
 
 @Component
-final class JavaMailTransport implements MailTransport {
+public final class JavaMailTransport implements MailTransport {
 
     private final SmtpEndpointRouting routing;
 
-    JavaMailTransport(SmtpEndpointRouting routing) {
+    public JavaMailTransport(SmtpEndpointRouting routing) {
         this.routing = routing;
     }
 
@@ -62,7 +62,7 @@ final class JavaMailTransport implements MailTransport {
         return sender;
     }
 
-    static final class MailTransportException extends RuntimeException {
+    public static final class MailTransportException extends RuntimeException {
         MailTransportException(Throwable cause) {
             super(cause);
         }

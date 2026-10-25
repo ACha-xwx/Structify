@@ -3,7 +3,7 @@ package com.feng.dsagent.modelconfig;
 import java.util.Optional;
 
 @FunctionalInterface
-interface ModelConfigRuntimeSettingsSource {
+public interface ModelConfigRuntimeSettingsSource {
 
-    Optional<ModelConfigRuntimeSettings> current();
+    public Optional<ModelConfigRuntimeSettings> current();
 }

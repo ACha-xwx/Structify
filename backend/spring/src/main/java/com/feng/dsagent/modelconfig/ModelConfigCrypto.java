@@ -11,7 +11,7 @@ import javax.crypto.spec.GCMParameterSpec;
 import org.springframework.stereotype.Component;
 
 @Component
-final class ModelConfigCrypto {
+public final class ModelConfigCrypto {
 
     private static final String VERSION = "v2";
     private static final int INITIALIZATION_VECTOR_BYTES = 12;
@@ -19,7 +19,7 @@ final class ModelConfigCrypto {
 
     private final SecureRandom random = new SecureRandom();
 
-    String encrypt(String value, SecretKey key, ModelConfigKeyBinding binding) {
+    public String encrypt(String value, SecretKey key, ModelConfigKeyBinding binding) {
         byte[] initializationVector = new byte[INITIALIZATION_VECTOR_BYTES];
         byte[] plaintext = value.getBytes(StandardCharsets.UTF_8);
         random.nextBytes(initializationVector);
@@ -34,7 +34,7 @@ final class ModelConfigCrypto {
         }
     }
 
-    String decrypt(String storedValue, SecretKey key, ModelConfigKeyBinding binding) {
+    public String decrypt(String storedValue, SecretKey key, ModelConfigKeyBinding binding) {
         String[] parts = storedValue == null ? new String[0] : storedValue.split(":", -1);
         if (parts.length != 3 || !VERSION.equals(parts[0])) {
             throw new CryptoFailure();
@@ -79,6 +79,6 @@ final class ModelConfigCrypto {
         return Base64.getUrlDecoder().decode(value);
     }
 
-    static final class CryptoFailure extends RuntimeException {
+    public static final class CryptoFailure extends RuntimeException {
     }
 }

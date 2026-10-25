@@ -23,7 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
-final class PinnedHttpsTransport {
+public final class PinnedHttpsTransport {
 
     private static final int MAXIMUM_REQUEST_BYTES = 1_048_576;
     private static final int MAXIMUM_REQUEST_PATH_BYTES = 8_192;
@@ -33,15 +33,15 @@ final class PinnedHttpsTransport {
     private final PinnedHttpsConnectionFactory connections;
 
     @Autowired
-    PinnedHttpsTransport() {
+    public PinnedHttpsTransport() {
         this(new TlsPinnedHttpsConnectionFactory());
     }
 
-    PinnedHttpsTransport(PinnedHttpsConnectionFactory connections) {
+    public PinnedHttpsTransport(PinnedHttpsConnectionFactory connections) {
         this.connections = Objects.requireNonNull(connections, "connections");
     }
 
-    PinnedHttpsResponse execute(
+    public PinnedHttpsResponse execute(
         ModelConfigResolvedTarget target,
         PinnedHttpsRequest request,
         Duration connectTimeout,
@@ -75,7 +75,7 @@ final class PinnedHttpsTransport {
         throw new IOException("No validated model service address is available");
     }
 
-    static boolean isSafeHeaderValue(String value) {
+    public static boolean isSafeHeaderValue(String value) {
         if (value == null || value.isEmpty()) {
             return false;
         }
@@ -260,7 +260,7 @@ final class PinnedHttpsTransport {
         return true;
     }
 
-    static String readAsciiLine(InputStream input, int maximumBytes) throws IOException {
+    public static String readAsciiLine(InputStream input, int maximumBytes) throws IOException {
         ByteArrayOutputStream line = new ByteArrayOutputStream();
         while (true) {
             int value = input.read();
@@ -396,189 +396,6 @@ final class PinnedHttpsTransport {
                     return;
                 }
             }
-        }
-    }
-}
-
-interface PinnedHttpsConnectionFactory {
-
-    PinnedHttpsConnection connect(InetAddress address, int port, String host, Duration timeout) throws IOException;
-}
-
-interface PinnedHttpsConnection extends AutoCloseable {
-
-    InputStream input() throws IOException;
-
-    OutputStream output() throws IOException;
-
-    void setReadTimeout(Duration timeout) throws IOException;
-
-    @Override
-    void close() throws IOException;
-}
-
-final class PinnedHttpsRequest {
-    private final String method;
-    private final String path;
-    private final Map<String, String> headers;
-    private final byte[] body;
-
-    PinnedHttpsRequest(String method, String path, Map<String, String> headers, byte[] body) {
-        this.method = method;
-        this.path = path;
-        this.headers = Map.copyOf(new LinkedHashMap<>(Objects.requireNonNull(headers, "headers")));
-        this.body = Objects.requireNonNull(body, "body").clone();
-    }
-
-    String method() {
-        return method;
-    }
-
-    String path() {
-        return path;
-    }
-
-    Map<String, String> headers() {
-        return headers;
-    }
-
-    byte[] body() {
-        return body.clone();
-    }
-}
-
-final class PinnedHttpsResponse implements AutoCloseable {
-    private final int statusCode;
-    private final InputStream body;
-    private final PinnedHttpsConnection connection;
-
-    PinnedHttpsResponse(int statusCode, InputStream body, PinnedHttpsConnection connection) {
-        this.statusCode = statusCode;
-        this.body = body;
-        this.connection = connection;
-    }
-
-    int statusCode() {
-        return statusCode;
-    }
-
-    InputStream body() {
-        return body;
-    }
-
-    void setReadTimeout(Duration timeout) throws IOException {
-        connection.setReadTimeout(timeout);
-    }
-
-    @Override
-    public void close() throws IOException {
-        connection.close();
-    }
-}
-
-final class TlsPinnedHttpsConnectionFactory implements PinnedHttpsConnectionFactory {
-
-    @Override
-    public PinnedHttpsConnection connect(InetAddress address, int port, String host, Duration timeout) throws IOException {
-        Socket socket = new Socket();
-        try {
-            int timeoutMillis = timeoutMillis(timeout);
-            socket.connect(new InetSocketAddress(address, port), timeoutMillis);
-            socket.setSoTimeout(timeoutMillis);
-            SSLSocket tlsSocket = (SSLSocket) ((SSLSocketFactory) SSLSocketFactory.getDefault())
-                .createSocket(socket, host, port, true);
-            configureTls(tlsSocket, host);
-            tlsSocket.startHandshake();
-            return new TlsPinnedHttpsConnection(tlsSocket);
-        } catch (IOException | RuntimeException error) {
-            try {
-                socket.close();
-            } catch (IOException ignored) {
-                // Preserve the original connection failure.
-            }
-            if (error instanceof IOException ioError) {
-                throw ioError;
-            }
-            throw new IOException("Unable to establish pinned HTTPS connection", error);
-        }
-    }
-
-    private void configureTls(SSLSocket socket, String host) throws IOException {
-        SSLParameters parameters = socket.getSSLParameters();
-        parameters.setEndpointIdentificationAlgorithm("HTTPS");
-        if (!isIpLiteral(host)) {
-            try {
-                parameters.setServerNames(List.of(new SNIHostName(host)));
-            } catch (IllegalArgumentException error) {
-                throw new IOException("Invalid pinned HTTPS host", error);
-            }
-        }
-        socket.setSSLParameters(parameters);
-    }
-
-    private boolean isIpLiteral(String host) {
-        return host.indexOf(':') >= 0 || isIpv4Literal(host);
-    }
-
-    private boolean isIpv4Literal(String host) {
-        String[] parts = host.split("\\.", -1);
-        if (parts.length != 4) {
-            return false;
-        }
-        for (String part : parts) {
-            if (part.isEmpty() || part.length() > 3) {
-                return false;
-            }
-            int value = 0;
-            for (int index = 0; index < part.length(); index++) {
-                char character = part.charAt(index);
-                if (character < '0' || character > '9') {
-                    return false;
-                }
-                value = value * 10 + (character - '0');
-            }
-            if (value > 255) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private int timeoutMillis(Duration timeout) throws IOException {
-        if (timeout == null || timeout.isNegative() || timeout.isZero()) {
-            throw new IOException("Pinned HTTPS timeout must be positive");
-        }
-        return (int) Math.min(Integer.MAX_VALUE, Math.max(1L, timeout.toMillis()));
-    }
-
-    private static final class TlsPinnedHttpsConnection implements PinnedHttpsConnection {
-        private final SSLSocket socket;
-
-        private TlsPinnedHttpsConnection(SSLSocket socket) {
-            this.socket = socket;
-        }
-
-        @Override
-        public InputStream input() throws IOException {
-            return socket.getInputStream();
-        }
-
-        @Override
-        public OutputStream output() throws IOException {
-            return socket.getOutputStream();
-        }
-
-        @Override
-        public void setReadTimeout(Duration timeout) throws IOException {
-            if (timeout == null || timeout.isNegative() || timeout.isZero()) {
-                throw new IOException("Pinned HTTPS timeout must be positive");
-            }
-            socket.setSoTimeout((int) Math.min(Integer.MAX_VALUE, Math.max(1L, timeout.toMillis())));
-        }
-
-        @Override
-        public void close() throws IOException {
-            socket.close();
         }
     }
 }

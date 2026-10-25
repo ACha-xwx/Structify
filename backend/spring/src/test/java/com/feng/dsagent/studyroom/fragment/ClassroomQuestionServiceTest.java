@@ -1,5 +1,19 @@
 package com.feng.dsagent.studyroom.fragment;
 
+import org.springframework.transaction.PlatformTransactionManager;
+
+import com.feng.dsagent.studyroom.generation.mapper.GenerationCallMapper;
+
+import com.feng.dsagent.studyroom.questions.mapper.ClassroomQuestionMapper;
+
+import com.feng.dsagent.studyroom.events.mapper.ClassroomEventMapper;
+
+import com.feng.dsagent.studyroom.events.service.ClassroomEventService;
+import com.feng.dsagent.studyroom.generation.service.GenerationCallService;
+import com.feng.dsagent.studyroom.questions.service.ClassroomQuestionService;
+import com.feng.dsagent.studyroom.service.StudyroomFollowUpService;
+import com.feng.dsagent.studyroom.service.StudyroomService;
+
 import com.feng.dsagent.studyroom.*;
 import com.feng.dsagent.studyroom.events.*;
 import com.feng.dsagent.studyroom.generation.*;
@@ -21,10 +35,10 @@ class ClassroomQuestionServiceTest {
         var db=new FragmentTestDatabase();db.unit("u",0);db.fragment("f","u",0,"READY");
         db.jdbc.update("UPDATE studyroom_fragments SET content_revision=1 WHERE id='f'");
         var manager=new DataSourceTransactionManager(db.source);var jobs=new JdbcGenerationRepository(db.store,db.json,manager);
-        var events=new ClassroomEventService(new JdbcClassroomEventRepository(db.store,db.json),manager);
+        var events=new ClassroomEventService(mock(ClassroomEventMapper.class), db.json, manager);
         var view=mock(StudyroomService.class);when(view.validateQuestionContext(eq(db.user),eq("room"),any())).thenReturn("{\"stepId\":\"step-f\"}");
         var repository=new JdbcClassroomQuestionRepository(db.store,db.json);
-        var service=new ClassroomQuestionService(repository,jobs,events,view);
+        var service=new ClassroomQuestionService(mock(ClassroomQuestionMapper.class),db.store,db.json,jobs,events,view);
         String id=(String)service.create(db.user,"room","run","f",1,"为什么？",null,"q-test",KnowledgeAudience.STUDENT).get("questionId");
         var model=new AiQuotaExecution() {
             public ModelResponse complete(Long u,String op,String key,ModelRequest request){throw new AssertionError("stream required");}
@@ -34,7 +48,7 @@ class ClassroomQuestionServiceTest {
         };
         var context=mock(StudyroomFollowUpService.class);when(context.prepare(eq(db.user),eq("room"),anyString(),any(),anyString())).thenReturn(new StudyroomFollowUpService.AnswerContext("prompt","step-f","[]","run"));
         var rooms=mock(StudyroomRepository.class);
-        var worker=new ClassroomQuestionWorker(repository,jobs,events,new GenerationCallService(jobs,model),context,rooms);
+        var worker=new ClassroomQuestionWorker(repository,jobs,events,new GenerationCallService(mock(GenerationCallMapper.class), mock(PlatformTransactionManager.class), model),context,rooms);
         var job=jobs.claim(Instant.now());
         if(cancel) {
             assertThrows(RuntimeException.class,()->worker.run(job));verifyNoInteractions(rooms);
@@ -53,10 +67,10 @@ class ClassroomQuestionServiceTest {
         db.jdbc.update("UPDATE studyroom_fragments SET content_revision=1 WHERE id='f'");
         var manager=new DataSourceTransactionManager(db.source);
         var jobs=new JdbcGenerationRepository(db.store,db.json,manager);
-        var events=new ClassroomEventService(new JdbcClassroomEventRepository(db.store,db.json),manager);
+        var events=new ClassroomEventService(mock(ClassroomEventMapper.class), db.json, manager);
         var rooms=mock(StudyroomService.class);
         when(rooms.validateQuestionContext(eq(db.user),eq("room"),any())).thenReturn("{\"stepId\":\"step-f\"}");
-        var service=new ClassroomQuestionService(new JdbcClassroomQuestionRepository(db.store,db.json),jobs,events,rooms);
+        var service=new ClassroomQuestionService(mock(ClassroomQuestionMapper.class),db.store,db.json,jobs,events,rooms);
         var first=service.create(db.user,"room","run","f",1,"为什么？",null,"question-1",KnowledgeAudience.STUDENT);
         assertEquals(first,service.create(db.user,"room","run","f",1,"为什么？",null,"question-1",KnowledgeAudience.STUDENT));
         assertThrows(RuntimeException.class,()->service.create(db.user,"room","run","f",1,"另一个问题",null,"question-2",KnowledgeAudience.STUDENT));

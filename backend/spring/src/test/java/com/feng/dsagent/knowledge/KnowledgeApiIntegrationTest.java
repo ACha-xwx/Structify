@@ -1,12 +1,14 @@
 package com.feng.dsagent.knowledge;
 
+import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
+
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.feng.dsagent.security.JwtTokenService;
+import com.feng.dsagent.security.service.JwtTokenService;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

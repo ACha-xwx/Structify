@@ -10,7 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
-final class AuthRequestRateLimiter {
+public final class AuthRequestRateLimiter {
 
     private static final Duration WINDOW = Duration.ofMinutes(10);
 
@@ -23,11 +23,11 @@ final class AuthRequestRateLimiter {
     private final WindowRateLimiter codeAttemptsByClient;
 
     @Autowired
-    AuthRequestRateLimiter(Clock clock) {
+    public AuthRequestRateLimiter(Clock clock) {
         this(clock, 5, 30, 3, 12, WINDOW);
     }
 
-    AuthRequestRateLimiter(
+    public AuthRequestRateLimiter(
         Clock clock,
         int loginAccountLimit,
         int loginClientLimit,
@@ -44,21 +44,21 @@ final class AuthRequestRateLimiter {
         this.codeAttemptsByClient = new WindowRateLimiter(30, window);
     }
 
-    void checkLogin(String email, String clientAddress) {
+    public void checkLogin(String email, String clientAddress) {
         if (!loginByAccount.allow(emailKey(email), clock.instant())
                 || !loginByClient.allow(clientKey(clientAddress), clock.instant())) {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "AUTH_LOGIN_RATE_LIMITED", "登录请求过于频繁，请稍后重试");
         }
     }
 
-    void checkCodeRequest(String email, String clientAddress) {
+    public void checkCodeRequest(String email, String clientAddress) {
         if (!codeRequestsByEmail.allow(emailKey(email), clock.instant())
                 || !codeRequestsByClient.allow(clientKey(clientAddress), clock.instant())) {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "AUTH_CODE_RATE_LIMITED", "验证码请求过于频繁");
         }
     }
 
-    void checkCodeAttempt(String email, String clientAddress) {
+    public void checkCodeAttempt(String email, String clientAddress) {
         if (!codeAttemptsByEmail.allow(emailKey(email), clock.instant())
                 || !codeAttemptsByClient.allow(clientKey(clientAddress), clock.instant())) {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "AUTH_CODE_RATE_LIMITED", "验证码验证过于频繁");

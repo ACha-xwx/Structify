@@ -10,7 +10,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /** Imports the user's original PPT extraction, keeping PPT page numbers distinct from textbook pages. */
-final class CoursewareKnowledgeLoader {
+public final class CoursewareKnowledgeLoader {
     private static final Pattern PAGE = Pattern.compile("(?m)^## 第 (\\d+) 页：([^\\n]*)\\n");
     private static final Map<String, String> CHAPTERS = Map.of(
         "第一章绪论", "01-introduction", "第二章线性表", "02-linear-list",
@@ -19,9 +19,9 @@ final class CoursewareKnowledgeLoader {
         "第六章树和二叉树", "06-tree", "第七章图", "07-graph",
         "第八章查找", "08-search", "第九章排序", "09-internal-sort");
     private final ObjectMapper mapper;
-    CoursewareKnowledgeLoader(ObjectMapper mapper) { this.mapper = mapper; }
+    public CoursewareKnowledgeLoader(ObjectMapper mapper) { this.mapper = mapper; }
 
-    KnowledgeCorpus load(Path root, int chunkSize) {
+    public KnowledgeCorpus load(Path root, int chunkSize) {
         List<KnowledgeChunk> chunks = new ArrayList<>();
         List<KnowledgeImportManifest.Rejection> rejected = new ArrayList<>();
         int accepted = 0;

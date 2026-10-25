@@ -8,7 +8,7 @@
 - 最终计划部署到 `structify.cn`，但本任务只做本地实现与验收；不提交、不推送、不部署、不访问生产数据库。
 - 登录、认证、服务器 API、Admin 必须保留。普通用户登录后进入有原背景的极简课堂：大字、少元素，仅课时选择、老师讲解、板书关键词、输入与当前操作；不要恢复旧侧栏、统计、小字或多余导航。
 - 课堂设计：教材是事实来源；模型负责备课、自然讲解、插问回答和语义判答；程序负责权限、来源、协议、版本、持久化及动画算法状态。学生手动推进，插问优先且不吞主线，刷新后恢复；动画由本地确定性 DSVP 模拟器计算，模型不得编造帧。PPT 暂不接入。
-- 当前前端主页面是 `frontend/src/classroom/ClassroomView.vue`；课时 API/备课为 `backend/spring/src/main/java/com/feng/dsagent/classroom/ClassroomPreparation.java`；导入链见 `backend/spring/src/main/java/com/feng/dsagent/knowledge/KnowledgeCorpusLoader.java`、`JdbcKnowledgeChunkRepository.java`、`docs/content-import-guide.md`。工作日志为 `docs/project/00-current-status.md`。
+- 当前前端主页面是 `frontend/src/classroom/ClassroomView.vue`；课时 API/备课为 `backend/spring/src/main/java/com/feng/dsagent/classroom/ClassroomPreparation.java`；导入链见 `backend/spring/src/main/java/com/feng/dsagent/knowledge/KnowledgeCorpusLoader.java`、`JdbcKnowledgeChunkRepository.java`、`docs/guides/content-import-guide.md`。工作日志为 `docs/archive/project/00-current-status.md`。
 - 本机私有测试数据库、已核验教材、服务配置位于仓库 Git 忽略的 `private/`。可以按需在本机测试中使用已有 API Key 和测试账号，但绝不能输出、复制、提交密钥或密码，也不能把受版权保护的 PDF/教材正文放进 Git 跟踪文件。
 
 ## 已有证据与真实缺口

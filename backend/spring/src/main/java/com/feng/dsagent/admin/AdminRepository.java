@@ -11,15 +11,15 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
-class AdminRepository {
+public class AdminRepository {
 
     private final JdbcTemplate jdbc;
 
-    AdminRepository(JdbcTemplate jdbc) {
+    public AdminRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
-    AdminPage<AdminUser> listUsers(AdminUserQuery query) {
+    public AdminPage<AdminUser> listUsers(AdminUserQuery query) {
         List<Object> parameters = new ArrayList<>();
         String where = userWhere(query, parameters);
         long total = jdbc.queryForObject(
@@ -44,7 +44,7 @@ class AdminRepository {
         return new AdminPage<>(items, query.page(), query.size(), total);
     }
 
-    Optional<AdminUser> findUser(long userId) {
+    public Optional<AdminUser> findUser(long userId) {
         return jdbc.query(
             """
                 SELECT u.id, u.email, u.username, u.status, u.disabled_reason, u.disabled_at, u.created_at, u.updated_at
@@ -55,7 +55,7 @@ class AdminRepository {
         ).stream().findFirst();
     }
 
-    Optional<AdminUser> lockUser(long userId) {
+    public Optional<AdminUser> lockUser(long userId) {
         return jdbc.query(
             """
                 SELECT u.id, u.email, u.username, u.status, u.disabled_reason, u.disabled_at, u.created_at, u.updated_at
@@ -66,7 +66,7 @@ class AdminRepository {
         ).stream().findFirst();
     }
 
-    void lockActiveAdministrators() {
+    public void lockActiveAdministrators() {
         jdbc.queryForList(
             """
                 SELECT u.id
@@ -78,7 +78,7 @@ class AdminRepository {
         );
     }
 
-    long activeAdministratorCount() {
+    public long activeAdministratorCount() {
         return jdbc.queryForObject(
             """
                 SELECT COUNT(*)
@@ -89,7 +89,7 @@ class AdminRepository {
         );
     }
 
-    void updateStatus(long userId, UserStatus status, String reason) {
+    public void updateStatus(long userId, UserStatus status, String reason) {
         if (status == UserStatus.ACTIVE) {
             jdbc.update(
                 """
@@ -112,7 +112,7 @@ class AdminRepository {
         );
     }
 
-    void replaceRoles(long userId, Set<String> roles) {
+    public void replaceRoles(long userId, Set<String> roles) {
         jdbc.update("DELETE FROM user_roles WHERE user_id = ?", userId);
         for (String role : roles.stream().sorted().toList()) {
             jdbc.update("INSERT INTO user_roles (user_id, role) VALUES (?, ?)", userId, role);
@@ -120,7 +120,7 @@ class AdminRepository {
         jdbc.update("UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", userId);
     }
 
-    void appendAuditEvent(AdminAuditWrite event) {
+    public void appendAuditEvent(AdminAuditWrite event) {
         jdbc.update(
             """
                 INSERT INTO admin_audit_events (
@@ -138,7 +138,7 @@ class AdminRepository {
         );
     }
 
-    AdminPage<AdminAuditEvent> listAuditEvents(AdminAuditQuery query) {
+    public AdminPage<AdminAuditEvent> listAuditEvents(AdminAuditQuery query) {
         List<Object> parameters = new ArrayList<>();
         String where = auditWhere(query, parameters);
         long total = jdbc.queryForObject(
@@ -248,69 +248,4 @@ class AdminRepository {
     private static Instant instant(Timestamp value) {
         return value == null ? null : value.toInstant();
     }
-}
-
-record AdminUser(
-    long id,
-    String email,
-    String username,
-    UserStatus status,
-    String disabledReason,
-    Instant disabledAt,
-    Set<String> roles,
-    Instant createdAt,
-    Instant updatedAt
-) {
-    AdminUser {
-        roles = Set.copyOf(roles);
-    }
-}
-
-record AdminUserQuery(int page, int size, String search, UserStatus status, String role) {
-}
-
-record AdminAuditWrite(
-    long actorUserId,
-    String action,
-    String targetType,
-    String targetId,
-    String result,
-    String requestId,
-    String beforeSummary,
-    String afterSummary
-) {
-}
-
-record AdminAuditEvent(
-    long id,
-    long actorUserId,
-    String action,
-    String targetType,
-    String targetId,
-    String result,
-    String requestId,
-    String beforeSummary,
-    String afterSummary,
-    Instant createdAt
-) {
-}
-
-record AdminAuditQuery(
-    int page,
-    int size,
-    Long actorUserId,
-    String action,
-    String targetType,
-    String targetId,
-    Instant from,
-    Instant to
-) {
-}
-
-record AdminPage<T>(List<T> items, int page, int size, long total) {
-}
-
-enum UserStatus {
-    ACTIVE,
-    DISABLED
 }

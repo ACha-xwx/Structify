@@ -6,13 +6,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
-class JdbcLearningWorkbenchRepository implements LearningWorkbenchRepository {
+public class JdbcLearningWorkbenchRepository implements LearningWorkbenchRepository {
 
     private static final int CANDIDATE_LIMIT = 8;
 
     private final JdbcTemplate jdbc;
 
-    JdbcLearningWorkbenchRepository(JdbcTemplate jdbc) {
+    public JdbcLearningWorkbenchRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 

@@ -3,7 +3,7 @@ package com.feng.dsagent.modelconfig;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
-interface ModelConfigHostResolver {
+public interface ModelConfigHostResolver {
 
-    InetAddress[] resolve(String host) throws UnknownHostException;
+    public InetAddress[] resolve(String host) throws UnknownHostException;
 }

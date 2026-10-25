@@ -206,7 +206,7 @@ public final class SlidePlanner {
         return best;
     }
 
-    static Set<String> tokens(String text) {
+    public static Set<String> tokens(String text) {
         String clean = text == null ? "" : text.toLowerCase(Locale.ROOT);
         Set<String> result = new HashSet<>();
         var latin = LATIN.matcher(clean);
@@ -225,7 +225,7 @@ public final class SlidePlanner {
         return result;
     }
 
-    static double cosine(Set<String> left, Set<String> right) {
+    public static double cosine(Set<String> left, Set<String> right) {
         if (left.isEmpty() || right.isEmpty()) {
             return 0;
         }

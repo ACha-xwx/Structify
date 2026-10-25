@@ -30,10 +30,10 @@ import org.slf4j.LoggerFactory;
  * pseudo terminal, the build injects a header that switches standard output to unbuffered mode
  * before {@code main} runs. See {@code sandbox/structify-io.h}.
  */
-final class InteractiveCodeSession implements AutoCloseable {
+public final class InteractiveCodeSession implements AutoCloseable {
 
     /** What a connected console needs to hear about. */
-    interface Listener {
+    public interface Listener {
         void onChunk(String stream, String text);
 
         void onExit(int exitCode);
@@ -58,22 +58,22 @@ final class InteractiveCodeSession implements AutoCloseable {
     private volatile Integer exitCode;
     private volatile long lastActivityAt = System.currentTimeMillis();
 
-    InteractiveCodeSession(String id, SupportedLanguage language, SandboxProperties properties, Path workDirectory) {
+    public InteractiveCodeSession(String id, SupportedLanguage language, SandboxProperties properties, Path workDirectory) {
         this.id = id;
         this.language = language;
         this.properties = properties;
         this.workDirectory = workDirectory;
     }
 
-    String id() {
+    public String id() {
         return id;
     }
 
-    long lastActivityAt() {
+    public long lastActivityAt() {
         return lastActivityAt;
     }
 
-    boolean isExpired(long now, long idleMillis, long lifetimeMillis) {
+    public boolean isExpired(long now, long idleMillis, long lifetimeMillis) {
         return now - lastActivityAt > idleMillis || now - createdAt > lifetimeMillis;
     }
 
@@ -84,7 +84,7 @@ final class InteractiveCodeSession implements AutoCloseable {
      * immediately has finished talking before the second one arrives. Without the replay the
      * console would open blank on exactly the programs that matter most - the ones that prompt.
      */
-    void addListener(Listener listener) {
+    public void addListener(Listener listener) {
         synchronized (listeners) {
             listeners.add(listener);
             for (String[] past : history) {
@@ -97,7 +97,7 @@ final class InteractiveCodeSession implements AutoCloseable {
         }
     }
 
-    void removeListener(Listener listener) {
+    public void removeListener(Listener listener) {
         listeners.remove(listener);
     }
 
@@ -105,7 +105,7 @@ final class InteractiveCodeSession implements AutoCloseable {
      * Writes the source, injects the unbuffered-output header, and builds it. Returns the compiler's
      * own words so a failed build can be shown verbatim instead of hidden behind a generic message.
      */
-    String build(String code) throws IOException, InterruptedException {
+    public String build(String code) throws IOException, InterruptedException {
         Path source = workDirectory.resolve(language.fileName());
         Files.writeString(source, code, StandardCharsets.UTF_8);
         Path header = workDirectory.resolve("structify-io.h");
@@ -140,7 +140,7 @@ final class InteractiveCodeSession implements AutoCloseable {
     }
 
     /** Starts the program and begins forwarding whatever it prints. */
-    void start() throws IOException {
+    public void start() throws IOException {
         List<String> command = switch (language) {
             case C -> List.of(workDirectory.resolve(executableName()).toString());
             case PYTHON -> List.of(properties.pythonCommand(), "-u", language.fileName());
@@ -160,7 +160,7 @@ final class InteractiveCodeSession implements AutoCloseable {
     }
 
     /** Hands the learner's line to the program, exactly as pressing Enter in a terminal would. */
-    void write(String text) throws IOException {
+    public void write(String text) throws IOException {
         Writer writer = stdinWriter;
         if (writer == null) {
             throw new IOException("session is not running");
@@ -170,7 +170,7 @@ final class InteractiveCodeSession implements AutoCloseable {
         lastActivityAt = System.currentTimeMillis();
     }
 
-    boolean isRunning() {
+    public boolean isRunning() {
         Process current = process;
         return current != null && current.isAlive();
     }

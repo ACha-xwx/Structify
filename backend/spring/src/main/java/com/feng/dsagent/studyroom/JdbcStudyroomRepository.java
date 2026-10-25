@@ -9,9 +9,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 @Repository
-class JdbcStudyroomRepository implements StudyroomRepository {
+public class JdbcStudyroomRepository implements StudyroomRepository {
     private final JdbcTemplate jdbc;
-    JdbcStudyroomRepository(JdbcTemplate jdbc){this.jdbc=jdbc;}
+    public JdbcStudyroomRepository(JdbcTemplate jdbc){this.jdbc=jdbc;}
     @Override public String currentRun(String room,long user){var rows=jdbc.queryForList("SELECT current_run_id FROM study_rooms WHERE id=? AND user_id=? AND deleted_at IS NULL",room,user);return rows.isEmpty()?null:(String)rows.getFirst().get("current_run_id");}
     @Override @Transactional
     public void appendExchange(String room,long user,List<StudyroomRecords.Message> messages,String expectedRun){

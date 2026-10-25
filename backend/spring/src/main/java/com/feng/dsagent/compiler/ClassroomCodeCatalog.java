@@ -17,26 +17,26 @@ import tools.jackson.databind.ObjectMapper;
  * pipeline - never by editing a running server.
  */
 @Component
-final class ClassroomCodeCatalog {
+public final class ClassroomCodeCatalog {
 
     private static final String RESOURCE = "classroom-code/lessons.json";
 
     private final List<ClassroomCodeLesson> lessons;
 
     @Autowired
-    ClassroomCodeCatalog(ObjectMapper objectMapper) {
+    public ClassroomCodeCatalog(ObjectMapper objectMapper) {
         this.lessons = load(objectMapper);
     }
 
-    ClassroomCodeCatalog(List<ClassroomCodeLesson> lessons) {
+    public ClassroomCodeCatalog(List<ClassroomCodeLesson> lessons) {
         this.lessons = List.copyOf(lessons);
     }
 
-    List<ClassroomCodeLesson> lessons() {
+    public List<ClassroomCodeLesson> lessons() {
         return lessons;
     }
 
-    Optional<ClassroomCodeLesson> lesson(String coursewareKey) {
+    public Optional<ClassroomCodeLesson> lesson(String coursewareKey) {
         if (coursewareKey == null || coursewareKey.isBlank()) {
             return Optional.empty();
         }
@@ -44,7 +44,7 @@ final class ClassroomCodeCatalog {
         return lessons.stream().filter(lesson -> wanted.equals(lesson.coursewareKey())).findFirst();
     }
 
-    int sampleCount() {
+    public int sampleCount() {
         return lessons.stream().mapToInt(lesson -> lesson.samples().size()).sum();
     }
 

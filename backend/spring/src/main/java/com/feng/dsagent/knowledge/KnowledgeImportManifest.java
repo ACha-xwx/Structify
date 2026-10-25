@@ -19,7 +19,7 @@ import tools.jackson.databind.ObjectMapper;
  * The manifest is stored beside the candidate lessons so the source, hash and page mapping are
  * reviewed as one import unit; production deployments may place that unit in a private directory.
  */
-record KnowledgeImportManifest(Map<String, Entry> accepted) {
+public record KnowledgeImportManifest(Map<String, Entry> accepted) {
 
     static final String FILE_NAME = "import-manifest.json";
     static final int SUPPORTED_VERSION = 2;
@@ -28,8 +28,8 @@ record KnowledgeImportManifest(Map<String, Entry> accepted) {
     static final String REVIEWED_LABEL_PREFIX = "> OCR质量：已对照原始教材 PDF 核验（";
     static final String LOCAL_DEVELOPMENT_LABEL_PREFIX = "> 本地开发种子：已由项目组复核（";
 
-    record Entry(String source, String targetSha256, String pageRange, Map<Integer, Integer> pdfPages) {
-        Entry {
+    public record Entry(String source, String targetSha256, String pageRange, Map<Integer, Integer> pdfPages) {
+        public Entry {
             pdfPages = Map.copyOf(pdfPages);
         }
 
@@ -38,11 +38,11 @@ record KnowledgeImportManifest(Map<String, Entry> accepted) {
         }
     }
 
-    record Rejection(String fileName, String reason) {
+    public record Rejection(String fileName, String reason) {
     }
 
     /** Reads the manifest, or returns {@code null} when the knowledge directory has no manifest. */
-    static KnowledgeImportManifest read(Path textbookDirectory, ObjectMapper mapper) {
+    public static KnowledgeImportManifest read(Path textbookDirectory, ObjectMapper mapper) {
         Path manifestFile = textbookDirectory.resolve(FILE_NAME);
         if (!Files.isRegularFile(manifestFile)) {
             return null;
@@ -104,7 +104,7 @@ record KnowledgeImportManifest(Map<String, Entry> accepted) {
     }
 
     /** Returns the reasons why a candidate lesson file must stay unpublished. */
-    static List<Rejection> validate(String fileName, String sha256, List<LessonPageBlock> blocks, Entry entry) {
+    public static List<Rejection> validate(String fileName, String sha256, List<LessonPageBlock> blocks, Entry entry) {
         if (entry == null) {
             return List.of(new Rejection(fileName, "NOT_LISTED_IN_IMPORT_MANIFEST"));
         }
@@ -144,6 +144,6 @@ record KnowledgeImportManifest(Map<String, Entry> accepted) {
     }
 
     /** A single {@code ### 教材页 N（PDF页 M）} block recovered from a textbook lesson file. */
-    record LessonPageBlock(int page, int pdfPage, String label, String text) {
+    public record LessonPageBlock(int page, int pdfPage, String label, String text) {
     }
 }

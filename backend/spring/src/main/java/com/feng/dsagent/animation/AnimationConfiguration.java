@@ -7,7 +7,7 @@ import org.springframework.context.annotation.Configuration;
 public class AnimationConfiguration {
 
     @Bean
-    AnimationValidator animationValidator() {
+    public AnimationValidator animationValidator() {
         return new AnimationValidator();
     }
 }

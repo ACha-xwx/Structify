@@ -1,5 +1,11 @@
 package com.feng.dsagent.studyroom.fragment;
 
+import static org.mockito.Mockito.mock;
+
+import com.feng.dsagent.studyroom.fragment.mapper.FragmentPublicationMapper;
+
+import com.feng.dsagent.studyroom.fragment.service.FragmentPublicationService;
+
 import static org.assertj.core.api.Assertions.*;
 import com.feng.dsagent.studyroom.*;
 import com.feng.dsagent.studyroom.generation.*;
@@ -15,7 +21,7 @@ class FragmentPublicationServiceTest {
         var jobs=new JdbcGenerationRepository(db.store,db.json,new DataSourceTransactionManager(db.source));
         var scheduler=new PreparationScheduler(repo,jobs,db.json);scheduler.reconcile(db.user,"run");
         var job=jobs.claim(Instant.now());
-        var publisher=new FragmentPublicationService(repo,jobs,db.json);
+        var publisher=new FragmentPublicationService(mock(FragmentPublicationMapper.class),db.json);
         var scene=new StudyroomScene("main","TEXT","讲解",List.of(),null,null,null,null);
         var output=new StudyroomModelOutput(1,"栈","栈的定义",List.of("e"),List.of(new StudyroomModelOutput.Step("f",
             StudyroomModelOutput.StepType.EXPLANATION,"栈","后进先出",List.of(),new StudyroomScene.Orchestration(2,"理解栈","CONCEPT",scene,List.of()))));

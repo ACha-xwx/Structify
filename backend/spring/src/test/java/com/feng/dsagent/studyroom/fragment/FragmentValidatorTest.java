@@ -1,5 +1,7 @@
 package com.feng.dsagent.studyroom.fragment;
 
+import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import com.feng.dsagent.compiler.CodeExecutionReadiness;

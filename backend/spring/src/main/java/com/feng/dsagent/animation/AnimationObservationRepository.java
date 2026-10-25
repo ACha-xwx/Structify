@@ -2,11 +2,11 @@ package com.feng.dsagent.animation;
 
 import java.util.Optional;
 
-interface AnimationObservationRepository {
+public interface AnimationObservationRepository {
 
-    Optional<AnimationRecord> findOwned(long userId, String recordId);
+    public Optional<AnimationRecord> findOwned(long userId, String recordId);
 
-    void appendObservation(long userId, String recordId, String observation);
+    public void appendObservation(long userId, String recordId, String observation);
 
     /**
      * Provenance-aware append used by HTTP workflows. Existing in-memory test

@@ -1,5 +1,7 @@
 package com.feng.dsagent.modelconfig;
 
+import com.feng.dsagent.model.ModelStreamHandler;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 

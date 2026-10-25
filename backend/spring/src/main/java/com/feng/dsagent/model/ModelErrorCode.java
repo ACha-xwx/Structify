@@ -14,11 +14,11 @@ public enum ModelErrorCode {
 
     private final String safeMessage;
 
-    ModelErrorCode(String safeMessage) {
+    private ModelErrorCode(String safeMessage) {
         this.safeMessage = safeMessage;
     }
 
-    String safeMessage() {
+    public String safeMessage() {
         return safeMessage;
     }
 }

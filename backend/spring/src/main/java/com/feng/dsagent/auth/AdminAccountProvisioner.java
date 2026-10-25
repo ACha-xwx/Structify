@@ -96,7 +96,7 @@ public class AdminAccountProvisioner {
             .orElseThrow(() -> new IllegalStateException("Administrator account is unavailable after reconciliation"));
     }
 
-    static String normalizeEmail(String email) {
+    public static String normalizeEmail(String email) {
         String normalized = email == null ? "" : email.trim().toLowerCase(java.util.Locale.ROOT);
         if (!normalized.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "AUTH_EMAIL_INVALID", "请输入有效的邮箱地址");

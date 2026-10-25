@@ -21,7 +21,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Component
-final class PistonCompilerGateway implements CompilerGateway {
+public final class PistonCompilerGateway implements CompilerGateway {
 
     /**
      * The sandbox is somebody else's computer on the other side of the world. Every refusal used to
@@ -43,7 +43,7 @@ final class PistonCompilerGateway implements CompilerGateway {
     private final SandboxConfigRuntimeSettingsSource runtimeSettings;
 
     @Autowired
-    PistonCompilerGateway(
+    public PistonCompilerGateway(
         CompilerProperties properties,
         ObjectMapper objectMapper,
         SandboxConfigRuntimeSettingsSource runtimeSettings
@@ -59,7 +59,7 @@ final class PistonCompilerGateway implements CompilerGateway {
             .build();
     }
 
-    PistonCompilerGateway(CompilerProperties properties, ObjectMapper objectMapper) {
+    public PistonCompilerGateway(CompilerProperties properties, ObjectMapper objectMapper) {
         this(properties, objectMapper, new SandboxConfigRuntimeSettingsSource(properties));
     }
 

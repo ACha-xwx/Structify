@@ -8,8 +8,8 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /** Executes bounded teaching operations. The model never supplies state snapshots. */
-final class DsvpSimulator {
-    record Result(List<Object> initial, List<AnimationStep> steps, List<List<Object>> states,
+public final class DsvpSimulator {
+    public record Result(List<Object> initial, List<AnimationStep> steps, List<List<Object>> states,
                   List<List<Integer>> edges, List<Integer> visited) {}
     private final List<Object> values;
     private final List<AnimationStep> steps = new ArrayList<>();
@@ -23,7 +23,7 @@ final class DsvpSimulator {
     private DsvpSimulator(List<Object> initial, JsonNode params, int capacity, ObjectMapper mapper) {
         this.values = new ArrayList<>(initial); this.params = params; this.capacity = capacity; this.mapper = mapper;
     }
-    static Result run(String structure, String operation, JsonNode input, int capacity, ObjectMapper mapper) {
+    public static Result run(String structure, String operation, JsonNode input, int capacity, ObjectMapper mapper) {
         List<Object> initial = new ArrayList<>();
         for (JsonNode item : input.path("initial_state").path("data")) initial.add(mapper.convertValue(item, Object.class));
         DsvpSimulator sim = new DsvpSimulator(initial, input.path("params"), capacity, mapper);

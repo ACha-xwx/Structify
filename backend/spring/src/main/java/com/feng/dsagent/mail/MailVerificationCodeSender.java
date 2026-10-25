@@ -1,14 +1,16 @@
 package com.feng.dsagent.mail;
 
+import com.feng.dsagent.mail.service.MailConfigService;
+
 import com.feng.dsagent.auth.VerificationCodeSender;
 import org.springframework.stereotype.Component;
 
 @Component
-final class MailVerificationCodeSender implements VerificationCodeSender {
+public final class MailVerificationCodeSender implements VerificationCodeSender {
 
     private final MailConfigService mail;
 
-    MailVerificationCodeSender(MailConfigService mail) {
+    public MailVerificationCodeSender(MailConfigService mail) {
         this.mail = mail;
     }
 

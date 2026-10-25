@@ -1,5 +1,7 @@
 package com.feng.dsagent.studyroom.checks;
 
+import com.feng.dsagent.studyroom.checks.service.ClassroomCheckService;
+
 import com.feng.dsagent.studyroom.draft.OutlineJson;
 import java.nio.file.*;
 import java.util.*;
@@ -29,7 +31,7 @@ class ClassroomQuestionBankTest {
         return new ClassroomCheckService.Proposed(title,List.of(new ClassroomCheckService.Option("a","One"),new ClassroomCheckService.Option("b","Two")),answer,"Frozen analysis");
     }
     @Test void canonicalQuestionsWinAndAiOnlyFillsMissingDistinctSlots() {
-        var service=new ClassroomCheckService(null,null,null);
+        var service=new ClassroomCheckService(null,null,null,null);
         var bank=List.of(q("bank1","b"),q("bank2","a"),q("bank3","b"));
         assertEquals(bank,service.merge(bank,List.of()));
         assertEquals(bank,service.merge(bank,List.of(q("bank1","a"))));
@@ -39,7 +41,7 @@ class ClassroomQuestionBankTest {
         assertThrows(IllegalArgumentException.class,()->service.merge(List.of(bank.getFirst()),List.of(q("bank1","a"))));
     }
     @Test void bankCannotBypassPublicationOptionValidation() {
-        var service=new ClassroomCheckService(null,new OutlineJson(new ObjectMapper()),null);
+        var service=new ClassroomCheckService(null,null,new OutlineJson(new ObjectMapper()),null);
         var duplicate=new ClassroomCheckService.Proposed("Related",List.of(new ClassroomCheckService.Option("a","One"),new ClassroomCheckService.Option("a","Two")),"a","Explanation");
         assertThrows(IllegalArgumentException.class,()->service.validate(List.of(duplicate)));
         var duplicateText=new ClassroomCheckService.Proposed("Related",List.of(new ClassroomCheckService.Option("a","One"),new ClassroomCheckService.Option("b","One")),"a","Explanation");

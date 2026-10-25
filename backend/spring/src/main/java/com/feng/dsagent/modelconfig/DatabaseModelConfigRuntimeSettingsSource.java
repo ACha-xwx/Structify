@@ -7,14 +7,14 @@ import javax.crypto.SecretKey;
 import org.springframework.stereotype.Component;
 
 @Component
-class DatabaseModelConfigRuntimeSettingsSource implements ModelConfigRuntimeSettingsSource {
+public class DatabaseModelConfigRuntimeSettingsSource implements ModelConfigRuntimeSettingsSource {
 
     private final ModelConfigRepository repository;
     private final ModelConfigMasterKeySource masterKeySource;
     private final ModelConfigCrypto crypto;
     private final ModelConfigUrlValidator urlValidator;
 
-    DatabaseModelConfigRuntimeSettingsSource(
+    public DatabaseModelConfigRuntimeSettingsSource(
         ModelConfigRepository repository,
         ModelConfigMasterKeySource masterKeySource,
         ModelConfigCrypto crypto,

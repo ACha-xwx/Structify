@@ -12,7 +12,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 @Component
-class HttpModelConfigConnectionTester implements ModelConfigConnectionTester {
+public class HttpModelConfigConnectionTester implements ModelConfigConnectionTester {
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
@@ -25,7 +25,7 @@ class HttpModelConfigConnectionTester implements ModelConfigConnectionTester {
     private final PinnedHttpsTransport transport;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    HttpModelConfigConnectionTester(PinnedHttpsTransport transport) {
+    public HttpModelConfigConnectionTester(PinnedHttpsTransport transport) {
         this.transport = transport;
     }
 

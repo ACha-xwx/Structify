@@ -1,5 +1,7 @@
 package com.feng.dsagent.review;
 
+import com.feng.dsagent.review.service.ReviewService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -9,9 +11,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.feng.dsagent.knowledge.KnowledgeAudience;
 import com.feng.dsagent.knowledge.KnowledgeChunk;
-import com.feng.dsagent.knowledge.KnowledgeSearchService;
+import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
 import com.feng.dsagent.security.AuthenticatedUser;
-import com.feng.dsagent.security.JwtTokenService;
+import com.feng.dsagent.security.service.JwtTokenService;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;

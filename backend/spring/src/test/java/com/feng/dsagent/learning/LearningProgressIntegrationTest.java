@@ -1,5 +1,7 @@
 package com.feng.dsagent.learning;
 
+import com.feng.dsagent.learning.service.LearningProgressService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.BeforeEach;
