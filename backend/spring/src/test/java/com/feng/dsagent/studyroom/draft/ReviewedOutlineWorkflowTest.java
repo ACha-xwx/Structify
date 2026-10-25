@@ -31,10 +31,17 @@ class ReviewedOutlineWorkflowTest {
     @Autowired com.feng.dsagent.studyroom.StudyroomRepository rooms;
     @MockitoBean com.feng.dsagent.aiquota.AiQuotaExecutionService execution;
     @MockitoBean OutlineModelGateway model;
+    @Autowired OutlineJson json;
     long user;
     static final String OUTLINE =
             """
 {"schemaVersion":1,"depth":"STANDARD","title":"学习概念","objectives":["理解概念"],"prerequisites":[],"units":[{"id":"concept","title":"概念","objective":"理解概念","coverageKeys":["concept"],"expansion":"EXPLAIN","activities":["CONCEPT"],"materials":[]}],"excludedCoverageKeys":[],"exclusions":[],"evidenceIds":[],"curriculumVersion":null,"coverageAssessment":"EVIDENCE_ONLY"}
+""";
+
+    /** A knowledge point whose coverage key demands a process activity the model never scheduled. */
+    static final String BLOCKED_OUTLINE =
+            """
+{"schemaVersion":1,"depth":"STANDARD","title":"单链表","objectives":["掌握单链表"],"prerequisites":[],"units":[{"id":"head","title":"结点结构","objective":"说明结点结构","coverageKeys":["list.linked.singly.structure"],"expansion":"EXPLAIN","activities":["CONCEPT"],"materials":[]},{"id":"ops","title":"反转链表","objective":"实现反转","coverageKeys":["list.linked.singly.operations"],"expansion":"EXPLAIN","activities":["IMPLEMENTATION"],"materials":[]}],"excludedCoverageKeys":[],"exclusions":[],"evidenceIds":[],"curriculumVersion":null,"coverageAssessment":"EVIDENCE_ONLY"}
 """;
 
     @BeforeEach
@@ -291,6 +298,80 @@ class ReviewedOutlineWorkflowTest {
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isBadRequest());
         http.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/v1/users/courses/missing").header("Authorization",auth).contentType("application/json").content("{\"title\":\"课程\"}"))
             .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isNotFound());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void aBlockedOutlineIsRepairedAsANewRevisionThatReallyTeachesTheMissingActivity() {
+        when(model.plan(anyLong(), anyString(), any(), anyString(), anyString(), anyString()))
+                .thenReturn(BLOCKED_OUTLINE);
+        String id = create();
+        assertThat(worker.runOnce()).isTrue();
+        var blocked = service.get(user, id);
+        assertThat((List<ReviewedOutline.Issue>) blocked.get("issues"))
+                .anySatisfy(issue -> {
+                    assertThat(issue.code()).isEqualTo("PROCESS_ACTIVITY_MISSING");
+                    assertThat(issue.severity()).isEqualTo("BLOCKER");
+                    assertThat(issue.unitId()).isEqualTo("ops");
+                });
+        var hash = blocked.get("planHash");
+        var fixes = List.of(new OutlineController.RepairFix("PROCESS_ACTIVITY_MISSING", "ops"));
+        var result = service.repair(user, id, 1, fixes, "repair-one");
+        assertThat(result).containsEntry("revision", 2);
+        assertThat(service.repair(user, id, 1, fixes, "repair-one")).isEqualTo(result);
+        // The repaired outline is what gets stored, so the plan hash, the preview and the
+        // fragments taught in the classroom are all compiled from it, not from the blocked one.
+        var stored =
+                json.read(
+                        (String)
+                                jdbc.queryForObject(
+                                        "SELECT outline_json FROM study_outline_revisions WHERE"
+                                                + " draft_id=? AND revision=2",
+                                        String.class,
+                                        id),
+                        ReviewedOutline.class);
+        var unit = stored.units().stream().filter(u -> u.id().equals("ops")).findFirst().orElseThrow();
+        assertThat(unit.activities()).contains("PROCESS");
+        var after = service.get(user, id);
+        assertThat(after.get("planHash")).isNotEqualTo(hash);
+        assertThat((List<ReviewedOutline.Issue>) after.get("issues"))
+                .noneMatch(issue -> "BLOCKER".equals(issue.severity()));
+        var preview =
+                (Map<String, List<com.feng.dsagent.studyroom.fragment.FragmentPlan>>)
+                        after.get("fragmentPreview");
+        assertThat(preview.get("ops")).anySatisfy(plan -> assertThat(plan.activity()).isEqualTo("PROCESS"));
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT feedback FROM study_outline_revisions WHERE draft_id=? AND revision=2",
+                                String.class,
+                                id))
+                .contains("补充过程讲解");
+        service.confirm(user, id, 2, "confirm-repaired", (String) after.get("planHash"));
+    }
+
+    @Test
+    void repairRefusesStaleForeignEmptyAndUnknownIssues() {
+        when(model.plan(anyLong(), anyString(), any(), anyString(), anyString(), anyString()))
+                .thenReturn(BLOCKED_OUTLINE);
+        String id = create();
+        assertThat(worker.runOnce()).isTrue();
+        var fixes = List.of(new OutlineController.RepairFix("PROCESS_ACTIVITY_MISSING", "ops"));
+        assertThatThrownBy(() -> service.repair(user, id, 2, fixes, "stale")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> service.repair(user, id, 1, List.of(), "empty")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(
+                        () ->
+                                service.repair(
+                                        user,
+                                        id,
+                                        1,
+                                        List.of(new OutlineController.RepairFix("PROCESS_ACTIVITY_MISSING", "absent")),
+                                        "absent"))
+                .isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> service.repair(user + 1, id, 1, fixes, "foreign"))
+                .isInstanceOf(ApiException.class);
+        service.repair(user, id, 1, fixes, "repair-refused");
+        service.confirm(user, id, 2, "confirm-refused", (String) service.get(user, id).get("planHash"));
+        assertThatThrownBy(() -> service.repair(user, id, 2, fixes, "confirmed")).isInstanceOf(ApiException.class);
     }
 
 }

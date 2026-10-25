@@ -1,7 +1,7 @@
 import { describe,it,expect,vi,beforeEach } from "vitest";
 import { mount,flushPromises } from "@vue/test-utils";
 import StudyroomOutlineFlow from "./StudyroomOutlineFlow.vue";
-const { api }=vi.hoisted(()=>({api:{create:vi.fn(),get:vi.fn(),revise:vi.fn(),manualRevise:vi.fn(),confirm:vi.fn(),run:vi.fn()}}));
+const { api }=vi.hoisted(()=>({api:{create:vi.fn(),get:vi.fn(),revise:vi.fn(),manualRevise:vi.fn(),repair:vi.fn(),confirm:vi.fn(),run:vi.fn()}}));
 const { eventStart }=vi.hoisted(()=>({eventStart:vi.fn()}));
 vi.mock("../../outline-runtime",()=>({outlineApi:api}));
 vi.mock('../../use-classroom-events',async()=>{const {ref}=await import('vue');return {useClassroomEvents:()=>({start:eventStart,stop:vi.fn(),error:ref('')})};});
@@ -146,6 +146,31 @@ describe("outline approval",()=>{
   expect(wrapper.find('.preparation-card').exists()).toBe(true);
   expect(api.run).toHaveBeenCalledWith("run-1",expect.anything());
   expect(api.confirm).not.toHaveBeenCalled();wrapper.unmount();
+ });
+ it("names the blocked knowledge point and repairs it as a new revision",async()=>{
+  api.get.mockResolvedValue({id:"draft-1",depth:"STANDARD",status:"REVIEWABLE",latestRevision:1,pendingJobId:null,planHash:"hash",outline:{title:"单链表",objectives:[],exclusions:[],units:[{id:"ops",title:"反转链表",objective:"实现反转",materials:[]}]},issues:[{code:"PROCESS_ACTIVITY_MISSING",unitId:"ops",severity:"BLOCKER",message:"操作或遍历知识点需要过程讲解活动"}],changes:[]});
+  api.repair.mockResolvedValue({draftId:"draft-1",revision:2});
+  const wrapper=mount(StudyroomOutlineFlow,{props:{draftId:"draft-1"}});await flushPromises();
+  var review=wrapper.findAll("button").find(b=>/审阅大纲|点击审阅/.test(b.text()));if(review)await review.trigger("click");
+  await flushPromises();
+  expect(wrapper.get('[data-action="confirm"]').attributes('disabled')).toBeDefined();
+  expect(wrapper.get('.outline-issues').text()).toContain('阻断');
+  expect(wrapper.get('.outline-issues').text()).toContain('反转链表');
+  expect(wrapper.get('.outline-actions').text()).toContain('先补充 1 处缺失的讲解活动');
+  await wrapper.get('.outline-repair button').trigger('click');await flushPromises();
+  expect(api.repair).toHaveBeenCalledWith('draft-1',{baseRevision:1,fixes:[{code:"PROCESS_ACTIVITY_MISSING",unitId:"ops"}]},expect.any(String));
+  expect(api.confirm).not.toHaveBeenCalled();wrapper.unmount();
+ });
+ it("offers no repair for a blocker that naming an activity cannot fix",async()=>{
+  api.get.mockResolvedValue({id:"draft-1",depth:"STANDARD",status:"REVIEWABLE",latestRevision:1,pendingJobId:null,planHash:"hash",outline:{title:"单链表",objectives:[],exclusions:[],units:[{id:"ops",title:"反转链表",objective:"实现反转",materials:[]}]},issues:[{code:"COVERAGE_GAP",unitId:null,severity:"BLOCKER",message:"路线缺少：双向链表"}],changes:[]});
+  const wrapper=mount(StudyroomOutlineFlow,{props:{draftId:"draft-1"}});await flushPromises();
+  var review=wrapper.findAll("button").find(b=>/审阅大纲|点击审阅/.test(b.text()));if(review)await review.trigger("click");
+  await flushPromises();
+  expect(wrapper.get('[data-action="confirm"]').attributes('disabled')).toBeDefined();
+  expect(wrapper.get('.outline-issues').text()).toContain('阻断');
+  expect(wrapper.find('.outline-repair').exists()).toBe(false);
+  await wrapper.get('[data-action="confirm"]').trigger('click');await flushPromises();
+  expect(api.repair).not.toHaveBeenCalled();wrapper.unmount();
  });
  it('clears an expanded prior review while a confirmed replacement draft loads',async()=>{
   api.get.mockResolvedValueOnce({id:'draft-1',depth:'STANDARD',status:'REVIEWABLE',latestRevision:1,pendingJobId:null,outline:{title:'旧课程',units:[{id:'old',title:'旧知识点',objective:'旧目标',materials:[]}],objectives:[],exclusions:[]},issues:[],changes:[]});

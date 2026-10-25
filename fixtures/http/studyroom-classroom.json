@@ -271,6 +271,27 @@
         "draftId": "synthetic-draft",
         "revision": 2
       }
+    },
+    {
+      "method": "POST",
+      "path": "/study-outlines/{id}/repairs",
+      "status": 200,
+      "headers": {
+        "Idempotency-Key": "synthetic-repair-1"
+      },
+      "request": {
+        "baseRevision": 1,
+        "fixes": [
+          {
+            "code": "PROCESS_ACTIVITY_MISSING",
+            "unitId": "operations"
+          }
+        ]
+      },
+      "response": {
+        "draftId": "synthetic-draft",
+        "revision": 2
+      }
     }
   ]
 }

@@ -106,6 +106,29 @@ async function confirm(){
 }
 async function retry(){if(!props.draftId||busy.value)return;busy.value=true;error.value="";try{await outlineApi.retry(props.draftId,requestKey(`retry:${props.draftId}:${draft.value?.latestRevision}`));requestIdentity=undefined;await load(props.draftId);}catch(cause){error.value=cause instanceof Error?cause.message:"重试失败";}finally{busy.value=false;}}
 async function restore(target:number){if(!draft.value||busy.value||generating.value||dirty.value)return;busy.value=true;error.value="";try{await outlineApi.restore(draft.value.id,draft.value.latestRevision,target,requestKey(`restore:${draft.value.id}:${draft.value.latestRevision}:${target}`));requestIdentity=undefined;await load(draft.value.id);}catch(cause){error.value=cause instanceof Error?cause.message:"恢复失败";}finally{busy.value=false;}}
+// A knowledge point can be blocked because the curriculum asks for an activity the model never
+// scheduled. That is repairable: the missing activity is recorded on the stored outline as the
+// next revision, so the plan hash, the preview and the classroom fragments are all built from
+// the repaired outline rather than from the blocked one.
+const REPAIRABLE_CODES=new Set(["PROCESS_ACTIVITY_MISSING","IMPLEMENTATION_ACTIVITY_MISSING"]);
+const blockingIssues=computed(()=>(draft.value?.issues??[]).filter(issue=>issue.severity==="BLOCKER"));
+const repairableIssues=computed(()=>blockingIssues.value.filter(issue=>REPAIRABLE_CODES.has(issue.code)&&!!issue.unitId));
+const unitTitle=(id:string|null)=>id?(draft.value?.outline?.units??[]).find(unit=>unit.id===id)?.title??id:"";
+async function repairIssues(){
+ const snapshot=draft.value;
+ if(!snapshot||!snapshot.outline||busy.value||dirty.value||repairableIssues.value.length===0)return;
+ const id=snapshot.id;busy.value=true;error.value="";
+ try{
+  const body={baseRevision:snapshot.latestRevision,fixes:repairableIssues.value.map(issue=>({code:issue.code,unitId:issue.unitId}))};
+  const saved=await outlineApi.repair(id,body,requestKey(JSON.stringify(body)));
+  if(props.draftId!==id)return;
+  const loaded=await load(id);
+  if(loaded&&loaded.latestRevision===saved.revision){requestIdentity=undefined;resetEdits();}
+ }catch(cause){
+  if(props.draftId!==id)return;
+  error.value=cause instanceof Error?cause.message:"修复失败，请刷新最新大纲后重试";
+ }finally{busy.value=false;}
+}
 </script>
 <template>
  <section class="outline-flow" :class="{'is-waiting':generating||preparationActive,'is-entry':!draftId,'is-collapsed':draftId&&!expanded&&!preparationActive,'is-expanded':expanded&&!preparationActive,'is-preparing':preparationActive}" aria-label="学习大纲审阅">
@@ -142,7 +165,8 @@ async function restore(target:number){if(!draft.value||busy.value||generating.va
       </li><li v-if="!draft?.confirmedRunId" class="insertion-row"><button type="button" class="insert-divider" aria-label="添加知识点" :disabled="reviewReadOnly||localUnits.length>=24" @click="addUnit(index+1)"><span aria-hidden="true">＋</span><span class="sr-only">添加知识点</span></button></li></template>
      </ol>
      <details v-if="!generating&&draft?.outline&&(draft.outline.objectives.length||draft.outline.exclusions.length)" data-course-goals class="outline-secondary"><summary>课程总体目标与范围</summary><ul><li v-for="goal in draft.outline.objectives" :key="goal">{{goal}}</li></ul><p v-if="draft.outline.exclusions.length">本次不覆盖：{{draft.outline.exclusions.join('；')}}</p><p>{{draft.outline.coverageAssessment==='REVIEWED_FRAMEWORK'?'已对照课程框架':'基于当前授权资料规划'}}</p></details>
-     <ul v-if="!generating&&draft?.issues.length" class="outline-issues" aria-label="大纲检查提示"><li v-for="(issue,index) in draft.issues" :key="index">{{issue.message}}</li></ul>
+     <ul v-if="!generating&&draft?.issues.length" class="outline-issues" aria-label="大纲检查提示"><li v-for="(issue,index) in draft.issues" :key="index" :class="{'is-blocker':issue.severity==='BLOCKER'}"><span class="issue-severity">{{issue.severity==='BLOCKER'?'阻断':'提示'}}</span><span>{{issue.message}}<span v-if="issue.unitId" class="issue-unit"> · 知识点：{{unitTitle(issue.unitId)}}</span></span></li></ul>
+     <div v-if="!generating&&repairableIssues.length&&!draft?.confirmedRunId" class="outline-repair"><p>这条路线的 {{repairableIssues.length}} 个知识点缺少教学要求的讲解活动，所以现在还不能开始学习。补上之后课堂里会多出对应的讲解，并另存为一个新版本，你可以先看看再决定。</p><button type="button" :disabled="busy||dirty" @click="repairIssues">{{busy?'正在补充…':'补充缺失的讲解活动'}}</button></div>
      <div v-if="editing&&!generating&&!draft?.confirmedRunId" class="outline-editor"><label class="field-label" for="outline-feedback">修改意见</label><textarea ref="feedbackInput" id="outline-feedback" v-model="feedback" maxlength="4000" :disabled="reviewReadOnly" placeholder="例如：先讲顺序栈，加入入栈出栈动画。"/><button :disabled="reviewReadOnly||dirty||!feedback.trim()">{{busy?'正在提交…':'按意见调整大纲'}}</button></div>
      <details v-if="!generating&&draft?.changes.length&&draft.latestRevision>1" class="outline-secondary"><summary>本版调整</summary><p v-for="(change,index) in draft.changes" :key="index">{{change.summary}}</p></details>
      <details v-if="!generating&&draft?.messages?.length" class="outline-secondary"><summary>大纲讨论记录</summary><p v-for="(message,index) in draft.messages" :key="index"><strong>{{message.role==='USER'?'你':'AI'}}：</strong>{{message.content}}</p></details>
@@ -155,6 +179,7 @@ async function restore(target:number){if(!draft.value||busy.value||generating.va
    <footer class="outline-actions"><template v-if="dirty"><button type="button" :disabled="busy||!valid" @click="saveManual">保存修改</button><button type="button" :disabled="busy" @click="resetEdits">撤销修改</button></template>
     <a v-if="draftId&&!generating&&!preparing&&!draft?.outline" href="/studyroom">更换学习问题</a>
     <span v-if="generating||preparing" class="action-hint">{{preparing?'首段就绪后自动进入课堂':'完成检查后即可确认大纲'}}</span>
+    <span v-else-if="repairableIssues.length" class="action-hint">先补充 {{repairableIssues.length}} 处缺失的讲解活动</span>
     <button v-if="!draftId" class="primary" :disabled="busy||!question.trim()">{{busy?'正在提交…':'生成大纲'}}</button>
     <template v-else>
      <button v-if="(generating||draft?.outline)&&!draft?.confirmedRunId&&!preparing" type="button" :disabled="reviewReadOnly" :aria-expanded="editing" @click="editing=!editing">{{editing?'收起修改':'修改大纲'}}</button>

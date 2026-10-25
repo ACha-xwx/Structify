@@ -376,6 +376,56 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '404': {description: Draft absent or foreign}
         '409': {description: Stale revision, generation pending, confirmed draft or idempotency conflict}
+  /study-outlines/{id}/repairs:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      tags: [Classroom]
+      summary: Record a targeted fix for a blocking review issue as the next outline revision
+      description: >-
+        A reviewed outline can be blocked because an activity the curriculum requires is missing
+        from a knowledge point. This records that missing activity on the stored outline and
+        saves the repaired outline as a new revision, so the plan hash, the preview and the
+        fragments taught in the classroom are all compiled from the repaired outline. Only
+        blocking issues that name a knowledge point can be repaired here; anything else has to
+        change the outline or the scope of the question.
+      security: [{bearerAuth: []}, {cookieAuth: []}]
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [baseRevision, fixes]
+              properties:
+                baseRevision: {type: integer, minimum: 1}
+                fixes:
+                  type: array
+                  minItems: 1
+                  maxItems: 24
+                  items:
+                    type: object
+                    required: [code]
+                    properties:
+                      code: {type: string, minLength: 1, maxLength: 64}
+                      unitId: {type: string, maxLength: 80}
+      responses:
+        '200':
+          description: Saved revision; repeated keys return the same result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [draftId, revision]
+                properties:
+                  draftId: {type: string}
+                  revision: {type: integer}
+        '400': {description: Invalid fixes, or an issue that cannot be repaired automatically}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '404': {description: Draft absent or foreign}
+        '409': {description: Stale revision, generation pending, confirmed draft or idempotency conflict}
   /study-outlines/{id}/confirm:
     parameters:
       - {name: id, in: path, required: true, schema: {type: string}}

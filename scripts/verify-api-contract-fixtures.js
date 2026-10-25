@@ -35,6 +35,7 @@ const documentedOperations = extractDocumentedOperations(openapi);
 
 const documentedPaths = [
   "/study-outlines/{id}/manual-revisions",
+  "/study-outlines/{id}/repairs",
   "/studyroom-runs/{id}/fragments/{fragmentId}/lecture",
   "/studyroom-runs/{id}/fragments/{fragmentId}/lecture/regions",
   "/studyroom-runs/{id}/fragments/{fragmentId}/lecture/regions/{regionId}",

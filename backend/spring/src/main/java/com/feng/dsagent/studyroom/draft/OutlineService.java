@@ -254,6 +254,74 @@ public class OutlineService {
         return Map.of("draftId",id,"revision",revision);
     }
 
+    /** Records a targeted fix as the next revision, so the plan hash and the taught fragments
+     * are both compiled from the repaired outline rather than from the blocked one. */
+    @Transactional
+    public Map<String, Object> repair(long user, String id, int base,
+            List<OutlineController.RepairFix> fixes, String key) {
+        store.owned(user,id,false);
+        store.lockUser(user);
+        String payload=json.write(Arrays.asList(id,base,fixes));
+        String prior=store.key(user,"outline_repair",key,payload);
+        if(prior!=null) return Map.of("draftId",id,"revision",Integer.parseInt(prior));
+        var draft=store.owned(user,id,true);
+        requireEditable(draft,base);
+        OutlineJson.require(draft.get("confirmed_run_id")==null && !"CONFIRMED".equals(draft.get("status")),"OUTLINE_ALREADY_CONFIRMED","已确认的大纲不能修改");
+        if(fixes==null||fixes.isEmpty())
+            throw OutlineJson.error(HttpStatus.BAD_REQUEST,"INVALID_OUTLINE_REQUEST","请选择要修复的问题");
+        var before=json.read((String)store.revision(id,base).get("outline_json"),ReviewedOutline.class);
+        var found=feasibility.assess(before,(String)draft.get("question"),(String)draft.get("chapter_id")).issues();
+        var activity=new LinkedHashMap<String,LinkedHashSet<String>>();
+        before.units().forEach(unit->activity.put(unit.id(),new LinkedHashSet<>(unit.activities())));
+        var notes=new ArrayList<String>();
+        for(var fix:fixes) {
+            if(fix==null||fix.code()==null)
+                throw OutlineJson.error(HttpStatus.BAD_REQUEST,"INVALID_OUTLINE_REQUEST","修复项不能为空");
+            var issue=found.stream().filter(i->i.code().equals(fix.code())&&Objects.equals(i.unitId(),fix.unitId())).findFirst()
+                .orElseThrow(()->OutlineJson.error(HttpStatus.CONFLICT,"REPAIR_NOT_APPLICABLE","该问题已不存在，请刷新最新大纲后重试"));
+            OutlineJson.require("BLOCKER".equals(issue.severity()),"REPAIR_NOT_APPLICABLE","只有阻断问题可以定向修复");
+            String addition;
+            if("PROCESS_ACTIVITY_MISSING".equals(issue.code())) addition="PROCESS";
+            else if("IMPLEMENTATION_ACTIVITY_MISSING".equals(issue.code())) addition="IMPLEMENTATION";
+            else throw OutlineJson.error(HttpStatus.BAD_REQUEST,"REPAIR_NOT_SUPPORTED","该问题无法自动修复，请调整大纲或缩小学习范围");
+            var unit=before.units().stream().filter(u->u.id().equals(issue.unitId())).findFirst()
+                .orElseThrow(()->OutlineJson.error(HttpStatus.CONFLICT,"REPAIR_NOT_APPLICABLE","该问题已不存在，请刷新最新大纲后重试"));
+            if(activity.get(unit.id()).add(addition)) notes.add(unit.title()+"："+activityNote(addition));
+        }
+        OutlineJson.require(!notes.isEmpty(),"REPAIR_NOT_APPLICABLE","该问题已不存在，请刷新最新大纲后重试");
+        var units=new ArrayList<ReviewedOutline.Unit>();
+        for(var unit:before.units()) {
+            var acts=activity.get(unit.id());
+            if(acts==null||acts.equals(new LinkedHashSet<>(unit.activities()))) {units.add(unit);continue;}
+            units.add(new ReviewedOutline.Unit(unit.id(),unit.title(),unit.objective(),unit.coverageKeys(),
+                unit.expansion(),List.copyOf(acts),unit.materials()));
+        }
+        var edited=new ReviewedOutline(before.schemaVersion(),before.depth(),before.title(),before.objectives(),
+            before.prerequisites(),units,before.excludedCoverageKeys(),before.exclusions(),before.evidenceIds(),
+            before.curriculumVersion(),before.coverageAssessment());
+        try { validator.validate(edited,before.depth()); }
+        catch(IllegalArgumentException error) { throw OutlineJson.error(HttpStatus.BAD_REQUEST,"INVALID_OUTLINE_REQUEST",error.getMessage()); }
+        var assessment=feasibility.assess(edited,(String)draft.get("question"),(String)draft.get("chapter_id"));
+        try {
+            validator.validate(assessment.outline(),before.depth());
+            compiler.preview(assessment.outline());
+            compiler.hash(assessment.outline(),json);
+        } catch(IllegalArgumentException error) { throw OutlineJson.error(HttpStatus.BAD_REQUEST,"INVALID_OUTLINE_REQUEST",error.getMessage()); }
+        int revision=base+1;
+        String note="定向修复："+String.join("；",notes);
+        store.db().update("INSERT INTO study_outline_revisions(id,draft_id,revision,base_revision,outline_json,issues_json,change_summary_json,feedback,curriculum_version) VALUES(?,?,?,?,?,?,?,?,?)",
+            OutlineJson.id(),id,revision,base,json.write(assessment.outline()),json.write(assessment.issues()),
+            json.write(OutlineDiff.between(before,assessment.outline())),note,assessment.outline().curriculumVersion());
+        store.db().update("UPDATE study_outline_drafts SET latest_revision=?,status='REVIEWABLE',updated_at=CURRENT_TIMESTAMP,activity_at=CURRENT_TIMESTAMP WHERE id=?",revision,id);
+        store.message(id,"USER",note,revision);
+        store.saveKey(user,"outline_repair",key,payload,Integer.toString(revision));
+        return Map.of("draftId",id,"revision",revision);
+    }
+
+    private static String activityNote(String activity) {
+        return "PROCESS".equals(activity)?"补充过程讲解":"补充代码讲解";
+    }
+
     private void requireEditable(Map<String, Object> draft, int base) {
         OutlineJson.require(
                 draft.get("pending_job_id") == null, "OUTLINE_GENERATING", "大纲正在生成，请等待完成");

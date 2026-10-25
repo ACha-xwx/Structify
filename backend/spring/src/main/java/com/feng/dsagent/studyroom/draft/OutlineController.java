@@ -77,6 +77,20 @@ public class OutlineController {
             @NotBlank @Size(max=160) String title,
             @NotBlank @Size(max=400) String objective) {}
 
+    @PostMapping("/study-outlines/{id}/repairs")
+    Map<String, Object> repair(
+            @AuthenticationPrincipal AuthenticatedUser user, @PathVariable String id,
+            @RequestHeader("Idempotency-Key") String key,
+            @Valid @RequestBody Repair body) {
+        return outlines.repair(user.userId(), id, body.baseRevision(), body.fixes(), key);
+    }
+
+    public record Repair(@Min(1) int baseRevision,
+            @NotEmpty @Size(max=24) List<@NotNull @Valid RepairFix> fixes) {}
+    public record RepairFix(
+            @NotBlank @Size(max=64) String code,
+            @Size(max=80) String unitId) {}
+
     @PostMapping("/study-outlines/{id}/confirm")
     Map<String, Object> confirm(
             @AuthenticationPrincipal AuthenticatedUser user,
