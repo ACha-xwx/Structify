@@ -1,7 +1,5 @@
 package com.feng.dsagent.studyroom.fragment;
 
-import org.springframework.transaction.PlatformTransactionManager;
-
 import com.feng.dsagent.studyroom.generation.mapper.GenerationCallMapper;
 
 import com.feng.dsagent.studyroom.questions.mapper.ClassroomQuestionMapper;
@@ -13,6 +11,7 @@ import com.feng.dsagent.studyroom.generation.service.GenerationCallService;
 import com.feng.dsagent.studyroom.questions.service.ClassroomQuestionService;
 import com.feng.dsagent.studyroom.service.StudyroomFollowUpService;
 import com.feng.dsagent.studyroom.service.StudyroomService;
+import com.feng.dsagent.studyroom.support.StudyroomMapperFactory;
 
 import com.feng.dsagent.studyroom.*;
 import com.feng.dsagent.studyroom.events.*;
@@ -29,16 +28,16 @@ import java.util.*;
 import java.time.Instant;
 
 class ClassroomQuestionServiceTest {
-    @Test void completesStreamAndPublishesExactlyOneExchange() {exerciseWorker(false);}
-    @Test void cancellingDuringProviderStreamPreventsLatePublication() {exerciseWorker(true);}
-    void exerciseWorker(boolean cancel) {
+    @Test void completesStreamAndPublishesExactlyOneExchange() throws Exception {exerciseWorker(false);}
+    @Test void cancellingDuringProviderStreamPreventsLatePublication() throws Exception {exerciseWorker(true);}
+    void exerciseWorker(boolean cancel) throws Exception {
         var db=new FragmentTestDatabase();db.unit("u",0);db.fragment("f","u",0,"READY");
         db.jdbc.update("UPDATE studyroom_fragments SET content_revision=1 WHERE id='f'");
         var manager=new DataSourceTransactionManager(db.source);var jobs=new JdbcGenerationRepository(db.store,db.json,manager);
-        var events=new ClassroomEventService(mock(ClassroomEventMapper.class), db.json, manager);
+        var events=new ClassroomEventService(StudyroomMapperFactory.create(db.source, ClassroomEventMapper.class), db.json, manager);
         var view=mock(StudyroomService.class);when(view.validateQuestionContext(eq(db.user),eq("room"),any())).thenReturn("{\"stepId\":\"step-f\"}");
         var repository=new JdbcClassroomQuestionRepository(db.store,db.json);
-        var service=new ClassroomQuestionService(mock(ClassroomQuestionMapper.class),db.store,db.json,jobs,events,view);
+        var service=new ClassroomQuestionService(StudyroomMapperFactory.create(db.source, ClassroomQuestionMapper.class),db.store,db.json,jobs,events,view);
         String id=(String)service.create(db.user,"room","run","f",1,"为什么？",null,"q-test",KnowledgeAudience.STUDENT).get("questionId");
         var model=new AiQuotaExecution() {
             public ModelResponse complete(Long u,String op,String key,ModelRequest request){throw new AssertionError("stream required");}
@@ -48,7 +47,7 @@ class ClassroomQuestionServiceTest {
         };
         var context=mock(StudyroomFollowUpService.class);when(context.prepare(eq(db.user),eq("room"),anyString(),any(),anyString())).thenReturn(new StudyroomFollowUpService.AnswerContext("prompt","step-f","[]","run"));
         var rooms=mock(StudyroomRepository.class);
-        var worker=new ClassroomQuestionWorker(repository,jobs,events,new GenerationCallService(mock(GenerationCallMapper.class), mock(PlatformTransactionManager.class), model),context,rooms);
+        var worker=new ClassroomQuestionWorker(repository,jobs,events,new GenerationCallService(StudyroomMapperFactory.create(db.source, GenerationCallMapper.class), manager, model),context,rooms);
         var job=jobs.claim(Instant.now());
         if(cancel) {
             assertThrows(RuntimeException.class,()->worker.run(job));verifyNoInteractions(rooms);
@@ -62,15 +61,15 @@ class ClassroomQuestionServiceTest {
         }
         assertEquals("READY",db.jdbc.queryForObject("SELECT status FROM studyroom_fragments WHERE id='f'",String.class));
     }
-    @Test void createsOnePrioritizedUnboundJobAndCancelsWithoutTouchingSource() {
+    @Test void createsOnePrioritizedUnboundJobAndCancelsWithoutTouchingSource() throws Exception {
         var db=new FragmentTestDatabase();db.unit("u",0);db.fragment("f","u",0,"READY");
         db.jdbc.update("UPDATE studyroom_fragments SET content_revision=1 WHERE id='f'");
         var manager=new DataSourceTransactionManager(db.source);
         var jobs=new JdbcGenerationRepository(db.store,db.json,manager);
-        var events=new ClassroomEventService(mock(ClassroomEventMapper.class), db.json, manager);
+        var events=new ClassroomEventService(StudyroomMapperFactory.create(db.source, ClassroomEventMapper.class), db.json, manager);
         var rooms=mock(StudyroomService.class);
         when(rooms.validateQuestionContext(eq(db.user),eq("room"),any())).thenReturn("{\"stepId\":\"step-f\"}");
-        var service=new ClassroomQuestionService(mock(ClassroomQuestionMapper.class),db.store,db.json,jobs,events,rooms);
+        var service=new ClassroomQuestionService(StudyroomMapperFactory.create(db.source, ClassroomQuestionMapper.class),db.store,db.json,jobs,events,rooms);
         var first=service.create(db.user,"room","run","f",1,"为什么？",null,"question-1",KnowledgeAudience.STUDENT);
         assertEquals(first,service.create(db.user,"room","run","f",1,"为什么？",null,"question-1",KnowledgeAudience.STUDENT));
         assertThrows(RuntimeException.class,()->service.create(db.user,"room","run","f",1,"另一个问题",null,"question-2",KnowledgeAudience.STUDENT));

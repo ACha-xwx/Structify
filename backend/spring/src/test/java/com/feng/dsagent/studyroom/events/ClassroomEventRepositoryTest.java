@@ -1,10 +1,9 @@
 package com.feng.dsagent.studyroom.events;
 
-import static org.mockito.Mockito.mock;
-
 import com.feng.dsagent.studyroom.events.mapper.ClassroomEventMapper;
 
 import com.feng.dsagent.studyroom.events.service.ClassroomEventService;
+import com.feng.dsagent.studyroom.support.StudyroomMapperFactory;
 
 import com.feng.dsagent.studyroom.draft.*;
 import java.util.*;
@@ -25,12 +24,12 @@ class ClassroomEventRepositoryTest {
     final ClassroomEventService service;
     final long user;
 
-    ClassroomEventRepositoryTest() {
+    ClassroomEventRepositoryTest() throws Exception {
         Flyway.configure().dataSource(source).locations("classpath:db/migration").load().migrate();
         db.update("INSERT INTO users(email,password_hash) VALUES('events@example.com','hash')");
         user = db.queryForObject("SELECT id FROM users WHERE email='events@example.com'", Long.class);
         db.update("INSERT INTO study_outline_drafts(id,user_id,question,depth,status) VALUES('draft',?,'q','STANDARD','GENERATING')", user);
-        service = new ClassroomEventService(mock(ClassroomEventMapper.class), json, new DataSourceTransactionManager(source));
+        service = new ClassroomEventService(StudyroomMapperFactory.create(source, ClassroomEventMapper.class), json, new DataSourceTransactionManager(source));
         service.open(user, "outline:draft", "OUTLINE", "draft", null, "operation", 1, null, 1, Map.of("phase", "QUEUED"));
     }
 

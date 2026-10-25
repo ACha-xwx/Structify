@@ -19,7 +19,7 @@ public final class StudyroomMapperFactory {
                 new PathMatchingResourcePatternResolver()
                         .getResources("classpath:mapper/studyroom/*Mapper.xml"));
         Configuration configuration = new Configuration();
-        configuration.setMapUnderscoreToCamelCase(true);
+        configuration.setMapUnderscoreToCamelCase(false);
         factoryBean.setConfiguration(configuration);
         SqlSessionFactory factory = Objects.requireNonNull(factoryBean.getObject());
         return new SqlSessionTemplate(factory).getMapper(type);

@@ -1,10 +1,9 @@
 package com.feng.dsagent.studyroom.fragment;
 
-import static org.mockito.Mockito.mock;
-
 import com.feng.dsagent.studyroom.fragment.mapper.FragmentPublicationMapper;
 
 import com.feng.dsagent.studyroom.fragment.service.FragmentPublicationService;
+import com.feng.dsagent.studyroom.support.StudyroomMapperFactory;
 
 import static org.assertj.core.api.Assertions.*;
 import com.feng.dsagent.studyroom.*;
@@ -15,13 +14,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 
 class FragmentPublicationServiceTest {
-    @Test void publishesOneFragmentWithoutWaitingAndRejectsExpiredOrSupersededWork() {
+    @Test void publishesOneFragmentWithoutWaitingAndRejectsExpiredOrSupersededWork() throws Exception {
         var db=new FragmentTestDatabase();db.unit("u",0);db.fragment("f","u",0,"PENDING");db.fragment("g","u",1,"PENDING");
         var repo=new JdbcFragmentRepository(db.store,db.json);
         var jobs=new JdbcGenerationRepository(db.store,db.json,new DataSourceTransactionManager(db.source));
         var scheduler=new PreparationScheduler(repo,jobs,db.json);scheduler.reconcile(db.user,"run");
         var job=jobs.claim(Instant.now());
-        var publisher=new FragmentPublicationService(mock(FragmentPublicationMapper.class),db.json);
+        var publisher=new FragmentPublicationService(StudyroomMapperFactory.create(db.source, FragmentPublicationMapper.class),db.json);
         var scene=new StudyroomScene("main","TEXT","讲解",List.of(),null,null,null,null);
         var output=new StudyroomModelOutput(1,"栈","栈的定义",List.of("e"),List.of(new StudyroomModelOutput.Step("f",
             StudyroomModelOutput.StepType.EXPLANATION,"栈","后进先出",List.of(),new StudyroomScene.Orchestration(2,"理解栈","CONCEPT",scene,List.of()))));

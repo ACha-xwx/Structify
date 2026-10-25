@@ -122,7 +122,8 @@ public interface UserAccountMapper {
 
 - 依赖：`org.mybatis.spring.boot:mybatis-spring-boot-starter`（与当前 Spring Boot 主版本对齐，见 `pom.xml`）。
 - `@MapperScan`：[`MyBatisConfig`](../../backend/spring/src/main/java/com/feng/dsagent/config/MyBatisConfig.java)。
-- `application.yml`：`mybatis.mapper-locations=classpath:mapper/**/*.xml`，`map-underscore-to-camel-case=true`。
+- `application.yml`：`mybatis.mapper-locations=classpath:mapper/**/*.xml`，`map-underscore-to-camel-case=false`。
+- **Map 结果键名：** typed `resultType` / `resultMap` 仍可按 Java bean 属性映射；但 studyroom 等以 `Map`/`Map<String,Object>` 承接列的 SQL **保留 snake_case 列标签**（与迁 Mapper 前的 JdbcTemplate `queryForMap` 行为一致）。服务层读取 `draft.get("confirmed_run_id")`、`row.get("last_sequence")` 等，故全局关闭 `mapUnderscoreToCamelCase`，避免 MyBatis 把 Map 键改成 camelCase。新代码若用强类型 DTO，再在该映射路径上显式约定。
 
 ---
 

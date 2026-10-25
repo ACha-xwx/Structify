@@ -4,6 +4,7 @@ import com.feng.dsagent.studyroom.draft.mapper.OutlineMapper;
 
 import com.feng.dsagent.studyroom.draft.service.OutlineFeasibilityService;
 import com.feng.dsagent.studyroom.draft.service.OutlineService;
+import com.feng.dsagent.studyroom.support.StudyroomMapperFactory;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -14,7 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 
 class ProgressiveOutlineConfirmationTest {
-    @Test void confirmationFreezesReviewedPlansAndQueuesOnlyBoundedFragments() {
+    @Test void confirmationFreezesReviewedPlansAndQueuesOnlyBoundedFragments() throws Exception {
         var db=new FragmentTestDatabase();
         var unit=new ReviewedOutline.Unit("concept","栈","理解栈",List.of("stack.definition"),"EXPLAIN",List.of("CONCEPT"),List.of());
         var outline=new ReviewedOutline(1,LearningDepth.STANDARD,"栈",List.of("理解栈"),List.of(),List.of(unit),List.of(),List.of(),List.of(),null,"EVIDENCE_ONLY");
@@ -25,7 +26,7 @@ class ProgressiveOutlineConfirmationTest {
         var compiler=new ContentPlanCompiler();
         var feasibility=mock(OutlineFeasibilityService.class);
         when(feasibility.assess(any(),any(),any())).thenReturn(new OutlineFeasibilityService.Assessment(outline,List.of()));
-        var service=new OutlineService(db.store,mock(OutlineMapper.class),jobs,db.json,new OutlineValidator(),feasibility,compiler,fragments,new PreparationScheduler(fragments,jobs,db.json));
+        var service=new OutlineService(db.store,StudyroomMapperFactory.create(db.source, OutlineMapper.class),jobs,db.json,new OutlineValidator(),feasibility,compiler,fragments,new PreparationScheduler(fragments,jobs,db.json));
         String hash=compiler.hash(outline,db.json);
         assertThatThrownBy(()->service.confirm(db.user,"draft",1,"bad-plan","wrong"))
             .hasMessageContaining("讲解安排已改变");

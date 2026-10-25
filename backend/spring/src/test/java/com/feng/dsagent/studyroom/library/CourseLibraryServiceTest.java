@@ -1,10 +1,9 @@
 package com.feng.dsagent.studyroom.library;
 
-import static org.mockito.Mockito.mock;
-
 import com.feng.dsagent.studyroom.library.mapper.CourseLibraryMapper;
 
 import com.feng.dsagent.studyroom.library.service.CourseLibraryService;
+import com.feng.dsagent.studyroom.support.StudyroomMapperFactory;
 
 import static org.assertj.core.api.Assertions.*;
 import com.feng.dsagent.studyroom.draft.*;
@@ -22,12 +21,12 @@ class CourseLibraryServiceTest {
     CourseLibraryService library;
     JdbcOutlineRepository store;
     JdbcGenerationRepository jobs;
-    @BeforeEach void setup() {
+    @BeforeEach void setup() throws Exception {
         var source = new DriverManagerDataSource("jdbc:h2:mem:library-"+UUID.randomUUID()+";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1","sa","");
         Flyway.configure().dataSource(source).locations("classpath:db/migration").load().migrate();
         db=new JdbcTemplate(source);store=new JdbcOutlineRepository(db);
         var json=new OutlineJson(JsonMapper.builder().build());
-        library=new CourseLibraryService(mock(CourseLibraryMapper.class),json);
+        library=new CourseLibraryService(StudyroomMapperFactory.create(source, CourseLibraryMapper.class),json);
         jobs=new JdbcGenerationRepository(store,json,new DataSourceTransactionManager(source));
         db.update("INSERT INTO users(id,email,password_hash) VALUES(101,'library@example.test','hash'),(102,'other@example.test','hash')");
         draft("draft",101);

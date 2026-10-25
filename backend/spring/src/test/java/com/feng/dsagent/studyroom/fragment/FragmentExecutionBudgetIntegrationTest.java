@@ -1,12 +1,9 @@
 package com.feng.dsagent.studyroom.fragment;
 
-import static org.mockito.Mockito.mock;
-
-import org.springframework.transaction.PlatformTransactionManager;
-
 import com.feng.dsagent.studyroom.generation.mapper.GenerationCallMapper;
 
 import com.feng.dsagent.studyroom.generation.service.GenerationCallService;
+import com.feng.dsagent.studyroom.support.StudyroomMapperFactory;
 
 import static org.assertj.core.api.Assertions.*;
 import com.feng.dsagent.aiquota.AiQuotaExecution;
@@ -18,14 +15,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 
 class FragmentExecutionBudgetIntegrationTest {
-    @Test void cachedCallsAreFreeButGenerationRepairAndReviewShareTheSameCap() {
+    @Test void cachedCallsAreFreeButGenerationRepairAndReviewShareTheSameCap() throws Exception {
         var db=new FragmentTestDatabase();db.unit("u",0);db.fragment("f","u",0,"PENDING");
-        var jobs=new JdbcGenerationRepository(db.store,db.json,new DataSourceTransactionManager(db.source));
+        var manager=new DataSourceTransactionManager(db.source);
+        var jobs=new JdbcGenerationRepository(db.store,db.json,manager);
         new PreparationScheduler(new JdbcFragmentRepository(db.store,db.json),jobs,db.json).reconcile(db.user,"run");
         var job=jobs.claim(Instant.now());String id=(String)job.get("id");
         var calls=new AtomicInteger();
         AiQuotaExecution model=(u,op,key,request)->{calls.incrementAndGet();return new ModelResponse("{}",10L);};
-        var execution=new GenerationCallService(mock(GenerationCallMapper.class), mock(PlatformTransactionManager.class), model);
+        var execution=new GenerationCallService(StudyroomMapperFactory.create(db.source, GenerationCallMapper.class), manager, model);
         execution.complete(db.user,id,"generate","system","prompt",100);
         execution.complete(db.user,id,"generate","system","prompt",100);
         execution.complete(db.user,id,"review","system","prompt",100);
