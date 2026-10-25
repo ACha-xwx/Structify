@@ -9,11 +9,11 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
-class JdbcKnowledgeChunkRepository implements KnowledgeChunkRepository {
+public class JdbcKnowledgeChunkRepository implements KnowledgeChunkRepository {
 
     private final JdbcTemplate jdbc;
 
-    JdbcKnowledgeChunkRepository(JdbcTemplate jdbc) {
+    public JdbcKnowledgeChunkRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 

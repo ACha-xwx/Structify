@@ -8,14 +8,14 @@ import org.springframework.stereotype.Component;
 
 /** Runs only when BOOTSTRAP_ADMIN_PROVISION_ENABLED=true is set for a controlled deployment. */
 @Component
-final class BootstrapAdminRunner implements ApplicationRunner {
+public final class BootstrapAdminRunner implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(BootstrapAdminRunner.class);
 
     private final BootstrapAdminProperties properties;
     private final AdminAccountProvisioner provisioner;
 
-    BootstrapAdminRunner(BootstrapAdminProperties properties, AdminAccountProvisioner provisioner) {
+    public BootstrapAdminRunner(BootstrapAdminProperties properties, AdminAccountProvisioner provisioner) {
         this.properties = properties;
         this.provisioner = provisioner;
     }

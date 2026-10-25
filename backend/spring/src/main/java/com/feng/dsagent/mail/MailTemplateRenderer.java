@@ -6,7 +6,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 
-final class MailTemplateRenderer {
+public final class MailTemplateRenderer {
 
     private static final Pattern VARIABLE = Pattern.compile("\\{\\{\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\s*}}")
 ;
@@ -15,7 +15,7 @@ final class MailTemplateRenderer {
     private MailTemplateRenderer() {
     }
 
-    static void validate(String subject, String html) {
+    public static void validate(String subject, String html) {
         if (subject == null || subject.isBlank() || subject.contains("\r") || subject.contains("\n")) {
             throw invalid("MAIL_SUBJECT_INVALID", "邮件主题不能为空且不能包含换行");
         }
@@ -32,7 +32,7 @@ final class MailTemplateRenderer {
         }
     }
 
-    static String render(String source, String siteName, String code, int expiresMinutes) {
+    public static String render(String source, String siteName, String code, int expiresMinutes) {
         Matcher matcher = VARIABLE.matcher(source);
         StringBuffer result = new StringBuffer();
         while (matcher.find()) {
@@ -48,7 +48,7 @@ final class MailTemplateRenderer {
         return result.toString();
     }
 
-    static String renderHtml(String source, String siteName, String code, int expiresMinutes) {
+    public static String renderHtml(String source, String siteName, String code, int expiresMinutes) {
         return render(source, escape(siteName), escape(code), expiresMinutes);
     }
 

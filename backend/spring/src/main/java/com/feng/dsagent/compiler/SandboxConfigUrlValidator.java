@@ -13,7 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 @Component
-final class SandboxConfigUrlValidator {
+public final class SandboxConfigUrlValidator {
 
     private static final Set<String> METADATA_HOSTS = Set.of(
         "metadata",
@@ -28,7 +28,7 @@ final class SandboxConfigUrlValidator {
     private final SandboxConfigHostResolver resolver;
 
     @Autowired
-    SandboxConfigUrlValidator(Environment environment, SandboxConfigHostResolver resolver) {
+    public SandboxConfigUrlValidator(Environment environment, SandboxConfigHostResolver resolver) {
         this(
             java.util.Arrays.stream(environment.getActiveProfiles())
                 .anyMatch(profile -> profile.equals("test") || profile.equals("dev")),
@@ -36,20 +36,20 @@ final class SandboxConfigUrlValidator {
         );
     }
 
-    SandboxConfigUrlValidator(boolean allowLocalHttp) {
+    public SandboxConfigUrlValidator(boolean allowLocalHttp) {
         this(allowLocalHttp, InetAddress::getAllByName);
     }
 
-    SandboxConfigUrlValidator(boolean allowLocalHttp, SandboxConfigHostResolver resolver) {
+    public SandboxConfigUrlValidator(boolean allowLocalHttp, SandboxConfigHostResolver resolver) {
         this.allowLocalHttp = allowLocalHttp;
         this.resolver = Objects.requireNonNull(resolver, "resolver");
     }
 
-    URI validate(String value) {
+    public URI validate(String value) {
         return resolve(value).uri();
     }
 
-    SandboxConfigResolvedTarget resolve(String value) {
+    public SandboxConfigResolvedTarget resolve(String value) {
         URI uri = validateStructure(value);
         if (hasBracketedHost(uri)) {
             throw unsafeUrl();

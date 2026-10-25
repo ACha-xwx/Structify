@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 @Profile("dev")
-final class DevTestAccountRunner implements ApplicationRunner {
+public final class DevTestAccountRunner implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DevTestAccountRunner.class);
 
@@ -22,7 +22,7 @@ final class DevTestAccountRunner implements ApplicationRunner {
     private final String username;
     private final String password;
 
-    DevTestAccountRunner(
+    public DevTestAccountRunner(
         UserRepository users,
         PasswordEncoder passwords,
         @Value("${app.dev-test-account.email}") String email,

@@ -1,8 +1,10 @@
 package com.feng.dsagent.auth;
 
+import com.feng.dsagent.security.SecurityProperties;
+
 import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.common.WindowRateLimiter;
-import com.feng.dsagent.mail.MailConfigService;
+import com.feng.dsagent.mail.service.MailConfigService;
 import com.feng.dsagent.mail.MailPolicy;
 import java.security.SecureRandom;
 import java.time.Clock;
@@ -14,7 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-class DefaultVerificationCodeManager implements VerificationCodeManager {
+public class DefaultVerificationCodeManager implements VerificationCodeManager {
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -26,7 +28,7 @@ class DefaultVerificationCodeManager implements VerificationCodeManager {
     private final MailConfigService mailConfig;
     private final WindowRateLimiter requestLimiter = new WindowRateLimiter(3, Duration.ofMinutes(10));
 
-    DefaultVerificationCodeManager(
+    public DefaultVerificationCodeManager(
         VerificationCodeRepository repository,
         VerificationCodeSender sender,
         AuthProperties properties,

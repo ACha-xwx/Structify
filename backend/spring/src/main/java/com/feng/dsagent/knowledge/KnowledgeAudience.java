@@ -15,7 +15,7 @@ public enum KnowledgeAudience {
         return user.hasRole("TEACHER") || user.hasRole("ADMIN") ? TEAM : STUDENT;
     }
 
-    boolean allows(String licenseScope) {
+    public boolean allows(String licenseScope) {
         String scope = licenseScope == null ? "" : licenseScope.trim().toUpperCase(Locale.ROOT);
         return switch (scope) {
             case "PUBLIC" -> true;

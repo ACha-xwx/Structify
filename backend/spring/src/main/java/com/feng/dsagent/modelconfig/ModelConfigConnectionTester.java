@@ -1,6 +1,6 @@
 package com.feng.dsagent.modelconfig;
 
-interface ModelConfigConnectionTester {
+public interface ModelConfigConnectionTester {
 
-    ModelConfigConnectionResult test(ModelConfigConnection connection);
+    public ModelConfigConnectionResult test(ModelConfigConnection connection);
 }

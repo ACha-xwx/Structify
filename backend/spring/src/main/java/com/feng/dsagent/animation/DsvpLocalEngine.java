@@ -313,14 +313,14 @@ public final class DsvpLocalEngine {
     }
 
     @jakarta.annotation.PreDestroy
-    void onShutdown() {
+    public void onShutdown() {
         shutdown();
     }
 
     private final AtomicBoolean closed = new AtomicBoolean();
 
     /** Marks the component closed so a late probe cannot restart it during context shutdown. */
-    void close() {
+    public void close() {
         if (closed.compareAndSet(false, true)) shutdown();
     }
 }

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.teacher.mapper.TeacherMapper">
+
+  <sql id="classSummarySelect">
+    SELECT c.id, c.name, c.term,
+      (SELECT COUNT(*) FROM class_enrollments e WHERE e.class_id = c.id AND e.role_in_class = 'STUDENT') AS students
+    FROM classes c
+  </sql>
+
+  <select id="selectAllClasses" resultType="com.feng.dsagent.teacher.mapper.TeacherMapper$ClassSummaryRow">
+    <include refid="classSummarySelect"/>
+    ORDER BY c.created_at DESC
+  </select>
+
+  <select id="selectClassesForTeacher" resultType="com.feng.dsagent.teacher.mapper.TeacherMapper$ClassSummaryRow">
+    <include refid="classSummarySelect"/>
+    JOIN class_enrollments t ON t.class_id = c.id AND t.user_id = #{callerId} AND t.role_in_class = 'TEACHER'
+    ORDER BY c.created_at DESC
+  </select>
+
+  <select id="selectStudents" resultType="com.feng.dsagent.teacher.mapper.TeacherMapper$StudentRowData">
+    SELECT * FROM (
+      SELECT u.id, u.username, u.email, u.status,
+        (SELECT MAX(s.updated_at) FROM classroom_sessions s WHERE s.user_id = u.id) AS lastActivity,
+        (SELECT COUNT(*) FROM classroom_events e JOIN classroom_sessions s ON s.id = e.session_id
+          WHERE s.user_id = u.id) AS steps
+      FROM class_enrollments e JOIN users u ON u.id = e.user_id
+      WHERE e.class_id = #{classId} AND e.role_in_class = 'STUDENT'
+    ) t
+    ORDER BY CASE WHEN t.lastActivity IS NULL THEN 1 ELSE 0 END, t.lastActivity DESC, t.id
+  </select>
+
+  <select id="selectUserIdentity" resultType="com.feng.dsagent.teacher.mapper.TeacherMapper$UserIdentityRow">
+    SELECT username, email FROM users WHERE id = #{userId}
+  </select>
+
+  <select id="countBookmarks" resultType="long">
+    SELECT COUNT(*) FROM classroom_bookmarks WHERE user_id = #{userId}
+  </select>
+
+  <select id="countClassroomSessions" resultType="long">
+    SELECT COUNT(*) FROM classroom_sessions WHERE user_id = #{userId}
+  </select>
+
+  <select id="countClassroomEvents" resultType="long">
+    SELECT COUNT(*) FROM classroom_events e
+    JOIN classroom_sessions s ON s.id = e.session_id
+    WHERE s.user_id = #{userId}
+  </select>
+
+  <select id="selectLastActivity" resultType="java.sql.Timestamp">
+    SELECT MAX(updated_at) FROM classroom_sessions WHERE user_id = #{userId}
+  </select>
+
+  <select id="countTeachingEnrollment" resultType="long">
+    SELECT COUNT(*) FROM class_enrollments
+    WHERE class_id = #{classId} AND user_id = #{callerId} AND role_in_class = 'TEACHER'
+  </select>
+
+  <select id="countSharedClass" resultType="long">
+    SELECT COUNT(*) FROM class_enrollments t
+    JOIN class_enrollments s ON s.class_id = t.class_id
+    WHERE t.user_id = #{callerId} AND t.role_in_class = 'TEACHER'
+      AND s.user_id = #{studentId} AND s.role_in_class = 'STUDENT'
+  </select>
+</mapper>

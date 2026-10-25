@@ -1,5 +1,7 @@
 package com.feng.dsagent.studyroom.fragment;
 
+import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
+
 import com.feng.dsagent.knowledge.*;
 import com.feng.dsagent.studyroom.*;
 import com.feng.dsagent.studyroom.draft.OutlineJson;

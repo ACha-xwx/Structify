@@ -1,5 +1,8 @@
 package com.feng.dsagent.knowledge;
 
+import com.feng.dsagent.knowledge.service.KnowledgeIndexRefreshService;
+import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Collection;

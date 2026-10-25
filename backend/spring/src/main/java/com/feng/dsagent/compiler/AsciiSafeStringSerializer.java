@@ -25,7 +25,7 @@ import tools.jackson.databind.ValueSerializer;
  * program output, never to the shared ObjectMapper, so stored lesson scripts, model prompts and SSE
  * copy stay readable UTF-8.
  */
-final class AsciiSafeStringSerializer extends ValueSerializer<String> {
+public final class AsciiSafeStringSerializer extends ValueSerializer<String> {
 
     private static final char[] HEX = "0123456789abcdef".toCharArray();
 
@@ -39,7 +39,7 @@ final class AsciiSafeStringSerializer extends ValueSerializer<String> {
      * The body of a JSON string: the escapes JSON requires, plus hexadecimal escapes for non-ASCII.
      * The surrounding quotes are the generator's to write — supplying them here doubles them up.
      */
-    static String escape(String value) {
+    public static String escape(String value) {
         StringBuilder out = new StringBuilder(value.length() + 16);
         for (int index = 0; index < value.length(); index += 1) {
             char character = value.charAt(index);

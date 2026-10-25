@@ -12,11 +12,11 @@ public final class GenerationLease {
         return CURRENT.get();
     }
 
-    static void enter(Map<String, Object> job) {
+    public static void enter(Map<String, Object> job) {
         CURRENT.set(job);
     }
 
-    static void clear() {
+    public static void clear() {
         CURRENT.remove();
     }
 }

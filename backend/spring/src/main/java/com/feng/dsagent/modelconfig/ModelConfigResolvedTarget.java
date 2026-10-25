@@ -5,14 +5,14 @@ import java.net.URI;
 import java.util.List;
 import java.util.Objects;
 
-final class ModelConfigResolvedTarget {
+public final class ModelConfigResolvedTarget {
 
     private final URI uri;
     private final String host;
     private final int port;
     private final List<InetAddress> addresses;
 
-    ModelConfigResolvedTarget(URI uri, String host, int port, List<InetAddress> addresses) {
+    public ModelConfigResolvedTarget(URI uri, String host, int port, List<InetAddress> addresses) {
         this.uri = Objects.requireNonNull(uri, "uri");
         this.host = Objects.requireNonNull(host, "host");
         if (host.isBlank() || port <= 0 || port > 65_535) {
@@ -25,19 +25,19 @@ final class ModelConfigResolvedTarget {
         }
     }
 
-    URI uri() {
+    public URI uri() {
         return uri;
     }
 
-    String host() {
+    public String host() {
         return host;
     }
 
-    int port() {
+    public int port() {
         return port;
     }
 
-    List<InetAddress> addresses() {
+    public List<InetAddress> addresses() {
         return addresses;
     }
 }

@@ -3,13 +3,13 @@ package com.feng.dsagent.chat;
 import java.util.List;
 import java.util.Optional;
 
-interface ChatHistoryRepository {
+public interface ChatHistoryRepository {
 
-    List<ChatSessionSummary> findSessions(long userId);
+    public List<ChatSessionSummary> findSessions(long userId);
 
-    Optional<ChatSessionView> findSession(long userId, String sessionId);
+    public Optional<ChatSessionView> findSession(long userId, String sessionId);
 
-    boolean updateSession(long userId, String sessionId, String title, Boolean pinned);
+    public boolean updateSession(long userId, String sessionId, String title, Boolean pinned);
 
-    boolean deleteSession(long userId, String sessionId);
+    public boolean deleteSession(long userId, String sessionId);
 }

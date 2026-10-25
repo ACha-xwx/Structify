@@ -1,5 +1,7 @@
 package com.feng.dsagent.chat;
 
+import com.feng.dsagent.chat.service.ChatService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -7,7 +9,7 @@ import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.knowledge.KnowledgeChunk;
 import com.feng.dsagent.knowledge.KnowledgeAudience;
 import com.feng.dsagent.knowledge.KnowledgeProperties;
-import com.feng.dsagent.knowledge.KnowledgeSearchService;
+import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
 import com.feng.dsagent.model.ModelClient;
 import com.feng.dsagent.model.ModelClientException;
 import com.feng.dsagent.model.ModelErrorCode;

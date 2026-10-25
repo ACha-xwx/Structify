@@ -1,5 +1,7 @@
 package com.feng.dsagent.compiler;
 
+import com.feng.dsagent.compiler.service.CompilerService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;

@@ -332,7 +332,7 @@ public final class SlideSpinePlan {
     }
 
     /** Drops layout markers and OCR/annotation lines so only the book's own wording is quoted. */
-    static String plain(String text) {
+    public static String plain(String text) {
         if (text == null) {
             return "";
         }

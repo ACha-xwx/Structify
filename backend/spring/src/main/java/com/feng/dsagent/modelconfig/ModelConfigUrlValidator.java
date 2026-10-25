@@ -11,7 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 @Component
-final class ModelConfigUrlValidator {
+public final class ModelConfigUrlValidator {
 
     private static final Set<String> METADATA_HOSTS = Set.of(
         "metadata",
@@ -24,15 +24,15 @@ final class ModelConfigUrlValidator {
 
     private final ModelConfigHostResolver resolver;
 
-    ModelConfigUrlValidator(ModelConfigHostResolver resolver) {
+    public ModelConfigUrlValidator(ModelConfigHostResolver resolver) {
         this.resolver = resolver;
     }
 
-    URI validate(String value) {
+    public URI validate(String value) {
         return resolve(value).uri();
     }
 
-    ModelConfigResolvedTarget resolve(String value) {
+    public ModelConfigResolvedTarget resolve(String value) {
         URI uri = validateStructure(value);
         String host = uri.getHost();
         InetAddress[] addresses;
@@ -57,7 +57,7 @@ final class ModelConfigUrlValidator {
         );
     }
 
-    URI validateStructure(String value) {
+    public URI validateStructure(String value) {
         URI uri;
         try {
             uri = URI.create(value == null ? "" : value.strip()).normalize();

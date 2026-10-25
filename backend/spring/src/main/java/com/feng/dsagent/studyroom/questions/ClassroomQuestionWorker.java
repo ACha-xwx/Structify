@@ -1,5 +1,10 @@
 package com.feng.dsagent.studyroom.questions;
 
+import com.feng.dsagent.studyroom.events.service.ClassroomEventService;
+import com.feng.dsagent.studyroom.generation.service.GenerationCallService;
+import com.feng.dsagent.studyroom.service.StudyroomFollowUpService;
+import com.feng.dsagent.studyroom.teaching.service.TeachingAttachmentService;
+
 import com.feng.dsagent.studyroom.*;
 import com.feng.dsagent.studyroom.draft.*;
 import com.feng.dsagent.studyroom.events.*;
@@ -17,9 +22,9 @@ public class ClassroomQuestionWorker {
     private final GenerationCallService calls;
     private final StudyroomFollowUpService followups;
     private final StudyroomRepository rooms;
-    private com.feng.dsagent.studyroom.teaching.TeachingAttachmentService attachments;
+    private com.feng.dsagent.studyroom.teaching.service.TeachingAttachmentService attachments;
     @org.springframework.beans.factory.annotation.Autowired
-    void attachments(com.feng.dsagent.studyroom.teaching.TeachingAttachmentService attachments){this.attachments=attachments;}
+    public void attachments(com.feng.dsagent.studyroom.teaching.service.TeachingAttachmentService attachments){this.attachments=attachments;}
     public ClassroomQuestionWorker(JdbcClassroomQuestionRepository questions,JdbcGenerationRepository jobs,ClassroomEventService events,GenerationCallService calls,StudyroomFollowUpService followups,StudyroomRepository rooms) {
         this.questions=questions;this.jobs=jobs;this.events=events;this.calls=calls;this.followups=followups;this.rooms=rooms;
     }

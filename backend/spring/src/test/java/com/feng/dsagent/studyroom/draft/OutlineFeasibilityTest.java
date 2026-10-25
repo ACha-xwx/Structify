@@ -1,5 +1,8 @@
 package com.feng.dsagent.studyroom.draft;
 
+import com.feng.dsagent.compiler.CodeExecutionReadiness;
+import com.feng.dsagent.studyroom.draft.service.OutlineFeasibilityService;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 

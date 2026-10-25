@@ -14,7 +14,7 @@ import tools.jackson.databind.ObjectMapper;
 
 /** Performs a bounded, non-redirecting health probe without exposing upstream details. */
 @Component
-final class HttpSandboxConnectionTester implements SandboxConnectionTester {
+public final class HttpSandboxConnectionTester implements SandboxConnectionTester {
 
     private static final int MAXIMUM_RESPONSE_BYTES = 65_536;
 
@@ -25,11 +25,11 @@ final class HttpSandboxConnectionTester implements SandboxConnectionTester {
     private final ObjectMapper objectMapper;
 
     @Autowired
-    HttpSandboxConnectionTester(ObjectMapper objectMapper) {
+    public HttpSandboxConnectionTester(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
 
-    HttpSandboxConnectionTester() {
+    public HttpSandboxConnectionTester() {
         this(new ObjectMapper());
     }
 

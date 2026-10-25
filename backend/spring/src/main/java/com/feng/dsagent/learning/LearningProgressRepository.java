@@ -2,7 +2,7 @@ package com.feng.dsagent.learning;
 
 import java.util.List;
 
-interface LearningProgressRepository {
+public interface LearningProgressRepository {
 
-    List<ChapterLearningProgress> progress(long userId);
+    public List<ChapterLearningProgress> progress(long userId);
 }

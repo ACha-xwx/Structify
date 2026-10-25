@@ -8,11 +8,11 @@ public record KnowledgeCorpus(List<KnowledgeChunk> chunks, KnowledgeCorpusStats 
         chunks = List.copyOf(chunks);
     }
 
-    static KnowledgeCorpus empty() {
+    public static KnowledgeCorpus empty() {
         return new KnowledgeCorpus(List.of(), KnowledgeCorpusStats.empty());
     }
 
-    static KnowledgeCorpus empty(List<KnowledgeImportManifest.Rejection> rejections) {
+    public static KnowledgeCorpus empty(List<KnowledgeImportManifest.Rejection> rejections) {
         return new KnowledgeCorpus(List.of(), new KnowledgeCorpusStats(false, 0, 0, rejections));
     }
 }

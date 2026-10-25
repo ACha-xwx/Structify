@@ -10,11 +10,11 @@ import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Repository;
 
 @Repository
-class JdbcLearningProgressRepository implements LearningProgressRepository {
+public class JdbcLearningProgressRepository implements LearningProgressRepository {
 
     private final JdbcTemplate jdbc;
 
-    JdbcLearningProgressRepository(JdbcTemplate jdbc) {
+    public JdbcLearningProgressRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 

@@ -4,12 +4,12 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
-final class ChatEvidenceFingerprint {
+public final class ChatEvidenceFingerprint {
 
     private ChatEvidenceFingerprint() {
     }
 
-    static String hash(String title, String content, String source, String pageLabel) {
+    public static String hash(String title, String content, String source, String pageLabel) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             String material = safe(title) + "\u0000" + safe(content) + "\u0000" + safe(source) + "\u0000" + safe(pageLabel);

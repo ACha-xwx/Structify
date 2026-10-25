@@ -13,7 +13,7 @@ import java.util.Objects;
 @FunctionalInterface
 public interface AiQuotaExecution {
 
-    ModelResponse complete(Long userId, String operation, String requestId, ModelRequest request);
+    public ModelResponse complete(Long userId, String operation, String requestId, ModelRequest request);
 
     default void stream(
         Long userId,
@@ -29,7 +29,7 @@ public interface AiQuotaExecution {
         // The test-only adapter deliberately preserves the legacy direct-service unit-test seam.
     }
 
-    static AiQuotaExecution unmetered(ModelClient model) {
+    public static AiQuotaExecution unmetered(ModelClient model) {
         Objects.requireNonNull(model, "model");
         return new AiQuotaExecution() {
             @Override

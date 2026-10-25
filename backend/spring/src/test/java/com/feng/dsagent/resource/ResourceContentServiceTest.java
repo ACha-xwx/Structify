@@ -1,5 +1,7 @@
 package com.feng.dsagent.resource;
 
+import com.feng.dsagent.resource.service.ResourceContentService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 

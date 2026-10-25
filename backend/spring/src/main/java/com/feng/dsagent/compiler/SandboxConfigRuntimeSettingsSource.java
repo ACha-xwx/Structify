@@ -7,7 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
-final class SandboxConfigRuntimeSettingsSource {
+public final class SandboxConfigRuntimeSettingsSource {
 
     private final SandboxConfigRepository repository;
     private final CompilerProperties properties;
@@ -26,25 +26,25 @@ final class SandboxConfigRuntimeSettingsSource {
         this.fixedSettings = null;
     }
 
-    SandboxConfigRuntimeSettingsSource(SandboxConfigRepository repository, CompilerProperties properties) {
+    public SandboxConfigRuntimeSettingsSource(SandboxConfigRepository repository, CompilerProperties properties) {
         this(repository, properties, null);
     }
 
-    SandboxConfigRuntimeSettingsSource(CompilerProperties properties) {
+    public SandboxConfigRuntimeSettingsSource(CompilerProperties properties) {
         this.repository = null;
         this.properties = properties;
         this.urlValidator = null;
         this.fixedSettings = null;
     }
 
-    SandboxConfigRuntimeSettingsSource(SandboxRuntimeSettings settings) {
+    public SandboxConfigRuntimeSettingsSource(SandboxRuntimeSettings settings) {
         this.repository = null;
         this.properties = null;
         this.urlValidator = null;
         this.fixedSettings = () -> Optional.ofNullable(settings);
     }
 
-    Optional<SandboxRuntimeSettings> current() {
+    public Optional<SandboxRuntimeSettings> current() {
         if (fixedSettings != null) {
             return fixedSettings.get();
         }

@@ -1,5 +1,7 @@
 package com.feng.dsagent.knowledge;
 
+import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -10,7 +12,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import com.feng.dsagent.classroom.ClassroomPreparation;
-import com.feng.dsagent.presentation.PresentationService;
+import com.feng.dsagent.presentation.service.PresentationService;
 
 /** Local end-to-end resource check. Private original assets are intentionally absent in public CI. */
 @SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:original-release;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE")

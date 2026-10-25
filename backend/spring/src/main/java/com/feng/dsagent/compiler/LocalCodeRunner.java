@@ -59,17 +59,17 @@ public final class LocalCodeRunner {
     );
 
     @Autowired
-    LocalCodeRunner(SandboxProperties sandbox, CompilerProperties compiler) {
+    public LocalCodeRunner(SandboxProperties sandbox, CompilerProperties compiler) {
         this.sandbox = sandbox;
         this.compiler = compiler;
     }
 
     /** C only, and only where the host actually enabled the sandbox. */
-    boolean canExecute(SupportedLanguage language) {
+    public boolean canExecute(SupportedLanguage language) {
         return sandbox.enabled() && language == SupportedLanguage.C;
     }
 
-    CompilerExecution execute(SupportedLanguage language, String code, String stdin) {
+    public CompilerExecution execute(SupportedLanguage language, String code, String stdin) {
         try {
             slots.acquire();
         } catch (InterruptedException error) {

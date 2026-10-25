@@ -1,5 +1,7 @@
 package com.feng.dsagent.animation;
 
+import com.feng.dsagent.animation.service.AnimationGenerationService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 

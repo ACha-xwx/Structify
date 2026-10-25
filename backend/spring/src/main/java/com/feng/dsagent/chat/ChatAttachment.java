@@ -90,7 +90,7 @@ public record ChatAttachment(
         };
     }
 
-    static ModelMessage message(String role, String prompt, List<ChatAttachment> attachments) {
+    public static ModelMessage message(String role, String prompt, List<ChatAttachment> attachments) {
         StringBuilder text = new StringBuilder(prompt);
         List<String> images = new ArrayList<>();
         for (ChatAttachment attachment : attachments) {

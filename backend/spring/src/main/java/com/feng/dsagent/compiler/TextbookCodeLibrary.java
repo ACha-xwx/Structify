@@ -16,7 +16,7 @@ import tools.jackson.databind.ObjectMapper;
  * each one travels with a complete runnable example instead.
  */
 @Component
-final class TextbookCodeLibrary {
+public final class TextbookCodeLibrary {
 
     private static final String RESOURCE = "classroom-code/textbook/library.json";
 
@@ -24,17 +24,17 @@ final class TextbookCodeLibrary {
     private final int fragmentCount;
 
     @Autowired
-    TextbookCodeLibrary(ObjectMapper objectMapper) {
+    public TextbookCodeLibrary(ObjectMapper objectMapper) {
         JsonNode root = read(objectMapper);
         this.chapters = parseChapters(root);
         this.fragmentCount = chapters.stream().mapToInt(chapter -> chapter.fragments().size()).sum();
     }
 
-    List<TextbookCodeChapter> chapters() {
+    public List<TextbookCodeChapter> chapters() {
         return chapters;
     }
 
-    int fragmentCount() {
+    public int fragmentCount() {
         return fragmentCount;
     }
 

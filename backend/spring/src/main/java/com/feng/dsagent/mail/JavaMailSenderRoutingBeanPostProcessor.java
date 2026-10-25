@@ -6,11 +6,11 @@ import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.stereotype.Component;
 
 @Component
-final class JavaMailSenderRoutingBeanPostProcessor implements BeanPostProcessor {
+public final class JavaMailSenderRoutingBeanPostProcessor implements BeanPostProcessor {
 
     private final SmtpEndpointRouting routing;
 
-    JavaMailSenderRoutingBeanPostProcessor(SmtpEndpointRouting routing) {
+    public JavaMailSenderRoutingBeanPostProcessor(SmtpEndpointRouting routing) {
         this.routing = routing;
     }
 

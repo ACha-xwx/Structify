@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.animation.mapper.DsvpEvidenceMapper">
+
+  <select id="lockUser" resultType="long">
+    SELECT id FROM users WHERE id = #{userId} FOR UPDATE
+  </select>
+
+  <select id="selectRequestHash" resultType="string">
+    SELECT request_hash FROM dsvp_request_snapshots WHERE id = #{traceId}
+  </select>
+
+  <insert id="insertSnapshot">
+    INSERT INTO dsvp_request_snapshots (
+      id, animation_record_id, protocol_version, request_json, request_hash,
+      source_type, source_ref, version_label, review_status
+    ) VALUES (
+      #{traceId}, #{animationRecordId}, #{protocol}, #{requestJson}, #{requestHash},
+      #{sourceType}, #{sourceRef}, #{versionLabel}, #{reviewStatus}
+    )
+  </insert>
+
+  <select id="selectExistingSnapshot" resultType="com.feng.dsagent.animation.mapper.DsvpEvidenceMapper$ExistingSnapshotRow">
+    SELECT s.request_hash AS requestHash, s.animation_record_id AS animationRecordId,
+           s.source_type AS sourceType, s.source_ref AS sourceRef,
+           a.chapter_id AS chapterId, a.user_id AS userId
+    FROM dsvp_request_snapshots s
+    LEFT JOIN animation_records a ON a.id = s.animation_record_id
+    WHERE s.id = #{traceId}
+  </select>
+</mapper>

@@ -1,8 +1,10 @@
 package com.feng.dsagent.studyroom.fragment;
 
+import com.feng.dsagent.studyroom.checks.service.ClassroomCheckService;
+
 import com.feng.dsagent.studyroom.StudyroomModelOutput;
 import com.feng.dsagent.studyroom.draft.OutlineJson;
-import com.feng.dsagent.studyroom.generation.GenerationCallService;
+import com.feng.dsagent.studyroom.generation.service.GenerationCallService;
 import java.util.*;
 import org.springframework.stereotype.Service;
 
@@ -11,9 +13,9 @@ public final class FragmentComposer {
     private final GenerationCallService calls;
     private final FragmentValidator validator;
     private final OutlineJson json;
-    private com.feng.dsagent.studyroom.checks.ClassroomCheckService checks;
+    private com.feng.dsagent.studyroom.checks.service.ClassroomCheckService checks;
     @org.springframework.beans.factory.annotation.Autowired
-    void checks(com.feng.dsagent.studyroom.checks.ClassroomCheckService checks){this.checks=checks;}
+    public void checks(com.feng.dsagent.studyroom.checks.service.ClassroomCheckService checks){this.checks=checks;}
     public FragmentComposer(GenerationCallService calls,FragmentValidator validator,OutlineJson json) {
         this.calls=calls;this.validator=validator;this.json=json;
     }
@@ -31,7 +33,7 @@ public final class FragmentComposer {
              "scenes":[{"resourceKey":"r1","explanation":"对应材料说明，可选代码startLine/endLine整数"}]}。
             scenes可为空。不要输出资源ID、类型、路径、参数或额外字段。
             """;
-        if(checks!=null&&checks.isLast(job))system+="\n"+com.feng.dsagent.studyroom.checks.ClassroomCheckService.INSTRUCTION;
+        if(checks!=null&&checks.isLast(job))system+="\n"+com.feng.dsagent.studyroom.checks.service.ClassroomCheckService.INSTRUCTION;
         String prompt=json.write(Map.of("goal",plan,"context",context,"evidence",resources.evidence(),
             "candidates",resources.candidates(),"codeSources",resources.code()));
         String raw=calls.complete(user,job,"fragment-generate",system,prompt,3500);

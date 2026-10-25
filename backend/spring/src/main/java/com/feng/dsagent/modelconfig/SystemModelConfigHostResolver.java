@@ -5,7 +5,7 @@ import java.net.UnknownHostException;
 import org.springframework.stereotype.Component;
 
 @Component
-final class SystemModelConfigHostResolver implements ModelConfigHostResolver {
+public final class SystemModelConfigHostResolver implements ModelConfigHostResolver {
 
     @Override
     public InetAddress[] resolve(String host) throws UnknownHostException {

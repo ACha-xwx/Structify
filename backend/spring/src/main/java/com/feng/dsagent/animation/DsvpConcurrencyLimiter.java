@@ -8,18 +8,18 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 @Component
-final class DsvpConcurrencyLimiter {
+public final class DsvpConcurrencyLimiter {
 
     private final Semaphore permits;
 
-    DsvpConcurrencyLimiter(@Value("${app.animation.maximum-concurrent-simulations:4}") int maximumConcurrency) {
+    public DsvpConcurrencyLimiter(@Value("${app.animation.maximum-concurrent-simulations:4}") int maximumConcurrency) {
         if (maximumConcurrency < 1 || maximumConcurrency > 64) {
             throw new IllegalArgumentException("animation concurrency limit is invalid");
         }
         this.permits = new Semaphore(maximumConcurrency, true);
     }
 
-    Permit acquire() {
+    public Permit acquire() {
         if (!permits.tryAcquire()) {
             throw new ApiException(
                 HttpStatus.TOO_MANY_REQUESTS,
@@ -30,7 +30,7 @@ final class DsvpConcurrencyLimiter {
         return new Permit(permits);
     }
 
-    static final class Permit implements AutoCloseable {
+    public static final class Permit implements AutoCloseable {
         private final Semaphore permits;
         private final AtomicBoolean closed = new AtomicBoolean();
 

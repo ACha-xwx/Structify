@@ -1,5 +1,14 @@
 package com.feng.dsagent.studyroom.draft;
 
+import com.feng.dsagent.aiquota.service.AiQuotaExecutionService;
+import com.feng.dsagent.model.ModelResponse;
+import com.feng.dsagent.security.service.JwtTokenService;
+import com.feng.dsagent.studyroom.StudyroomRepository;
+import com.feng.dsagent.studyroom.draft.controller.OutlineController;
+import com.feng.dsagent.studyroom.draft.service.OutlineService;
+import com.feng.dsagent.studyroom.fragment.FragmentPlan;
+import com.feng.dsagent.studyroom.generation.service.GenerationCallService;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -23,13 +32,13 @@ import java.util.*;
 class ReviewedOutlineWorkflowTest {
     @Autowired OutlineService service;
     @Autowired org.springframework.test.web.servlet.MockMvc http;
-    @Autowired com.feng.dsagent.security.JwtTokenService tokens;
+    @Autowired com.feng.dsagent.security.service.JwtTokenService tokens;
     @Autowired StudyroomGenerationWorker worker;
     @Autowired JdbcTemplate jdbc;
     @Autowired JdbcGenerationRepository jobs;
     @Autowired GenerationCallService calls;
     @Autowired com.feng.dsagent.studyroom.StudyroomRepository rooms;
-    @MockitoBean com.feng.dsagent.aiquota.AiQuotaExecutionService execution;
+    @MockitoBean com.feng.dsagent.aiquota.service.AiQuotaExecutionService execution;
     @MockitoBean OutlineModelGateway model;
     @Autowired OutlineJson json;
     long user;

@@ -2,9 +2,9 @@ package com.feng.dsagent.resource;
 
 import com.feng.dsagent.security.AuthenticatedUser;
 
-record ResourceAudience(boolean allowClassroomOnly, boolean allowTeamOnly) {
+public record ResourceAudience(boolean allowClassroomOnly, boolean allowTeamOnly) {
 
-    static ResourceAudience from(AuthenticatedUser user) {
+    public static ResourceAudience from(AuthenticatedUser user) {
         if (user == null) {
             return new ResourceAudience(false, false);
         }

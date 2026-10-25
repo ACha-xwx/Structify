@@ -11,15 +11,15 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
-class JdbcAiQuotaLedgerRepository {
+public class JdbcAiQuotaLedgerRepository {
 
     private final JdbcTemplate jdbc;
 
-    JdbcAiQuotaLedgerRepository(JdbcTemplate jdbc) {
+    public JdbcAiQuotaLedgerRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
-    void ensureConcurrencyRow(long userId, Instant now) {
+    public void ensureConcurrencyRow(long userId, Instant now) {
         try {
             jdbc.update(
                 "INSERT INTO ai_quota_user_concurrency (user_id, active_reservations, updated_at) VALUES (?, 0, ?)",
@@ -31,7 +31,7 @@ class JdbcAiQuotaLedgerRepository {
         }
     }
 
-    AiQuotaConcurrency lockConcurrency(long userId) {
+    public AiQuotaConcurrency lockConcurrency(long userId) {
         return jdbc.query(
             "SELECT user_id, active_reservations FROM ai_quota_user_concurrency WHERE user_id = ? FOR UPDATE",
             (row, index) -> new AiQuotaConcurrency(row.getLong("user_id"), row.getInt("active_reservations")),
@@ -39,7 +39,7 @@ class JdbcAiQuotaLedgerRepository {
         ).stream().findFirst().orElseThrow(() -> new IllegalStateException("AI quota concurrency row was not created"));
     }
 
-    int activeReservations(long userId) {
+    public int activeReservations(long userId) {
         Integer active = jdbc.query(
             "SELECT active_reservations FROM ai_quota_user_concurrency WHERE user_id = ?",
             (row, index) -> row.getInt("active_reservations"),
@@ -48,7 +48,7 @@ class JdbcAiQuotaLedgerRepository {
         return active == null ? 0 : active;
     }
 
-    void ensureBucket(long userId, LocalDate quotaDate, long dailyTokenQuota, Instant now) {
+    public void ensureBucket(long userId, LocalDate quotaDate, long dailyTokenQuota, Instant now) {
         try {
             jdbc.update(
                 """
@@ -67,7 +67,7 @@ class JdbcAiQuotaLedgerRepository {
         }
     }
 
-    AiQuotaBucket lockBucket(long userId, LocalDate quotaDate, long currentDailyQuota, Instant now) {
+    public AiQuotaBucket lockBucket(long userId, LocalDate quotaDate, long currentDailyQuota, Instant now) {
         AiQuotaBucket bucket = jdbc.query(
             """
             SELECT user_id, quota_date, daily_token_quota, reserved_tokens, consumed_tokens
@@ -98,7 +98,7 @@ class JdbcAiQuotaLedgerRepository {
         );
     }
 
-    AiQuotaBucket lockExistingBucket(long userId, LocalDate quotaDate) {
+    public AiQuotaBucket lockExistingBucket(long userId, LocalDate quotaDate) {
         return jdbc.query(
             """
             SELECT user_id, quota_date, daily_token_quota, reserved_tokens, consumed_tokens
@@ -112,7 +112,7 @@ class JdbcAiQuotaLedgerRepository {
         ).stream().findFirst().orElseThrow(() -> new IllegalStateException("AI quota bucket is missing for reservation"));
     }
 
-    Optional<AiQuotaBucket> findBucket(long userId, LocalDate quotaDate) {
+    public Optional<AiQuotaBucket> findBucket(long userId, LocalDate quotaDate) {
         return jdbc.query(
             """
             SELECT user_id, quota_date, daily_token_quota, reserved_tokens, consumed_tokens
@@ -125,7 +125,7 @@ class JdbcAiQuotaLedgerRepository {
         ).stream().findFirst();
     }
 
-    Optional<AiQuotaReservation> findReservation(String reservationId) {
+    public Optional<AiQuotaReservation> findReservation(String reservationId) {
         return jdbc.query(
             reservationSelect() + " WHERE id = ?",
             (row, index) -> reservation(row),
@@ -133,7 +133,7 @@ class JdbcAiQuotaLedgerRepository {
         ).stream().findFirst();
     }
 
-    Optional<AiQuotaReservation> lockReservation(String reservationId) {
+    public Optional<AiQuotaReservation> lockReservation(String reservationId) {
         return jdbc.query(
             reservationSelect() + " WHERE id = ? FOR UPDATE",
             (row, index) -> reservation(row),
@@ -141,7 +141,7 @@ class JdbcAiQuotaLedgerRepository {
         ).stream().findFirst();
     }
 
-    Optional<AiQuotaReservation> findByRequestForUpdate(long userId, LocalDate quotaDate, String requestId) {
+    public Optional<AiQuotaReservation> findByRequestForUpdate(long userId, LocalDate quotaDate, String requestId) {
         return jdbc.query(
             reservationSelect() + " WHERE user_id = ? AND quota_date = ? AND request_id = ? FOR UPDATE",
             (row, index) -> reservation(row),
@@ -151,7 +151,7 @@ class JdbcAiQuotaLedgerRepository {
         ).stream().findFirst();
     }
 
-    List<String> expiredReservationIdsForUser(long userId, Instant now) {
+    public List<String> expiredReservationIdsForUser(long userId, Instant now) {
         return jdbc.queryForList(
             """
             SELECT id FROM ai_quota_reservations
@@ -164,7 +164,7 @@ class JdbcAiQuotaLedgerRepository {
         );
     }
 
-    List<String> expiredReservationIds(Instant now, int maximumCount) {
+    public List<String> expiredReservationIds(Instant now, int maximumCount) {
         return jdbc.queryForList(
             """
             SELECT id FROM ai_quota_reservations
@@ -178,7 +178,7 @@ class JdbcAiQuotaLedgerRepository {
         );
     }
 
-    void createReservation(AiQuotaReservation reservation) {
+    public void createReservation(AiQuotaReservation reservation) {
         jdbc.update(
             """
             INSERT INTO ai_quota_reservations (
@@ -197,7 +197,7 @@ class JdbcAiQuotaLedgerRepository {
         );
     }
 
-    void reserveTokens(long userId, LocalDate quotaDate, long tokens, Instant now) {
+    public void reserveTokens(long userId, LocalDate quotaDate, long tokens, Instant now) {
         jdbc.update(
             """
             UPDATE ai_quota_buckets
@@ -211,7 +211,7 @@ class JdbcAiQuotaLedgerRepository {
         );
     }
 
-    void releaseAndCharge(long userId, LocalDate quotaDate, long reservedTokens, long actualTokens, Instant now) {
+    public void releaseAndCharge(long userId, LocalDate quotaDate, long reservedTokens, long actualTokens, Instant now) {
         jdbc.update(
             """
             UPDATE ai_quota_buckets
@@ -226,7 +226,7 @@ class JdbcAiQuotaLedgerRepository {
         );
     }
 
-    void charge(long userId, LocalDate quotaDate, long actualTokens, Instant now) {
+    public void charge(long userId, LocalDate quotaDate, long actualTokens, Instant now) {
         jdbc.update(
             """
             UPDATE ai_quota_buckets
@@ -240,7 +240,7 @@ class JdbcAiQuotaLedgerRepository {
         );
     }
 
-    void incrementConcurrency(long userId, Instant now) {
+    public void incrementConcurrency(long userId, Instant now) {
         jdbc.update(
             """
             UPDATE ai_quota_user_concurrency
@@ -252,7 +252,7 @@ class JdbcAiQuotaLedgerRepository {
         );
     }
 
-    void decrementConcurrency(long userId, Instant now) {
+    public void decrementConcurrency(long userId, Instant now) {
         jdbc.update(
             """
             UPDATE ai_quota_user_concurrency
@@ -264,7 +264,7 @@ class JdbcAiQuotaLedgerRepository {
         );
     }
 
-    boolean markSettled(String reservationId, long actualTokens, AiQuotaUsageSource usageSource, Instant now) {
+    public boolean markSettled(String reservationId, long actualTokens, AiQuotaUsageSource usageSource, Instant now) {
         return jdbc.update(
             """
             UPDATE ai_quota_reservations
@@ -278,7 +278,7 @@ class JdbcAiQuotaLedgerRepository {
         ) == 1;
     }
 
-    boolean markExpiredSettlement(String reservationId, long actualTokens, AiQuotaUsageSource usageSource, Instant now) {
+    public boolean markExpiredSettlement(String reservationId, long actualTokens, AiQuotaUsageSource usageSource, Instant now) {
         return jdbc.update(
             """
             UPDATE ai_quota_reservations
@@ -292,7 +292,7 @@ class JdbcAiQuotaLedgerRepository {
         ) == 1;
     }
 
-    boolean markFailed(
+    public boolean markFailed(
         String reservationId,
         long actualTokens,
         String failureCode,
@@ -313,7 +313,7 @@ class JdbcAiQuotaLedgerRepository {
         ) == 1;
     }
 
-    boolean markExpiredFailure(
+    public boolean markExpiredFailure(
         String reservationId,
         long actualTokens,
         String failureCode,
@@ -334,7 +334,7 @@ class JdbcAiQuotaLedgerRepository {
         ) == 1;
     }
 
-    boolean markExpired(String reservationId, Instant now) {
+    public boolean markExpired(String reservationId, Instant now) {
         return jdbc.update(
             """
             UPDATE ai_quota_reservations
@@ -391,10 +391,4 @@ class JdbcAiQuotaLedgerRepository {
     private static AiQuotaUsageSource usageSource(String value) {
         return value == null ? null : AiQuotaUsageSource.valueOf(value);
     }
-}
-
-record AiQuotaBucket(long userId, LocalDate quotaDate, long dailyTokenQuota, long reservedTokens, long consumedTokens) {
-}
-
-record AiQuotaConcurrency(long userId, int activeReservations) {
 }

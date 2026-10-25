@@ -8,12 +8,12 @@ import tools.jackson.databind.ObjectMapper;
 public class ClassroomConfiguration {
 
     @Bean
-    ClassroomStateMachine classroomStateMachine() {
+    public ClassroomStateMachine classroomStateMachine() {
         return new ClassroomStateMachine();
     }
 
     @Bean
-    ClassroomScriptParser classroomScriptParser(ObjectMapper objectMapper) {
+    public ClassroomScriptParser classroomScriptParser(ObjectMapper objectMapper) {
         return new ClassroomScriptParser(objectMapper);
     }
 

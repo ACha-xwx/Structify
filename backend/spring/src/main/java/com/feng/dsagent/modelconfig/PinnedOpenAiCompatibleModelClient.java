@@ -1,5 +1,7 @@
 package com.feng.dsagent.modelconfig;
 
+import com.feng.dsagent.model.ModelPayload;
+
 import static com.feng.dsagent.model.ModelErrorCode.MODEL_EMPTY_RESPONSE;
 import static com.feng.dsagent.model.ModelErrorCode.MODEL_NOT_CONFIGURED;
 import static com.feng.dsagent.model.ModelErrorCode.MODEL_OUTPUT_TRUNCATED;
@@ -36,7 +38,7 @@ import java.util.Objects;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-final class PinnedOpenAiCompatibleModelClient implements ModelClient {
+public final class PinnedOpenAiCompatibleModelClient implements ModelClient {
 
     private static final String COMPLETIONS_PATH = "/chat/completions";
 
@@ -45,7 +47,7 @@ final class PinnedOpenAiCompatibleModelClient implements ModelClient {
     private final ObjectMapper objectMapper;
     private final PinnedHttpsTransport transport;
 
-    PinnedOpenAiCompatibleModelClient(
+    public PinnedOpenAiCompatibleModelClient(
         ModelConfigRuntimeSettings settings,
         ModelProperties defaults,
         ObjectMapper objectMapper,

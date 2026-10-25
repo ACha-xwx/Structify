@@ -5,9 +5,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.feng.dsagent.knowledge.KnowledgeEligibilityChanged;
-import com.feng.dsagent.knowledge.KnowledgeIndexRefreshService;
-import com.feng.dsagent.knowledge.KnowledgeSearchService;
-import com.feng.dsagent.security.JwtTokenService;
+import com.feng.dsagent.knowledge.service.KnowledgeIndexRefreshService;
+import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
+import com.feng.dsagent.security.service.JwtTokenService;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

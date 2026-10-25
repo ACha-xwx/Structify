@@ -15,7 +15,7 @@ public class JdbcClassroomEventRepository {
     public JdbcOutlineRepository store() { return store; }
     public OutlineJson json() { return json; }
 
-    Map<String,Object> owned(long user, String stream, boolean lock) {
+    public Map<String,Object> owned(long user, String stream, boolean lock) {
         var row=store.row("SELECT * FROM studyroom_event_streams WHERE stream_id=? AND user_id=?" + (lock?" FOR UPDATE":""),stream,user);
         if(row==null) throw OutlineJson.error(HttpStatus.NOT_FOUND,"STREAM_NOT_FOUND","课堂进度不存在");
         String kind=(String)row.get("entity_kind");
@@ -26,8 +26,8 @@ public class JdbcClassroomEventRepository {
         return row;
     }
 
-    static long number(Map<String,Object> row,String key) { return ((Number)row.get(key)).longValue(); }
-    ClassroomEvent.Snapshot snapshot(Map<String,Object> row) {
+    public static long number(Map<String,Object> row,String key) { return ((Number)row.get(key)).longValue(); }
+    public ClassroomEvent.Snapshot snapshot(Map<String,Object> row) {
         return new ClassroomEvent.Snapshot((String)row.get("stream_id"),(String)row.get("operation_id"),
             (int)number(row,"attempt"),(String)row.get("run_id"),row.get("revision")==null?null:(int)number(row,"revision"),
             number(row,"last_sequence"),number(row,"floor_sequence"),Boolean.TRUE.equals(row.get("terminal")),

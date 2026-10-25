@@ -2,7 +2,7 @@ package com.feng.dsagent.chat;
 
 import java.time.Instant;
 
-record StoredChatAttachment(
+public record StoredChatAttachment(
     String id,
     long userId,
     long messageId,

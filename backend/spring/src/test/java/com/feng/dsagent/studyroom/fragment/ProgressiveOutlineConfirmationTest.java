@@ -1,5 +1,10 @@
 package com.feng.dsagent.studyroom.fragment;
 
+import com.feng.dsagent.studyroom.draft.mapper.OutlineMapper;
+
+import com.feng.dsagent.studyroom.draft.service.OutlineFeasibilityService;
+import com.feng.dsagent.studyroom.draft.service.OutlineService;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import com.feng.dsagent.studyroom.draft.*;
@@ -20,7 +25,7 @@ class ProgressiveOutlineConfirmationTest {
         var compiler=new ContentPlanCompiler();
         var feasibility=mock(OutlineFeasibilityService.class);
         when(feasibility.assess(any(),any(),any())).thenReturn(new OutlineFeasibilityService.Assessment(outline,List.of()));
-        var service=new OutlineService(db.store,jobs,db.json,new OutlineValidator(),feasibility,compiler,fragments,new PreparationScheduler(fragments,jobs,db.json));
+        var service=new OutlineService(db.store,mock(OutlineMapper.class),jobs,db.json,new OutlineValidator(),feasibility,compiler,fragments,new PreparationScheduler(fragments,jobs,db.json));
         String hash=compiler.hash(outline,db.json);
         assertThatThrownBy(()->service.confirm(db.user,"draft",1,"bad-plan","wrong"))
             .hasMessageContaining("讲解安排已改变");

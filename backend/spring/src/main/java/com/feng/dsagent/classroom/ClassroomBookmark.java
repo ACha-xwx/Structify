@@ -19,15 +19,3 @@ public record ClassroomBookmark(
     String createdAt
 ) {
 }
-
-/** The row to write, before the database assigns it an id. */
-record ClassroomBookmarkDraft(
-    String sessionId,
-    String lessonId,
-    String lessonTitle,
-    String chapterId,
-    int stepIndex,
-    String slideId,
-    String title
-) {
-}

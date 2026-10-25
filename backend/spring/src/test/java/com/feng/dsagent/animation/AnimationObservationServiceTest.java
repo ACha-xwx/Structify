@@ -1,11 +1,13 @@
 package com.feng.dsagent.animation;
 
+import com.feng.dsagent.animation.service.AnimationObservationService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.learning.LearningEventRepository;
-import com.feng.dsagent.learning.LearningEventService;
+import com.feng.dsagent.learning.service.LearningEventService;
 import com.feng.dsagent.learning.LearningEventView;
 import java.time.Instant;
 import java.util.ArrayList;

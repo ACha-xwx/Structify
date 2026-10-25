@@ -4,11 +4,11 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
-interface KnowledgeChunkRepository {
+public interface KnowledgeChunkRepository {
 
-    void replaceTextbook(Collection<KnowledgeChunk> chunks);
+    public void replaceTextbook(Collection<KnowledgeChunk> chunks);
 
-    List<KnowledgeChunk> findPublished();
+    public List<KnowledgeChunk> findPublished();
 
     /**
      * Rechecks a cached candidate set against the current database source chain

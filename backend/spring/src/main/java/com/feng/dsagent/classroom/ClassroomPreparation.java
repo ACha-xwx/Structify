@@ -1,5 +1,11 @@
 package com.feng.dsagent.classroom;
 
+import com.feng.dsagent.animation.DsvpAnimationAdapter;
+import com.feng.dsagent.model.ModelClientException;
+import com.feng.dsagent.presentation.PresentationCatalog;
+import com.feng.dsagent.presentation.PresentationSlide;
+import com.feng.dsagent.presentation.service.PresentationService;
+
 import com.feng.dsagent.common.ApiException;
 import jakarta.annotation.PreDestroy;
 import java.util.*;
@@ -39,7 +45,7 @@ public class ClassroomPreparation {
     private final ClassroomScriptParser parser;
     private final ClassroomRepository repository;
     private final ClassroomTimeline timeline;
-    private final com.feng.dsagent.presentation.PresentationService presentations;
+    private final com.feng.dsagent.presentation.service.PresentationService presentations;
     /**
      * The animation surface. It is the one object that knows both execution paths - the local engine and
      * the in-process simulator - so the prompt offers exactly the union of what can really be drawn.
@@ -65,7 +71,7 @@ public class ClassroomPreparation {
         return thread;
     });
     public ClassroomPreparation(JdbcTemplate jdbc, ClassroomModelJson model, ObjectMapper mapper, ClassroomScriptParser parser,
-            ClassroomRepository repository, ClassroomTimeline timeline, com.feng.dsagent.presentation.PresentationService presentations,
+            ClassroomRepository repository, ClassroomTimeline timeline, com.feng.dsagent.presentation.service.PresentationService presentations,
             com.feng.dsagent.animation.DsvpAnimationAdapter animations,
             @org.springframework.beans.factory.annotation.Value("${app.classroom.slide-narration:model}") String narration) {
         this.jdbc = jdbc; this.model = model; this.mapper = mapper; this.parser = parser; this.repository = repository; this.timeline = timeline;
@@ -298,7 +304,7 @@ public class ClassroomPreparation {
      * another. Three pages in the whole catalogue are affected today; the rule is what keeps it from
      * happening again when a deck re-renders.
      */
-    static List<com.feng.dsagent.presentation.PresentationSlide> taughtPages(
+    public static List<com.feng.dsagent.presentation.PresentationSlide> taughtPages(
         List<com.feng.dsagent.presentation.PresentationSlide> pages) {
         return pages.stream().filter(com.feng.dsagent.presentation.PresentationSlide::shouldShow).toList();
     }
@@ -314,7 +320,7 @@ public class ClassroomPreparation {
         只输出 JSON：{"off":[序号,…]}；全部都贴合就输出 {"off":[]}。""";
 
     /** The page a teaching step shows; empty for the extension and closing steps, which carry no page. */
-    static String stepPage(JsonNode step) {
+    public static String stepPage(JsonNode step) {
         JsonNode refs = step.path("slideRefs");
         return refs.isArray() && !refs.isEmpty() ? refs.get(0).asText("") : "";
     }
@@ -323,7 +329,7 @@ public class ClassroomPreparation {
      * The review payload: every step that shows a page, with what that page holds and the narration written
      * for it. Package-private so the payload can be asserted without a model.
      */
-    static ArrayNode narrationReview(ObjectMapper mapper, ArrayNode steps, List<SlideSpinePlan.Slide> part) {
+    public static ArrayNode narrationReview(ObjectMapper mapper, ArrayNode steps, List<SlideSpinePlan.Slide> part) {
         Map<String, SlideSpinePlan.Slide> bySlide = new LinkedHashMap<>();
         for (SlideSpinePlan.Slide slide : part) {
             bySlide.put(slide.id(), slide);
@@ -345,7 +351,7 @@ public class ClassroomPreparation {
     }
 
     /** The step numbers the check named, in range and capped, in the order the model gave them. */
-    static List<Integer> narrationOff(JsonNode verdict, int limit) {
+    public static List<Integer> narrationOff(JsonNode verdict, int limit) {
         List<Integer> off = new ArrayList<>();
         for (JsonNode item : verdict.path("off")) {
             if (item.isIntegralNumber() && item.asInt() >= 0 && !off.contains(item.asInt())) {
@@ -359,7 +365,7 @@ public class ClassroomPreparation {
     }
 
     /** Writes {"fixed":[{"step":n,"讲稿":…}]} back onto the steps; anything malformed is skipped. */
-    static int applyNarrationRewrites(ArrayNode steps, JsonNode rewrites) {
+    public static int applyNarrationRewrites(ArrayNode steps, JsonNode rewrites) {
         int applied = 0;
         for (JsonNode row : rewrites.path("fixed")) {
             int index = row.path("step").asInt(-1);
@@ -446,7 +452,7 @@ public class ClassroomPreparation {
      * content-matched plan: a review page is an intro wherever the deck put it, a closing page is a
      * summary, an exercise is practice, everything else is concept teaching.
      */
-    static String sceneOf(com.feng.dsagent.presentation.PresentationSlide slide) {
+    public static String sceneOf(com.feng.dsagent.presentation.PresentationSlide slide) {
         String title = slide.title() == null ? "" : slide.title();
         String role = slide.role() == null ? "" : slide.role();
         String teaching = slide.teachingRole() == null ? "" : slide.teachingRole();
@@ -548,7 +554,7 @@ public class ClassroomPreparation {
      * three pages, and never asks more than four times, so the walk through a 36-page deck keeps a readable
      * rhythm instead of turning into an exam; at least one question is always required.
      */
-    static int questionLimit(int pages) {
+    public static int questionLimit(int pages) {
         return Math.min(4, Math.max(1, pages / 3));
     }
 
@@ -558,7 +564,7 @@ public class ClassroomPreparation {
      * through by the teacher, not a page with a question on it, so it is deliberately not included: the
      * model is free to design its own question there.
      */
-    static boolean pagePosesItsOwnQuestion(SlideSpinePlan.Slide slide) {
+    public static boolean pagePosesItsOwnQuestion(SlideSpinePlan.Slide slide) {
         String title = slide.title() == null ? "" : slide.title();
         return title.contains("练习") || title.contains("习题") || title.contains("例题") || title.contains("测试");
     }
@@ -582,7 +588,7 @@ public class ClassroomPreparation {
      * rather than transcribed by the model, which is what used to turn a hand-copied scope string into a
      * rejected lesson.
      */
-    record PartRules(String lessonId, List<SlideSpinePlan.Slide> spine, List<SlideSpinePlan.Slide> part,
+    public record PartRules(String lessonId, List<SlideSpinePlan.Slide> spine, List<SlideSpinePlan.Slide> part,
                      int partOffset, int partNumber, int partCount, Map<String, String[]> scopeOfSlide,
                      Set<String> allowedSlides, Set<String> chunkIds, List<Map<String, Object>> chunks,
                      LessonPassageIndex textbook) {
@@ -602,7 +608,7 @@ public class ClassroomPreparation {
      * provider outage still fails the job, because teaching the lesson from the deck would hide a problem
      * the author has to see. A lesson without courseware has no local spine to fall back on, so it fails too.
      */
-    static List<ObjectNode> fallbackSteps(ApiException error, ObjectMapper mapper, List<SlideSpinePlan.Slide> part,
+    public static List<ObjectNode> fallbackSteps(ApiException error, ObjectMapper mapper, List<SlideSpinePlan.Slide> part,
                                           LessonPassageIndex textbook, boolean lastPart) {
         if (!ClassroomModelJson.REJECTED_ANSWER.equals(error.code()) || part.isEmpty()) {
             return List.of();
@@ -617,7 +623,7 @@ public class ClassroomPreparation {
      * A rejection therefore only ever means the lesson's own rules were broken, and every message carries the
      * value the next attempt must use.
      */
-    static ArrayNode validatePart(JsonNode json, PartRules rules, ClassroomScriptParser parser, ObjectMapper mapper) {
+    public static ArrayNode validatePart(JsonNode json, PartRules rules, ClassroomScriptParser parser, ObjectMapper mapper) {
         if (!rules.lessonId().equals(json.path("lessonId").asText())) {
             throw new IllegalArgumentException("$.lessonId 必须是请求里的课时ID \"" + rules.lessonId()
                 + "\"，当前值为 \"" + json.path("lessonId").asText() + "\"");

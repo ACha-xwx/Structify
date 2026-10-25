@@ -10,18 +10,18 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 @Component
-final class CompilerConcurrencyLimiter {
+public final class CompilerConcurrencyLimiter {
 
     private final Semaphore globalPermits;
     private final int permitsPerClient;
     private final Map<String, ClientGate> clients = new HashMap<>();
 
     @Autowired
-    CompilerConcurrencyLimiter(CompilerProperties properties) {
+    public CompilerConcurrencyLimiter(CompilerProperties properties) {
         this(properties.maximumConcurrentExecutions(), properties.maximumConcurrentExecutionsPerClient());
     }
 
-    CompilerConcurrencyLimiter(int maximumConcurrentExecutions, int maximumConcurrentExecutionsPerClient) {
+    public CompilerConcurrencyLimiter(int maximumConcurrentExecutions, int maximumConcurrentExecutionsPerClient) {
         if (maximumConcurrentExecutions < 1 || maximumConcurrentExecutionsPerClient < 1
                 || maximumConcurrentExecutionsPerClient > maximumConcurrentExecutions) {
             throw new IllegalArgumentException("compiler concurrency limits are invalid");
@@ -30,7 +30,7 @@ final class CompilerConcurrencyLimiter {
         this.permitsPerClient = maximumConcurrentExecutionsPerClient;
     }
 
-    Permit acquire(String clientKey) {
+    public Permit acquire(String clientKey) {
         String key = clientKey == null || clientKey.isBlank() ? "unknown" : clientKey.trim();
         synchronized (clients) {
             if (!globalPermits.tryAcquire()) {
@@ -65,7 +65,7 @@ final class CompilerConcurrencyLimiter {
         );
     }
 
-    static final class Permit implements AutoCloseable {
+    public static final class Permit implements AutoCloseable {
         private final CompilerConcurrencyLimiter owner;
         private final String key;
         private final ClientGate gate;

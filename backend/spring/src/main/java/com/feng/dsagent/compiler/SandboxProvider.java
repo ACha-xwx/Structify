@@ -3,11 +3,11 @@ package com.feng.dsagent.compiler;
 import java.util.Locale;
 import java.util.Optional;
 
-enum SandboxProvider {
+public enum SandboxProvider {
     PISTON,
     JUDGE0;
 
-    static Optional<SandboxProvider> fromApiName(String value) {
+    public static Optional<SandboxProvider> fromApiName(String value) {
         if (value == null) {
             return Optional.empty();
         }

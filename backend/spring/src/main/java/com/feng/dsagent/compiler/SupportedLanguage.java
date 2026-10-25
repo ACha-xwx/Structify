@@ -4,7 +4,7 @@ import java.util.Arrays;
 import java.util.Locale;
 import java.util.Optional;
 
-enum SupportedLanguage {
+public enum SupportedLanguage {
     C("c", "gcc", "main.c"),
     PYTHON("python", "python", "main.py");
 
@@ -12,25 +12,25 @@ enum SupportedLanguage {
     private final String pistonRuntime;
     private final String fileName;
 
-    SupportedLanguage(String apiName, String pistonRuntime, String fileName) {
+    private SupportedLanguage(String apiName, String pistonRuntime, String fileName) {
         this.apiName = apiName;
         this.pistonRuntime = pistonRuntime;
         this.fileName = fileName;
     }
 
-    String apiName() {
+    public String apiName() {
         return apiName;
     }
 
-    String pistonRuntime() {
+    public String pistonRuntime() {
         return pistonRuntime;
     }
 
-    String fileName() {
+    public String fileName() {
         return fileName;
     }
 
-    static Optional<SupportedLanguage> fromApiName(String value) {
+    public static Optional<SupportedLanguage> fromApiName(String value) {
         if (value == null) {
             return Optional.empty();
         }

@@ -1,8 +1,8 @@
 package com.feng.dsagent.animation;
 
-interface AnimationRepository {
+public interface AnimationRepository {
 
-    boolean isPublishedChapter(String chapterId);
+    public boolean isPublishedChapter(String chapterId);
 
-    String save(long userId, String chapterId, AnimationDefinition definition, String payloadJson);
+    public String save(long userId, String chapterId, AnimationDefinition definition, String payloadJson);
 }

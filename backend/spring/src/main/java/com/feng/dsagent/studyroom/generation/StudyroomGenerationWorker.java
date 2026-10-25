@@ -1,5 +1,13 @@
 package com.feng.dsagent.studyroom.generation;
 
+import com.feng.dsagent.model.ModelClientException;
+import com.feng.dsagent.studyroom.checks.service.ClassroomCheckService;
+import com.feng.dsagent.studyroom.draft.service.OutlineService;
+import com.feng.dsagent.studyroom.events.service.ClassroomEventService;
+import com.feng.dsagent.studyroom.fragment.service.FragmentPublicationService;
+import com.feng.dsagent.studyroom.generation.service.GenerationCallService;
+import com.feng.dsagent.studyroom.questions.ClassroomQuestionWorker;
+
 import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.studyroom.draft.*;
 import com.feng.dsagent.studyroom.fragment.*;
@@ -30,16 +38,16 @@ public class StudyroomGenerationWorker {
                     Thread.ofPlatform().daemon().name("studyroom-heartbeat").factory());
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final Semaphore capacity = new Semaphore(2);
-    private com.feng.dsagent.studyroom.events.ClassroomEventService events;
+    private com.feng.dsagent.studyroom.events.service.ClassroomEventService events;
     @org.springframework.beans.factory.annotation.Autowired
-    void events(com.feng.dsagent.studyroom.events.ClassroomEventService events) {this.events=events;}
+    public void events(com.feng.dsagent.studyroom.events.service.ClassroomEventService events) {this.events=events;}
     private com.feng.dsagent.studyroom.questions.ClassroomQuestionWorker questions;
     @org.springframework.beans.factory.annotation.Autowired
-    void questions(com.feng.dsagent.studyroom.questions.ClassroomQuestionWorker questions) {this.questions=questions;}
-    private com.feng.dsagent.studyroom.checks.ClassroomCheckService checks;
+    public void questions(com.feng.dsagent.studyroom.questions.ClassroomQuestionWorker questions) {this.questions=questions;}
+    private com.feng.dsagent.studyroom.checks.service.ClassroomCheckService checks;
     private GenerationCallService calls;
     @org.springframework.beans.factory.annotation.Autowired
-    void checks(com.feng.dsagent.studyroom.checks.ClassroomCheckService checks,GenerationCallService calls){this.checks=checks;this.calls=calls;}
+    public void checks(com.feng.dsagent.studyroom.checks.service.ClassroomCheckService checks,GenerationCallService calls){this.checks=checks;this.calls=calls;}
 
     public StudyroomGenerationWorker(
             JdbcGenerationRepository jobs,

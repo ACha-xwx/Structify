@@ -5,7 +5,7 @@ import java.net.UnknownHostException;
 import org.springframework.stereotype.Component;
 
 @Component
-final class SystemSandboxConfigHostResolver implements SandboxConfigHostResolver {
+public final class SystemSandboxConfigHostResolver implements SandboxConfigHostResolver {
 
     @Override
     public InetAddress[] resolve(String host) throws UnknownHostException {

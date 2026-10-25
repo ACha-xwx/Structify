@@ -1,5 +1,7 @@
 package com.feng.dsagent.aiquota;
 
+import com.feng.dsagent.aiquota.service.AiQuotaLedgerService;
+
 import java.util.Objects;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;

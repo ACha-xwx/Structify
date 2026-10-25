@@ -1,4 +1,4 @@
-# Data Structure Agent
+﻿# Data Structure Agent
 
 一个面向数据结构课程的 AI 学习智能体工作台，帮助学生完成"看懂知识点、理解过程、练习题目、定位错误、生成复习建议"的学习闭环。
 
@@ -63,7 +63,7 @@ cd backend/spring
 
 后端环境变量、管理员初始化、知识库、编译器安全和部署说明见 [`backend/spring/README.md`](backend/spring/README.md)，冻结的接口契约见 [`contracts/openapi-v1.yaml`](contracts/openapi-v1.yaml)。
 
-生产学习站为 `https://structify.cn`，管理端统一使用 `https://admin.structify.cn`。完整的 Node 8791 / Spring 8792 / MySQL / Caddy 拓扑、私有教材和 PPT 路径、备份、迁移、健康检查、DNS 切换与回滚手册见项目根目录的 [`PRODUCTION_DEPLOYMENT_GUIDE.md`](PRODUCTION_DEPLOYMENT_GUIDE.md)；`docs/production-deployment.md` 仅是兼容入口。接口差异和数据模型差异分别见 [`docs/api-node-spring-differences.md`](docs/api-node-spring-differences.md) 与 [`docs/data-model-node-spring-differences.md`](docs/data-model-node-spring-differences.md)。Git 来源已恢复并核验：远程 `origin` 为 `https://github.com/feng129685/data-structure-agent.git`，截至本次核验 `origin/main` 为 `82b073790d28cffc47fbcbe500d111078d2660c3`（可用 `git ls-remote https://github.com/feng129685/data-structure-agent.git refs/heads/main` 复核）。当前工作区以该 revision 为基线但融合修改尚未提交，不能据此宣称生产线上版本等同；发布前必须创建并记录不可变 release commit/tag 和镜像摘要。
+生产学习站为 `https://structify.cn`，管理端统一使用 `https://admin.structify.cn`。部署导航见 [`docs/部署与运维.md`](docs/部署与运维.md)；历史生产手册见 [`docs/archive/operations/PRODUCTION_DEPLOYMENT_GUIDE.md`](docs/archive/operations/PRODUCTION_DEPLOYMENT_GUIDE.md)。Node/Spring 兼容差异见 [`docs/architecture/node-spring-compat.md`](docs/architecture/node-spring-compat.md)。文档总入口见 [`docs/README.md`](docs/README.md)。Git 来源已恢复并核验：远程 `origin` 为 `https://github.com/feng129685/data-structure-agent.git`，截至本次核验 `origin/main` 为 `82b073790d28cffc47fbcbe500d111078d2660c3`（可用 `git ls-remote https://github.com/feng129685/data-structure-agent.git refs/heads/main` 复核）。当前工作区以该 revision 为基线但融合修改尚未提交，不能据此宣称生产线上版本等同；发布前必须创建并记录不可变 release commit/tag 和镜像摘要。
 
 ## 快速开始
 
@@ -72,7 +72,7 @@ cd backend/spring
 - Java 21（Spring 后端）
 - Maven Wrapper 随仓库提供：`backend/spring/mvnw.cmd`（Windows）或 `backend/spring/mvnw`
 - Node.js >= 18 与 npm（前端；本地动画引擎也用它）
-- 生产另需 MySQL 8 与 Docker Compose，见 [`PRODUCTION_DEPLOYMENT_GUIDE.md`](PRODUCTION_DEPLOYMENT_GUIDE.md)
+- 生产另需 MySQL 8 与 Docker Compose，见 [`docs/部署与运维.md`](docs/部署与运维.md)
 
 ### 获取代码
 
@@ -161,21 +161,18 @@ data-structure-agent/
 
 ## 文档索引
 
+完整索引见 [`docs/README.md`](docs/README.md)。常用入口：
+
 | 文件 | 说明 |
 |------|------|
-| `docs/project/00-current-status.md` | 当前进度总览与下一步路线 |
-| `docs/project/01-project-proposal.md` | 项目方案与价值说明 |
-| `docs/project/02-platform-build-guide.md` | 平台搭建操作步骤 |
-| `docs/project/03-agent-prompts.md` | 主智能体和子智能体提示词 |
-| `docs/project/04-knowledge-base-seed.md` | 知识库首批内容模板 |
-| `docs/project/05-test-cases.md` | 测试用例 |
-| `docs/project/06-demo-script.md` | 展示脚本 |
-| `docs/project/09-iteration-report.md` | 迭代优化记录 |
-| `docs/project/13-cloudflare-deployment-guide.md` | Cloudflare 部署说明 |
-| `PRODUCTION_DEPLOYMENT_GUIDE.md` | `structify.cn` 生产发布唯一操作手册 |
-| `docs/production-deployment.md` | 兼容入口，跳转到根目录生产手册 |
-| `docs/api-node-spring-differences.md` | Node `/api/*` 与 Spring `/api/v1/*` 接口差异表 |
-| `docs/data-model-node-spring-differences.md` | SQLite 到 MySQL 数据模型和导入边界 |
+| `docs/项目概览.md` | 产品定位与核心概念 |
+| `docs/本地开发.md` | 本地启动 |
+| `docs/系统架构.md` | 服务关系与主链路 |
+| `docs/部署与运维.md` | 部署导航、沙箱与私有资源 |
+| `docs/architecture/studyroom.md` | 学习室实现状态 |
+| `docs/architecture/node-spring-compat.md` | Node/Spring 兼容差异 |
+| `docs/产品方向.md` | 产品演进方向 |
+| `docs/archive/` | 历史报告、旧验收与过程材料 |
 
 ## 覆盖范围
 

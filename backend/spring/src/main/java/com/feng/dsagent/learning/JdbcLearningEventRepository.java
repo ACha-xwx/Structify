@@ -9,11 +9,11 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
 @Repository
-class JdbcLearningEventRepository implements LearningEventRepository {
+public class JdbcLearningEventRepository implements LearningEventRepository {
 
     private final JdbcTemplate jdbc;
 
-    JdbcLearningEventRepository(JdbcTemplate jdbc) {
+    public JdbcLearningEventRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 

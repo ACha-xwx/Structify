@@ -1,6 +1,6 @@
 package com.feng.dsagent.mail;
 
-record MailConnection(
+public record MailConnection(
     String siteName,
     String host,
     int port,
@@ -10,10 +10,4 @@ record MailConnection(
     String fromName,
     int connectionTimeoutSeconds
 ) {
-}
-
-enum SecurityMode {
-    NONE,
-    STARTTLS,
-    SSL
 }

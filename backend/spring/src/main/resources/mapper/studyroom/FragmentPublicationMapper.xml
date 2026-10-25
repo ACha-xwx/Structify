@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.studyroom.fragment.mapper.FragmentPublicationMapper">
+  <select id="lockUser" resultType="long">SELECT id FROM users WHERE id=#{userId} FOR UPDATE</select>
+  <select id="selectOwnedRun" resultType="map">
+    SELECT r.* FROM studyroom_runs r JOIN study_rooms s ON s.id=r.room_id
+    WHERE r.id=#{runId} AND r.user_id=#{userId} AND s.deleted_at IS NULL
+  </select>
+  <select id="selectRoomCurrentRun" resultType="map">
+    SELECT id FROM study_rooms WHERE id=#{roomId} AND current_run_id=#{runId}
+  </select>
+  <select id="selectRoomForUpdate" resultType="map">
+    SELECT * FROM study_rooms WHERE id=#{roomId} FOR UPDATE
+  </select>
+  <select id="selectOwnedFragment" resultType="map">
+    SELECT * FROM studyroom_fragments WHERE id=#{fragmentId} AND run_id=#{runId} FOR UPDATE
+  </select>
+  <select id="selectJobActive" resultType="map">
+    SELECT id FROM studyroom_generation_jobs WHERE id=#{jobId} AND status='RUNNING'
+      AND lease_token=#{leaseToken} AND lease_until&gt;CURRENT_TIMESTAMP
+  </select>
+  <select id="selectUnitOrder" resultType="map">
+    SELECT unit_order FROM studyroom_units WHERE id=#{unitId}
+  </select>
+  <insert id="insertStep">
+    INSERT INTO study_room_steps(id,study_room_id,step_key,step_type,title,explanation,evidence_json,resources_json,step_order,orchestration_json,unit_id,run_id,run_scope,step_key_in_unit,generation_status)
+    VALUES(#{id},#{roomId},#{stepKey},#{stepType},#{title},#{explanation},#{evidenceJson},#{resourcesJson},#{stepOrder},#{orchestrationJson},#{unitId},#{runId},#{runScope},#{stepKeyInUnit},'READY')
+  </insert>
+  <update id="updateStep">
+    UPDATE study_room_steps SET step_type=#{stepType},title=#{title},explanation=#{explanation},
+      evidence_json=#{evidenceJson},resources_json=#{resourcesJson},orchestration_json=#{orchestrationJson}
+    WHERE id=#{stepId} AND run_id=#{runId}
+  </update>
+  <update id="updateFragmentVersionReady">
+    UPDATE studyroom_fragment_versions SET status='READY',content_json=#{contentJson},resource_revision=#{resourceRevision},issues_json=NULL
+    WHERE fragment_id=#{fragmentId} AND revision=#{revision}
+  </update>
+  <update id="updateFragmentReady">
+    UPDATE studyroom_fragments SET status='READY',content_revision=#{revision},pending_revision=NULL,step_id=#{stepId},
+      content_json=#{contentJson},resource_revision=#{resourceRevision},error_code=NULL,issues_json=NULL,updated_at=CURRENT_TIMESTAMP
+    WHERE id=#{fragmentId}
+  </update>
+  <update id="activateRun">UPDATE studyroom_runs SET status='ACTIVE' WHERE id=#{runId}</update>
+  <update id="bumpRoom">
+    UPDATE study_rooms SET current_step_id=COALESCE(current_step_id,#{stepId}),version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=#{roomId}
+  </update>
+  <update id="touchRun">UPDATE studyroom_runs SET state_version=state_version+1 WHERE id=#{runId}</update>
+  <update id="finishJob">
+    UPDATE studyroom_generation_jobs SET status='SUCCEEDED',updated_at=CURRENT_TIMESTAMP,lease_until=NULL
+    WHERE id=#{jobId} AND lease_token=#{leaseToken} AND status='RUNNING'
+  </update>
+</mapper>

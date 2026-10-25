@@ -1,6 +1,6 @@
 package com.feng.dsagent.compiler;
 
-interface SandboxConnectionTester {
+public interface SandboxConnectionTester {
 
-    SandboxConnectionResult test(SandboxRuntimeSettings settings);
+    public SandboxConnectionResult test(SandboxRuntimeSettings settings);
 }

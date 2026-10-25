@@ -3,13 +3,13 @@ package com.feng.dsagent.chat;
 import java.util.List;
 import java.util.Optional;
 
-interface ChatRepository {
+public interface ChatRepository {
 
-    boolean isPublishedChapter(String chapterId);
+    public boolean isPublishedChapter(String chapterId);
 
     Optional<List<ChatTurn>> recentHistory(long userId, String sessionId, int limit);
 
-    String saveExchange(
+    public String saveExchange(
         long userId,
         String sessionId,
         String chapterId,

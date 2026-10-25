@@ -5,9 +5,9 @@ import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
-record ModelConfigKeyBinding(long configurationId, String provider, String baseUrl) {
+public record ModelConfigKeyBinding(long configurationId, String provider, String baseUrl) {
 
-    static ModelConfigKeyBinding forConfiguration(long configurationId, String provider, String baseUrl) {
+    public static ModelConfigKeyBinding forConfiguration(long configurationId, String provider, String baseUrl) {
         return new ModelConfigKeyBinding(
             configurationId,
             normalizeProvider(provider),
@@ -15,11 +15,11 @@ record ModelConfigKeyBinding(long configurationId, String provider, String baseU
         );
     }
 
-    static ModelConfigKeyBinding forStored(ModelConfigRepository.StoredModelConfig stored) {
+    public static ModelConfigKeyBinding forStored(ModelConfigRepository.StoredModelConfig stored) {
         return forConfiguration(stored.id(), stored.provider(), stored.baseUrl());
     }
 
-    byte[] additionalAuthenticatedData() {
+    public byte[] additionalAuthenticatedData() {
         return ("dsagent:model-config:v2\\n"
             + "configurationId=" + configurationId + "\\n"
             + "provider=" + provider + "\\n"

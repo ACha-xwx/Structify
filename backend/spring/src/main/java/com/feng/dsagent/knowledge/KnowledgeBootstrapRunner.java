@@ -1,5 +1,7 @@
 package com.feng.dsagent.knowledge;
 
+import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
+
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -8,7 +10,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
 @Component
-final class KnowledgeBootstrapRunner implements ApplicationRunner {
+public final class KnowledgeBootstrapRunner implements ApplicationRunner {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(KnowledgeBootstrapRunner.class);
 
@@ -17,7 +19,7 @@ final class KnowledgeBootstrapRunner implements ApplicationRunner {
     private final KnowledgeChunkRepository repository;
     private final KnowledgeSearchService search;
 
-    KnowledgeBootstrapRunner(
+    public KnowledgeBootstrapRunner(
         KnowledgeProperties properties,
         KnowledgeCorpus corpus,
         KnowledgeChunkRepository repository,

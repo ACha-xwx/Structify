@@ -8,17 +8,17 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
-class ModelConfigRepository {
+public class ModelConfigRepository {
 
-    static final long CONFIGURATION_ID = 1L;
+    public static final long CONFIGURATION_ID = 1L;
 
     private final JdbcTemplate jdbc;
 
-    ModelConfigRepository(JdbcTemplate jdbc) {
+    public ModelConfigRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
-    Optional<StoredModelConfig> find() {
+    public Optional<StoredModelConfig> find() {
         return jdbc.query(
             """
                 SELECT id, provider, base_url, model_name, api_key_ciphertext,
@@ -46,7 +46,7 @@ class ModelConfigRepository {
         ).stream().findFirst();
     }
 
-    StoredModelConfig save(
+    public StoredModelConfig save(
         String provider,
         String baseUrl,
         String model,
@@ -83,7 +83,7 @@ class ModelConfigRepository {
         return find().orElseThrow(() -> new IllegalStateException("Model configuration was not persisted"));
     }
 
-    StoredModelConfig recordConnectionTest(String status) {
+    public StoredModelConfig recordConnectionTest(String status) {
         jdbc.update(
             """
                 UPDATE model_configurations
@@ -96,7 +96,7 @@ class ModelConfigRepository {
         return find().orElseThrow(() -> new IllegalStateException("Model configuration was not persisted"));
     }
 
-    void appendAuditEvent(
+    public void appendAuditEvent(
         long actorUserId,
         String action,
         String result,
@@ -156,7 +156,7 @@ class ModelConfigRepository {
         return timestamp == null ? null : timestamp.toInstant();
     }
 
-    record StoredModelConfig(
+    public record StoredModelConfig(
         long id,
         String provider,
         String baseUrl,

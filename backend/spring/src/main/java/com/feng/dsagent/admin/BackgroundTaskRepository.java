@@ -12,15 +12,15 @@ import org.springframework.jdbc.core.simple.SimpleJdbcInsert;
 import org.springframework.stereotype.Repository;
 
 @Repository
-class BackgroundTaskRepository {
+public class BackgroundTaskRepository {
 
     private final JdbcTemplate jdbc;
 
-    BackgroundTaskRepository(JdbcTemplate jdbc) {
+    public BackgroundTaskRepository(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
     }
 
-    BackgroundTaskPage list(BackgroundTaskQuery query) {
+    public BackgroundTaskPage list(BackgroundTaskQuery query) {
         List<Object> parameters = new ArrayList<>();
         String where = where(query, parameters);
         long total = jdbc.queryForObject(
@@ -47,7 +47,7 @@ class BackgroundTaskRepository {
         return new BackgroundTaskPage(items, query.page(), query.size(), total);
     }
 
-    Optional<BackgroundTaskView> find(long taskId) {
+    public Optional<BackgroundTaskView> find(long taskId) {
         return jdbc.query(
             """
                 SELECT id, task_type, status, created_at, started_at, deadline_at, heartbeat_at, finished_at,
@@ -60,7 +60,7 @@ class BackgroundTaskRepository {
         ).stream().findFirst();
     }
 
-    Optional<BackgroundTaskView> lock(long taskId) {
+    public Optional<BackgroundTaskView> lock(long taskId) {
         return jdbc.query(
             """
                 SELECT id, task_type, status, created_at, started_at, deadline_at, heartbeat_at, finished_at,
@@ -73,7 +73,7 @@ class BackgroundTaskRepository {
         ).stream().findFirst();
     }
 
-    BackgroundTaskView createRecoveryTask(long actorUserId, String requestId, Instant createdAt, Instant deadlineAt) {
+    public BackgroundTaskView createRecoveryTask(long actorUserId, String requestId, Instant createdAt, Instant deadlineAt) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("task_type", "STALE_TASK_RECOVERY");
         values.put("status", "PENDING");
@@ -91,7 +91,7 @@ class BackgroundTaskRepository {
         return find(id.longValue()).orElseThrow();
     }
 
-    boolean start(long taskId, Instant startedAt, Instant deadlineAt) {
+    public boolean start(long taskId, Instant startedAt, Instant deadlineAt) {
         return jdbc.update(
             """
                 UPDATE background_tasks
@@ -105,7 +105,7 @@ class BackgroundTaskRepository {
         ) == 1;
     }
 
-    void complete(long taskId, Instant completedAt, int resultCount) {
+    public void complete(long taskId, Instant completedAt, int resultCount) {
         jdbc.update(
             """
                 UPDATE background_tasks
@@ -120,7 +120,7 @@ class BackgroundTaskRepository {
         );
     }
 
-    void fail(long taskId, Instant failedAt, String code, String reason) {
+    public void fail(long taskId, Instant failedAt, String code, String reason) {
         jdbc.update(
             """
                 UPDATE background_tasks
@@ -135,7 +135,7 @@ class BackgroundTaskRepository {
         );
     }
 
-    void queueRetry(long taskId, Instant deadlineAt) {
+    public void queueRetry(long taskId, Instant deadlineAt) {
         jdbc.update(
             """
                 UPDATE background_tasks
@@ -149,7 +149,7 @@ class BackgroundTaskRepository {
         );
     }
 
-    void cancel(long taskId, Instant canceledAt) {
+    public void cancel(long taskId, Instant canceledAt) {
         jdbc.update(
             """
                 UPDATE background_tasks
@@ -163,7 +163,7 @@ class BackgroundTaskRepository {
         );
     }
 
-    int failExpired(Instant now) {
+    public int failExpired(Instant now) {
         return jdbc.update(
             """
                 UPDATE background_tasks
@@ -225,30 +225,4 @@ class BackgroundTaskRepository {
     private static Instant instant(Timestamp value) {
         return value == null ? null : value.toInstant();
     }
-}
-
-record BackgroundTaskQuery(int page, int size, String status, String taskType) {
-}
-
-record BackgroundTaskPage(List<BackgroundTaskView> items, int page, int size, long total) {
-}
-
-record BackgroundTaskView(
-    long id,
-    String taskType,
-    String status,
-    Instant createdAt,
-    Instant startedAt,
-    Instant deadlineAt,
-    Instant heartbeatAt,
-    Instant finishedAt,
-    String failureCode,
-    String failureReason,
-    Integer resultCount,
-    int retryCount,
-    int maxAttempts,
-    Instant cancelRequestedAt,
-    Long requestedByUserId,
-    String requestId
-) {
 }

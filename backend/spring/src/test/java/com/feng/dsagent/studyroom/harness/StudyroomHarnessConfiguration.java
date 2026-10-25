@@ -1,5 +1,9 @@
 package com.feng.dsagent.studyroom.harness;
 
+import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
+import com.feng.dsagent.model.ModelRequest;
+import com.feng.dsagent.model.ModelStreamHandler;
+
 import com.feng.dsagent.aiquota.AiQuotaExecution;
 import com.feng.dsagent.auth.UserRepository;
 import com.feng.dsagent.compiler.*;

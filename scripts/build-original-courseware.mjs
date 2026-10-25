@@ -15,6 +15,11 @@ const chapterIds = new Map([
 ]);
 const slides = [], lessons = {}, numbers = new Map();
 const builtAt = new Date().toISOString();
+const registryFile = path.join(imageRoot, 'resource-identities.json');
+const prior = fs.existsSync(registryFile) ? JSON.parse(fs.readFileSync(registryFile, 'utf8')).resources : [];
+const identities = new Map(prior.map((r) => [`${r.sourceAssetId}\0${r.nativeSlideId}`, r]));
+const used = new Set();
+const digest = (value) => crypto.createHash('sha256').update(value).digest('hex');
 for (const deck of [...manifest.decks].sort((a, b) => a.source < b.source ? -1 : a.source > b.source ? 1 : 0)) {
   const chapter = chapterIds.get(deck.chapter);
   if (!chapter) throw new Error(`Unknown chapter: ${deck.chapter}`);
@@ -29,6 +34,9 @@ for (const deck of [...manifest.decks].sort((a, b) => a.source < b.source ? -1 :
     throw new Error(`Page count/order mismatch: ${deck.markdown}`);
   }
   const title = path.basename(deck.source, '.pptx');
+  // The source path is provenance, not a text/content revision. Native slide IDs supplied by the
+  // extractor survive page reordering. A rendered-page manifest has only its declared page identity.
+  const sourceAssetId = deck.sourceAssetId || `asset-${digest(deck.source.replaceAll('\\', '/')).slice(0, 24)}`;
   // Include source text and every image in the revision so immutable URLs always identify the bytes.
   const hash = crypto.createHash('sha256').update(markdown);
   const images = pages.map((page) => {
@@ -43,16 +51,24 @@ for (const deck of [...manifest.decks].sort((a, b) => a.source < b.source ? -1 :
     hash.update(bytes);
     return relative;
   });
-  const deckId = `ch${chapter}-deck${String(number).padStart(2, '0')}-${hash.digest('hex').slice(0, 16)}`;
+  const documentRevision = hash.digest('hex');
+  const deckId = `deck-${digest(sourceAssetId).slice(0, 24)}`;
   const slideOrder = [];
   pages.forEach((page, i) => {
     const body = markdown.slice(page.index + page[0].length, pages[i + 1]?.index ?? markdown.length)
       .replace(/^<a id="slide-[^\n]*\n?/gm, '')
       .replace(/^!?\[(?:查看 WebP 原图|第 \d+ 页)\]\([^\n]*\)\s*$/gm, '').trim();
-    const id = `${deckId}-s${String(i + 1).padStart(3, '0')}`;
+    const nativeSlideId = deck.nativeSlideIds?.[i] || `rendered-page:${i + 1}`;
+    const identityKey = `${sourceAssetId}\0${nativeSlideId}`;
+    if (used.has(identityKey)) throw new Error(`Ambiguous page provenance: ${sourceAssetId}/${nativeSlideId}`);
+    used.add(identityKey);
+    const imageHash = digest(fs.readFileSync(path.join(imageRoot, images[i])));
+    const id = identities.get(identityKey)?.resourceId || `res_${digest(identityKey).slice(0, 32)}`;
+    identities.set(identityKey, { resourceId: id, sourceAssetId, nativeSlideId, imageHash, imagePath: images[i] });
     slideOrder.push(id);
     slides.push({ id, deckId, deckTitle: title, slideNumber: i + 1, chapter,
-      title: page[2].trim(), rawText: body, speakerNotes: '', semanticSummary: body.slice(0, 400),
+      sourceAssetId, nativeSlideId, imageHash, documentRevision,
+      title: page[2].trim(), rawText: body, normalizedText: body.normalize('NFKC'), speakerNotes: '', semanticSummary: '',
       teachingRole: '', teachingFocus: '', concepts: [], visualAnchors: [], shouldShow: true,
       lessonIds: [key], imagePath: images[i], section: page[2].match(/\d+\.\d+(?:\.\d+)*/)?.[0] ?? '',
       role: '', terms: [] });
@@ -65,4 +81,5 @@ if (slides.length !== manifest.slide_count || Object.keys(lessons).length !== ma
 // Validate the full release before replacing either index. Original Markdown and WebP files stay intact.
 fs.writeFileSync(path.join(imageRoot, 'slides.json'), JSON.stringify({ version: 1, builtAt, slides }, null, 2) + '\n');
 fs.writeFileSync(path.join(imageRoot, 'lesson-presentation-plans.json'), JSON.stringify({ version: 1, builtAt, lessons }, null, 2) + '\n');
+fs.writeFileSync(registryFile, JSON.stringify({ version: 1, resources: [...identities.values()] }, null, 2) + '\n');
 console.log(`Indexed ${slides.length} original WebP pages across ${Object.keys(lessons).length} decks.`);

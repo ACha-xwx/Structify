@@ -10,20 +10,20 @@ public enum DsvpEvidenceSource {
     private final String type;
     private final String reference;
 
-    DsvpEvidenceSource(String type, String reference) {
+    private DsvpEvidenceSource(String type, String reference) {
         this.type = type;
         this.reference = reference;
     }
 
-    String type() {
+    public String type() {
         return type;
     }
 
-    String reference() {
+    public String reference() {
         return reference;
     }
 
-    static DsvpEvidenceSource fromRequest(JsonNode request) {
+    public static DsvpEvidenceSource fromRequest(JsonNode request) {
         JsonNode context = request == null ? null : request.path("context");
         if (context != null && context.isObject()) {
             if (hasText(context, "classroom_session_id")) return CLASSROOM;

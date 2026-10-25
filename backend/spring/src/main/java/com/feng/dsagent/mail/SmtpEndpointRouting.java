@@ -14,7 +14,7 @@ import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.stereotype.Component;
 
 @Component
-final class SmtpEndpointRouting {
+public final class SmtpEndpointRouting {
 
     private final String trustedPublicHost;
     private final String connectHost;
@@ -22,7 +22,7 @@ final class SmtpEndpointRouting {
     private final SSLSocketFactory sslSocketFactory;
 
     @Autowired
-    SmtpEndpointRouting(
+    public SmtpEndpointRouting(
         @Value("${SMTP_HOST:}") String trustedPublicHost,
         @Value("${SMTP_CONNECT_HOST:}") String connectHost,
         @Value("${SMTP_TLS_SERVERNAME:}") String tlsServerName
@@ -30,7 +30,7 @@ final class SmtpEndpointRouting {
         this(trustedPublicHost, connectHost, tlsServerName, (SSLSocketFactory) SSLSocketFactory.getDefault());
     }
 
-    SmtpEndpointRouting(
+    public SmtpEndpointRouting(
         String trustedPublicHost,
         String connectHost,
         String tlsServerName,
@@ -42,13 +42,13 @@ final class SmtpEndpointRouting {
         this.sslSocketFactory = sslSocketFactory;
     }
 
-    void applyTo(JavaMailSenderImpl sender, int connectionTimeoutMillis) {
+    public void applyTo(JavaMailSenderImpl sender, int connectionTimeoutMillis) {
         Route route = routeFor(sender.getHost(), connectionTimeoutMillis);
         sender.setHost(route.transportHost());
         route.install(sender.getJavaMailProperties());
     }
 
-    Route routeFor(String configuredHost, int connectionTimeoutMillis) {
+    public Route routeFor(String configuredHost, int connectionTimeoutMillis) {
         String normalizedConfiguredHost = normalizeHost(configuredHost);
         if (normalizedConfiguredHost.isBlank()
             || trustedPublicHost.isBlank()
@@ -64,7 +64,7 @@ final class SmtpEndpointRouting {
         );
     }
 
-    static int connectionTimeoutMillis(Properties properties) {
+    public static int connectionTimeoutMillis(Properties properties) {
         Object value = properties.get("mail.smtp.connectiontimeout");
         if (value == null) {
             return 0;
@@ -84,7 +84,7 @@ final class SmtpEndpointRouting {
         return value == null ? "" : value.strip();
     }
 
-    record Route(String transportHost, SocketFactory socketFactory, SSLSocketFactory sslSocketFactory) {
+    public record Route(String transportHost, SocketFactory socketFactory, SSLSocketFactory sslSocketFactory) {
 
         boolean routed() {
             return socketFactory != null && sslSocketFactory != null;

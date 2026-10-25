@@ -1,10 +1,12 @@
 package com.feng.dsagent.auth;
 
+import com.feng.dsagent.auth.service.AuthService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.security.JwtTokenService;
+import com.feng.dsagent.security.service.JwtTokenService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;

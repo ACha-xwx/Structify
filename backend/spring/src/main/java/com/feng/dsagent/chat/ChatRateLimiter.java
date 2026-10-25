@@ -8,17 +8,17 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 @Component
-final class ChatRateLimiter {
+public final class ChatRateLimiter {
 
     private final WindowRateLimiter guest = new WindowRateLimiter(8, Duration.ofMinutes(10));
     private final WindowRateLimiter authenticated = new WindowRateLimiter(30, Duration.ofMinutes(10));
     private final Clock clock;
 
-    ChatRateLimiter(Clock clock) {
+    public ChatRateLimiter(Clock clock) {
         this.clock = clock;
     }
 
-    void check(Long userId, String remoteAddress) {
+    public void check(Long userId, String remoteAddress) {
         boolean allowed = userId == null
             ? guest.allow("guest:" + safe(remoteAddress), clock.instant())
             : authenticated.allow("user:" + userId, clock.instant());

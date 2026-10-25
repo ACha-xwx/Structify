@@ -24,7 +24,7 @@ public final class ApiExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
     @ExceptionHandler(ApiException.class)
-    ResponseEntity<ApiError> handleApiException(ApiException error, HttpServletRequest request) {
+    public ResponseEntity<ApiError> handleApiException(ApiException error, HttpServletRequest request) {
         return ResponseEntity.status(error.status()).body(new ApiError(
             error.code(),
             error.getMessage(),
@@ -34,7 +34,7 @@ public final class ApiExceptionHandler {
     }
 
     @ExceptionHandler(AccessDeniedException.class)
-    ResponseEntity<ApiError> handleAccessDenied(AccessDeniedException error, HttpServletRequest request) {
+    public ResponseEntity<ApiError> handleAccessDenied(AccessDeniedException error, HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new ApiError(
             "AUTH_FORBIDDEN",
             "当前账号无权执行该操作",
@@ -44,7 +44,7 @@ public final class ApiExceptionHandler {
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException error, HttpServletRequest request) {
+    public ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException error, HttpServletRequest request) {
         List<String> details = error.getBindingResult().getFieldErrors().stream()
             .map(this::formatFieldError)
             .toList();
@@ -57,7 +57,7 @@ public final class ApiExceptionHandler {
     }
 
     @ExceptionHandler(HandlerMethodValidationException.class)
-    ResponseEntity<ApiError> handleHandlerMethodValidation(
+    public ResponseEntity<ApiError> handleHandlerMethodValidation(
         HandlerMethodValidationException error,
         HttpServletRequest request
     ) {
@@ -69,7 +69,7 @@ public final class ApiExceptionHandler {
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
-    ResponseEntity<ApiError> handleConstraintViolation(
+    public ResponseEntity<ApiError> handleConstraintViolation(
         ConstraintViolationException error,
         HttpServletRequest request
     ) {
@@ -80,7 +80,7 @@ public final class ApiExceptionHandler {
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    ResponseEntity<ApiError> handleUnreadableBody(
+    public ResponseEntity<ApiError> handleUnreadableBody(
         HttpMessageNotReadableException error,
         HttpServletRequest request
     ) {
@@ -93,7 +93,7 @@ public final class ApiExceptionHandler {
     }
 
     @ExceptionHandler(NoResourceFoundException.class)
-    ResponseEntity<ApiError> handleNotFound(NoResourceFoundException error, HttpServletRequest request) {
+    public ResponseEntity<ApiError> handleNotFound(NoResourceFoundException error, HttpServletRequest request) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ApiError(
             "RESOURCE_NOT_FOUND",
             "请求的资源不存在",
@@ -108,7 +108,7 @@ public final class ApiExceptionHandler {
      * error, and the difference matters: it must not appear in the log as a 500.
      */
     @ExceptionHandler(HttpMediaTypeNotAcceptableException.class)
-    ResponseEntity<ApiError> handleUnacceptableMediaType(
+    public ResponseEntity<ApiError> handleUnacceptableMediaType(
         HttpMediaTypeNotAcceptableException error,
         HttpServletRequest request
     ) {
@@ -121,7 +121,7 @@ public final class ApiExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    ResponseEntity<ApiError> handleUnexpected(Exception error, HttpServletRequest request) {
+    public ResponseEntity<ApiError> handleUnexpected(Exception error, HttpServletRequest request) {
         // A 500 without a stack trace is undebuggable - this handler is exactly where it must land.
         log.error("unhandled exception on {} {}", request.getMethod(), request.getRequestURI(), error);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ApiError(

@@ -137,7 +137,7 @@ public final class MasteryEstimator {
     }
 
     /** Overall confidence: watching counts for a quarter of what answering does, asking for a tenth. */
-    static double confidence(Evidence evidence) {
+    public static double confidence(Evidence evidence) {
         double weight = 1.0 * evidence.classroomAttempts()
             + 0.8 * evidence.codeRuns()
             + 0.25 * evidence.animationRequests()

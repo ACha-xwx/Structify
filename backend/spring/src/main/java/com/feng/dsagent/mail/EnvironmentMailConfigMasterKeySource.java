@@ -7,7 +7,7 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.stereotype.Component;
 
 @Component
-final class EnvironmentMailConfigMasterKeySource implements MailConfigMasterKeySource {
+public final class EnvironmentMailConfigMasterKeySource implements MailConfigMasterKeySource {
 
     static final String ENVIRONMENT_VARIABLE = "MAIL_CONFIG_MASTER_KEY";
     private static final String FALLBACK_ENVIRONMENT_VARIABLE = "MODEL_CONFIG_MASTER_KEY";

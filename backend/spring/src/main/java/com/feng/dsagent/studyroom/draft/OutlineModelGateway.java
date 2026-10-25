@@ -1,7 +1,12 @@
 package com.feng.dsagent.studyroom.draft;
 
+import com.feng.dsagent.compiler.CodeExecutionReadiness;
+import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
+import com.feng.dsagent.studyroom.curriculum.CurriculumCatalog;
+import com.feng.dsagent.studyroom.events.service.ClassroomEventService;
+
 import com.feng.dsagent.knowledge.*;
-import com.feng.dsagent.studyroom.generation.GenerationCallService;
+import com.feng.dsagent.studyroom.generation.service.GenerationCallService;
 
 import org.springframework.stereotype.Service;
 
@@ -15,9 +20,9 @@ public class OutlineModelGateway {
     private final OutlineJson json;
     private final com.feng.dsagent.compiler.CodeExecutionReadiness execution;
     private final com.feng.dsagent.studyroom.curriculum.CurriculumCatalog curriculum;
-    private com.feng.dsagent.studyroom.events.ClassroomEventService events;
+    private com.feng.dsagent.studyroom.events.service.ClassroomEventService events;
     @org.springframework.beans.factory.annotation.Autowired
-    void events(com.feng.dsagent.studyroom.events.ClassroomEventService events) {this.events=events;}
+    public void events(com.feng.dsagent.studyroom.events.service.ClassroomEventService events) {this.events=events;}
 
     public OutlineModelGateway(
             GenerationCallService calls,

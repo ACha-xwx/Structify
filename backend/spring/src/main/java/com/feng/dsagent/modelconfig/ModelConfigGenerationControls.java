@@ -1,6 +1,6 @@
 package com.feng.dsagent.modelconfig;
 
-record ModelConfigGenerationControls(
+public record ModelConfigGenerationControls(
     double temperature,
     int maxOutputTokens,
     long requestTimeoutMs,
@@ -9,14 +9,14 @@ record ModelConfigGenerationControls(
     boolean enabled
 ) {
 
-    static final double DEFAULT_TEMPERATURE = 0.2;
-    static final int DEFAULT_MAX_OUTPUT_TOKENS = 1_024;
-    static final int MAX_OUTPUT_TOKENS = 65_536;
-    static final long DEFAULT_REQUEST_TIMEOUT_MS = 45_000;
-    static final int DEFAULT_RETRY_COUNT = 0;
-    static final long DEFAULT_DAILY_TOKEN_QUOTA = 0;
+    public static final double DEFAULT_TEMPERATURE = 0.2;
+    public static final int DEFAULT_MAX_OUTPUT_TOKENS = 1_024;
+    public static final int MAX_OUTPUT_TOKENS = 65_536;
+    public static final long DEFAULT_REQUEST_TIMEOUT_MS = 45_000;
+    public static final int DEFAULT_RETRY_COUNT = 0;
+    public static final long DEFAULT_DAILY_TOKEN_QUOTA = 0;
 
-    static ModelConfigGenerationControls defaults() {
+    public static ModelConfigGenerationControls defaults() {
         return new ModelConfigGenerationControls(
             DEFAULT_TEMPERATURE,
             DEFAULT_MAX_OUTPUT_TOKENS,
@@ -27,7 +27,7 @@ record ModelConfigGenerationControls(
         );
     }
 
-    static ModelConfigGenerationControls from(ModelConfigRepository.StoredModelConfig stored) {
+    public static ModelConfigGenerationControls from(ModelConfigRepository.StoredModelConfig stored) {
         return new ModelConfigGenerationControls(
             stored.temperature(),
             stored.maxOutputTokens(),

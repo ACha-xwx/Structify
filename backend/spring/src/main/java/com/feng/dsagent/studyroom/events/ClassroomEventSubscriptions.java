@@ -1,5 +1,7 @@
 package com.feng.dsagent.studyroom.events;
 
+import com.feng.dsagent.studyroom.events.service.ClassroomEventService;
+
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -26,7 +28,7 @@ public class ClassroomEventSubscriptions {
         this(events, MAX_ACTIVE_SUBSCRIPTIONS, MAX_ACTIVE_SUBSCRIPTIONS_PER_USER);
     }
 
-    ClassroomEventSubscriptions(ClassroomEventService events, int maximumSubscriptions, int maximumSubscriptionsPerUser) {
+    public ClassroomEventSubscriptions(ClassroomEventService events, int maximumSubscriptions, int maximumSubscriptionsPerUser) {
         this.events = events;
         this.limiter = new SubscriptionLimiter(maximumSubscriptions, maximumSubscriptionsPerUser);
     }
@@ -84,9 +86,9 @@ public class ClassroomEventSubscriptions {
     }
 
     @Scheduled(fixedDelay=3_600_000L)
-    void cleanup() { events.cleanup(); }
+    public void cleanup() { events.cleanup(); }
 
-    static final class SubscriptionLimiter {
+    public static final class SubscriptionLimiter {
         private final Semaphore globalPermits;
         private final int permitsPerUser;
         private final Map<Long, UserGate> users = new HashMap<>();

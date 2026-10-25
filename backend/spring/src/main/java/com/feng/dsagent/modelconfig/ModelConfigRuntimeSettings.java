@@ -2,7 +2,7 @@ package com.feng.dsagent.modelconfig;
 
 import java.time.Duration;
 
-final class ModelConfigRuntimeSettings {
+public final class ModelConfigRuntimeSettings {
 
     private final String provider;
     private final ModelConfigResolvedTarget target;
@@ -14,7 +14,7 @@ final class ModelConfigRuntimeSettings {
     private final int retryCount;
     private final long dailyTokenQuota;
 
-    ModelConfigRuntimeSettings(String provider, ModelConfigResolvedTarget target, String model, String apiKey) {
+    public ModelConfigRuntimeSettings(String provider, ModelConfigResolvedTarget target, String model, String apiKey) {
         this(
             provider,
             target,
@@ -28,7 +28,7 @@ final class ModelConfigRuntimeSettings {
         );
     }
 
-    ModelConfigRuntimeSettings(
+    public ModelConfigRuntimeSettings(
         String provider,
         ModelConfigResolvedTarget target,
         String model,
@@ -50,39 +50,39 @@ final class ModelConfigRuntimeSettings {
         this.dailyTokenQuota = dailyTokenQuota;
     }
 
-    String provider() {
+    public String provider() {
         return provider;
     }
 
-    ModelConfigResolvedTarget target() {
+    public ModelConfigResolvedTarget target() {
         return target;
     }
 
-    String model() {
+    public String model() {
         return model;
     }
 
-    String apiKey() {
+    public String apiKey() {
         return apiKey;
     }
 
-    double temperature() {
+    public double temperature() {
         return temperature;
     }
 
-    int maxOutputTokens() {
+    public int maxOutputTokens() {
         return maxOutputTokens;
     }
 
-    Duration requestTimeout() {
+    public Duration requestTimeout() {
         return requestTimeout;
     }
 
-    int retryCount() {
+    public int retryCount() {
         return retryCount;
     }
 
-    long dailyTokenQuota() {
+    public long dailyTokenQuota() {
         return dailyTokenQuota;
     }
 }
