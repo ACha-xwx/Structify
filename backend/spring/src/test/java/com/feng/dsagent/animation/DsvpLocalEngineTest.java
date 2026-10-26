@@ -8,6 +8,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
+import com.feng.dsagent.animation.support.DsvpLocalEngine;
 /**
  * Exercises the real local engine ({@code backend/dsvp}) through its JSONL service.
  *

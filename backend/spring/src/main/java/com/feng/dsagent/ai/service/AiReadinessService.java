@@ -1,16 +1,16 @@
 package com.feng.dsagent.ai.service;
 
+
+import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.feng.dsagent.aiquota.service.AiQuotaExecutionService;
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.knowledge.KnowledgeAudience;
+import com.feng.dsagent.ai.error.AiErrorCode;
+import com.feng.dsagent.knowledge.domain.KnowledgeAudience;
 import com.feng.dsagent.knowledge.service.KnowledgeEvidenceReadinessService;
-import com.feng.dsagent.modelconfig.ModelGenerationReadiness;
+import com.feng.dsagent.modelconfig.support.ModelGenerationReadiness;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
 
 @Service
 public class AiReadinessService {
@@ -137,11 +137,7 @@ public class AiReadinessService {
             try {
                 return Operation.valueOf(normalized);
             } catch (IllegalArgumentException error) {
-                throw new ApiException(
-                    HttpStatus.BAD_REQUEST,
-                    "AI_READINESS_OPERATION_INVALID",
-                    "Unsupported AI readiness operation"
-                );
+                throw AiErrorCode.READINESS_OPERATION_INVALID.toException();
             }
         }
     }

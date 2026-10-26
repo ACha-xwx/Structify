@@ -29,4 +29,38 @@
     LEFT JOIN animation_records a ON a.id = s.animation_record_id
     WHERE s.id = #{traceId}
   </select>
+
+  <select id="selectClassroomChapter" resultType="string">
+    SELECT COALESCE(s.chapter_id_snapshot, cscript.chapter_id) AS chapter_id
+    FROM classroom_sessions s
+    JOIN classroom_scripts cscript ON cscript.id = s.script_id
+    JOIN chapters c ON c.id = COALESCE(s.chapter_id_snapshot, cscript.chapter_id)
+    WHERE s.id = #{sessionId} AND s.user_id = #{userId} AND c.status = 'PUBLISHED'
+  </select>
+
+  <select id="selectPresentationPage"
+          resultType="com.feng.dsagent.animation.mapper.DsvpEvidenceMapper$PresentationEvidenceRow">
+    SELECT m.id AS presentationId, m.chapter_id AS chapterId, p.source_ref AS sourceRef, r.license_scope AS licenseScope
+    FROM presentation_pages p
+    JOIN presentation_manifests m ON m.id = p.manifest_id
+    JOIN chapters c ON c.id = m.chapter_id
+    LEFT JOIN resources r ON r.id = m.resource_id
+    WHERE p.id = #{pageId} AND p.review_status IN ('PUBLISHED', 'VERIFIED')
+      AND m.review_status IN ('PUBLISHED', 'VERIFIED')
+      AND c.status = 'PUBLISHED'
+      AND (r.id IS NULL OR r.review_status IN ('PUBLISHED', 'VERIFIED'))
+  </select>
+
+  <select id="countPublishedChapter" resultType="int">
+    SELECT COUNT(*) FROM chapters WHERE id = #{chapterId} AND status = 'PUBLISHED'
+  </select>
+
+  <select id="selectReviewedAnimation"
+          resultType="com.feng.dsagent.animation.mapper.DsvpEvidenceMapper$AnimationEvidenceRow">
+    SELECT r.id, r.chapter_id AS chapterId, r.license_scope AS licenseScope
+    FROM resources r
+    JOIN chapters c ON c.id = r.chapter_id
+    WHERE r.id = #{sourceRef} AND r.resource_type = 'ANIMATION'
+      AND r.review_status IN ('PUBLISHED', 'VERIFIED') AND c.status = 'PUBLISHED'
+  </select>
 </mapper>

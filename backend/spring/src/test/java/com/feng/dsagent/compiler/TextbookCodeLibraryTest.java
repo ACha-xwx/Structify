@@ -2,6 +2,10 @@ package com.feng.dsagent.compiler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.feng.dsagent.compiler.domain.TextbookCodeChapter;
+import com.feng.dsagent.compiler.domain.TextbookCodeExample;
+import com.feng.dsagent.compiler.domain.TextbookCodeFragment;
+import com.feng.dsagent.compiler.support.TextbookCodeLibrary;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 

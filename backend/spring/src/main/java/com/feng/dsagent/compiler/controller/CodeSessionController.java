@@ -1,17 +1,16 @@
 package com.feng.dsagent.compiler.controller;
 
-import com.feng.dsagent.compiler.AsciiSafeStringSerializer;
-import com.feng.dsagent.compiler.InteractiveCodeSession;
-import com.feng.dsagent.compiler.SupportedLanguage;
+import com.feng.dsagent.compiler.support.AsciiSafeStringSerializer;
+import com.feng.dsagent.compiler.support.InteractiveCodeSession;
+import com.feng.dsagent.compiler.domain.SupportedLanguage;
 
 import com.feng.dsagent.compiler.service.CodeSessionService;
 
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.compiler.error.CompilerErrorCode;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -25,6 +24,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.annotation.JsonSerialize;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import com.feng.dsagent.compiler.dto.StartDTO;
+import com.feng.dsagent.compiler.dto.StdinDTO;
 
 /**
  * The interactive console's other half: a session to run the program in, a stream to watch it, and
@@ -36,10 +37,6 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RestController
 @RequestMapping("/api/v1/code/sessions")
 public final class CodeSessionController {
-
-    public record StartRequest(String language, String code) {}
-
-    public record StdinRequest(String text) {}
 
     /**
      * One piece of the program's output. The text is written ASCII-escaped for the same reason the
@@ -59,19 +56,15 @@ public final class CodeSessionController {
 
     @PostMapping
     public CodeSessionService.SessionStart start(
-        @RequestBody StartRequest request,
+        @RequestBody StartDTO request,
         HttpServletRequest servletRequest,
         Authentication authentication
     ) {
         if (request == null || request.code() == null || request.code().isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "COMPILER_CODE_REQUIRED", "代码不能为空");
+            throw CompilerErrorCode.CODE_REQUIRED.toException();
         }
         SupportedLanguage language = SupportedLanguage.fromApiName(request.language())
-            .orElseThrow(() -> new ApiException(
-                HttpStatus.BAD_REQUEST,
-                "COMPILER_LANGUAGE_UNSUPPORTED",
-                "仅支持 C 和 Python"
-            ));
+            .orElseThrow(CompilerErrorCode.LANGUAGE_UNSUPPORTED::toException);
         return sessions.start(clientKey(authentication, servletRequest), language, request.code());
     }
 
@@ -113,17 +106,13 @@ public final class CodeSessionController {
     }
 
     @PostMapping("/{id}/stdin")
-    public void type(@PathVariable String id, @RequestBody StdinRequest request) {
+    public void type(@PathVariable String id, @RequestBody StdinDTO request) {
         InteractiveCodeSession session = sessions.require(id);
         String text = request == null || request.text() == null ? "" : request.text();
         try {
             session.write(text);
         } catch (IOException error) {
-            throw new ApiException(
-                HttpStatus.SERVICE_UNAVAILABLE,
-                "SANDBOX_SESSION_NOT_FOUND",
-                "运行会话已结束，请重新运行"
-            );
+            throw CompilerErrorCode.SANDBOX_SESSION_NOT_FOUND.toException("运行会话已结束，请重新运行");
         }
     }
 

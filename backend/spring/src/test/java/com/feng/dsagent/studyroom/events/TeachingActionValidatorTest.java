@@ -1,7 +1,7 @@
 package com.feng.dsagent.studyroom.events;
 
-import com.feng.dsagent.studyroom.draft.OutlineJson;
-import com.feng.dsagent.studyroom.teaching.TeachingActionValidator;
+import com.feng.dsagent.studyroom.draft.support.OutlineJson;
+import com.feng.dsagent.studyroom.teaching.support.TeachingActionValidator;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -11,7 +11,7 @@ class TeachingActionValidatorTest {
         var action=new TeachingActionValidator.Proposed("MATERIAL_FOCUS",scene,resource,null,null,null);
         var valid=validator.validate(java.util.Collections.nCopies(20,action),"run","fragment",1,List.of(new TeachingActionValidator.Target(scene,resource,"PPT",0,0)));
         assertFalse(valid.isEmpty());assertTrue(valid.size()<20);
-        assertTrue(new com.feng.dsagent.studyroom.draft.OutlineJson(tools.jackson.databind.json.JsonMapper.builder().build()).write(valid).getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=12000);
+        assertTrue(new com.feng.dsagent.studyroom.draft.support.OutlineJson(tools.jackson.databind.json.JsonMapper.builder().build()).write(valid).getBytes(java.nio.charset.StandardCharsets.UTF_8).length<=12000);
     }
     @Test void onlyAcceptsKnownBoundTargetsAndExistingPositions() {
         var validator=new TeachingActionValidator();

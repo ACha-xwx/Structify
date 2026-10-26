@@ -3,9 +3,8 @@ package com.feng.dsagent.admin.controller;
 import com.feng.dsagent.admin.service.AdminClassService;
 
 import com.feng.dsagent.common.RequestIdFilter;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -18,6 +17,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import com.feng.dsagent.admin.dto.CreateClassDTO;
+import com.feng.dsagent.admin.dto.AddMemberDTO;
 
 /**
  * Class maintenance. Keeping this under the administrator boundary is the point: adding a teacher to a class is what
@@ -28,9 +29,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/admin/classes")
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminClassController {
-
-    public record CreateClassRequest(@NotBlank String name, String term) {}
-    public record AddMemberRequest(@NotBlank String identifier, @NotBlank String roleInClass) {}
 
     private final AdminClassService classes;
 
@@ -46,7 +44,7 @@ public class AdminClassController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public AdminClassService.ClassRow create(
-        @RequestBody CreateClassRequest request,
+        @RequestBody CreateClassDTO request,
         @AuthenticationPrincipal AuthenticatedUser actor,
         HttpServletRequest servletRequest
     ) {
@@ -62,7 +60,7 @@ public class AdminClassController {
     @ResponseStatus(HttpStatus.CREATED)
     public AdminClassService.AddMemberResult addMember(
         @PathVariable String classId,
-        @RequestBody AddMemberRequest request,
+        @RequestBody AddMemberDTO request,
         @AuthenticationPrincipal AuthenticatedUser actor,
         HttpServletRequest servletRequest
     ) {

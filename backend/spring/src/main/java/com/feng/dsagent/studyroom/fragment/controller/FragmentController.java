@@ -2,7 +2,7 @@ package com.feng.dsagent.studyroom.fragment.controller;
 
 import com.feng.dsagent.studyroom.fragment.service.FragmentLearningService;
 
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.util.Map;

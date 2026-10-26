@@ -1,10 +1,10 @@
 package com.feng.dsagent.studyroom.draft.controller;
 
-import com.feng.dsagent.studyroom.draft.LearningDepth;
-
+import com.feng.dsagent.studyroom.draft.domain.LearningDepth;
+import com.feng.dsagent.studyroom.draft.dto.ManualUnitDTO;
+import com.feng.dsagent.studyroom.draft.dto.RepairFixDTO;
 import com.feng.dsagent.studyroom.draft.service.OutlineService;
-
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import com.feng.dsagent.studyroom.fragment.service.FragmentReadService;
 
 import jakarta.validation.Valid;
@@ -75,11 +75,7 @@ public class OutlineController {
     }
 
     public record ManualRevision(@Min(1) int baseRevision,
-            @NotEmpty @Size(max=24) List<@NotNull @Valid ManualUnit> units) {}
-    public record ManualUnit(
-            @NotBlank @Pattern(regexp="[A-Za-z0-9][A-Za-z0-9._:-]{0,79}") String id,
-            @NotBlank @Size(max=160) String title,
-            @NotBlank @Size(max=400) String objective) {}
+            @NotEmpty @Size(max=24) List<@NotNull @Valid ManualUnitDTO> units) {}
 
     @PostMapping("/study-outlines/{id}/repairs")
     public Map<String, Object> repair(
@@ -90,10 +86,7 @@ public class OutlineController {
     }
 
     public record Repair(@Min(1) int baseRevision,
-            @NotEmpty @Size(max=24) List<@NotNull @Valid RepairFix> fixes) {}
-    public record RepairFix(
-            @NotBlank @Size(max=64) String code,
-            @Size(max=80) String unitId) {}
+            @NotEmpty @Size(max=24) List<@NotNull @Valid RepairFixDTO> fixes) {}
 
     @PostMapping("/study-outlines/{id}/confirm")
     public Map<String, Object> confirm(

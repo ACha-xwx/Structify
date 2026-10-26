@@ -21,6 +21,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import com.feng.dsagent.auth.support.VerificationCodeManager;
 @SpringBootTest
 @AutoConfigureMockMvc
 class AuthApiIntegrationTest {

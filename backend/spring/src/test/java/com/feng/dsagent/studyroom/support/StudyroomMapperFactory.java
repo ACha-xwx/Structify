@@ -12,7 +12,7 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 public final class StudyroomMapperFactory {
     private StudyroomMapperFactory() {}
 
-    public static <T> T create(DataSource dataSource, Class<T> type) throws Exception {
+    public static SqlSessionTemplate template(DataSource dataSource) throws Exception {
         SqlSessionFactoryBean factoryBean = new SqlSessionFactoryBean();
         factoryBean.setDataSource(dataSource);
         factoryBean.setMapperLocations(
@@ -22,6 +22,10 @@ public final class StudyroomMapperFactory {
         configuration.setMapUnderscoreToCamelCase(false);
         factoryBean.setConfiguration(configuration);
         SqlSessionFactory factory = Objects.requireNonNull(factoryBean.getObject());
-        return new SqlSessionTemplate(factory).getMapper(type);
+        return new SqlSessionTemplate(factory);
+    }
+
+    public static <T> T create(DataSource dataSource, Class<T> type) throws Exception {
+        return template(dataSource).getMapper(type);
     }
 }

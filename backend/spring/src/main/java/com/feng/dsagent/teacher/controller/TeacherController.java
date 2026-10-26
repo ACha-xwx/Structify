@@ -4,7 +4,7 @@ import com.feng.dsagent.teacher.service.TeacherService;
 
 import com.feng.dsagent.common.RequestIdFilter;
 import com.feng.dsagent.learning.service.LearningMapService;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 import org.springframework.security.access.prepost.PreAuthorize;

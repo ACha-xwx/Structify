@@ -1,6 +1,6 @@
 package com.feng.dsagent.studyroom.events;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
 import com.feng.dsagent.studyroom.events.service.ClassroomEventService;
 
 import com.feng.dsagent.security.service.JwtTokenService;
@@ -17,6 +17,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+import com.feng.dsagent.studyroom.events.support.ClassroomEventSubscriptions;
 @SpringBootTest
 @AutoConfigureMockMvc
 class ClassroomEventApiTest {
@@ -82,7 +83,7 @@ class ClassroomEventApiTest {
         var first = globalLimiter.acquire(USER);
         var second = globalLimiter.acquire(OTHER);
         var globalLimit = org.junit.jupiter.api.Assertions.assertThrows(
-            com.feng.dsagent.common.ApiException.class,
+            com.feng.dsagent.common.exception.BizException.class,
             () -> globalLimiter.acquire(OTHER+1)
         );
         org.junit.jupiter.api.Assertions.assertEquals(HttpStatus.TOO_MANY_REQUESTS, globalLimit.status());
@@ -91,7 +92,7 @@ class ClassroomEventApiTest {
         first.close();
         try (var replacement = globalLimiter.acquire(USER)) {
             org.junit.jupiter.api.Assertions.assertThrows(
-                com.feng.dsagent.common.ApiException.class,
+                com.feng.dsagent.common.exception.BizException.class,
                 () -> globalLimiter.acquire(OTHER+1)
             );
         }
@@ -100,7 +101,7 @@ class ClassroomEventApiTest {
         var userLimiter = new ClassroomEventSubscriptions.SubscriptionLimiter(3,1);
         var userPermit = userLimiter.acquire(USER);
         var userLimit = org.junit.jupiter.api.Assertions.assertThrows(
-            com.feng.dsagent.common.ApiException.class,
+            com.feng.dsagent.common.exception.BizException.class,
             () -> userLimiter.acquire(USER)
         );
         org.junit.jupiter.api.Assertions.assertEquals(HttpStatus.TOO_MANY_REQUESTS, userLimit.status());
@@ -110,12 +111,12 @@ class ClassroomEventApiTest {
             userPermit.close();
             try (var replacement = userLimiter.acquire(USER)) {
                 org.junit.jupiter.api.Assertions.assertThrows(
-                    com.feng.dsagent.common.ApiException.class,
+                    com.feng.dsagent.common.exception.BizException.class,
                     () -> userLimiter.acquire(USER)
                 );
             }
             org.junit.jupiter.api.Assertions.assertThrows(
-                com.feng.dsagent.common.ApiException.class,
+                com.feng.dsagent.common.exception.BizException.class,
                 () -> userLimiter.acquire(OTHER)
             );
         }

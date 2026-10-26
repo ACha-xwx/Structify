@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.compiler.mapper.SandboxConfigMapper">
+
+  <select id="selectById" resultType="com.feng.dsagent.compiler.entity.SandboxConfigEntity">
+    SELECT id,
+           provider,
+           base_url AS baseUrl,
+           enabled,
+           last_test_status AS lastConnectionTestStatus,
+           last_tested_at AS lastConnectionTestedAt,
+           updated_at AS updatedAt
+    FROM sandbox_configurations
+    WHERE id = #{id}
+  </select>
+
+  <update id="update">
+    UPDATE sandbox_configurations
+    SET provider = #{provider},
+        base_url = #{baseUrl},
+        enabled = #{enabled},
+        last_test_status = NULL,
+        last_tested_at = NULL,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{id}
+  </update>
+
+  <insert id="insert">
+    INSERT INTO sandbox_configurations (id, provider, base_url, enabled)
+    VALUES (#{id}, #{provider}, #{baseUrl}, #{enabled})
+  </insert>
+
+  <update id="updateConnectionTest">
+    UPDATE sandbox_configurations
+    SET last_test_status = #{status},
+        last_tested_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{id}
+  </update>
+</mapper>

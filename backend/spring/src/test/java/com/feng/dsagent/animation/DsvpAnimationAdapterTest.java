@@ -3,7 +3,7 @@ package com.feng.dsagent.animation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,6 +12,9 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import com.feng.dsagent.animation.vo.DsvpSimulationVO;
+import com.feng.dsagent.animation.support.AnimationValidator;
+import com.feng.dsagent.animation.support.DsvpAnimationAdapter;
 class DsvpAnimationAdapterTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -27,7 +30,7 @@ class DsvpAnimationAdapterTest {
         assertThat(files).hasSize(9);
 
         for (Path file : files) {
-            DsvpSimulationResponse result = adapter.adapt(objectMapper.readTree(Files.readString(file, StandardCharsets.UTF_8)));
+            DsvpSimulationVO result = adapter.adapt(objectMapper.readTree(Files.readString(file, StandardCharsets.UTF_8)));
             assertThat(result.protocol()).as(file.toString()).isEqualTo("dsvp/1.0");
             assertThat(result.trace().path("trace_id").asText()).startsWith("dsvp_");
             assertThat(result.trace().path("final_state").isArray()).as(file.toString()).isTrue();
@@ -41,16 +44,16 @@ class DsvpAnimationAdapterTest {
             {"version":"1.0","structure":"stack","operation":"execute","params":{},"initial_state":{"data":[]}}
             """);
         assertThatThrownBy(() -> adapter.adapt(unknown))
-            .isInstanceOf(ApiException.class)
-            .extracting(error -> ((ApiException) error).code())
+            .isInstanceOf(BizException.class)
+            .extracting(error -> ((BizException) error).code())
             .isEqualTo("DSVP_OPERATION_UNSUPPORTED");
 
         JsonNode tooLarge = objectMapper.readTree("""
             {"version":"1.0","structure":"stack","operation":"peek","params":{},"initial_state":{"data":%s}}
             """.formatted(java.util.stream.IntStream.range(0, 65).boxed().toList()));
         assertThatThrownBy(() -> adapter.adapt(tooLarge))
-            .isInstanceOf(ApiException.class)
-            .extracting(error -> ((ApiException) error).code())
+            .isInstanceOf(BizException.class)
+            .extracting(error -> ((BizException) error).code())
             .isEqualTo("DSVP_INITIAL_STATE_TOO_LARGE");
     }
 
@@ -60,16 +63,16 @@ class DsvpAnimationAdapterTest {
             {"version":"1.0","structure":"stack","operation":"peek","params":{},"initial_state":{"data":[]},"source_ref":42}
             """);
         assertThatThrownBy(() -> adapter.adapt(nonTextual))
-            .isInstanceOf(ApiException.class)
-            .extracting(error -> ((ApiException) error).code())
+            .isInstanceOf(BizException.class)
+            .extracting(error -> ((BizException) error).code())
             .isEqualTo("DSVP_REQUEST_INVALID");
 
         JsonNode tooLong = objectMapper.readTree("""
             {"version":"1.0","structure":"stack","operation":"peek","params":{},"initial_state":{"data":[]},"source_ref":"%s"}
             """.formatted("x".repeat(161)));
         assertThatThrownBy(() -> adapter.adapt(tooLong))
-            .isInstanceOf(ApiException.class)
-            .extracting(error -> ((ApiException) error).code())
+            .isInstanceOf(BizException.class)
+            .extracting(error -> ((BizException) error).code())
             .isEqualTo("DSVP_REQUEST_INVALID");
     }
 

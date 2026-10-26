@@ -10,7 +10,7 @@ import static org.mockito.Mockito.*;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import com.feng.dsagent.compiler.CodeExecutionReadiness;
+import com.feng.dsagent.compiler.support.CodeExecutionReadiness;
 
 class FragmentReadServiceTest {
     @Test void partialFailuresDoNotHidePublishedFragmentsAndReadsNeverQueueWork() throws Exception {

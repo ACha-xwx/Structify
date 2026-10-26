@@ -8,12 +8,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.Mockito.mock;
 
-import com.feng.dsagent.classroom.ClassroomModelJson;
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.classroom.support.ClassroomModelJson;
+import com.feng.dsagent.common.exception.BizException;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
+import com.feng.dsagent.animation.support.AnimationValidator;
+import com.feng.dsagent.animation.support.DsvpAnimationAdapter;
+import com.feng.dsagent.animation.support.DsvpLocalEngine;
 /**
  * The animation lab's deterministic path: a picked capability becomes a request without a model call.
  *
@@ -86,7 +89,7 @@ class AnimationPlanEndpointTest {
 
             assertThatThrownBy(() -> controller(engine)
                 .plan(new AnimationIntentController.PlanInput("graph.red_black_rotation", null, null)))
-                .isInstanceOf(ApiException.class)
+                .isInstanceOf(BizException.class)
                 .hasMessageContaining("graph.red_black_rotation");
         } finally {
             engine.shutdown();
@@ -97,7 +100,7 @@ class AnimationPlanEndpointTest {
     void reportsUnreachableEngineRatherThanGuessingARequest() {
         assertThatThrownBy(() -> controller(null)
             .plan(new AnimationIntentController.PlanInput("stack.push", null, null)))
-            .isInstanceOf(ApiException.class)
+            .isInstanceOf(BizException.class)
             .hasMessageContaining("本地动画引擎不可用");
     }
 }

@@ -11,9 +11,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
-import com.feng.dsagent.classroom.ClassroomPreparation;
+import com.feng.dsagent.classroom.support.ClassroomPreparation;
 import com.feng.dsagent.presentation.service.PresentationService;
 
+import com.feng.dsagent.knowledge.domain.KnowledgeAudience;
+import com.feng.dsagent.knowledge.support.KnowledgeCorpus;
 /** Local end-to-end resource check. Private original assets are intentionally absent in public CI. */
 @SpringBootTest(properties = "spring.datasource.url=jdbc:h2:mem:original-release;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE")
 @ActiveProfiles("dev")
@@ -32,9 +34,9 @@ class OriginalCoursewareIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_chunks WHERE source_path LIKE 'dev-mock/%'", Integer.class)).isZero();
         assertThat(search.search("栈的入栈操作", "03-stack-queue", 4, KnowledgeAudience.STUDENT))
             .isNotEmpty().allSatisfy(result -> {
-                assertThat(result.chunk().source()).startsWith("courseware/");
-                assertThat(result.chunk().pageLabel()).startsWith("PPT第 ");
-                assertThat(result.chunk().content()).doesNotContain("开发模拟", "查看 WebP 原图");
+                assertThat(result.source()).startsWith("courseware/");
+                assertThat(result.pageLabel()).startsWith("PPT第 ");
+                assertThat(result.content()).doesNotContain("开发模拟", "查看 WebP 原图");
             });
         assertThat(presentations.meta().slideCount()).isEqualTo(1210);
         assertThat(presentations.decks()).hasSize(22);

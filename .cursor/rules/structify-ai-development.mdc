@@ -5,7 +5,10 @@ alwaysApply: true
 
 # Structify AI development (mandatory)
 
+> 规矩要立住，代码写起来才不烧心
+
 Full text (SSOT): [docs/AI开发规范.md](docs/AI开发规范.md). Also follow [AGENTS.md](AGENTS.md).
+Spring packaging/naming detail: [docs/architecture/backend-standards.md](docs/architecture/backend-standards.md).
 
 ## Hard rules
 
@@ -15,6 +18,11 @@ Full text (SSOT): [docs/AI开发规范.md](docs/AI开发规范.md). Also follow 
 - Preserve draft revisions, run fencing, leases, idempotency, and token accounting.
 - New product workflows go to Spring `/api/v1/*`. Do not add studyroom workflows to `backend/node`.
 - SSOT: OpenAPI + fixtures for HTTP; Flyway for schema; `docs/architecture/studyroom.md` + `docs/adr/backend/` for agent behavior; `docs/architecture/backend-standards.md` for Spring layering/MyBatis.
+- Capability / studyroom subdomain **roots must not hold production types**; fixed leaves only (incl. `converter`). No `repository` leaf; persistence is MyBatis `mapper` + XML under `resources/mapper/**` only.
+- Suffixes: `*DTO` / `*VO` / `*Entity`. No BeanUtils; MapStruct uses `*Converter` (never `*Mapper`). No `passwordHash` on VO. Class names must show purpose; search/read existing types before creating new ones.
+- Logging: SLF4J only; parameterized messages; `requestId` in MDC; never `System.out`/`printStackTrace` or log secrets.
+- Comments: short JavaDoc on public boundary types (purpose); comment non-obvious invariants (why); no narrating noise or dead commented-out blocks.
+- Dependency: Controller → Service → Mapper; Worker → Service. No Service `JdbcTemplate`/`Connection`/SQL strings. No unbounded `newCachedThreadPool` / ad-hoc `new Thread`.
 - Do not claim tests passed or production fixed without running checks / evidence. `docs/archive/` is historical only.
 - No paid real-model calls in ordinary unit/e2e. No secrets, `.env`, `private/`, or courseware in git. No `git add .`.
 - Before studyroom changes: read studyroom architecture + relevant ADR. After changes: run `node scripts/verify-studyroom.mjs --scope <needed>`; never report unimplemented scopes as success.

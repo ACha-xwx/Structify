@@ -10,6 +10,8 @@ import com.tngtech.archunit.core.importer.ImportOption;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.feng.dsagent.studyroom.fragment.support.ContentPlanCompiler;
+import com.feng.dsagent.studyroom.fragment.support.FragmentComposer;
 class StudyroomArchitectureTest {
     @Test void planCompilerCannotCallModelsOrWriteTheDatabase() {
         var classes = new ClassFileImporter().withImportOption(new ImportOption.DoNotIncludeTests())

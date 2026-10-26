@@ -1,23 +1,15 @@
 package com.feng.dsagent.teacher.service;
 
+
+import org.springframework.stereotype.Service;
 import com.feng.dsagent.admin.service.AdminAuditService;
-import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.learning.service.LearningMapService;
 import com.feng.dsagent.studyroom.library.service.CourseLibraryService;
+import com.feng.dsagent.teacher.error.TeacherErrorCode;
 import com.feng.dsagent.teacher.mapper.TeacherMapper;
 import java.sql.Timestamp;
 import java.util.List;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
 
-/**
- * What a teacher may see about their own class, and nothing else.
- *
- * <p>Reading another person's learning profile is the most sensitive read in the product, so the rule lives here
- * rather than in the page: a request succeeds only when the caller teaches a class the student is enrolled in.
- * Administrators bypass that check on purpose. Either way the read is written to the audit ledger - the promise
- * that "somebody looked at this learner" must be answerable from data, not from trust.
- */
 @Service
 public class TeacherService {
 
@@ -95,7 +87,7 @@ public class TeacherService {
     /** The learning map of one student, which the caller must share a class with. The read is audited. */
     public LearningMapService.LearningMap studentMap(long studentId, long callerId, boolean admin, String requestId) {
         if (!admin && !teachesStudent(studentId, callerId)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "STUDENT_NOT_IN_YOUR_CLASS", "该学生不在你带的班里");
+            throw TeacherErrorCode.STUDENT_NOT_IN_YOUR_CLASS.toException();
         }
         audit.recordRead(callerId, admin ? "ADMIN_VIEW_LEARNING_MAP" : "TEACHER_VIEW_LEARNING_MAP",
             "USER", String.valueOf(studentId), requestId);
@@ -108,13 +100,13 @@ public class TeacherService {
      */
     public StudentFootprint studentFootprint(long studentId, long callerId, boolean admin, String requestId) {
         if (!admin && !teachesStudent(studentId, callerId)) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "STUDENT_NOT_IN_YOUR_CLASS", "该学生不在你带的班里");
+            throw TeacherErrorCode.STUDENT_NOT_IN_YOUR_CLASS.toException();
         }
         audit.recordRead(callerId, admin ? "ADMIN_VIEW_LEARNING_MAP" : "TEACHER_VIEW_LEARNING_FOOTPRINT",
             "USER", String.valueOf(studentId), requestId);
         List<TeacherMapper.UserIdentityRow> identity = teachers.selectUserIdentity(studentId);
         if (identity.isEmpty()) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "没有这个学生。");
+            throw TeacherErrorCode.USER_NOT_FOUND.toException();
         }
         TeacherMapper.UserIdentityRow parts = identity.get(0);
         return new StudentFootprint(
@@ -134,7 +126,7 @@ public class TeacherService {
         if (admin) return;
         Long count = teachers.countTeachingEnrollment(classId, callerId);
         if (count == null || count == 0) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "CLASS_NOT_YOURS", "这个班不在你名下");
+            throw TeacherErrorCode.CLASS_NOT_YOURS.toException();
         }
     }
 

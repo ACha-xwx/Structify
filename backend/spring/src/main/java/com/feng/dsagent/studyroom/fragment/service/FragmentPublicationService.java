@@ -1,15 +1,16 @@
 package com.feng.dsagent.studyroom.fragment.service;
 
+
+import com.feng.dsagent.studyroom.error.StudyroomErrorCode;
 import com.feng.dsagent.studyroom.checks.service.ClassroomCheckService;
 import com.feng.dsagent.studyroom.events.service.ClassroomEventService;
 
-import com.feng.dsagent.studyroom.fragment.FragmentPlan;
+import com.feng.dsagent.studyroom.fragment.domain.FragmentPlan;
 
-import com.feng.dsagent.studyroom.StudyroomModelOutput;
-import com.feng.dsagent.studyroom.draft.OutlineJson;
+import com.feng.dsagent.studyroom.support.StudyroomModelOutput;
+import com.feng.dsagent.studyroom.draft.support.OutlineJson;
 import com.feng.dsagent.studyroom.fragment.mapper.FragmentPublicationMapper;
 import java.util.*;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,8 +31,8 @@ public class FragmentPublicationService {
 
     private Map<String,Object> currentRun(long user,String run) {
         var row=fragments.selectOwnedRun(run,user);
-        if(row==null)throw OutlineJson.error(HttpStatus.NOT_FOUND,"RUN_NOT_FOUND","学习路线不存在");
-        OutlineJson.require(fragments.selectRoomCurrentRun(row.get("room_id"),run)!=null,"RUN_SUPERSEDED","学习路线已更新");
+        if(row==null)throw OutlineJson.error(StudyroomErrorCode.RUN_NOT_FOUND);
+        OutlineJson.require(fragments.selectRoomCurrentRun(row.get("room_id"),run)!=null, StudyroomErrorCode.RUN_SUPERSEDED, "学习路线已更新");
         return row;
     }
 
@@ -46,16 +47,15 @@ public class FragmentPublicationService {
         var run=currentRun(user,(String)job.get("run_id"));
         var room=fragments.selectRoomForUpdate(run.get("room_id"));
         var fragment=fragments.selectOwnedFragment((String)job.get("fragment_id"),(String)run.get("id"));
-        if(fragment==null)throw OutlineJson.error(HttpStatus.NOT_FOUND,"FRAGMENT_NOT_FOUND","学习片段不存在");
+        if(fragment==null)throw OutlineJson.error(StudyroomErrorCode.FRAGMENT_NOT_FOUND);
         int revision=((Number)json.object((String)job.get("payload_json")).get("revision")).intValue();
         if(((Number)fragment.get("content_revision")).intValue()==revision&&fragment.get("step_id")!=null)return;
-        OutlineJson.require(active(job),"JOB_LEASE_LOST","生成任务租约已失效");
-        OutlineJson.require(fragment.get("pending_revision")!=null&&((Number)fragment.get("pending_revision")).intValue()==revision,
-            "FRAGMENT_REVISION_CHANGED","片段修订已改变");
+        OutlineJson.require(active(job), StudyroomErrorCode.JOB_LEASE_LOST, "生成任务租约已失效");
+        OutlineJson.require(fragment.get("pending_revision")!=null&&((Number)fragment.get("pending_revision")).intValue()==revision, StudyroomErrorCode.FRAGMENT_REVISION_CHANGED, "片段修订已改变");
         var plan=json.read((String)fragment.get("plan_json"),FragmentPlan.class);
         String withChecks=raw;raw=checks==null?raw:checks.core(raw);
         var output=StudyroomModelOutput.parse(json.mapper(),raw);
-        OutlineJson.require(output.steps().size()==1&&output.steps().getFirst().id().equals(plan.key()),"FRAGMENT_PLAN_CHANGED","片段目标与已确认计划不一致");
+        OutlineJson.require(output.steps().size()==1&&output.steps().getFirst().id().equals(plan.key()), StudyroomErrorCode.FRAGMENT_PLAN_CHANGED);
         var step=output.steps().getFirst();
         String stepId=fragment.get("step_id")==null?OutlineJson.id():(String)fragment.get("step_id");
         String resources=json.write(step.resources().stream().map(r->Map.of("type",r.type().value(),"id",r.id(),"parameters",r.parameters())).toList());
@@ -74,7 +74,7 @@ public class FragmentPublicationService {
         fragments.touchRun((String)run.get("id"));
         if(checks!=null)checks.publish(job,withChecks);
         if(events!=null)events.runUpdate(job,"content_published",Map.of("fragmentId",fragment.get("id"),"contentRevision",revision,"stepId",stepId));
-        OutlineJson.require(active(job),"JOB_LEASE_LOST","生成任务已失效");
+        OutlineJson.require(active(job), StudyroomErrorCode.JOB_LEASE_LOST, "生成任务已失效");
         fragments.finishJob(job.get("id"),job.get("lease_token"));
     }
 }

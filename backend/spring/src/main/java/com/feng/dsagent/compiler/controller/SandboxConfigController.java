@@ -3,13 +3,9 @@ package com.feng.dsagent.compiler.controller;
 import com.feng.dsagent.compiler.service.SandboxConfigService;
 
 import com.feng.dsagent.common.RequestIdFilter;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
-import java.time.Instant;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,6 +14,10 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.feng.dsagent.common.vo.ConnectionTestVO;
+import com.feng.dsagent.compiler.dto.UpdateSandboxConfigDTO;
+import com.feng.dsagent.compiler.vo.SandboxConfigCapabilityVO;
+import com.feng.dsagent.compiler.vo.SandboxConfigVO;
 
 @RestController
 @RequestMapping("/api/v1/admin/sandbox-config")
@@ -31,21 +31,21 @@ public class SandboxConfigController {
     }
 
     @GetMapping
-    public SandboxConfigCapabilityView capability() {
+    public SandboxConfigCapabilityVO capability() {
         return service.capability();
     }
 
     @PutMapping
-    public SandboxConfigView update(
+    public SandboxConfigVO update(
         @AuthenticationPrincipal AuthenticatedUser actor,
-        @Valid @RequestBody UpdateSandboxConfigRequest request,
+        @Valid @RequestBody UpdateSandboxConfigDTO request,
         HttpServletRequest servletRequest
     ) {
         return service.update(request, actor, requestId(servletRequest));
     }
 
     @PostMapping("/test")
-    public SandboxConnectionTestView testConnection(
+    public ConnectionTestVO testConnection(
         @AuthenticationPrincipal AuthenticatedUser actor,
         HttpServletRequest servletRequest
     ) {
@@ -57,42 +57,4 @@ public class SandboxConfigController {
         return value == null ? "" : value.toString();
     }
 
-    public record SandboxConfigCapabilityView(
-        boolean available,
-        String reason,
-        SandboxConfigView configuration,
-        SandboxRuntimeStatusView runtime
-    ) {
-        public SandboxConfigCapabilityView(boolean available, String reason, SandboxConfigView configuration) {
-            this(available, reason, configuration, null);
-        }
-    }
-
-    public record SandboxRuntimeStatusView(
-        boolean codeExecutionConfigured,
-        String source,
-        String provider,
-        Instant checkedAt
-    ) {
-    }
-
-    public record SandboxConfigView(
-        String provider,
-        String baseUrl,
-        boolean enabled,
-        String lastConnectionTestStatus,
-        Instant lastConnectionTestedAt,
-        Instant updatedAt
-    ) {
-    }
-
-    public record UpdateSandboxConfigRequest(
-        @NotBlank @Size(max = 16) String provider,
-        @NotBlank @Size(max = 2048) String baseUrl,
-        @NotNull Boolean enabled
-    ) {
-    }
-
-    public record SandboxConnectionTestView(boolean connected, String code) {
-    }
 }

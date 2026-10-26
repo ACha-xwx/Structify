@@ -178,10 +178,12 @@ export interface UpdateModelConfigRequest {
   enabled?: boolean;
 }
 
-export interface ModelConfigConnectionTest {
+export interface ConnectionTest {
   connected: boolean;
   code: string;
 }
+
+export type ModelConfigConnectionTest = ConnectionTest;
 
 export type MailSecurityMode = "NONE" | "STARTTLS" | "SSL";
 
@@ -235,10 +237,7 @@ export interface UpdateMailConfigRequest {
   verificationTemplateHtml: string;
 }
 
-export interface MailConnectionTest {
-  connected: boolean;
-  code: string;
-}
+export type MailConnectionTest = ConnectionTest;
 
 export interface TestMailResult {
   sent: boolean;
@@ -291,10 +290,7 @@ export interface UpdateSandboxConfigRequest {
   enabled: boolean;
 }
 
-export interface SandboxConnectionTest {
-  connected: boolean;
-  code: string;
-}
+export type SandboxConnectionTest = ConnectionTest;
 
 export type AdminJobSource = "BACKGROUND" | "STUDYROOM";
 

@@ -1,12 +1,12 @@
 package com.feng.dsagent.animation.controller;
 
-import com.feng.dsagent.animation.AnimationGenerationResponse;
-import com.feng.dsagent.animation.AnimationGenerationCommand;
-import com.feng.dsagent.animation.AnimationObservationView;
-import com.feng.dsagent.animation.DsvpConcurrencyLimiter;
-import com.feng.dsagent.animation.DsvpSimulationResponse;
-import com.feng.dsagent.animation.DsvpAnimationAdapter;
-import com.feng.dsagent.animation.DsvpEvidenceSource;
+import com.feng.dsagent.animation.vo.AnimationGenerationVO;
+import com.feng.dsagent.animation.dto.AnimationGenerationCommandDTO;
+import com.feng.dsagent.animation.vo.AnimationObservationVO;
+import com.feng.dsagent.animation.support.DsvpConcurrencyLimiter;
+import com.feng.dsagent.animation.vo.DsvpSimulationVO;
+import com.feng.dsagent.animation.support.DsvpAnimationAdapter;
+import com.feng.dsagent.animation.domain.DsvpEvidenceSource;
 
 import com.feng.dsagent.animation.service.DsvpEvidenceService;
 
@@ -14,9 +14,10 @@ import com.feng.dsagent.animation.service.AnimationObservationService;
 
 import com.feng.dsagent.animation.service.AnimationGenerationService;
 
-import com.feng.dsagent.aiquota.AiQuotaRequestId;
-import com.feng.dsagent.common.ModelFeatureRateLimiter;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.aiquota.support.AiQuotaRequestId;
+import com.feng.dsagent.common.FeatureRateLimiter;
+import com.feng.dsagent.common.error.CommonErrorCode;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -28,6 +29,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.JsonNode;
+import com.feng.dsagent.animation.dto.GenerateAnimationDTO;
+import com.feng.dsagent.animation.dto.ObservationDTO;
 
 @RestController
 @RequestMapping("/api/v1/animations")
@@ -35,7 +38,7 @@ public class AnimationController {
 
     private final AnimationGenerationService animations;
     private final AnimationObservationService observations;
-    private final ModelFeatureRateLimiter rateLimiter;
+    private final FeatureRateLimiter rateLimiter;
     private final DsvpAnimationAdapter dsvp;
     private final DsvpConcurrencyLimiter dsvpConcurrency;
     private final DsvpEvidenceService evidence;
@@ -44,7 +47,7 @@ public class AnimationController {
     public AnimationController(
         AnimationGenerationService animations,
         AnimationObservationService observations,
-        ModelFeatureRateLimiter rateLimiter,
+        FeatureRateLimiter rateLimiter,
         DsvpAnimationAdapter dsvp,
         DsvpConcurrencyLimiter dsvpConcurrency
     ) {
@@ -60,7 +63,7 @@ public class AnimationController {
     public AnimationController(
         AnimationGenerationService animations,
         AnimationObservationService observations,
-        ModelFeatureRateLimiter rateLimiter,
+        FeatureRateLimiter rateLimiter,
         DsvpAnimationAdapter dsvp,
         DsvpConcurrencyLimiter dsvpConcurrency,
         DsvpEvidenceService evidence
@@ -74,7 +77,7 @@ public class AnimationController {
     }
 
     @PostMapping("/simulate")
-    public DsvpSimulationResponse simulate(
+    public DsvpSimulationVO simulate(
         @AuthenticationPrincipal AuthenticatedUser user,
         HttpServletRequest servletRequest,
         @RequestBody JsonNode request
@@ -90,36 +93,32 @@ public class AnimationController {
     }
 
     @PostMapping("/generate")
-    public AnimationGenerationResponse generate(
+    public AnimationGenerationVO generate(
         @AuthenticationPrincipal AuthenticatedUser user,
         HttpServletRequest servletRequest,
-        @Valid @RequestBody GenerateAnimationRequest request
+        @Valid @RequestBody GenerateAnimationDTO request
     ) {
         Long userId = user == null ? null : user.userId();
-        rateLimiter.check("animation", userId, servletRequest.getRemoteAddr());
+        rateLimiter.check(
+            "animation",
+            userId,
+            servletRequest.getRemoteAddr(),
+            CommonErrorCode.MODEL_FEATURE_RATE_LIMITED
+        );
         return animations.generate(
-            new AnimationGenerationCommand(request.prompt(), request.preferredType(), request.chapterId()),
+            new AnimationGenerationCommandDTO(request.prompt(), request.preferredType(), request.chapterId()),
             userId,
             AiQuotaRequestId.from(servletRequest)
         );
     }
 
     @PostMapping("/{id}/observations")
-    public AnimationObservationView observation(
+    public AnimationObservationVO observation(
         @AuthenticationPrincipal AuthenticatedUser user,
         @org.springframework.web.bind.annotation.PathVariable String id,
-        @Valid @RequestBody ObservationRequest request
+        @Valid @RequestBody ObservationDTO request
     ) {
         return observations.record(user.userId(), id, request.observation());
     }
 
-    public record GenerateAnimationRequest(
-        @NotBlank @Size(max = 2000) String prompt,
-        @Size(max = 16) String preferredType,
-        @Size(max = 64) String chapterId
-    ) {
-    }
-
-    public record ObservationRequest(@NotBlank @Size(max = 2000) String observation) {
-    }
 }

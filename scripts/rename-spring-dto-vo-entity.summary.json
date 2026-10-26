@@ -1,0 +1,571 @@
+{
+  "counts": {
+    "dto": 43,
+    "vo": 54,
+    "entity": 15
+  },
+  "total": 112,
+  "filesTouched": 244,
+  "renames": [
+    {
+      "kind": "vo",
+      "oldName": "NodeCompatibilityTokenResponse",
+      "newName": "NodeCompatibilityTokenVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ModelConfigConnectionTestView",
+      "newName": "ModelConfigConnectionTestVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ClassroomCodeSamplesResponse",
+      "newName": "ClassroomCodeSamplesVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "AnimationGenerationResponse",
+      "newName": "AnimationGenerationVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "PersistedWorkbenchSceneView",
+      "newName": "PersistedWorkbenchSceneVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "SandboxConfigCapabilityView",
+      "newName": "SandboxConfigCapabilityVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "TextbookCodeLibraryResponse",
+      "newName": "TextbookCodeLibraryVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "AnimationGenerationCommand",
+      "newName": "AnimationGenerationCommandDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "UpdateSandboxConfigRequest",
+      "newName": "UpdateSandboxConfigDTO"
+    },
+    {
+      "kind": "entity",
+      "oldName": "AiQuotaReservationAttempt",
+      "newName": "AiQuotaReservationAttemptEntity"
+    },
+    {
+      "kind": "dto",
+      "oldName": "AiQuotaReservationRequest",
+      "newName": "AiQuotaReservationDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ModelConfigCapabilityView",
+      "newName": "ModelConfigCapabilityVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "SandboxConnectionTestView",
+      "newName": "SandboxConnectionTestVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "AnimationObservationView",
+      "newName": "AnimationObservationVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "ChatSessionUpdateRequest",
+      "newName": "ChatSessionUpdateDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "GenerateAnimationRequest",
+      "newName": "GenerateAnimationDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "MailConfigCapabilityView",
+      "newName": "MailConfigCapabilityVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "SandboxRuntimeStatusView",
+      "newName": "SandboxRuntimeStatusVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "StudyroomFollowUpContext",
+      "newName": "StudyroomFollowUpContextDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "UpdateModelConfigRequest",
+      "newName": "UpdateModelConfigDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "VerificationCodeResponse",
+      "newName": "VerificationCodeVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ChapterLearningProgress",
+      "newName": "ChapterLearningProgressVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "KnowledgeSearchResponse",
+      "newName": "KnowledgeSearchVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "ClassroomBookmarkDraft",
+      "newName": "ClassroomBookmarkDraftDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ClassroomScriptSummary",
+      "newName": "ClassroomScriptSummaryVO"
+    },
+    {
+      "kind": "entity",
+      "oldName": "ClassroomSessionRecord",
+      "newName": "ClassroomSessionRecordEntity"
+    },
+    {
+      "kind": "vo",
+      "oldName": "DsvpSimulationResponse",
+      "newName": "DsvpSimulationVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "MailConnectionTestView",
+      "newName": "MailConnectionTestVO"
+    },
+    {
+      "kind": "entity",
+      "oldName": "VerificationCodeRecord",
+      "newName": "VerificationCodeRecordEntity"
+    },
+    {
+      "kind": "vo",
+      "oldName": "AdminModuleCapability",
+      "newName": "AdminModuleCapabilityVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "AdminUserLearningView",
+      "newName": "AdminUserLearningVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ClassroomBookmarkView",
+      "newName": "ClassroomBookmarkVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "KnowledgeSearchResult",
+      "newName": "KnowledgeSearchResultVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "KnowledgeSettingsView",
+      "newName": "KnowledgeSettingsVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "LearningWorkbenchView",
+      "newName": "LearningWorkbenchVO"
+    },
+    {
+      "kind": "entity",
+      "oldName": "ClassroomEventRecord",
+      "newName": "ClassroomEventRecordEntity"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ClassroomSessionView",
+      "newName": "ClassroomSessionVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "CodeAnalysisResponse",
+      "newName": "CodeAnalysisVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "CreateSessionRequest",
+      "newName": "CreateSessionDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "LearningEventCommand",
+      "newName": "LearningEventCommandDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "LearningEventRequest",
+      "newName": "LearningEventDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "LearningProgressView",
+      "newName": "LearningProgressVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "ResetPasswordRequest",
+      "newName": "ResetPasswordDTO"
+    },
+    {
+      "kind": "entity",
+      "oldName": "StoredChatAttachment",
+      "newName": "StoredChatAttachmentEntity"
+    },
+    {
+      "kind": "vo",
+      "oldName": "AdminAuditEventView",
+      "newName": "AdminAuditEventVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "AdminCapabilityView",
+      "newName": "AdminCapabilityVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "CodeAnalysisRequest",
+      "newName": "CodeAnalysisDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "KnowledgeResultView",
+      "newName": "KnowledgeResultVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "ReviewStatusRequest",
+      "newName": "ReviewStatusDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "AdminServiceStatus",
+      "newName": "AdminServiceStatusVO"
+    },
+    {
+      "kind": "entity",
+      "oldName": "AiQuotaReservation",
+      "newName": "AiQuotaReservationEntity"
+    },
+    {
+      "kind": "vo",
+      "oldName": "BackgroundTaskView",
+      "newName": "BackgroundTaskVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ChatSessionSummary",
+      "newName": "ChatSessionSummaryVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "CreateChunkRequest",
+      "newName": "CreateChunkDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "CreateClassRequest",
+      "newName": "CreateClassDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "ObservationRequest",
+      "newName": "ObservationDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "RequestCodeRequest",
+      "newName": "RequestCodeDTO"
+    },
+    {
+      "kind": "entity",
+      "oldName": "ClassroomBookmark",
+      "newName": "ClassroomBookmarkEntity"
+    },
+    {
+      "kind": "vo",
+      "oldName": "LearningEventView",
+      "newName": "LearningEventVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "MailConfigRequest",
+      "newName": "MailConfigDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "PatchChunkRequest",
+      "newName": "PatchChunkDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ReviewHistoryView",
+      "newName": "ReviewHistoryVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "SandboxConfigView",
+      "newName": "SandboxConfigVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "TestSearchRequest",
+      "newName": "TestSearchDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "UserStatusRequest",
+      "newName": "UserStatusDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "AddMemberRequest",
+      "newName": "AddMemberDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "AdminAuditAppend",
+      "newName": "AdminAuditAppendDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ReviewDetailView",
+      "newName": "ReviewDetailVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ReviewSourceView",
+      "newName": "ReviewSourceVO"
+    },
+    {
+      "kind": "entity",
+      "oldName": "StudyroomRecords",
+      "newName": "StudyroomRecordsEntity"
+    },
+    {
+      "kind": "dto",
+      "oldName": "UserRolesRequest",
+      "newName": "UserRolesDTO"
+    },
+    {
+      "kind": "entity",
+      "oldName": "AdminAuditEvent",
+      "newName": "AdminAuditEventEntity"
+    },
+    {
+      "kind": "entity",
+      "oldName": "AnimationRecord",
+      "newName": "AnimationRecordEntity"
+    },
+    {
+      "kind": "dto",
+      "oldName": "BookmarkRequest",
+      "newName": "BookmarkDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ChatMessageView",
+      "newName": "ChatMessageVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ChatSessionView",
+      "newName": "ChatSessionVO"
+    },
+    {
+      "kind": "entity",
+      "oldName": "CodeRunSnapshot",
+      "newName": "CodeRunSnapshotEntity"
+    },
+    {
+      "kind": "dto",
+      "oldName": "FollowUpRequest",
+      "newName": "FollowUpDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ModelConfigView",
+      "newName": "ModelConfigVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "ProgressRequest",
+      "newName": "ProgressDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "RegisterRequest",
+      "newName": "RegisterDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "RunCodeResponse",
+      "newName": "RunCodeVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "SettingsRequest",
+      "newName": "SettingsDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "TestMailRequest",
+      "newName": "TestMailDTO"
+    },
+    {
+      "kind": "entity",
+      "oldName": "AiQuotaAccount",
+      "newName": "AiQuotaAccountEntity"
+    },
+    {
+      "kind": "entity",
+      "oldName": "KnowledgeChunk",
+      "newName": "KnowledgeChunkEntity"
+    },
+    {
+      "kind": "vo",
+      "oldName": "MailConfigView",
+      "newName": "MailConfigVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "PrepareRequest",
+      "newName": "PrepareDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ReviewItemView",
+      "newName": "ReviewItemVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "RunCodeRequest",
+      "newName": "RunCodeDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "ActionRequest",
+      "newName": "ActionDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "AdminUserView",
+      "newName": "AdminUserVO"
+    },
+    {
+      "kind": "entity",
+      "oldName": "AiQuotaBucket",
+      "newName": "AiQuotaBucketEntity"
+    },
+    {
+      "kind": "dto",
+      "oldName": "RegionRequest",
+      "newName": "RegionDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "StudyroomView",
+      "newName": "StudyroomVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "AuthResponse",
+      "newName": "AuthVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ChatResponse",
+      "newName": "ChatVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "LoginRequest",
+      "newName": "LoginDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "PageResponse",
+      "newName": "PageVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ResourceView",
+      "newName": "ResourceVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "SlideRequest",
+      "newName": "SlideDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "StartRequest",
+      "newName": "StartDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "StdinRequest",
+      "newName": "StdinDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "TestMailView",
+      "newName": "TestMailVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "AuthSession",
+      "newName": "AuthSessionVO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "ChapterView",
+      "newName": "ChapterVO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "ChatRequest",
+      "newName": "ChatDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "TurnRequest",
+      "newName": "TurnDTO"
+    },
+    {
+      "kind": "entity",
+      "oldName": "UserAccount",
+      "newName": "UserAccountEntity"
+    },
+    {
+      "kind": "dto",
+      "oldName": "ManualUnit",
+      "newName": "ManualUnitDTO"
+    },
+    {
+      "kind": "dto",
+      "oldName": "RepairFix",
+      "newName": "RepairFixDTO"
+    },
+    {
+      "kind": "vo",
+      "oldName": "UserView",
+      "newName": "UserVO"
+    }
+  ]
+}

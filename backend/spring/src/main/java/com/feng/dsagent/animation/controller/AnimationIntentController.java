@@ -1,14 +1,14 @@
 package com.feng.dsagent.animation.controller;
 
-import com.feng.dsagent.animation.DsvpAnimationAdapter;
-import com.feng.dsagent.animation.DsvpModelContract;
-import com.feng.dsagent.animation.DsvpLocalEngine;
+import com.feng.dsagent.animation.support.DsvpAnimationAdapter;
+import com.feng.dsagent.animation.prompt.DsvpModelContract;
+import com.feng.dsagent.animation.support.DsvpLocalEngine;
 
 import com.feng.dsagent.animation.service.AnimationChapterService;
 
-import com.feng.dsagent.classroom.ClassroomModelJson;
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.classroom.support.ClassroomModelJson;
+import com.feng.dsagent.animation.error.AnimationErrorCode;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -19,7 +19,6 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import tools.jackson.databind.JsonNode;
@@ -129,7 +128,7 @@ public class AnimationIntentController {
     @PostMapping("/plan")
     public JsonNode plan(@Valid @RequestBody PlanInput input) {
         if (engine == null || !engine.enabled()) {
-            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "DSVP_ENGINE_UNAVAILABLE", "本地动画引擎不可用");
+            throw AnimationErrorCode.DSVP_ENGINE_UNAVAILABLE.toException();
         }
         ObjectNode intent = mapper.createObjectNode();
         intent.put("needed", true);
@@ -145,11 +144,10 @@ public class AnimationIntentController {
         options.put("demoSourceRef", DEMO_SOURCE_REF);
         options.put("sourceRef", input.sourceRef() == null || input.sourceRef().isBlank() ? DEMO_SOURCE_REF : input.sourceRef());
 
-        JsonNode resolution = engine.resolve(intent, options).orElseThrow(() -> new ApiException(
-            HttpStatus.SERVICE_UNAVAILABLE, "DSVP_ENGINE_UNAVAILABLE", "本地动画引擎不可用"));
+        JsonNode resolution = engine.resolve(intent, options)
+            .orElseThrow(AnimationErrorCode.DSVP_ENGINE_UNAVAILABLE::toException);
         if ("unsupported".equals(resolution.path("status").asText(""))) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_NOT_SUPPORTED",
-                "能力表里没有 " + input.capability());
+            throw AnimationErrorCode.NOT_SUPPORTED.toException("能力表里没有 " + input.capability());
         }
         return resolution;
     }
@@ -271,7 +269,7 @@ public class AnimationIntentController {
             %s""".formatted(judgement, capabilities, declinedShape), context.toString(), 900, this::validateIntent);
 
         if (intent.path("declined").asBoolean(false)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_DECLINED",
+            throw AnimationErrorCode.DECLINED.toException(
                 intent.path("reason").asText("这不是答应看演示"));
         }
         if (intent.path("unsupported").asBoolean(false)) {
@@ -292,7 +290,7 @@ public class AnimationIntentController {
                     reason, recheck.path("capability").asText(""));
                 intent = recheck;
             } else {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_NOT_SUPPORTED", reason);
+                throw AnimationErrorCode.NOT_SUPPORTED.toException(reason);
             }
         }
 
@@ -319,28 +317,28 @@ public class AnimationIntentController {
         options.put("minimumConfidence", 0.6);
         options.put("demoSourceRef", DEMO_SOURCE_REF);
         options.put("sourceRef", chapterTitle);
-        JsonNode resolution = engine.resolve(intent, options).orElseThrow(() -> new ApiException(
-            HttpStatus.SERVICE_UNAVAILABLE, "DSVP_ENGINE_UNAVAILABLE", "本地动画引擎不可用，请稍后再试"));
+        JsonNode resolution = engine.resolve(intent, options)
+            .orElseThrow(() -> AnimationErrorCode.DSVP_ENGINE_UNAVAILABLE.toException("本地动画引擎不可用，请稍后再试"));
 
         String status = resolution.path("status").asText("unsupported");
         if ("ready".equals(status)) {
             JsonNode request = resolution.path("toolRequest").path("request");
             if (request.isObject()) return request;
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_REQUEST_INVALID", "本地引擎没有给出可执行请求");
+            throw AnimationErrorCode.REQUEST_INVALID.toException();
         }
         if ("not-needed".equals(status) || "low-confidence".equals(status)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_NOT_NEEDED",
+            throw AnimationErrorCode.NOT_NEEDED.toException(
                 intent.path("purpose").asText("这个问题不需要动画演示"));
         }
         if ("missing-arguments".equals(status)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_ARGUMENTS_MISSING",
+            throw AnimationErrorCode.ARGUMENTS_MISSING.toException(
                 "缺少参数：" + String.join("、", textList(resolution.path("missingArguments"))));
         }
         if ("invalid-arguments".equals(status)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_REQUEST_INVALID",
+            throw AnimationErrorCode.REQUEST_INVALID.toException(
                 resolution.path("error").asText("参数不合法"));
         }
-        throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_NOT_SUPPORTED",
+        throw AnimationErrorCode.NOT_SUPPORTED.toException(
             "能力表里没有 " + intent.path("capability").asText("这个演示"));
     }
 
@@ -500,11 +498,11 @@ public class AnimationIntentController {
             else simulator.adapt(json);
         });
         if (request.path("declined").asBoolean(false)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_DECLINED",
+            throw AnimationErrorCode.DECLINED.toException(
                 request.path("reason").asText("这不是答应看演示"));
         }
         if (request.path("unsupported").asBoolean(false)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_NOT_SUPPORTED", request.path("reason").asText());
+            throw AnimationErrorCode.NOT_SUPPORTED.toException(request.path("reason").asText());
         }
         return request;
     }

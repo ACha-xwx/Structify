@@ -5,6 +5,9 @@ import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+/**
+ * 职责：知识库分片与检索配置相关的持久化访问。
+ */
 @Mapper
 public interface AdminKnowledgeMapper {
 

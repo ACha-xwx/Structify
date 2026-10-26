@@ -1,7 +1,7 @@
 package com.feng.dsagent.studyroom.checks.controller;
 
 import com.feng.dsagent.studyroom.checks.service.ClassroomCheckService;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.util.Map;

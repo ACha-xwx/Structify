@@ -1,45 +1,50 @@
 package com.feng.dsagent.auth.service;
 
-import com.feng.dsagent.auth.VerificationCodeDelivery;
-import com.feng.dsagent.auth.VerificationCodeManager;
-import com.feng.dsagent.auth.UsernamePolicy;
-import com.feng.dsagent.auth.UserRepository;
-import com.feng.dsagent.auth.AuthSession;
-import com.feng.dsagent.auth.UserAccount;
-import com.feng.dsagent.auth.RolePolicy;
-import com.feng.dsagent.auth.UserView;
+import com.feng.dsagent.auth.converter.UserAccountConverter;
+import com.feng.dsagent.auth.domain.VerificationCodeDelivery;
+import com.feng.dsagent.auth.support.VerificationCodeManager;
+import com.feng.dsagent.auth.support.UsernamePolicy;
+import com.feng.dsagent.auth.vo.AuthSessionVO;
+import com.feng.dsagent.auth.entity.UserAccountEntity;
+import com.feng.dsagent.auth.support.RolePolicy;
+import com.feng.dsagent.auth.vo.UserVO;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.auth.error.AuthErrorCode;
+import com.feng.dsagent.common.exception.BizException;
 import com.feng.dsagent.security.service.JwtTokenService;
 import com.feng.dsagent.mail.service.MailConfigService;
 import java.time.Duration;
 import java.util.Locale;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 职责：编排注册登录、验证码校验与 JWT 会话签发。
+ */
 @Service
 public class AuthService {
 
-    private final UserRepository users;
+    private final UserAccountService users;
     private final VerificationCodeManager codes;
     private final PasswordEncoder passwords;
     private final JwtTokenService tokens;
     private final RolePolicy roles;
     private final MailConfigService mailConfig;
+    private final UserAccountConverter userAccountConverter;
     private final String dummyHash;
 
     @Autowired
     public AuthService(
-        UserRepository users,
+        UserAccountService users,
         VerificationCodeManager codes,
         PasswordEncoder passwords,
         JwtTokenService tokens,
         RolePolicy roles,
-        MailConfigService mailConfig
+        MailConfigService mailConfig,
+        UserAccountConverter userAccountConverter
     ) {
         this.users = users;
         this.codes = codes;
@@ -47,17 +52,19 @@ public class AuthService {
         this.tokens = tokens;
         this.roles = roles;
         this.mailConfig = mailConfig;
+        this.userAccountConverter = userAccountConverter;
         this.dummyHash = passwords.encode("not-a-real-password");
     }
 
     public AuthService(
-        UserRepository users,
+        UserAccountService users,
         VerificationCodeManager codes,
         PasswordEncoder passwords,
         JwtTokenService tokens,
-        RolePolicy roles
+        RolePolicy roles,
+        UserAccountConverter userAccountConverter
     ) {
-        this(users, codes, passwords, tokens, roles, null);
+        this(users, codes, passwords, tokens, roles, null, userAccountConverter);
     }
 
     public VerificationCodeDelivery requestCode(String email, String purpose) {
@@ -65,33 +72,33 @@ public class AuthService {
     }
 
     @Transactional
-    public AuthSession register(String email, String code, String password) {
+    public AuthSessionVO register(String email, String code, String password) {
         String normalizedEmail = normalizeEmail(email);
         codes.consume(normalizedEmail, "register", code);
         if (users.findByEmail(normalizedEmail).isPresent()) {
-            throw new ApiException(HttpStatus.CONFLICT, "AUTH_EMAIL_REGISTERED", "该邮箱已注册，请直接登录");
+            throw AuthErrorCode.AUTH_EMAIL_REGISTERED.toException();
         }
         try {
-            UserAccount user = users.create(normalizedEmail, passwords.encode(password), roles.rolesFor(normalizedEmail));
+            UserAccountEntity user = users.create(normalizedEmail, passwords.encode(password), roles.rolesFor(normalizedEmail));
             return session(user);
         } catch (DuplicateKeyException error) {
-            throw new ApiException(HttpStatus.CONFLICT, "AUTH_EMAIL_REGISTERED", "该邮箱已注册，请直接登录");
+            throw AuthErrorCode.AUTH_EMAIL_REGISTERED.toException();
         }
     }
 
     @Transactional
-    public AuthSession register(String email, String username, String code, String password) {
+    public AuthSessionVO register(String email, String username, String code, String password) {
         String normalizedEmail = normalizeEmail(email);
         String normalizedUsername = UsernamePolicy.normalizeOptional(username);
         codes.consume(normalizedEmail, "register", code);
         if (users.findByEmail(normalizedEmail).isPresent()) {
-            throw new ApiException(HttpStatus.CONFLICT, "AUTH_EMAIL_REGISTERED", "该邮箱已注册，请直接登录");
+            throw AuthErrorCode.AUTH_EMAIL_REGISTERED.toException();
         }
         if (normalizedUsername != null && users.findByUsername(UsernamePolicy.lookupKey(normalizedUsername)).isPresent()) {
-            throw new ApiException(HttpStatus.CONFLICT, "AUTH_USERNAME_REGISTERED", "该用户名已被使用");
+            throw AuthErrorCode.AUTH_USERNAME_REGISTERED.toException();
         }
         try {
-            UserAccount user = users.create(
+            UserAccountEntity user = users.create(
                 normalizedEmail,
                 normalizedUsername,
                 passwords.encode(password),
@@ -100,63 +107,63 @@ public class AuthService {
             return session(user);
         } catch (DuplicateKeyException error) {
             if (normalizedUsername != null && users.findByUsername(UsernamePolicy.lookupKey(normalizedUsername)).isPresent()) {
-                throw new ApiException(HttpStatus.CONFLICT, "AUTH_USERNAME_REGISTERED", "该用户名已被使用");
+                throw AuthErrorCode.AUTH_USERNAME_REGISTERED.toException();
             }
-            throw new ApiException(HttpStatus.CONFLICT, "AUTH_EMAIL_REGISTERED", "该邮箱已注册，请直接登录");
+            throw AuthErrorCode.AUTH_EMAIL_REGISTERED.toException();
         }
     }
 
-    public AuthSession login(String emailOrUsername, String password) {
-        UserAccount user = findLoginUser(emailOrUsername);
+    public AuthSessionVO login(String emailOrUsername, String password) {
+        UserAccountEntity user = findLoginUser(emailOrUsername);
         String storedHash = user == null ? dummyHash : user.passwordHash();
         boolean matches = passwords.matches(password == null ? "" : password, storedHash);
         if (user == null || !matches) {
-            throw new ApiException(HttpStatus.UNAUTHORIZED, "AUTH_INVALID_CREDENTIALS", "邮箱或密码错误");
+            throw AuthErrorCode.AUTH_INVALID_CREDENTIALS.toException();
         }
         return session(user);
     }
 
     @Transactional
-    public AuthSession resetPassword(String email, String code, String password) {
+    public AuthSessionVO resetPassword(String email, String code, String password) {
         String normalizedEmail = normalizeEmail(email);
         codes.consume(normalizedEmail, "reset", code);
-        UserAccount user = users.findByEmail(normalizedEmail)
-            .orElseThrow(() -> new ApiException(
-                HttpStatus.BAD_REQUEST,
-                "AUTH_RESET_INVALID",
-                "无法重置该账号的密码"
-            ));
+        UserAccountEntity user = users.findByEmail(normalizedEmail)
+            .orElseThrow(AuthErrorCode.AUTH_RESET_INVALID::toException);
         users.updatePassword(user.id(), passwords.encode(password));
         return session(user);
     }
 
-    public UserView user(long userId) {
+    public UserVO user(long userId) {
         return users.findById(userId)
-            .map(UserAccount::toView)
-            .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "AUTH_SESSION_INVALID", "登录状态已失效"));
+            .map(userAccountConverter::toView)
+            .orElseThrow(AuthErrorCode.AUTH_SESSION_INVALID::toException);
     }
 
-    private AuthSession session(UserAccount user) {
+    private AuthSessionVO session(UserAccountEntity user) {
         Duration ttl = mailConfig == null ? tokens.defaultTtl() : mailConfig.policy().sessionTtl();
-        return new AuthSession(tokens.issue(user.id(), user.email(), user.roles(), ttl), user.toView(), ttl);
+        return new AuthSessionVO(
+            tokens.issue(user.id(), user.email(), user.roles(), ttl),
+            userAccountConverter.toView(user),
+            ttl
+        );
     }
 
     private String normalizeEmail(String email) {
         String normalized = email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
         if (!normalized.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "AUTH_EMAIL_INVALID", "请输入有效的邮箱地址");
+            throw AuthErrorCode.AUTH_EMAIL_INVALID.toException();
         }
         return normalized;
     }
 
-    private UserAccount findLoginUser(String emailOrUsername) {
+    private UserAccountEntity findLoginUser(String emailOrUsername) {
         String identity = emailOrUsername == null ? "" : emailOrUsername.trim();
         if (identity.contains("@")) {
             return users.findByEmail(normalizeEmail(identity)).orElse(null);
         }
         try {
             return users.findByUsername(UsernamePolicy.lookupKey(identity)).orElse(null);
-        } catch (ApiException invalidUsername) {
+        } catch (BizException invalidUsername) {
             if (!"AUTH_USERNAME_INVALID".equals(invalidUsername.code())) {
                 throw invalidUsername;
             }

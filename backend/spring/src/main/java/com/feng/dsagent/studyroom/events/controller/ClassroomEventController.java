@@ -1,8 +1,8 @@
 package com.feng.dsagent.studyroom.events.controller;
 
-import com.feng.dsagent.studyroom.events.ClassroomEventSubscriptions;
+import com.feng.dsagent.studyroom.events.support.ClassroomEventSubscriptions;
 
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;

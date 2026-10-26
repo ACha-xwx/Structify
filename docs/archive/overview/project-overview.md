@@ -93,7 +93,7 @@
 | 包 | 职责 | 代表类 |
 |---|---|---|
 | `auth` | 注册/登录/验证码/重置 | `AuthController`、`DefaultVerificationCodeManager`、`RolePolicy` |
-| `security` | 令牌与过滤器链 | `SecurityConfig`、`JwtAuthenticationFilter`、`NodeCompatibilityTokenVerifier` |
+| `security` | 令牌与过滤器链 | `SecurityConfiguration`、`JwtAuthenticationFilter`、`NodeCompatibilityTokenVerifier` |
 | `common` | 错误、请求 id、限流 | `ApiExceptionHandler`、`RequestIdFilter`、`WindowRateLimiter` |
 | `resource` | 章节与资源目录 | `ResourceController`、`ResourceService` |
 | `knowledge` | 教材 RAG 检索 | `KnowledgeSearchService`（含提示词注入过滤）、`KnowledgeBootstrapRunner` |

@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.chat.mapper.ChatMapper">
+
+  <select id="countPublishedChapter" resultType="int">
+    SELECT COUNT(*) FROM chapters WHERE id = #{chapterId} AND status = 'PUBLISHED'
+  </select>
+
+  <select id="countOwnedSession" resultType="int">
+    SELECT COUNT(*) FROM chat_sessions WHERE id = #{sessionId} AND user_id = #{userId}
+  </select>
+
+  <select id="selectRecentMessages" resultType="com.feng.dsagent.chat.mapper.ChatMapper$HistoryMessageRow">
+    SELECT id, role, content, attachments_json AS attachmentsJson
+    FROM chat_messages
+    WHERE session_id = #{sessionId}
+    ORDER BY id DESC
+    LIMIT #{limit}
+  </select>
+
+  <update id="touchSession">
+    UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = #{sessionId} AND user_id = #{userId}
+  </update>
+
+  <select id="selectMaxMessageId" resultType="java.lang.Long">
+    SELECT MAX(id) FROM chat_messages WHERE session_id = #{sessionId}
+  </select>
+
+  <delete id="deleteMessagesInRange">
+    DELETE FROM chat_messages
+    WHERE session_id = #{sessionId} AND id &gt;= #{fromId} AND id &lt; #{toIdExclusive}
+  </delete>
+
+  <update id="completeUserMessage">
+    UPDATE chat_messages
+    SET generation_status = 'COMPLETED', failure_code = NULL
+    WHERE id = #{messageId} AND session_id = #{sessionId} AND role = 'user'
+  </update>
+
+  <insert id="insertAssistantMessage">
+    INSERT INTO chat_messages (session_id, role, content, sources_json, reasoning_content, generation_status)
+    VALUES (#{sessionId}, 'assistant', #{content}, #{sourcesJson}, #{reasoning}, 'COMPLETED')
+  </insert>
+
+  <insert id="insertAssistantMessageLegacy">
+    INSERT INTO chat_messages (session_id, role, content, sources_json, reasoning_content)
+    VALUES (#{sessionId}, 'assistant', #{content}, #{sourcesJson}, #{reasoning})
+  </insert>
+
+  <update id="markMessageFailed">
+    UPDATE chat_messages
+    SET generation_status = 'FAILED', failure_code = #{failureCode}
+    WHERE id = #{messageId} AND session_id = #{sessionId} AND role = 'user'
+  </update>
+
+  <update id="markMessageStopped">
+    UPDATE chat_messages
+    SET generation_status = 'STOPPED', failure_code = NULL
+    WHERE id = #{messageId} AND session_id = #{sessionId} AND role = 'user'
+  </update>
+
+  <select id="selectRetryCommand" resultType="com.feng.dsagent.chat.mapper.ChatMapper$RetryCommandRow">
+    SELECT m.id,
+           m.content,
+           m.attachments_json AS attachmentsJson,
+           m.chapter_id AS chapterId,
+           m.thinking_enabled AS thinkingEnabled,
+           m.reasoning_effort AS reasoningEffort,
+           s.chapter_id AS sessionChapter
+    FROM chat_messages m
+    JOIN chat_sessions s ON s.id = m.session_id
+    WHERE s.id = #{sessionId} AND s.user_id = #{userId} AND m.id = #{messageId} AND m.role = 'user'
+  </select>
+
+  <select id="selectHistoryBefore" resultType="com.feng.dsagent.chat.mapper.ChatMapper$HistoryMessageRow">
+    SELECT id, role, content, attachments_json AS attachmentsJson
+    FROM chat_messages
+    WHERE session_id = #{sessionId} AND id &lt; #{messageId}
+    ORDER BY id DESC
+    LIMIT #{limit}
+  </select>
+
+  <delete id="deleteMessagesFrom">
+    DELETE FROM chat_messages WHERE session_id = #{sessionId} AND id &gt;= #{fromId}
+  </delete>
+
+  <select id="selectSessions" resultType="com.feng.dsagent.chat.mapper.ChatMapper$SessionSummaryRow">
+    SELECT s.id,
+           s.chapter_id AS chapterId,
+           s.title,
+           s.updated_at AS updatedAt,
+           s.pinned,
+           (SELECT COUNT(*) FROM chat_messages m WHERE m.session_id = s.id) AS messageCount
+    FROM chat_sessions s
+    WHERE s.user_id = #{userId}
+    ORDER BY s.pinned DESC, s.updated_at DESC, s.id DESC
+    LIMIT #{limit}
+  </select>
+
+  <select id="selectSession" resultType="com.feng.dsagent.chat.mapper.ChatMapper$SessionSummaryRow">
+    SELECT id,
+           chapter_id AS chapterId,
+           title,
+           updated_at AS updatedAt,
+           pinned,
+           0 AS messageCount
+    FROM chat_sessions
+    WHERE id = #{sessionId} AND user_id = #{userId}
+  </select>
+
+  <select id="selectSessionMessages" resultType="com.feng.dsagent.chat.mapper.ChatMapper$SessionMessageRow">
+    SELECT id,
+           role,
+           content,
+           sources_json AS sourcesJson,
+           created_at AS createdAt,
+           attachments_json AS attachmentsJson,
+           reasoning_content AS reasoningContent,
+           chapter_id AS chapterId,
+           thinking_enabled AS thinkingEnabled,
+           reasoning_effort AS reasoningEffort,
+           generation_status AS generationStatus,
+           failure_code AS failureCode
+    FROM chat_messages
+    WHERE session_id = #{sessionId}
+    ORDER BY id DESC
+    LIMIT #{limit}
+  </select>
+
+  <update id="updateSessionTitleAndPinned">
+    UPDATE chat_sessions
+    SET title = #{title}, pinned = #{pinned}, updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{sessionId} AND user_id = #{userId}
+  </update>
+
+  <update id="updateSessionTitle">
+    UPDATE chat_sessions
+    SET title = #{title}, updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{sessionId} AND user_id = #{userId}
+  </update>
+
+  <update id="updateSessionPinned">
+    UPDATE chat_sessions
+    SET pinned = #{pinned}, updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{sessionId} AND user_id = #{userId}
+  </update>
+
+  <select id="selectAttachmentsForSession" resultType="com.feng.dsagent.chat.entity.StoredChatAttachmentEntity">
+    SELECT a.id,
+           a.user_id AS userId,
+           a.message_id AS messageId,
+           a.original_name AS name,
+           a.attachment_type AS type,
+           a.mime_type AS mimeType,
+           a.encoding,
+           a.byte_size AS byteSize,
+           a.sha256,
+           a.storage_key AS storageKey,
+           a.created_at AS createdAt
+    FROM chat_attachments a
+    JOIN chat_messages m ON m.id = a.message_id
+    WHERE m.session_id = #{sessionId} AND a.user_id = #{userId}
+  </select>
+
+  <delete id="deleteSession">
+    DELETE FROM chat_sessions WHERE id = #{sessionId} AND user_id = #{userId}
+  </delete>
+
+  <select id="countAttachmentsByStorageKey" resultType="int">
+    SELECT COUNT(*) FROM chat_attachments WHERE storage_key = #{storageKey}
+  </select>
+
+  <select id="selectAttachment" resultType="com.feng.dsagent.chat.entity.StoredChatAttachmentEntity">
+    SELECT id,
+           user_id AS userId,
+           message_id AS messageId,
+           original_name AS name,
+           attachment_type AS type,
+           mime_type AS mimeType,
+           encoding,
+           byte_size AS byteSize,
+           sha256,
+           storage_key AS storageKey,
+           created_at AS createdAt
+    FROM chat_attachments
+    WHERE id = #{attachmentId} AND user_id = #{userId}
+  </select>
+
+  <insert id="insertSession">
+    INSERT INTO chat_sessions (id, user_id, chapter_id, title)
+    VALUES (#{id}, #{userId}, #{chapterId}, #{title})
+  </insert>
+
+  <insert id="insertUserMessage" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+    INSERT INTO chat_messages (session_id, role, content, chapter_id, thinking_enabled, reasoning_effort, generation_status)
+    VALUES (#{sessionId}, 'user', #{content}, #{chapterId}, #{thinkingEnabled}, #{reasoningEffort}, #{generationStatus})
+  </insert>
+
+  <update id="updateMessageAttachments">
+    UPDATE chat_messages SET attachments_json = #{attachmentsJson} WHERE id = #{messageId}
+  </update>
+
+  <insert id="insertAttachment">
+    INSERT INTO chat_attachments
+      (id, message_id, user_id, original_name, attachment_type, mime_type, encoding, byte_size, sha256, storage_key)
+    VALUES
+      (#{id}, #{messageId}, #{userId}, #{name}, #{type}, #{mimeType}, #{encoding}, #{byteSize}, #{sha256}, #{storageKey})
+  </insert>
+</mapper>

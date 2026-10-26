@@ -2,6 +2,9 @@ package com.feng.dsagent.compiler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.feng.dsagent.compiler.domain.ClassroomCodeLesson;
+import com.feng.dsagent.compiler.domain.ClassroomCodeSample;
+import com.feng.dsagent.compiler.support.ClassroomCodeCatalog;
 import java.io.InputStream;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -105,4 +108,5 @@ class ClassroomCodeCatalogTest {
 
         assertThat(explicit.sampleCount()).isZero();
         assertThat(explicit.lesson("01-01")).isPresent();
-    }}
+    }
+}

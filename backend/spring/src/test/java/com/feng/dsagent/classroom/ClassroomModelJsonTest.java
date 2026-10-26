@@ -1,13 +1,14 @@
 package com.feng.dsagent.classroom;
 
 import static org.assertj.core.api.Assertions.*;
-import com.feng.dsagent.aiquota.AiQuotaExecution;
+import com.feng.dsagent.aiquota.support.AiQuotaExecution;
 import com.feng.dsagent.model.ModelResponse;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
+import com.feng.dsagent.classroom.support.ClassroomModelJson;
 class ClassroomModelJsonTest {
     @Test void returnsTheExactValidationPointToTheModelForRepair() {
         List<String> requests = new ArrayList<>();

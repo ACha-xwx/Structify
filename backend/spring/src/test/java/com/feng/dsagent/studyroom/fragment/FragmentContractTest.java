@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
+import com.feng.dsagent.studyroom.fragment.support.FragmentOutputContract;
 class FragmentContractTest {
     private final FragmentOutputContract contract = new FragmentOutputContract(JsonMapper.builder().build());
     private final String valid = """

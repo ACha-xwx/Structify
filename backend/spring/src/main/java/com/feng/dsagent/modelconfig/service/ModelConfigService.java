@@ -1,64 +1,81 @@
 package com.feng.dsagent.modelconfig.service;
 
-import com.feng.dsagent.modelconfig.ModelConfigGenerationControls;
-import com.feng.dsagent.modelconfig.ModelConfigConnectionResult;
-import com.feng.dsagent.modelconfig.ModelConfigConnectionTester;
-import com.feng.dsagent.modelconfig.ModelConfigMasterKeySource;
-import com.feng.dsagent.modelconfig.ModelConfigResolvedTarget;
-import com.feng.dsagent.modelconfig.ModelGenerationReadiness;
-import com.feng.dsagent.modelconfig.ModelConfigUrlValidator;
-import com.feng.dsagent.modelconfig.ModelConfigConnection;
-import com.feng.dsagent.modelconfig.ModelConfigKeyBinding;
-import com.feng.dsagent.modelconfig.ModelConfigRepository;
-import com.feng.dsagent.modelconfig.controller.ModelConfigController;
-import com.feng.dsagent.modelconfig.ModelConfigCrypto;
 
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.security.AuthenticatedUser;
-import java.net.URI;
+import org.springframework.stereotype.Service;
+import com.feng.dsagent.modelconfig.converter.ModelConfigConverter;
+import com.feng.dsagent.modelconfig.domain.ModelConfigGenerationControls;
+import com.feng.dsagent.modelconfig.domain.ModelConfigConnectionResult;
+import com.feng.dsagent.modelconfig.support.ModelConfigConnectionTester;
+import com.feng.dsagent.modelconfig.support.ModelConfigMasterKeySource;
+import com.feng.dsagent.modelconfig.domain.ModelConfigResolvedTarget;
+import com.feng.dsagent.modelconfig.support.ModelGenerationReadiness;
+import com.feng.dsagent.modelconfig.support.ModelConfigUrlValidator;
+import com.feng.dsagent.modelconfig.domain.ModelConfigConnection;
+import com.feng.dsagent.modelconfig.domain.ModelConfigKeyBinding;
+import com.feng.dsagent.admin.service.AdminAuditService;
+import com.feng.dsagent.modelconfig.entity.ModelConfigEntity;
+import com.feng.dsagent.modelconfig.mapper.ModelConfigMapper;
 import java.util.Optional;
+import org.springframework.dao.DuplicateKeyException;
+import com.feng.dsagent.modelconfig.support.ModelConfigCrypto;
+import com.feng.dsagent.modelconfig.error.ModelConfigErrorCode;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
+import java.net.URI;
 import java.util.concurrent.TimeUnit;
 import javax.crypto.SecretKey;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.feng.dsagent.common.vo.ConfigCapabilityVO;
+import com.feng.dsagent.common.vo.ConnectionTestVO;
+import com.feng.dsagent.modelconfig.dto.UpdateModelConfigDTO;
+import com.feng.dsagent.modelconfig.vo.ModelConfigVO;
 
+/**
+ * 职责：LLM 连接配置的加解密存储、连通性测试与生成就绪判断。
+ */
 @Service
 public class ModelConfigService {
 
     private final ModelConfigMasterKeySource masterKeySource;
-    private final ModelConfigRepository repository;
+    private final ModelConfigMapper mapper;
+    private final ModelConfigConverter modelConfigConverter;
+    private final AdminAuditService auditService;
     private final ModelConfigCrypto crypto;
     private final ModelConfigUrlValidator urlValidator;
     private final ModelConfigConnectionTester connectionTester;
     private final ModelGenerationReadiness generationReadiness;
 
+    public static final long CONFIGURATION_ID = 1L;
+
     public ModelConfigService(
         ModelConfigMasterKeySource masterKeySource,
-        ModelConfigRepository repository,
+        ModelConfigMapper mapper,
+        ModelConfigConverter modelConfigConverter,
+        AdminAuditService auditService,
         ModelConfigCrypto crypto,
         ModelConfigUrlValidator urlValidator,
         ModelConfigConnectionTester connectionTester,
         ModelGenerationReadiness generationReadiness
     ) {
         this.masterKeySource = masterKeySource;
-        this.repository = repository;
+        this.mapper = mapper;
+        this.modelConfigConverter = modelConfigConverter;
+        this.auditService = auditService;
         this.crypto = crypto;
         this.urlValidator = urlValidator;
         this.connectionTester = connectionTester;
         this.generationReadiness = generationReadiness;
     }
 
-    public ModelConfigController.ModelConfigCapabilityView capability() {
+    public ConfigCapabilityVO<ModelConfigVO> capability() {
         CapabilityState accessState = configurationAccessState();
         if (!accessState.available()) {
-            return new ModelConfigController.ModelConfigCapabilityView(false, accessState.reason(), null);
+            return new ConfigCapabilityVO<>(false, accessState.reason(), null);
         }
         CapabilityState generationState = capabilityState();
-        return new ModelConfigController.ModelConfigCapabilityView(
+        return new ConfigCapabilityVO<>(
             generationState.available(),
             generationState.reason(),
-            view(repository.find().orElseThrow())
+            view(find().orElseThrow())
         );
     }
 
@@ -67,12 +84,12 @@ public class ModelConfigService {
         if (masterKey.isEmpty()) {
             return new CapabilityState(false, "MASTER_KEY_UNAVAILABLE");
         }
-        Optional<ModelConfigRepository.StoredModelConfig> stored = repository.find();
+        Optional<ModelConfigEntity> stored = find();
         if (stored.isEmpty()) {
             return new CapabilityState(false, "NOT_CONFIGURED");
         }
         try {
-            crypto.decrypt(stored.get().apiKeyCiphertext(), masterKey.get(), ModelConfigKeyBinding.forStored(stored.get()));
+            crypto.decrypt(stored.get().apiKeyCiphertext(), masterKey.get(), keyBinding(stored.get()));
             return new CapabilityState(true, null);
         } catch (ModelConfigCrypto.CryptoFailure ignored) {
             return new CapabilityState(false, "MODEL_CONFIG_UNAVAILABLE");
@@ -102,8 +119,8 @@ public class ModelConfigService {
     }
 
     @Transactional
-    public ModelConfigController.ModelConfigView update(
-        ModelConfigController.UpdateModelConfigRequest request,
+    public ModelConfigVO update(
+        UpdateModelConfigDTO request,
         AuthenticatedUser actor,
         String requestId
     ) {
@@ -111,7 +128,7 @@ public class ModelConfigService {
         URI baseUrl = urlValidator.validate(request.baseUrl());
         String provider = request.provider().strip();
         String model = request.model().strip();
-        Optional<ModelConfigRepository.StoredModelConfig> existing = repository.find();
+        Optional<ModelConfigEntity> existing = find();
         ModelConfigGenerationControls controls = controls(request, existing);
         String suppliedApiKey = normalizeOptional(request.apiKey());
         boolean targetChanged = existing.isEmpty()
@@ -123,21 +140,17 @@ public class ModelConfigService {
         String ciphertext;
         if (suppliedApiKey == null) {
             if (targetChanged) {
-                throw new ApiException(
-                    HttpStatus.BAD_REQUEST,
-                    "MODEL_CONFIG_API_KEY_REQUIRED",
-                    "模型服务地址或提供商变更时必须重新输入密钥"
-                );
+                throw ModelConfigErrorCode.API_KEY_REQUIRED.toException();
             }
             ciphertext = existing.get().apiKeyCiphertext();
         } else {
             ciphertext = crypto.encrypt(
                 suppliedApiKey,
                 masterKey,
-                ModelConfigKeyBinding.forConfiguration(ModelConfigRepository.CONFIGURATION_ID, provider, baseUrl.toString())
+                ModelConfigKeyBinding.forConfiguration(CONFIGURATION_ID, provider, baseUrl.toString())
             );
         }
-        ModelConfigRepository.StoredModelConfig stored = repository.save(
+        ModelConfigEntity stored = save(
             provider,
             baseUrl.toString(),
             model,
@@ -150,23 +163,15 @@ public class ModelConfigService {
     }
 
     @Transactional
-    public ModelConfigController.ModelConfigConnectionTestView testConnection(AuthenticatedUser actor, String requestId) {
+    public ConnectionTestVO testConnection(AuthenticatedUser actor, String requestId) {
         SecretKey masterKey = requiredMasterKey();
-        ModelConfigRepository.StoredModelConfig stored = repository.find().orElseThrow(() -> new ApiException(
-            HttpStatus.CONFLICT,
-            "MODEL_CONFIG_NOT_CONFIGURED",
-            "尚未保存模型配置"
-        ));
+        ModelConfigEntity stored = find().orElseThrow(() -> ModelConfigErrorCode.NOT_CONFIGURED.toException());
         ModelConfigResolvedTarget target = urlValidator.resolve(stored.baseUrl());
         String apiKey;
         try {
-            apiKey = crypto.decrypt(stored.apiKeyCiphertext(), masterKey, ModelConfigKeyBinding.forStored(stored));
+            apiKey = crypto.decrypt(stored.apiKeyCiphertext(), masterKey, keyBinding(stored));
         } catch (ModelConfigCrypto.CryptoFailure error) {
-            throw new ApiException(
-                HttpStatus.SERVICE_UNAVAILABLE,
-                "MODEL_CONFIG_UNAVAILABLE",
-                "模型配置当前不可用"
-            );
+            throw ModelConfigErrorCode.UNAVAILABLE.toException();
         }
         ModelConfigConnectionResult result;
         long connectionTestStartedAt = System.nanoTime();
@@ -185,25 +190,23 @@ public class ModelConfigService {
             TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - connectionTestStartedAt)
         );
         String code = connectionCode(result);
-        ModelConfigRepository.StoredModelConfig after = repository.recordConnectionTest(code);
-        repository.appendAuditEvent(
+        ModelConfigEntity after = recordConnectionTest(code);
+        auditService.record(
             actor.userId(),
             "MODEL_CONFIG_CONNECTION_TESTED",
+            "MODEL_CONFIG",
+            "1",
             result.connected() ? "SUCCESS" : "FAILED",
             safeRequestId(requestId),
             summary(stored),
             summary(after) + ";connectionTestElapsedMs=" + connectionTestElapsedMs
                 + ";credentialRedacted=true"
         );
-        return new ModelConfigController.ModelConfigConnectionTestView(result.connected(), code);
+        return new ConnectionTestVO(result.connected(), code);
     }
 
     private SecretKey requiredMasterKey() {
-        return masterKeySource.masterKey().orElseThrow(() -> new ApiException(
-            HttpStatus.SERVICE_UNAVAILABLE,
-            "MODEL_CONFIG_UNAVAILABLE",
-            "模型配置当前不可用"
-        ));
+        return masterKeySource.masterKey().orElseThrow(ModelConfigErrorCode.UNAVAILABLE::toException);
     }
 
     private String normalizeOptional(String value) {
@@ -214,11 +217,11 @@ public class ModelConfigService {
     }
 
     private ModelConfigGenerationControls controls(
-        ModelConfigController.UpdateModelConfigRequest request,
-        Optional<ModelConfigRepository.StoredModelConfig> existing
+        UpdateModelConfigDTO request,
+        Optional<ModelConfigEntity> existing
     ) {
         ModelConfigGenerationControls fallback = existing
-            .map(ModelConfigGenerationControls::from)
+            .map(ModelConfigService::generationControls)
             .orElseGet(ModelConfigGenerationControls::defaults);
         double temperature = request.temperature() == null ? fallback.temperature() : request.temperature();
         int maxOutputTokens = request.maxOutputTokens() == null ? fallback.maxOutputTokens() : request.maxOutputTokens();
@@ -237,14 +240,10 @@ public class ModelConfigService {
             || retryCount > 5
             || dailyTokenQuota < 0
             || dailyTokenQuota > 10_000_000) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "MODEL_CONFIG_SETTINGS_INVALID", "模型运行参数无效");
+            throw ModelConfigErrorCode.SETTINGS_INVALID.toException();
         }
         if (enabled && dailyTokenQuota == 0) {
-            throw new ApiException(
-                HttpStatus.BAD_REQUEST,
-                "MODEL_CONFIG_QUOTA_REQUIRED",
-                "启用模型配置前必须设置单用户每日令牌配额"
-            );
+            throw ModelConfigErrorCode.QUOTA_REQUIRED.toException();
         }
         return new ModelConfigGenerationControls(
             temperature,
@@ -268,17 +267,68 @@ public class ModelConfigService {
         String action,
         String result,
         String requestId,
-        ModelConfigRepository.StoredModelConfig before,
-        ModelConfigRepository.StoredModelConfig after
+        ModelConfigEntity before,
+        ModelConfigEntity after
     ) {
-        repository.appendAuditEvent(
+        auditService.record(
             actor.userId(),
             action,
+            "MODEL_CONFIG",
+            "1",
             result,
             safeRequestId(requestId),
             summary(before),
             summary(after)
         );
+    }
+
+    private Optional<ModelConfigEntity> find() {
+        return Optional.ofNullable(mapper.selectById(CONFIGURATION_ID));
+    }
+
+    private ModelConfigEntity save(
+        String provider,
+        String baseUrl,
+        String model,
+        String apiKeyCiphertext,
+        ModelConfigGenerationControls controls,
+        boolean clearConnectionTest
+    ) {
+        int updated = clearConnectionTest
+            ? mapper.updateClearingConnectionTest(
+                CONFIGURATION_ID, provider, baseUrl, model, apiKeyCiphertext,
+                controls.temperature(), controls.maxOutputTokens(), controls.requestTimeoutMs(),
+                controls.retryCount(), controls.dailyTokenQuota(), controls.enabled())
+            : mapper.updateKeepingConnectionTest(
+                CONFIGURATION_ID, provider, baseUrl, model, apiKeyCiphertext,
+                controls.temperature(), controls.maxOutputTokens(), controls.requestTimeoutMs(),
+                controls.retryCount(), controls.dailyTokenQuota(), controls.enabled());
+        if (updated == 0) {
+            try {
+                mapper.insert(
+                    CONFIGURATION_ID, provider, baseUrl, model, apiKeyCiphertext,
+                    controls.temperature(), controls.maxOutputTokens(), controls.requestTimeoutMs(),
+                    controls.retryCount(), controls.dailyTokenQuota(), controls.enabled());
+            } catch (DuplicateKeyException ignored) {
+                if (clearConnectionTest) {
+                    mapper.updateClearingConnectionTest(
+                        CONFIGURATION_ID, provider, baseUrl, model, apiKeyCiphertext,
+                        controls.temperature(), controls.maxOutputTokens(), controls.requestTimeoutMs(),
+                        controls.retryCount(), controls.dailyTokenQuota(), controls.enabled());
+                } else {
+                    mapper.updateKeepingConnectionTest(
+                        CONFIGURATION_ID, provider, baseUrl, model, apiKeyCiphertext,
+                        controls.temperature(), controls.maxOutputTokens(), controls.requestTimeoutMs(),
+                        controls.retryCount(), controls.dailyTokenQuota(), controls.enabled());
+                }
+            }
+        }
+        return find().orElseThrow(() -> new IllegalStateException("Model configuration was not persisted"));
+    }
+
+    private ModelConfigEntity recordConnectionTest(String status) {
+        mapper.updateConnectionTest(CONFIGURATION_ID, status);
+        return find().orElseThrow(() -> new IllegalStateException("Model configuration was not persisted"));
     }
 
     private String safeRequestId(String requestId) {
@@ -288,7 +338,7 @@ public class ModelConfigService {
         return requestId.substring(0, Math.min(requestId.length(), 128));
     }
 
-    private String summary(ModelConfigRepository.StoredModelConfig stored) {
+    private String summary(ModelConfigEntity stored) {
         if (stored == null) {
             return "state=UNCONFIGURED";
         }
@@ -303,21 +353,22 @@ public class ModelConfigService {
                 : stored.lastConnectionTestStatus());
     }
 
-    private ModelConfigController.ModelConfigView view(ModelConfigRepository.StoredModelConfig stored) {
-        return new ModelConfigController.ModelConfigView(
-            stored.provider(),
-            stored.baseUrl(),
-            stored.model(),
-            true,
+    private ModelConfigVO view(ModelConfigEntity stored) {
+        return modelConfigConverter.toView(stored);
+    }
+
+    private static ModelConfigKeyBinding keyBinding(ModelConfigEntity stored) {
+        return ModelConfigKeyBinding.forConfiguration(stored.id(), stored.provider(), stored.baseUrl());
+    }
+
+    private static ModelConfigGenerationControls generationControls(ModelConfigEntity stored) {
+        return new ModelConfigGenerationControls(
             stored.temperature(),
             stored.maxOutputTokens(),
             stored.requestTimeoutMs(),
             stored.retryCount(),
             stored.dailyTokenQuota(),
-            stored.enabled(),
-            stored.lastConnectionTestStatus(),
-            stored.lastConnectionTestedAt(),
-            stored.updatedAt()
+            stored.enabled()
         );
     }
 

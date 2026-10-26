@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.classroom.mapper.ClassroomBookmarkMapper">
+
+  <sql id="columns">
+    id, session_id AS sessionId, lesson_id AS lessonId, lesson_title AS lessonTitle,
+    chapter_id AS chapterId, step_index AS stepIndex, slide_id AS slideId, title,
+    created_at AS createdAt
+  </sql>
+
+  <insert id="insert">
+    INSERT INTO classroom_bookmarks
+      (user_id, session_id, lesson_id, lesson_title, chapter_id, step_index, slide_id, title)
+    VALUES (#{userId}, #{sessionId}, #{lessonId}, #{lessonTitle}, #{chapterId},
+            #{stepIndex}, #{slideId}, #{title})
+  </insert>
+
+  <select id="selectById" resultType="com.feng.dsagent.classroom.mapper.ClassroomBookmarkMapper$BookmarkRow">
+    SELECT <include refid="columns"/>
+    FROM classroom_bookmarks
+    WHERE id = #{id}
+  </select>
+
+  <select id="selectByStep" resultType="com.feng.dsagent.classroom.mapper.ClassroomBookmarkMapper$BookmarkRow">
+    SELECT <include refid="columns"/>
+    FROM classroom_bookmarks
+    WHERE user_id = #{userId} AND session_id = #{sessionId} AND step_index = #{stepIndex}
+  </select>
+
+  <select id="selectByUser" resultType="com.feng.dsagent.classroom.mapper.ClassroomBookmarkMapper$BookmarkRow">
+    SELECT <include refid="columns"/>
+    FROM classroom_bookmarks
+    WHERE user_id = #{userId}
+      AND NOT EXISTS (
+        SELECT 1 FROM study_rooms r
+        WHERE r.id = classroom_bookmarks.session_id
+          AND r.user_id = classroom_bookmarks.user_id
+          AND r.deleted_at IS NOT NULL
+      )
+    ORDER BY created_at DESC, id DESC
+  </select>
+
+  <delete id="delete">
+    DELETE FROM classroom_bookmarks WHERE id = #{id} AND user_id = #{userId}
+  </delete>
+</mapper>

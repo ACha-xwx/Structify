@@ -3,20 +3,21 @@ package com.feng.dsagent.aiquota;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
-import com.feng.dsagent.auth.UserAccount;
-import com.feng.dsagent.auth.UserRepository;
+import com.feng.dsagent.auth.entity.UserAccountEntity;
+import com.feng.dsagent.auth.service.UserAccountService;
 import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.env.MockEnvironment;
 
+import com.feng.dsagent.aiquota.support.DevTestAccountQuotaPolicy;
 class DevTestAccountQuotaPolicyTest {
     @Test
     void onlyConfiguredTestAccountInDevelopmentIsUnlimited() {
-        UserRepository users = mock(UserRepository.class);
-        when(users.findById(7)).thenReturn(Optional.of(new UserAccount(
+        UserAccountService users = mock(UserAccountService.class);
+        when(users.findById(7)).thenReturn(Optional.of(new UserAccountEntity(
             7, "student@structify.test", "Student", "hash", Set.of("STUDENT"))));
-        when(users.findById(8)).thenReturn(Optional.of(new UserAccount(
+        when(users.findById(8)).thenReturn(Optional.of(new UserAccountEntity(
             8, "other@example.com", "Other", "hash", Set.of("STUDENT"))));
         MockEnvironment env = new MockEnvironment();
         env.setActiveProfiles("dev");

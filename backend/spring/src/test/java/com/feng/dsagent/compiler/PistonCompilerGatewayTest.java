@@ -1,11 +1,19 @@
 package com.feng.dsagent.compiler;
 
-import com.feng.dsagent.compiler.service.CompilerService;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.compiler.config.CompilerProperties;
+import com.feng.dsagent.compiler.domain.CompilerExecution;
+import com.feng.dsagent.compiler.domain.SandboxProvider;
+import com.feng.dsagent.compiler.domain.SandboxRuntimeSettings;
+import com.feng.dsagent.compiler.domain.SupportedLanguage;
+import com.feng.dsagent.compiler.dto.RunCodeDTO;
+import com.feng.dsagent.compiler.service.CompilerService;
+import com.feng.dsagent.compiler.support.PistonCompilerGateway;
+import com.feng.dsagent.compiler.support.SandboxConfigRuntimeSettingsSource;
+import com.feng.dsagent.compiler.vo.RunCodeVO;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -164,7 +172,7 @@ class PistonCompilerGatewayTest {
         );
 
         assertThatThrownBy(() -> gateway.execute(SupportedLanguage.C, "int main(void){}", ""))
-            .isInstanceOfSatisfying(ApiException.class, error -> {
+            .isInstanceOfSatisfying(BizException.class, error -> {
                 assertThat(error.status()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
                 assertThat(error.code()).isEqualTo("COMPILER_UPSTREAM_BUSY");
                 assertThat(error.getMessage()).contains("过几秒");
@@ -185,7 +193,7 @@ class PistonCompilerGatewayTest {
         PistonCompilerGateway gateway = new PistonCompilerGateway(properties(Duration.ofMillis(80)), objectMapper);
 
         assertThatThrownBy(() -> gateway.execute(SupportedLanguage.PYTHON, "print('late')", ""))
-            .isInstanceOfSatisfying(ApiException.class, error -> {
+            .isInstanceOfSatisfying(BizException.class, error -> {
                 assertThat(error.status()).isEqualTo(HttpStatus.GATEWAY_TIMEOUT);
                 assertThat(error.code()).isEqualTo("COMPILER_UPSTREAM_TIMEOUT");
                 assertThat(error.getMessage()).doesNotContain("127.0.0.1");
@@ -198,7 +206,7 @@ class PistonCompilerGatewayTest {
         PistonCompilerGateway gateway = new PistonCompilerGateway(properties(Duration.ofSeconds(2)), objectMapper);
 
         assertThatThrownBy(() -> gateway.execute(SupportedLanguage.C, "int main(void) {}", ""))
-            .isInstanceOfSatisfying(ApiException.class, error -> {
+            .isInstanceOfSatisfying(BizException.class, error -> {
                 assertThat(error.status()).isEqualTo(HttpStatus.BAD_GATEWAY);
                 assertThat(error.code()).isEqualTo("COMPILER_UPSTREAM_UNAVAILABLE");
                 assertThat(error.getMessage()).doesNotContain("secret");
@@ -218,12 +226,12 @@ class PistonCompilerGatewayTest {
             new PistonCompilerGateway(properties, objectMapper)
         );
 
-        assertThatThrownBy(() -> service.run(new RunCodeRequest("c", "123456", "")))
-            .isInstanceOfSatisfying(ApiException.class, error ->
+        assertThatThrownBy(() -> service.run(new RunCodeDTO("c", "123456", "")))
+            .isInstanceOfSatisfying(BizException.class, error ->
                 assertThat(error.code()).isEqualTo("COMPILER_CODE_TOO_LONG")
             );
-        assertThatThrownBy(() -> service.run(new RunCodeRequest("python", "print", "1234")))
-            .isInstanceOfSatisfying(ApiException.class, error ->
+        assertThatThrownBy(() -> service.run(new RunCodeDTO("python", "print", "1234")))
+            .isInstanceOfSatisfying(BizException.class, error ->
                 assertThat(error.code()).isEqualTo("COMPILER_INPUT_TOO_LONG")
             );
         assertThat(upstreamCalls).hasValue(0);
@@ -240,7 +248,7 @@ class PistonCompilerGatewayTest {
             new PistonCompilerGateway(properties, objectMapper)
         );
 
-        RunCodeResponse response = service.run(new RunCodeRequest("python", "print('x')", ""));
+        RunCodeVO response = service.run(new RunCodeDTO("python", "print('x')", ""));
 
         assertThat(response.status()).isEqualTo("runtime_error");
         assertThat(response.stdout()).hasSize(16).endsWith("[truncated]");
@@ -308,7 +316,7 @@ class PistonCompilerGatewayTest {
         );
 
         assertThatThrownBy(() -> gateway.execute(SupportedLanguage.C, "int main(void) { return 0; }", ""))
-            .isInstanceOfSatisfying(ApiException.class, error -> {
+            .isInstanceOfSatisfying(BizException.class, error -> {
                 assertThat(error.status()).isEqualTo(HttpStatus.GATEWAY_TIMEOUT);
                 assertThat(error.code()).isEqualTo("COMPILER_UPSTREAM_TIMEOUT");
             });

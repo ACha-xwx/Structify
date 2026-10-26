@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.admin.mapper.AdminMapper">
+
+  <sql id="userColumns">
+    u.id,
+    u.email,
+    u.username,
+    u.status,
+    u.disabled_reason AS disabledReason,
+    u.disabled_at AS disabledAt,
+    u.created_at AS createdAt,
+    u.updated_at AS updatedAt
+  </sql>
+
+  <sql id="userWhere">
+    <where>
+      <if test="search != null">
+        AND (LOWER(u.email) LIKE CONCAT('%', LOWER(#{search}), '%')
+          OR LOWER(u.username) LIKE CONCAT('%', LOWER(#{search}), '%'))
+      </if>
+      <if test="status != null">
+        AND u.status = #{status}
+      </if>
+      <if test="role != null">
+        AND EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = u.id AND ur.role = #{role})
+      </if>
+    </where>
+  </sql>
+
+  <sql id="auditWhere">
+    <where>
+      <if test="actorUserId != null">
+        AND e.actor_user_id = #{actorUserId}
+      </if>
+      <if test="action != null">
+        AND e.action = #{action}
+      </if>
+      <if test="targetType != null">
+        AND e.target_type = #{targetType}
+      </if>
+      <if test="targetId != null">
+        AND e.target_id = #{targetId}
+      </if>
+      <if test="from != null">
+        AND e.created_at &gt;= #{from}
+      </if>
+      <if test="to != null">
+        AND e.created_at &lt;= #{to}
+      </if>
+    </where>
+  </sql>
+
+  <select id="countUsers" resultType="long">
+    SELECT COUNT(*) FROM users u
+    <include refid="userWhere"/>
+  </select>
+
+  <select id="selectUserRows" resultType="com.feng.dsagent.admin.mapper.AdminMapper$AdminUserRow">
+    SELECT <include refid="userColumns"/>
+    FROM users u
+    <include refid="userWhere"/>
+    ORDER BY u.id ASC
+    LIMIT #{size} OFFSET #{offset}
+  </select>
+
+  <select id="selectUserRow" resultType="com.feng.dsagent.admin.mapper.AdminMapper$AdminUserRow">
+    SELECT <include refid="userColumns"/>
+    FROM users u WHERE u.id = #{userId}
+  </select>
+
+  <select id="lockUserRow" resultType="com.feng.dsagent.admin.mapper.AdminMapper$AdminUserRow">
+    SELECT <include refid="userColumns"/>
+    FROM users u WHERE u.id = #{userId} FOR UPDATE
+  </select>
+
+  <select id="selectRoles" resultType="string">
+    SELECT role FROM user_roles WHERE user_id = #{userId} ORDER BY role
+  </select>
+
+  <select id="lockActiveAdministrators" resultType="long">
+    SELECT u.id
+    FROM users u JOIN user_roles ur ON ur.user_id = u.id
+    WHERE u.status = 'ACTIVE' AND ur.role = 'ADMIN'
+    FOR UPDATE
+  </select>
+
+  <select id="activeAdministratorCount" resultType="long">
+    SELECT COUNT(*)
+    FROM users u JOIN user_roles ur ON ur.user_id = u.id
+    WHERE u.status = 'ACTIVE' AND ur.role = 'ADMIN'
+  </select>
+
+  <update id="updateStatusActive">
+    UPDATE users
+    SET status = 'ACTIVE', disabled_reason = NULL, disabled_at = NULL, updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{userId}
+  </update>
+
+  <update id="updateStatusDisabled">
+    UPDATE users
+    SET status = 'DISABLED', disabled_reason = #{reason}, disabled_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{userId}
+  </update>
+
+  <delete id="deleteRoles">
+    DELETE FROM user_roles WHERE user_id = #{userId}
+  </delete>
+
+  <insert id="insertRole">
+    INSERT INTO user_roles (user_id, role) VALUES (#{userId}, #{role})
+  </insert>
+
+  <update id="touchUserUpdatedAt">
+    UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE id = #{userId}
+  </update>
+
+  <insert id="appendAuditEvent">
+    INSERT INTO admin_audit_events (
+      actor_user_id, action, target_type, target_id, result, request_id, before_summary, after_summary
+    ) VALUES (
+      #{actorUserId}, #{action}, #{targetType}, #{targetId}, #{result}, #{requestId},
+      #{beforeSummary}, #{afterSummary}
+    )
+  </insert>
+
+  <select id="countAuditEvents" resultType="long">
+    SELECT COUNT(*) FROM admin_audit_events e
+    <include refid="auditWhere"/>
+  </select>
+
+  <select id="selectAuditEvents" resultType="com.feng.dsagent.admin.entity.AdminAuditEventEntity">
+    SELECT e.id,
+           e.actor_user_id AS actorUserId,
+           e.action,
+           e.target_type AS targetType,
+           e.target_id AS targetId,
+           e.result,
+           e.request_id AS requestId,
+           e.before_summary AS beforeSummary,
+           e.after_summary AS afterSummary,
+           e.created_at AS createdAt
+    FROM admin_audit_events e
+    <include refid="auditWhere"/>
+    ORDER BY e.created_at DESC, e.id DESC
+    LIMIT #{size} OFFSET #{offset}
+  </select>
+
+</mapper>

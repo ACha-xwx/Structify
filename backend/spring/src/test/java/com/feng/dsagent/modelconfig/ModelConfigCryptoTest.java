@@ -9,6 +9,8 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
 
+import com.feng.dsagent.modelconfig.domain.ModelConfigKeyBinding;
+import com.feng.dsagent.modelconfig.support.ModelConfigCrypto;
 class ModelConfigCryptoTest {
 
     @Test

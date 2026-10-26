@@ -18,6 +18,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.feng.dsagent.classroom.service.ClassroomService;
 /**
  * A learner's saved steps, over HTTP: who may see them, what the server decides a step is, and what happens
  * when the step or the session is not theirs.
@@ -34,7 +35,7 @@ class ClassroomBookmarkApiIntegrationTest {
     @Autowired private MockMvc mockMvc;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private JwtTokenService tokens;
-    @Autowired private ClassroomRepository repository;
+    @Autowired private ClassroomService classrooms;
 
     private String token;
     private String otherToken;
@@ -58,8 +59,7 @@ class ClassroomBookmarkApiIntegrationTest {
     }
 
     private String openSession(long userId) {
-        ClassroomScript script = repository.findPublishedScript("bookmark-test").orElseThrow();
-        return repository.createSession(userId, script, new ClassroomStatus(ClassroomState.OPENING, false)).id();
+        return classrooms.create(userId, "bookmark-test").id();
     }
 
     private String saveBody(String session, int stepIndex) {

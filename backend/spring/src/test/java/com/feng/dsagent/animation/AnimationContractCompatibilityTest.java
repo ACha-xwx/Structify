@@ -7,6 +7,9 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import com.feng.dsagent.animation.domain.AnimationDefinition;
+import com.feng.dsagent.animation.domain.AnimationStep;
+import com.feng.dsagent.animation.support.AnimationValidator;
 class AnimationContractCompatibilityTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();

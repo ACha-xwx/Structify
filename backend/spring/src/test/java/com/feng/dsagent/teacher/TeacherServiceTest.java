@@ -5,7 +5,7 @@ import com.feng.dsagent.teacher.service.TeacherService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -110,7 +110,7 @@ class TeacherServiceTest {
         enroll(foreignClass, studentId, "STUDENT");
 
         assertThatThrownBy(() -> service.students(foreignClass, teacherId, false, ""))
-            .isInstanceOf(ApiException.class)
+            .isInstanceOf(BizException.class)
             .hasMessageContaining("这个班不在你名下");
         assertThat(auditRows("TEACHER_LIST_STUDENTS", foreignClass, teacherId)).isZero();
     }
@@ -122,7 +122,7 @@ class TeacherServiceTest {
         assertThat(auditRows("TEACHER_VIEW_LEARNING_MAP", String.valueOf(studentId), teacherId)).isEqualTo(1);
 
         assertThatThrownBy(() -> service.studentMap(studentId, outsiderId, false, ""))
-            .isInstanceOf(ApiException.class)
+            .isInstanceOf(BizException.class)
             .hasMessageContaining("不在你带的班");
         assertThat(auditRows("TEACHER_VIEW_LEARNING_MAP", String.valueOf(studentId), outsiderId)).isZero();
     }
@@ -175,7 +175,7 @@ class TeacherServiceTest {
         assertThat(auditRows("TEACHER_VIEW_LEARNING_FOOTPRINT", String.valueOf(studentId), teacherId)).isEqualTo(1);
 
         assertThatThrownBy(() -> service.studentFootprint(studentId, outsiderId, false, ""))
-            .isInstanceOf(ApiException.class)
+            .isInstanceOf(BizException.class)
             .hasMessageContaining("不在你带的班");
         assertThat(auditRows("TEACHER_VIEW_LEARNING_FOOTPRINT", String.valueOf(studentId), outsiderId)).isZero();
     }

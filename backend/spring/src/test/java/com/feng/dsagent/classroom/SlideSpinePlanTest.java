@@ -10,6 +10,11 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import com.feng.dsagent.classroom.domain.ClassroomScriptPlan;
+import com.feng.dsagent.classroom.domain.ClassroomState;
+import com.feng.dsagent.classroom.support.ClassroomScriptParser;
+import com.feng.dsagent.classroom.support.LessonPassageIndex;
+import com.feng.dsagent.classroom.support.SlideSpinePlan;
 /**
  * The courseware spine: one teaching step per page, textbook depth selected by the page's own section,
  * and textbook material without a page kept as an extension that leaves the screen where it is.

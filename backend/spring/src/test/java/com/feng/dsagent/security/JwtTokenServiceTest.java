@@ -13,6 +13,8 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
+import com.feng.dsagent.security.exception.InvalidTokenException;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 class JwtTokenServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-07-20T03:30:00Z");

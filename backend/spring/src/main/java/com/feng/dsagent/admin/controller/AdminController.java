@@ -1,23 +1,16 @@
 package com.feng.dsagent.admin.controller;
 
-import com.feng.dsagent.admin.service.AdminCapabilityView;
-import com.feng.dsagent.admin.BackgroundTaskPage;
-import com.feng.dsagent.admin.BackgroundTaskView;
-import com.feng.dsagent.admin.AdminAuditEvent;
-import com.feng.dsagent.admin.service.AdminUserView;
-import com.feng.dsagent.admin.AdminPage;
-
+import com.feng.dsagent.admin.vo.AdminCapabilityVO;
+import com.feng.dsagent.admin.vo.BackgroundTaskVO;
+import com.feng.dsagent.admin.vo.AdminAuditEventVO;
+import com.feng.dsagent.admin.vo.AdminUserVO;
 import com.feng.dsagent.admin.service.BackgroundTaskService;
-
 import com.feng.dsagent.admin.service.AdminService;
-
 import com.feng.dsagent.common.RequestIdFilter;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.common.vo.PageVO;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
-import jakarta.validation.constraints.Size;
 import java.util.Set;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -30,7 +23,12 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import com.feng.dsagent.admin.dto.UserStatusDTO;
+import com.feng.dsagent.admin.dto.UserRolesDTO;
 
+/**
+ * 职责：管理端用户、审计与后台任务等 HTTP 入口。
+ */
 @RestController
 @RequestMapping("/api/v1/admin")
 @PreAuthorize("hasRole('ADMIN')")
@@ -45,12 +43,12 @@ public class AdminController {
     }
 
     @GetMapping("/capabilities")
-    public AdminCapabilityView capabilities(@AuthenticationPrincipal AuthenticatedUser user) {
+    public AdminCapabilityVO capabilities(@AuthenticationPrincipal AuthenticatedUser user) {
         return admin.capabilities(user);
     }
 
     @GetMapping("/users")
-    public AdminPage<AdminUserView> users(
+    public PageVO<AdminUserVO> users(
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size,
         @RequestParam(required = false) String search,
@@ -61,32 +59,32 @@ public class AdminController {
     }
 
     @GetMapping("/users/{id}")
-    public AdminUserView user(@PathVariable long id) {
+    public AdminUserVO user(@PathVariable long id) {
         return admin.user(id);
     }
 
     @PatchMapping("/users/{id}/status")
-    public AdminUserView updateStatus(
+    public AdminUserVO updateStatus(
         @AuthenticationPrincipal AuthenticatedUser actor,
         @PathVariable long id,
-        @Valid @RequestBody UserStatusRequest request,
+        @Valid @RequestBody UserStatusDTO request,
         HttpServletRequest servletRequest
     ) {
         return admin.updateStatus(actor, id, request.status(), request.reason(), requestId(servletRequest));
     }
 
     @PatchMapping("/users/{id}/roles")
-    public AdminUserView updateRoles(
+    public AdminUserVO updateRoles(
         @AuthenticationPrincipal AuthenticatedUser actor,
         @PathVariable long id,
-        @Valid @RequestBody UserRolesRequest request,
+        @Valid @RequestBody UserRolesDTO request,
         HttpServletRequest servletRequest
     ) {
         return admin.updateRoles(actor, id, request.roles(), requestId(servletRequest));
     }
 
     @GetMapping("/audit-events")
-    public AdminPage<AdminAuditEvent> auditEvents(
+    public PageVO<AdminAuditEventVO> auditEvents(
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "50") int size,
         @RequestParam(required = false) Long actorUserId,
@@ -100,7 +98,7 @@ public class AdminController {
     }
 
     @GetMapping("/background-tasks")
-    public BackgroundTaskPage backgroundTasks(
+    public PageVO<BackgroundTaskVO> backgroundTasks(
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size,
         @RequestParam(required = false) String status,
@@ -110,33 +108,33 @@ public class AdminController {
     }
 
     @GetMapping("/background-tasks/{id}")
-    public BackgroundTaskView backgroundTask(@PathVariable long id) {
+    public BackgroundTaskVO backgroundTask(@PathVariable long id) {
         return backgroundTasks.task(id);
     }
 
     @PostMapping("/background-tasks/recover-timeouts")
-    public ResponseEntity<BackgroundTaskView> recoverTimedOutBackgroundTasks(
+    public ResponseEntity<BackgroundTaskVO> recoverTimedOutBackgroundTasks(
         @AuthenticationPrincipal AuthenticatedUser actor,
         HttpServletRequest servletRequest
     ) {
-        BackgroundTaskView task = backgroundTasks.submitTimeoutRecovery(actor, requestId(servletRequest));
+        BackgroundTaskVO task = backgroundTasks.submitTimeoutRecovery(actor, requestId(servletRequest));
         backgroundTasks.dispatch(task.id());
         return ResponseEntity.accepted().body(task);
     }
 
     @PostMapping("/background-tasks/{id}/retry")
-    public ResponseEntity<BackgroundTaskView> retryBackgroundTask(
+    public ResponseEntity<BackgroundTaskVO> retryBackgroundTask(
         @AuthenticationPrincipal AuthenticatedUser actor,
         @PathVariable long id,
         HttpServletRequest servletRequest
     ) {
-        BackgroundTaskView task = backgroundTasks.retry(actor, id, requestId(servletRequest));
+        BackgroundTaskVO task = backgroundTasks.retry(actor, id, requestId(servletRequest));
         backgroundTasks.dispatch(task.id());
         return ResponseEntity.accepted().body(task);
     }
 
     @PostMapping("/background-tasks/{id}/cancel")
-    public BackgroundTaskView cancelBackgroundTask(
+    public BackgroundTaskVO cancelBackgroundTask(
         @AuthenticationPrincipal AuthenticatedUser actor,
         @PathVariable long id,
         HttpServletRequest servletRequest
@@ -149,14 +147,4 @@ public class AdminController {
         return value == null ? "" : value.toString();
     }
 
-    public record UserStatusRequest(
-        @NotBlank @Size(max = 16) String status,
-        @Size(max = 500) String reason
-    ) {
-    }
-
-    public record UserRolesRequest(
-        @NotEmpty @Size(max = 3) Set<@NotBlank @Size(max = 32) String> roles
-    ) {
-    }
 }

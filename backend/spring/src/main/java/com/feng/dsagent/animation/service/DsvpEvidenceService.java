@@ -1,16 +1,16 @@
 package com.feng.dsagent.animation.service;
 
-import com.feng.dsagent.animation.DsvpEvidenceResolution;
-import com.feng.dsagent.animation.DsvpSimulationResponse;
-import com.feng.dsagent.animation.DsvpAnimationAdapter;
-import com.feng.dsagent.animation.DsvpEvidenceResolver;
-import com.feng.dsagent.animation.AnimationRepository;
-import com.feng.dsagent.animation.DsvpEvidenceSource;
+import com.feng.dsagent.animation.domain.DsvpEvidenceResolution;
+import com.feng.dsagent.animation.vo.DsvpSimulationVO;
+import com.feng.dsagent.animation.support.DsvpAnimationAdapter;
+import com.feng.dsagent.animation.support.DsvpEvidenceResolver;
+import com.feng.dsagent.animation.mapper.AnimationMapper;
+import com.feng.dsagent.animation.domain.DsvpEvidenceSource;
 
 import com.feng.dsagent.animation.mapper.DsvpEvidenceMapper;
-import com.feng.dsagent.learning.LearningEventCommand;
+import com.feng.dsagent.learning.dto.LearningEventCommandDTO;
 import com.feng.dsagent.learning.service.LearningEventService;
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.animation.error.AnimationErrorCode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Set;
@@ -30,7 +30,7 @@ public class DsvpEvidenceService {
     private static final String REVIEW_STATUS = "UNREVIEWED";
 
     private final DsvpAnimationAdapter adapter;
-    private final AnimationRepository animations;
+    private final AnimationMapper animations;
     private final DsvpEvidenceMapper evidence;
     private final LearningEventService learningEvents;
     private final ObjectMapper objectMapper;
@@ -38,7 +38,7 @@ public class DsvpEvidenceService {
 
     public DsvpEvidenceService(
         DsvpAnimationAdapter adapter,
-        AnimationRepository animations,
+        AnimationMapper animations,
         DsvpEvidenceMapper evidence,
         LearningEventService learningEvents,
         ObjectMapper objectMapper,
@@ -57,18 +57,18 @@ public class DsvpEvidenceService {
      * The source enum keeps the channel classification outside the client payload.
      */
     @Transactional
-    public DsvpSimulationResponse simulate(long userId, JsonNode request, DsvpEvidenceSource source) {
+    public DsvpSimulationVO simulate(long userId, JsonNode request, DsvpEvidenceSource source) {
         return simulate(userId, Set.of("STUDENT"), request, source);
     }
 
     @Transactional
-    public DsvpSimulationResponse simulate(
+    public DsvpSimulationVO simulate(
         long userId,
         Set<String> roles,
         JsonNode request,
         DsvpEvidenceSource source
     ) {
-        DsvpSimulationResponse response = adapter.adapt(request);
+        DsvpSimulationVO response = adapter.adapt(request);
         DsvpEvidenceResolution resolution = resolver.resolve(
             userId,
             roles == null ? Set.of("STUDENT") : Set.copyOf(roles),
@@ -109,7 +109,7 @@ public class DsvpEvidenceService {
             sourceRef,
             response.request().path("version").asText("1.0")
         );
-        learningEvents.record(userId, new LearningEventCommand(
+        learningEvents.record(userId, new LearningEventCommandDTO(
             SIMULATION_EVENT_TYPE,
             resolution.chapterId(),
             traceId,
@@ -130,10 +130,21 @@ public class DsvpEvidenceService {
     private String persistAnimationRecord(
         long userId,
         String chapterId,
-        DsvpSimulationResponse response
+        DsvpSimulationVO response
     ) {
         try {
-            return animations.save(userId, chapterId, response.animationData(), objectMapper.writeValueAsString(response.animationData()));
+            String recordId = java.util.UUID.randomUUID().toString();
+            String chapter = chapterId == null || chapterId.isBlank() ? null : chapterId.trim();
+            var definition = response.animationData();
+            animations.insertRecord(
+                recordId,
+                userId,
+                chapter,
+                definition.type(),
+                definition.title(),
+                objectMapper.writeValueAsString(definition)
+            );
+            return recordId;
         } catch (Exception error) {
             throw new IllegalStateException("Unable to persist DSVP animation record", error);
         }
@@ -174,7 +185,7 @@ public class DsvpEvidenceService {
     }
 
     private ObjectNode learningPayload(
-        DsvpSimulationResponse response,
+        DsvpSimulationVO response,
         String traceId,
         String recordId,
         String requestHash,
@@ -218,21 +229,17 @@ public class DsvpEvidenceService {
             || existing.userId() == null
             || existing.userId() != userId
             || existing.animationRecordId() == null) {
-            throw new ApiException(
-                org.springframework.http.HttpStatus.CONFLICT,
-                "DSVP_TRACE_COLLISION",
-                "DSVP trace id is already bound to different evidence"
-            );
+            throw AnimationErrorCode.DSVP_TRACE_COLLISION.toException();
         }
         return Optional.of(existing.animationRecordId());
     }
 
-    private DsvpSimulationResponse persisted(
-        DsvpSimulationResponse response,
+    private DsvpSimulationVO persisted(
+        DsvpSimulationVO response,
         String recordId,
         DsvpEvidenceResolution resolution
     ) {
-        return new DsvpSimulationResponse(
+        return new DsvpSimulationVO(
             response.protocol(),
             response.request(),
             response.trace(),
@@ -245,8 +252,8 @@ public class DsvpEvidenceService {
         );
     }
 
-    private DsvpSimulationResponse preview(DsvpSimulationResponse response) {
-        return new DsvpSimulationResponse(
+    private DsvpSimulationVO preview(DsvpSimulationVO response) {
+        return new DsvpSimulationVO(
             response.protocol(),
             response.request(),
             response.trace(),
@@ -259,10 +266,10 @@ public class DsvpEvidenceService {
         );
     }
 
-    private DsvpSimulationResponse withTraceId(DsvpSimulationResponse response, String traceId) {
+    private DsvpSimulationVO withTraceId(DsvpSimulationVO response, String traceId) {
         ObjectNode trace = (ObjectNode) response.trace().deepCopy();
         trace.put("trace_id", traceId);
-        return new DsvpSimulationResponse(
+        return new DsvpSimulationVO(
             response.protocol(),
             response.request(),
             trace,

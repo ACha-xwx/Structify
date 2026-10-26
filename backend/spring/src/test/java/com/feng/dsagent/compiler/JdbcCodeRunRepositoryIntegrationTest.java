@@ -2,6 +2,9 @@ package com.feng.dsagent.compiler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.feng.dsagent.compiler.entity.CodeRunSnapshotEntity;
+import com.feng.dsagent.compiler.mapper.CodeRunMapper;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -13,7 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 class JdbcCodeRunRepositoryIntegrationTest {
 
     @Autowired
-    private CodeRunRepository repository;
+    private CodeRunMapper repository;
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -35,16 +38,23 @@ class JdbcCodeRunRepositoryIntegrationTest {
             "hash"
         );
 
-        String runId = repository.save(
+        String runId = UUID.randomUUID().toString();
+        repository.insert(
+            runId,
             ownerId,
             "03-stack-queue",
-            new RunCodeRequest("c", "int main(void) { return 0; }", "input", "03-stack-queue"),
-            new RunCodeResponse("c", "success", "output", "", 12L, null)
+            "c",
+            "int main(void) { return 0; }",
+            "input",
+            "success",
+            "output",
+            "",
+            12L
         );
 
-        assertThat(repository.findOwned(runId, ownerId))
-            .get()
+        assertThat(repository.selectOwned(runId, ownerId))
             .satisfies(run -> {
+                assertThat(run).isNotNull();
                 assertThat(run.id()).isEqualTo(runId);
                 assertThat(run.chapterId()).isEqualTo("03-stack-queue");
                 assertThat(run.language()).isEqualTo("c");
@@ -54,7 +64,7 @@ class JdbcCodeRunRepositoryIntegrationTest {
                 assertThat(run.stderr()).isEmpty();
                 assertThat(run.status()).isEqualTo("success");
             });
-        assertThat(repository.findOwned(runId, otherUserId)).isEmpty();
-        assertThat(repository.findOwned("missing-run", ownerId)).isEmpty();
+        assertThat(repository.selectOwned(runId, otherUserId)).isNull();
+        assertThat(repository.selectOwned("missing-run", ownerId)).isNull();
     }
 }

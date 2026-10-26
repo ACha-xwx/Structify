@@ -3,7 +3,7 @@ package com.feng.dsagent.admin.controller;
 import com.feng.dsagent.admin.service.AdminUserLearningService;
 
 import com.feng.dsagent.common.RequestIdFilter;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.feng.dsagent.admin.vo.AdminUserLearningVO;
 
 /**
  * One learner, whole picture: courses, bookmarks, classroom work, spend, and the mastery map. Reading it is a
@@ -28,7 +29,7 @@ public class AdminUserLearningController {
     }
 
     @GetMapping("/{id}/learning")
-    public AdminUserLearningService.AdminUserLearningView learning(
+    public AdminUserLearningVO learning(
         @PathVariable long id,
         @AuthenticationPrincipal AuthenticatedUser actor,
         HttpServletRequest servletRequest

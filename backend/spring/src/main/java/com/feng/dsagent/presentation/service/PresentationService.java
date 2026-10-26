@@ -1,17 +1,13 @@
 package com.feng.dsagent.presentation.service;
 
-import com.feng.dsagent.presentation.PresentationCatalog;
-import com.feng.dsagent.presentation.PresentationSlide;
 
-import com.feng.dsagent.classroom.TextbookLessonIds;
+import org.springframework.stereotype.Service;
+import com.feng.dsagent.presentation.support.PresentationCatalog;
+import com.feng.dsagent.presentation.domain.PresentationSlide;
+import com.feng.dsagent.classroom.support.TextbookLessonIds;
 import com.feng.dsagent.presentation.mapper.PresentationMapper;
 import java.util.List;
-import org.springframework.stereotype.Service;
 
-/**
- * Resolves a classroom lesson (the id the classroom API hands to the browser) to the courseware
- * published for its reviewed textbook source. A lesson without a deck simply reports none.
- */
 @Service
 public class PresentationService {
 

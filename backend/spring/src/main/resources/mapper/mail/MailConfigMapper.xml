@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.mail.mapper.MailConfigMapper">
+
+  <select id="selectById" resultType="com.feng.dsagent.mail.entity.MailConfigEntity">
+    SELECT id,
+           site_name AS siteName,
+           enabled,
+           smtp_host AS smtpHost,
+           smtp_port AS smtpPort,
+           security_mode AS securityMode,
+           smtp_username AS smtpUsername,
+           smtp_password_ciphertext AS smtpPasswordCiphertext,
+           from_email AS fromEmail,
+           from_name AS fromName,
+           connection_timeout_seconds AS connectionTimeoutSeconds,
+           verification_ttl_minutes AS verificationTtlMinutes,
+           resend_interval_seconds AS resendIntervalSeconds,
+           session_ttl_days AS sessionTtlDays,
+           verification_subject AS verificationSubject,
+           verification_template_html AS verificationTemplateHtml,
+           last_connection_test_status AS lastConnectionTestStatus,
+           last_connection_tested_at AS lastConnectionTestedAt,
+           updated_at AS updatedAt
+    FROM mail_configurations
+    WHERE id = #{id}
+  </select>
+
+  <update id="update">
+    UPDATE mail_configurations
+    SET site_name = #{siteName},
+        enabled = #{enabled},
+        smtp_host = #{smtpHost},
+        smtp_port = #{smtpPort},
+        security_mode = #{securityMode},
+        smtp_username = #{smtpUsername},
+        smtp_password_ciphertext = #{smtpPasswordCiphertext},
+        from_email = #{fromEmail},
+        from_name = #{fromName},
+        connection_timeout_seconds = #{connectionTimeoutSeconds},
+        verification_ttl_minutes = #{verificationTtlMinutes},
+        resend_interval_seconds = #{resendIntervalSeconds},
+        session_ttl_days = #{sessionTtlDays},
+        verification_subject = #{verificationSubject},
+        verification_template_html = #{verificationTemplateHtml},
+        last_connection_test_status = NULL,
+        last_connection_tested_at = NULL,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{id}
+  </update>
+
+  <insert id="insert">
+    INSERT INTO mail_configurations (
+      id, site_name, enabled, smtp_host, smtp_port, security_mode, smtp_username,
+      smtp_password_ciphertext, from_email, from_name, connection_timeout_seconds,
+      verification_ttl_minutes, resend_interval_seconds, session_ttl_days,
+      verification_subject, verification_template_html
+    ) VALUES (
+      #{id}, #{siteName}, #{enabled}, #{smtpHost}, #{smtpPort}, #{securityMode}, #{smtpUsername},
+      #{smtpPasswordCiphertext}, #{fromEmail}, #{fromName}, #{connectionTimeoutSeconds},
+      #{verificationTtlMinutes}, #{resendIntervalSeconds}, #{sessionTtlDays},
+      #{verificationSubject}, #{verificationTemplateHtml}
+    )
+  </insert>
+
+  <update id="updateConnectionTest">
+    UPDATE mail_configurations
+    SET last_connection_test_status = #{status},
+        last_connection_tested_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{id}
+  </update>
+</mapper>

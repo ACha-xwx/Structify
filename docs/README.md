@@ -4,8 +4,9 @@
 
 ## AI / Agent 权威规范
 
-**所有 AI 开发必须遵循**：[AI开发规范.md](AI开发规范.md)
+**所有 AI 开发必须遵循**：[AI开发规范.md](AI开发规范.md)（副标题：规矩要立住，代码写起来才不烧心）
 仓库入口：[AGENTS.md](../AGENTS.md)；Cursor 每会话自动加载 `.cursor/rules/structify-ai-development.mdc`。
+Spring 强制叶子包与命名细则：[architecture/backend-standards.md](architecture/backend-standards.md)。
 
 ## 新人
 
@@ -26,7 +27,8 @@ AI 编码代理：先读 [AI开发规范](AI开发规范.md) 与 [AGENTS](../AGE
 | 产品方向 | [产品方向.md](产品方向.md) |
 | 内容导入 | [guides/content-import-guide.md](guides/content-import-guide.md) |
 | Node/Spring 兼容 | [architecture/node-spring-compat.md](architecture/node-spring-compat.md) |
-| Spring 工程规范 | [architecture/backend-standards.md](architecture/backend-standards.md) |
+| Spring 工程规范（强制分包与命名） | [architecture/backend-standards.md](architecture/backend-standards.md) |
+| Spring 重复逻辑审计 | [architecture/backend-duplication-audit.md](architecture/backend-duplication-audit.md) |
 | 部署与沙箱 | [部署与运维.md](部署与运维.md) |
 | 证据边界 | [文档审计与待确认事项.md](文档审计与待确认事项.md) |
 

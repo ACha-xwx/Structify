@@ -1,5 +1,7 @@
 package com.feng.dsagent.admin.observability.service;
 
+
+import org.springframework.stereotype.Service;
 import com.feng.dsagent.admin.observability.mapper.AdminObservabilityMapper;
 import java.sql.Timestamp;
 import java.time.LocalDate;
@@ -8,14 +10,9 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import org.springframework.stereotype.Service;
 
 /**
- * Read-only views over work the product is actually doing.
- *
- * <p>The admin console was written against the task ledger alone, but the studyroom keeps its own job tables and
- * its own quota accounting, so thirty-odd generation jobs could run without the console showing a single row.
- * These queries merge the sources rather than replacing them: nothing here writes, retries or cancels.
+ * 职责：聚合后台/学习室任务与费用报表供运维控制台使用。
  */
 @Service
 public class AdminObservabilityService {

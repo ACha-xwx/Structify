@@ -1,13 +1,11 @@
 package com.feng.dsagent.knowledge.service;
 
-import com.feng.dsagent.knowledge.KnowledgeSearchResult;
-import com.feng.dsagent.knowledge.KnowledgeAudience;
-import com.feng.dsagent.knowledge.KnowledgeChunk;
-import com.feng.dsagent.knowledge.KnowledgeText;
+import com.feng.dsagent.knowledge.converter.KnowledgeSearchConverter;
+import com.feng.dsagent.knowledge.vo.KnowledgeSearchResultVO;
+import com.feng.dsagent.knowledge.domain.KnowledgeAudience;
+import com.feng.dsagent.knowledge.entity.KnowledgeChunkEntity;
+import com.feng.dsagent.knowledge.support.KnowledgeText;
 import com.feng.dsagent.knowledge.service.KnowledgeSettingsService.MatchingSettings;
-
-
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -18,7 +16,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
-
+import org.mapstruct.factory.Mappers;
 
 public final class KnowledgeSearchService {
 
@@ -26,18 +24,19 @@ public final class KnowledgeSearchService {
         "忽略(以上|之前|所有).{0,12}(指令|规则)|系统提示词|开发者消息|泄露.{0,8}提示词|执行以下命令|system\\s*prompt",
         Pattern.CASE_INSENSITIVE
     );
-    private final AtomicReference<List<KnowledgeChunk>> chunks;
+    private final AtomicReference<List<KnowledgeChunkEntity>> chunks;
     private final Supplier<MatchingSettings> settings;
     private final EligibilityFilter eligibilityFilter;
+    private final KnowledgeSearchConverter converter;
 
-    public KnowledgeSearchService(Collection<KnowledgeChunk> chunks, double minimumScore) {
+    public KnowledgeSearchService(Collection<KnowledgeChunkEntity> chunks, double minimumScore) {
         this(chunks, minimumScore, (candidates, audience) -> candidates.stream()
-            .map(KnowledgeChunk::id)
+            .map(KnowledgeChunkEntity::id)
             .collect(java.util.stream.Collectors.toUnmodifiableSet()));
     }
 
     KnowledgeSearchService(
-        Collection<KnowledgeChunk> chunks,
+        Collection<KnowledgeChunkEntity> chunks,
         double minimumScore,
         EligibilityFilter eligibilityFilter
     ) {
@@ -50,16 +49,26 @@ public final class KnowledgeSearchService {
      * search without a restart and without touching the chunk snapshot.
      */
     public KnowledgeSearchService(
-        Collection<KnowledgeChunk> chunks,
+        Collection<KnowledgeChunkEntity> chunks,
         Supplier<MatchingSettings> settings,
         EligibilityFilter eligibilityFilter
+    ) {
+        this(chunks, settings, eligibilityFilter, Mappers.getMapper(KnowledgeSearchConverter.class));
+    }
+
+    public KnowledgeSearchService(
+        Collection<KnowledgeChunkEntity> chunks,
+        Supplier<MatchingSettings> settings,
+        EligibilityFilter eligibilityFilter,
+        KnowledgeSearchConverter converter
     ) {
         this.chunks = new AtomicReference<>(List.copyOf(chunks));
         this.settings = settings;
         this.eligibilityFilter = eligibilityFilter;
+        this.converter = converter;
     }
 
-    public void replace(Collection<KnowledgeChunk> replacement) {
+    public void replace(Collection<KnowledgeChunkEntity> replacement) {
         chunks.set(List.copyOf(replacement));
     }
 
@@ -68,11 +77,11 @@ public final class KnowledgeSearchService {
      * This keeps readiness reporting aligned with {@link #search(String, String, int, KnowledgeAudience)}.
      */
     public EvidenceInventory inventory(String chapterId, KnowledgeAudience audience) {
-        List<KnowledgeChunk> snapshot = chunks.get();
+        List<KnowledgeChunkEntity> snapshot = chunks.get();
         Set<String> eligibleIds = eligibleIds(snapshot, audience);
         int chunkCount = 0;
         Set<String> sources = new LinkedHashSet<>();
-        for (KnowledgeChunk chunk : snapshot) {
+        for (KnowledgeChunkEntity chunk : snapshot) {
             if (!eligibleIds.contains(chunk.id()) || !allows(chunk, chapterId, audience)) {
                 continue;
             }
@@ -88,7 +97,7 @@ public final class KnowledgeSearchService {
         return chunks.get().size();
     }
 
-    public List<KnowledgeSearchResult> search(
+    public List<KnowledgeSearchResultVO> search(
         String query,
         String chapterId,
         int limit,
@@ -101,7 +110,7 @@ public final class KnowledgeSearchService {
      * The same pipeline with explicit tuning, for the admin console's try-it-before-you-save preview.
      * Eligibility and license checks still apply; only the matching knobs change.
      */
-    public List<KnowledgeSearchResult> preview(
+    public List<KnowledgeSearchResultVO> preview(
         String query,
         String chapterId,
         int limit,
@@ -111,7 +120,7 @@ public final class KnowledgeSearchService {
         return searchWith(query, chapterId, limit, audience, overrides);
     }
 
-    private List<KnowledgeSearchResult> searchWith(
+    private List<KnowledgeSearchResultVO> searchWith(
         String query,
         String chapterId,
         int limit,
@@ -127,10 +136,10 @@ public final class KnowledgeSearchService {
             return List.of();
         }
 
-        List<KnowledgeChunk> snapshot = chunks.get();
+        List<KnowledgeChunkEntity> snapshot = chunks.get();
         Set<String> eligibleIds = eligibleIds(snapshot, audience);
-        Map<String, KnowledgeSearchResult> uniqueBySource = new LinkedHashMap<>();
-        for (KnowledgeChunk chunk : snapshot) {
+        Map<String, KnowledgeSearchResultVO> uniqueBySource = new LinkedHashMap<>();
+        for (KnowledgeChunkEntity chunk : snapshot) {
             if (!eligibleIds.contains(chunk.id()) || !allows(chunk, chapterId, audience)) {
                 continue;
             }
@@ -138,44 +147,44 @@ public final class KnowledgeSearchService {
             if (score < tuning.minimumScore()) {
                 continue;
             }
-            KnowledgeSearchResult candidate = new KnowledgeSearchResult(chunk, score);
+            KnowledgeSearchResultVO candidate = converter.toView(chunk, score);
             String sourceKey = chunk.source() == null ? chunk.id() : chunk.source();
             uniqueBySource.merge(sourceKey, candidate, (left, right) -> left.score() >= right.score() ? left : right);
         }
 
         return uniqueBySource.values().stream()
-            .sorted(Comparator.comparingDouble(KnowledgeSearchResult::score).reversed())
+            .sorted(Comparator.comparingDouble(KnowledgeSearchResultVO::score).reversed())
             .limit(Math.min(limit, tuning.searchLimit()))
             .toList();
     }
 
-    private boolean allows(KnowledgeChunk chunk, String chapterId, KnowledgeAudience audience) {
+    private boolean allows(KnowledgeChunkEntity chunk, String chapterId, KnowledgeAudience audience) {
         return audience != null
             && audience.allows(chunk.licenseScope())
             && (chapterId == null || chapterId.isBlank() || chapterId.equals(chunk.chapterId()));
     }
 
     /** Fragment teaching needs distinct pages, including multiple pages from the same source. */
-    public List<KnowledgeSearchResult> searchForFragment(String query, String chapterId, int limit, KnowledgeAudience audience) {
+    public List<KnowledgeSearchResultVO> searchForFragment(String query, String chapterId, int limit, KnowledgeAudience audience) {
         if(query==null||query.isBlank()||limit<1||INJECTION_PATTERN.matcher(query).find())return List.of();
         var tokens=KnowledgeText.tokens(query);
         if(tokens.isEmpty())return List.of();
         var tuning=settings.get();
         var snapshot=chunks.get();var eligible=eligibleIds(snapshot,audience);
-        Map<String,KnowledgeSearchResult> unique=new LinkedHashMap<>();
+        Map<String,KnowledgeSearchResultVO> unique=new LinkedHashMap<>();
         for(var chunk:snapshot) {
             if(!eligible.contains(chunk.id())||!allows(chunk,chapterId,audience))continue;
             double relevance=score(chunk,tokens,tuning);
             if(relevance<tuning.minimumScore())continue;
-            var candidate=new KnowledgeSearchResult(chunk,relevance);
+            var candidate=converter.toView(chunk,relevance);
             String key=KnowledgeText.normalize(chunk.content());
             unique.merge(key,candidate,(a,b)->a.score()>=b.score()?a:b);
         }
-        return unique.values().stream().sorted(Comparator.comparingDouble(KnowledgeSearchResult::score).reversed())
+        return unique.values().stream().sorted(Comparator.comparingDouble(KnowledgeSearchResultVO::score).reversed())
             .limit(Math.min(limit,tuning.searchLimit())).toList();
     }
 
-    private Set<String> eligibleIds(Collection<KnowledgeChunk> snapshot, KnowledgeAudience audience) {
+    private Set<String> eligibleIds(Collection<KnowledgeChunkEntity> snapshot, KnowledgeAudience audience) {
         if (audience == null || snapshot.isEmpty()) {
             return Set.of();
         }
@@ -183,7 +192,7 @@ public final class KnowledgeSearchService {
     }
 
     /** Text search weights a chunk title far above its body because a lesson title names the topic. */
-    private double score(KnowledgeChunk chunk, Set<String> queryTokens, MatchingSettings tuning) {
+    private double score(KnowledgeChunkEntity chunk, Set<String> queryTokens, MatchingSettings tuning) {
         String normalizedTitle = KnowledgeText.normalize(chunk.title());
         double titleOnly = 0;
         for (String token : queryTokens) {
@@ -198,6 +207,6 @@ public final class KnowledgeSearchService {
 
     @FunctionalInterface
     public interface EligibilityFilter {
-        Set<String> eligibleIds(Collection<KnowledgeChunk> candidates, KnowledgeAudience audience);
+        Set<String> eligibleIds(Collection<KnowledgeChunkEntity> candidates, KnowledgeAudience audience);
     }
 }

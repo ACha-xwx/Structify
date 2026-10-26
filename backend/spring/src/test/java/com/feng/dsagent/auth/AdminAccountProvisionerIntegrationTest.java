@@ -3,7 +3,7 @@ package com.feng.dsagent.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,6 +14,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import com.feng.dsagent.auth.entity.UserAccountEntity;
+import com.feng.dsagent.auth.support.AdminAccountProvisioner;
+import com.feng.dsagent.auth.support.UsernamePolicy;
 @SpringBootTest
 class AdminAccountProvisionerIntegrationTest {
 
@@ -41,7 +44,7 @@ class AdminAccountProvisionerIntegrationTest {
 
     @Test
     void createsAnAllRoleAdministratorWithABcryptPasswordHash() {
-        UserAccount account = provisioner.createAdministrator(EMAIL, "ACha_", "correct-horse");
+        UserAccountEntity account = provisioner.createAdministrator(EMAIL, "ACha_", "correct-horse");
 
         assertThat(account.email()).isEqualTo(EMAIL);
         assertThat(account.username()).isEqualTo("ACha_");
@@ -64,7 +67,7 @@ class AdminAccountProvisionerIntegrationTest {
             Set.of("STUDENT")
         );
 
-        UserAccount repaired = provisioner.provisionAdministrator(
+        UserAccountEntity repaired = provisioner.provisionAdministrator(
             RECONCILE_EMAIL,
             "ACha_",
             "correct-horse",
@@ -102,7 +105,7 @@ class AdminAccountProvisionerIntegrationTest {
             "ACha_",
             "correct-horse",
             false
-        )).isInstanceOfSatisfying(ApiException.class, error -> {
+        )).isInstanceOfSatisfying(BizException.class, error -> {
             assertThat(error.status()).isEqualTo(HttpStatus.CONFLICT);
             assertThat(error.code()).isEqualTo("AUTH_EMAIL_REGISTERED");
         });
@@ -136,7 +139,7 @@ class AdminAccountProvisionerIntegrationTest {
             "ACha_",
             "correct-horse",
             true
-        )).isInstanceOfSatisfying(ApiException.class, error -> {
+        )).isInstanceOfSatisfying(BizException.class, error -> {
             assertThat(error.status()).isEqualTo(HttpStatus.CONFLICT);
             assertThat(error.code()).isEqualTo("AUTH_ADMIN_PROVISION_TARGET_MISMATCH");
         });

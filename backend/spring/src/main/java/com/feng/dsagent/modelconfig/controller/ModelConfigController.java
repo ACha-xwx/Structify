@@ -1,20 +1,12 @@
 package com.feng.dsagent.modelconfig.controller;
 
-import com.feng.dsagent.modelconfig.ModelConfigGenerationControls;
 
 import com.feng.dsagent.modelconfig.service.ModelConfigService;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import com.feng.dsagent.common.RequestIdFilter;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.DecimalMax;
-import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,7 +15,14 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.feng.dsagent.common.vo.ConfigCapabilityVO;
+import com.feng.dsagent.common.vo.ConnectionTestVO;
+import com.feng.dsagent.modelconfig.dto.UpdateModelConfigDTO;
+import com.feng.dsagent.modelconfig.vo.ModelConfigVO;
 
+/**
+ * 职责：管理端模型配置的查询、保存与连通性探测 HTTP 入口。
+ */
 @RestController
 @RequestMapping("/api/v1/admin/model-config")
 @PreAuthorize("hasRole('ADMIN')")
@@ -36,21 +35,21 @@ public class ModelConfigController {
     }
 
     @GetMapping
-    public ModelConfigCapabilityView capability() {
+    public ConfigCapabilityVO<ModelConfigVO> capability() {
         return service.capability();
     }
 
     @PutMapping
-    public ModelConfigView update(
+    public ModelConfigVO update(
         @AuthenticationPrincipal AuthenticatedUser actor,
-        @Valid @RequestBody UpdateModelConfigRequest request,
+        @Valid @RequestBody UpdateModelConfigDTO request,
         HttpServletRequest servletRequest
     ) {
         return service.update(request, actor, requestId(servletRequest));
     }
 
     @PostMapping("/test")
-    public ModelConfigConnectionTestView testConnection(
+    public ConnectionTestVO testConnection(
         @AuthenticationPrincipal AuthenticatedUser actor,
         HttpServletRequest servletRequest
     ) {
@@ -62,44 +61,4 @@ public class ModelConfigController {
         return value == null ? "" : value.toString();
     }
 
-    public record ModelConfigCapabilityView(
-        boolean available,
-        String reason,
-        @JsonInclude(JsonInclude.Include.NON_NULL) ModelConfigView configuration
-    ) {
-    }
-
-    public record ModelConfigView(
-        String provider,
-        String baseUrl,
-        String model,
-        boolean apiKeyConfigured,
-        double temperature,
-        int maxOutputTokens,
-        long requestTimeoutMs,
-        int retryCount,
-        long dailyTokenQuota,
-        boolean enabled,
-        @JsonInclude(JsonInclude.Include.NON_NULL) String lastConnectionTestStatus,
-        @JsonInclude(JsonInclude.Include.NON_NULL) java.time.Instant lastConnectionTestedAt,
-        java.time.Instant updatedAt
-    ) {
-    }
-
-    public record UpdateModelConfigRequest(
-        @NotBlank @Size(max = 128) String provider,
-        @NotBlank @Size(max = 2048) String baseUrl,
-        @NotBlank @Size(max = 512) String model,
-        @Size(max = 4096) String apiKey,
-        @DecimalMin("0.0") @DecimalMax("2.0") Double temperature,
-        @Min(1) @Max(ModelConfigGenerationControls.MAX_OUTPUT_TOKENS) Integer maxOutputTokens,
-        @Min(1000) @Max(120000) Long requestTimeoutMs,
-        @Min(0) @Max(5) Integer retryCount,
-        @Min(0) @Max(10000000) Long dailyTokenQuota,
-        Boolean enabled
-    ) {
-    }
-
-    public record ModelConfigConnectionTestView(boolean connected, String code) {
-    }
 }

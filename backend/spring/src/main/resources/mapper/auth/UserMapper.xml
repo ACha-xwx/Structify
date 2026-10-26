@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.auth.mapper.UserMapper">
+
+  <select id="selectActiveByEmail" resultType="com.feng.dsagent.auth.mapper.UserMapper$UserRow">
+    SELECT id, email, username, password_hash AS passwordHash
+    FROM users WHERE email = #{email} AND status = 'ACTIVE'
+  </select>
+
+  <select id="selectActiveByUsername" resultType="com.feng.dsagent.auth.mapper.UserMapper$UserRow">
+    SELECT id, email, username, password_hash AS passwordHash
+    FROM users WHERE username_normalized = #{usernameNormalized} AND status = 'ACTIVE'
+  </select>
+
+  <select id="selectActiveById" resultType="com.feng.dsagent.auth.mapper.UserMapper$UserRow">
+    SELECT id, email, username, password_hash AS passwordHash
+    FROM users WHERE id = #{id} AND status = 'ACTIVE'
+  </select>
+
+  <select id="selectAnyByEmail" resultType="com.feng.dsagent.auth.mapper.UserMapper$UserRow">
+    SELECT id, email, username, password_hash AS passwordHash
+    FROM users WHERE email = #{email}
+  </select>
+
+  <select id="selectAnyByUsername" resultType="com.feng.dsagent.auth.mapper.UserMapper$UserRow">
+    SELECT id, email, username, password_hash AS passwordHash
+    FROM users WHERE username_normalized = #{usernameNormalized}
+  </select>
+
+  <select id="selectRoles" resultType="string">
+    SELECT role FROM user_roles WHERE user_id = #{userId} ORDER BY role
+  </select>
+
+  <insert id="insertUser" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+    INSERT INTO users (email, username, username_normalized, password_hash)
+    VALUES (#{email}, #{username}, #{usernameNormalized}, #{passwordHash})
+  </insert>
+
+  <insert id="insertRole">
+    INSERT INTO user_roles (user_id, role) VALUES (#{userId}, #{role})
+  </insert>
+
+  <update id="updatePassword">
+    UPDATE users
+    SET password_hash = #{passwordHash}, updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{userId} AND status = 'ACTIVE'
+  </update>
+
+  <update id="reconcileUser">
+    UPDATE users
+    SET email = #{email}, username = #{username}, username_normalized = #{usernameNormalized},
+        password_hash = #{passwordHash}, status = 'ACTIVE', disabled_reason = NULL,
+        disabled_at = NULL, updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{userId}
+  </update>
+
+  <delete id="deleteRoles">
+    DELETE FROM user_roles WHERE user_id = #{userId}
+  </delete>
+</mapper>

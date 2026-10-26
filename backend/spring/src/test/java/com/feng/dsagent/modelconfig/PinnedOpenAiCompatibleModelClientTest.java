@@ -5,9 +5,9 @@ import com.feng.dsagent.model.ModelStreamHandler;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
-import com.feng.dsagent.model.ModelClientException;
+import com.feng.dsagent.model.exception.ModelClientException;
 import com.feng.dsagent.model.ModelMessage;
-import com.feng.dsagent.model.ModelProperties;
+import com.feng.dsagent.model.config.ModelProperties;
 import com.feng.dsagent.model.ModelRequest;
 import com.feng.dsagent.model.ModelResponse;
 import java.io.ByteArrayInputStream;
@@ -23,6 +23,12 @@ import java.util.List;
 import tools.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
+import com.feng.dsagent.modelconfig.domain.ModelConfigResolvedTarget;
+import com.feng.dsagent.modelconfig.domain.ModelConfigRuntimeSettings;
+import com.feng.dsagent.modelconfig.support.PinnedHttpsConnection;
+import com.feng.dsagent.modelconfig.support.PinnedHttpsConnectionFactory;
+import com.feng.dsagent.modelconfig.support.PinnedHttpsTransport;
+import com.feng.dsagent.modelconfig.support.PinnedOpenAiCompatibleModelClient;
 class PinnedOpenAiCompatibleModelClientTest {
 
     @Test
@@ -190,7 +196,7 @@ class PinnedOpenAiCompatibleModelClientTest {
             settings("deepseek", 65_536), limited, new ObjectMapper(), new PinnedHttpsTransport(connections));
 
         var error = catchThrowableOfType(() -> client.stream(new ModelRequest(List.of(new ModelMessage("user", "hello"))),
-            ignored -> {}), com.feng.dsagent.model.ModelClientException.class);
+            ignored -> {}), com.feng.dsagent.model.exception.ModelClientException.class);
 
         assertThat(error.code()).isEqualTo("MODEL_RESPONSE_TOO_LARGE");
     }
@@ -317,9 +323,9 @@ class PinnedOpenAiCompatibleModelClientTest {
                 """))
         );
 
-        com.feng.dsagent.model.ModelClientException error = catchThrowableOfType(
+        com.feng.dsagent.model.exception.ModelClientException error = catchThrowableOfType(
             () -> client.stream(new ModelRequest(List.of(new ModelMessage("user", "hello"))), ignored -> { }),
-            com.feng.dsagent.model.ModelClientException.class
+            com.feng.dsagent.model.exception.ModelClientException.class
         );
 
         assertThat(error.code()).isEqualTo("MODEL_UPSTREAM_ERROR");

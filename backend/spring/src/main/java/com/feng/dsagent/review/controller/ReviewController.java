@@ -1,18 +1,14 @@
 package com.feng.dsagent.review.controller;
 
-import com.feng.dsagent.review.service.ReviewHistoryView;
-import com.feng.dsagent.review.service.ReviewDetailView;
-import com.feng.dsagent.review.service.ReviewItemView;
-import com.feng.dsagent.review.service.ReviewPage;
-
+import com.feng.dsagent.review.vo.ReviewHistoryVO;
+import com.feng.dsagent.review.vo.ReviewDetailVO;
+import com.feng.dsagent.review.vo.ReviewItemVO;
 import com.feng.dsagent.review.service.ReviewService;
-
 import com.feng.dsagent.common.RequestIdFilter;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.common.vo.PageVO;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,7 +18,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import com.feng.dsagent.review.dto.ReviewStatusDTO;
 
+/**
+ * 职责：管理端内容审核列表与状态变更的 HTTP 入口。
+ */
 @RestController
 @RequestMapping("/api/v1/admin/reviews")
 @PreAuthorize("hasRole('ADMIN')")
@@ -35,7 +35,7 @@ public class ReviewController {
     }
 
     @GetMapping
-    public ReviewPage<ReviewItemView> list(
+    public PageVO<ReviewItemVO> list(
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size,
         @RequestParam(required = false) String type,
@@ -46,23 +46,23 @@ public class ReviewController {
     }
 
     @GetMapping("/{type}/{id}")
-    public ReviewDetailView detail(@PathVariable String type, @PathVariable String id) {
+    public ReviewDetailVO detail(@PathVariable String type, @PathVariable String id) {
         return reviews.detail(type, id);
     }
 
     @PatchMapping("/{type}/{id}/status")
-    public ReviewItemView updateStatus(
+    public ReviewItemVO updateStatus(
         @AuthenticationPrincipal AuthenticatedUser actor,
         @PathVariable String type,
         @PathVariable String id,
-        @Valid @RequestBody ReviewStatusRequest request,
+        @Valid @RequestBody ReviewStatusDTO request,
         HttpServletRequest servletRequest
     ) {
         return reviews.updateStatus(actor, type, id, request.status(), request.note(), requestId(servletRequest));
     }
 
     @GetMapping("/{type}/{id}/history")
-    public java.util.List<ReviewHistoryView> history(@PathVariable String type, @PathVariable String id) {
+    public java.util.List<ReviewHistoryVO> history(@PathVariable String type, @PathVariable String id) {
         return reviews.history(type, id);
     }
 
@@ -71,9 +71,4 @@ public class ReviewController {
         return value == null ? "" : value.toString();
     }
 
-    public record ReviewStatusRequest(
-        @NotBlank @Size(max = 32) String status,
-        @Size(max = 500) String note
-    ) {
-    }
 }

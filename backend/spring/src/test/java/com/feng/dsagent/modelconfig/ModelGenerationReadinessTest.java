@@ -16,6 +16,11 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.feng.dsagent.modelconfig.domain.ModelConfigKeyBinding;
+import com.feng.dsagent.modelconfig.support.ModelConfigCrypto;
+import com.feng.dsagent.modelconfig.support.ModelConfigHostResolver;
+import com.feng.dsagent.modelconfig.support.ModelConfigMasterKeySource;
+import com.feng.dsagent.modelconfig.support.ModelGenerationReadiness;
 @SpringBootTest(properties = {
     "app.model.provider=environment",
     "app.model.api-key=environment-key",

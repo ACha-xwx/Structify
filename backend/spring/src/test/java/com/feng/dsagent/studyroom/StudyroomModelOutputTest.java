@@ -7,6 +7,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
+import com.feng.dsagent.studyroom.support.StudyroomModelOutput;
 class StudyroomModelOutputTest {
     @org.junit.jupiter.api.Test
     void preservesMissingTreeChildrenAsNullArrayEntries() {

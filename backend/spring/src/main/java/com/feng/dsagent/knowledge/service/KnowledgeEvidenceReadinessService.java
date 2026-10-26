@@ -1,13 +1,12 @@
 package com.feng.dsagent.knowledge.service;
 
-import com.feng.dsagent.knowledge.KnowledgeSearchResult;
-import com.feng.dsagent.knowledge.KnowledgeAudience;
 
+import org.springframework.stereotype.Service;
+import com.feng.dsagent.knowledge.vo.KnowledgeSearchResultVO;
+import com.feng.dsagent.knowledge.domain.KnowledgeAudience;
 import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
-
 import com.feng.dsagent.knowledge.mapper.KnowledgeEvidenceReadinessMapper;
 import java.util.List;
-import org.springframework.stereotype.Service;
 
 @Service
 public class KnowledgeEvidenceReadinessService {
@@ -39,9 +38,9 @@ public class KnowledgeEvidenceReadinessService {
         String chapterId,
         KnowledgeAudience audience
     ) {
-        List<KnowledgeSearchResult> results = search.search(prompt, chapterId, 6, audience);
+        List<KnowledgeSearchResultVO> results = search.search(prompt, chapterId, 6, audience);
         long sources = results.stream()
-            .map(result -> result.chunk().source() == null ? result.chunk().id() : result.chunk().source())
+            .map(result -> result.source() == null ? result.id() : result.source())
             .distinct()
             .count();
         return new KnowledgeSearchService.EvidenceInventory(results.size(), Math.toIntExact(sources));

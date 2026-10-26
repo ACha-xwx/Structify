@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.learning.mapper.LearningEventMapper">
+
+  <select id="countPublishedChapter" resultType="int">
+    SELECT COUNT(*) FROM chapters WHERE id = #{chapterId} AND status = 'PUBLISHED'
+  </select>
+
+  <insert id="insertEvent" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+    INSERT INTO learning_records (user_id, chapter_id, event_type, reference_id, payload_json, created_at)
+    VALUES (#{userId}, #{chapterId}, #{eventType}, #{referenceId}, #{payloadJson}, #{createdAt})
+  </insert>
+</mapper>

@@ -1,16 +1,14 @@
 package com.feng.dsagent.knowledge.controller;
 
-import com.feng.dsagent.knowledge.KnowledgeSearchResult;
-import com.feng.dsagent.knowledge.KnowledgeAudience;
-import com.feng.dsagent.knowledge.KnowledgeChunk;
-
+import com.feng.dsagent.knowledge.domain.KnowledgeAudience;
+import com.feng.dsagent.knowledge.error.KnowledgeErrorCode;
 import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
-
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.knowledge.vo.KnowledgeResultVO;
+import com.feng.dsagent.knowledge.vo.KnowledgeSearchVO;
+import com.feng.dsagent.knowledge.vo.KnowledgeSearchResultVO;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import java.nio.file.Path;
 import java.util.List;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -34,7 +32,7 @@ public final class KnowledgeController {
     }
 
     @GetMapping("/search")
-    public KnowledgeSearchResponse search(
+    public KnowledgeSearchVO search(
         @AuthenticationPrincipal AuthenticatedUser user,
         @RequestParam(required = false) String q,
         @RequestParam(required = false) String chapterId,
@@ -42,21 +40,21 @@ public final class KnowledgeController {
     ) {
         String query = normalize(q);
         if (query.isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "KNOWLEDGE_QUERY_REQUIRED", "请输入检索内容");
+            throw KnowledgeErrorCode.QUERY_REQUIRED.toException();
         }
         if (query.length() > MAX_QUERY_LENGTH) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "KNOWLEDGE_QUERY_TOO_LONG", "检索内容过长");
+            throw KnowledgeErrorCode.QUERY_TOO_LONG.toException();
         }
         String chapter = normalize(chapterId);
         if (chapter.length() > MAX_CHAPTER_LENGTH) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "KNOWLEDGE_CHAPTER_TOO_LONG", "章节编号无效");
+            throw KnowledgeErrorCode.CHAPTER_TOO_LONG.toException();
         }
         int boundedLimit = parseLimit(limit);
         KnowledgeAudience audience = KnowledgeAudience.from(user);
-        List<KnowledgeResultView> results = search.search(query, chapter, boundedLimit, audience).stream()
+        List<KnowledgeResultVO> results = search.search(query, chapter, boundedLimit, audience).stream()
             .map(KnowledgeController::view)
             .toList();
-        return new KnowledgeSearchResponse(true, query, results);
+        return new KnowledgeSearchVO(true, query, results);
     }
 
     private static int parseLimit(String value) {
@@ -66,28 +64,27 @@ public final class KnowledgeController {
         try {
             return Math.max(1, Math.min(MAX_LIMIT, Integer.parseInt(value.trim())));
         } catch (NumberFormatException error) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "KNOWLEDGE_LIMIT_INVALID", "返回数量参数无效");
+            throw KnowledgeErrorCode.LIMIT_INVALID.toException();
         }
     }
 
-    private static KnowledgeResultView view(KnowledgeSearchResult result) {
-        KnowledgeChunk chunk = result.chunk();
-        String source = safeSource(chunk.source());
-        String location = blankToDefault(chunk.pageLabel(), chunk.chapterId());
+    private static KnowledgeResultVO view(KnowledgeSearchResultVO result) {
+        String source = safeSource(result.source());
+        String location = blankToDefault(result.pageLabel(), result.chapterId());
         String kind = source.toLowerCase(java.util.Locale.ROOT).contains("answer") ? "answer" : "textbook";
-        return new KnowledgeResultView(
-            chunk.id(),
-            chunk.chapterId(),
-            chunk.title(),
-            chunk.chapterId(),
+        return new KnowledgeResultVO(
+            result.id(),
+            result.chapterId(),
+            result.title(),
+            result.chapterId(),
             kind,
             source,
-            chunk.pageLabel(),
+            result.pageLabel(),
             source,
             location,
             "已审核",
             "PUBLISHED",
-            truncate(chunk.content()),
+            truncate(result.content()),
             result.score()
         );
     }
@@ -120,23 +117,4 @@ public final class KnowledgeController {
         return source;
     }
 
-    public record KnowledgeSearchResponse(boolean ok, String query, List<KnowledgeResultView> results) {
-    }
-
-    public record KnowledgeResultView(
-        String id,
-        String chapterId,
-        String title,
-        String lessonNumber,
-        String kind,
-        String source,
-        String pageLabel,
-        String sourceLabel,
-        String locationLabel,
-        String reviewStatus,
-        String publicationStatus,
-        String excerpt,
-        double score
-    ) {
-    }
 }

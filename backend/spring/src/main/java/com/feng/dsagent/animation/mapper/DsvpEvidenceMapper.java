@@ -25,6 +25,14 @@ public interface DsvpEvidenceMapper {
 
     public List<ExistingSnapshotRow> selectExistingSnapshot(@Param("traceId") String traceId);
 
+    String selectClassroomChapter(@Param("sessionId") String sessionId, @Param("userId") long userId);
+
+    PresentationEvidenceRow selectPresentationPage(@Param("pageId") String pageId);
+
+    int countPublishedChapter(@Param("chapterId") String chapterId);
+
+    AnimationEvidenceRow selectReviewedAnimation(@Param("sourceRef") String sourceRef);
+
     public record ExistingSnapshotRow(
         String requestHash,
         String animationRecordId,
@@ -33,5 +41,16 @@ public interface DsvpEvidenceMapper {
         String chapterId,
         Long userId
     ) {
+    }
+
+    record PresentationEvidenceRow(
+        String presentationId,
+        String chapterId,
+        String sourceRef,
+        String licenseScope
+    ) {
+    }
+
+    record AnimationEvidenceRow(String id, String chapterId, String licenseScope) {
     }
 }

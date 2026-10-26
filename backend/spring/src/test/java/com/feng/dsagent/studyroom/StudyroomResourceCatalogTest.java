@@ -1,8 +1,8 @@
 package com.feng.dsagent.studyroom;
 
-import com.feng.dsagent.compiler.ClassroomCodeLesson;
-import com.feng.dsagent.compiler.ClassroomCodeSample;
-import com.feng.dsagent.compiler.ClassroomCodeStudyroomCatalog;
+import com.feng.dsagent.compiler.domain.ClassroomCodeLesson;
+import com.feng.dsagent.compiler.domain.ClassroomCodeSample;
+import com.feng.dsagent.compiler.support.ClassroomCodeStudyroomCatalog;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -11,11 +11,13 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
+import com.feng.dsagent.studyroom.support.StudyroomModelOutput;
+import com.feng.dsagent.studyroom.support.StudyroomResourceCatalog;
 class StudyroomResourceCatalogTest {
     @Test void suppliesActualSourceOnlyForSelectedCodeCandidates() {
-        var codes = org.mockito.Mockito.mock(com.feng.dsagent.compiler.ClassroomCodeStudyroomCatalog.class);
-        var sample = new com.feng.dsagent.compiler.ClassroomCodeSample("code-1", "遍历", "source", List.of(), List.of(), "摘要", "A..", "A", "void show() {}\nint main() { show(); }");
-        org.mockito.Mockito.when(codes.lessons()).thenReturn(List.of(new com.feng.dsagent.compiler.ClassroomCodeLesson("06-03", "遍历", "06-tree", List.of(sample))));
+        var codes = org.mockito.Mockito.mock(com.feng.dsagent.compiler.support.ClassroomCodeStudyroomCatalog.class);
+        var sample = new com.feng.dsagent.compiler.domain.ClassroomCodeSample("code-1", "遍历", "source", List.of(), List.of(), "摘要", "A..", "A", "void show() {}\nint main() { show(); }");
+        org.mockito.Mockito.when(codes.lessons()).thenReturn(List.of(new com.feng.dsagent.compiler.domain.ClassroomCodeLesson("06-03", "遍历", "06-tree", List.of(sample))));
         var live = new StudyroomResourceCatalog(null, null, codes, null);
         var chosen = List.of(new StudyroomResourceCatalog.Candidate(StudyroomModelOutput.ResourceType.C_CODE, "code-1", "遍历", "", List.of()));
         org.assertj.core.api.Assertions.assertThat(live.codeDetails(chosen)).singleElement().satisfies(detail -> {

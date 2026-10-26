@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.*;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
+import com.feng.dsagent.studyroom.fragment.domain.FragmentBudget;
 class FragmentBudgetTest {
     @Test void allPhasesShareFiniteCallsTokensAndActiveTime() {
         var budget = new FragmentBudget(4, 20000, Duration.ofMinutes(8));

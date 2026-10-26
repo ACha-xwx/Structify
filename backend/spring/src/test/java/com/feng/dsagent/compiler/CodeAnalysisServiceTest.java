@@ -1,25 +1,27 @@
 package com.feng.dsagent.compiler;
 
-import com.feng.dsagent.compiler.service.CodeAnalysisService;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.learning.LearningEventRepository;
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.compiler.config.CompilerProperties;
+import com.feng.dsagent.compiler.dto.CodeAnalysisDTO;
+import com.feng.dsagent.compiler.entity.CodeRunSnapshotEntity;
+import com.feng.dsagent.compiler.mapper.CodeRunMapper;
+import com.feng.dsagent.compiler.service.CodeAnalysisService;
+import com.feng.dsagent.compiler.vo.CodeAnalysisVO;
+import com.feng.dsagent.learning.mapper.LearningEventMapper;
 import com.feng.dsagent.learning.service.LearningEventService;
-import com.feng.dsagent.learning.LearningEventView;
 import com.feng.dsagent.model.ModelClient;
 import com.feng.dsagent.model.ModelRequest;
 import com.feng.dsagent.model.ModelResponse;
 import com.feng.dsagent.model.ModelStreamHandler;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import tools.jackson.databind.ObjectMapper;
 
 class CodeAnalysisServiceTest {
 
@@ -29,7 +31,7 @@ class CodeAnalysisServiceTest {
         model.response = "数组越界发生在 i <= n，应改为 i < n。";
         CodeAnalysisService service = new CodeAnalysisService(properties(), model);
 
-        CodeAnalysisResponse response = service.analyze(new CodeAnalysisRequest(
+        CodeAnalysisVO response = service.analyze(new CodeAnalysisDTO(
             "c",
             "for (int i = 0; i <= n; i++) a[i] = 0;",
             "",
@@ -54,9 +56,9 @@ class CodeAnalysisServiceTest {
         FakeModelClient model = new FakeModelClient();
         CodeAnalysisService service = new CodeAnalysisService(properties(), model);
 
-        assertThatThrownBy(() -> service.analyze(new CodeAnalysisRequest(
+        assertThatThrownBy(() -> service.analyze(new CodeAnalysisDTO(
             "python", "x".repeat(101), "", "", "", "success", null, null
-        ))).isInstanceOfSatisfying(ApiException.class, error -> {
+        ))).isInstanceOfSatisfying(BizException.class, error -> {
             assertThat(error.status()).isEqualTo(HttpStatus.PAYLOAD_TOO_LARGE);
             assertThat(error.code()).isEqualTo("COMPILER_CODE_TOO_LONG");
         });
@@ -68,9 +70,9 @@ class CodeAnalysisServiceTest {
         FakeModelClient model = new FakeModelClient();
         CodeAnalysisService service = new CodeAnalysisService(properties(), model);
 
-        assertThatThrownBy(() -> service.analyze(new CodeAnalysisRequest(
+        assertThatThrownBy(() -> service.analyze(new CodeAnalysisDTO(
             "c", "int main(void) { return 0; }", "", "", "", "success\" injected=\"true", null, null
-        ))).isInstanceOfSatisfying(ApiException.class, error -> {
+        ))).isInstanceOfSatisfying(BizException.class, error -> {
             assertThat(error.status()).isEqualTo(HttpStatus.BAD_REQUEST);
             assertThat(error.code()).isEqualTo("COMPILER_STATUS_INVALID");
         });
@@ -81,7 +83,7 @@ class CodeAnalysisServiceTest {
     void analyzesAnOwnedPersistedRunAndRecordsTrustedLearningEvidence() {
         FakeModelClient model = new FakeModelClient();
         model.response = "真实错误来自数组越界。";
-        FakeCodeRuns runs = new FakeCodeRuns(new CodeRunSnapshot(
+        FakeCodeRuns runs = new FakeCodeRuns(new CodeRunSnapshotEntity(
             "run-1",
             "03-stack-queue",
             "c",
@@ -96,10 +98,10 @@ class CodeAnalysisServiceTest {
             properties(),
             model,
             runs,
-            new LearningEventService(events, new tools.jackson.databind.ObjectMapper())
+            new LearningEventService(events, new ObjectMapper())
         );
 
-        CodeAnalysisResponse response = service.analyze(new CodeAnalysisRequest(
+        CodeAnalysisVO response = service.analyze(new CodeAnalysisDTO(
             "python",
             "print('forged')",
             "",
@@ -142,43 +144,59 @@ class CodeAnalysisServiceTest {
         }
     }
 
-    private static final class FakeCodeRuns implements CodeRunRepository {
-        private final CodeRunSnapshot run;
+    private static final class FakeCodeRuns implements CodeRunMapper {
+        private final CodeRunSnapshotEntity run;
 
-        private FakeCodeRuns(CodeRunSnapshot run) {
+        private FakeCodeRuns(CodeRunSnapshotEntity run) {
             this.run = run;
         }
 
         @Override
-        public String save(long userId, String chapterId, RunCodeRequest request, RunCodeResponse response) {
+        public int insert(
+            String id,
+            long userId,
+            String chapterId,
+            String language,
+            String sourceCode,
+            String stdinText,
+            String status,
+            String outputText,
+            String errorText,
+            Long durationMs
+        ) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public Optional<CodeRunSnapshot> findOwned(String runId, long userId) {
-            return userId == 7L && run.id().equals(runId) ? Optional.of(run) : Optional.empty();
+        public int countPublishedChapter(String chapterId) {
+            return 1;
+        }
+
+        @Override
+        public CodeRunSnapshotEntity selectOwned(String runId, long userId) {
+            return userId == 7L && run.id().equals(runId) ? run : null;
         }
     }
 
-    private static final class FakeLearningEvents implements LearningEventRepository {
+    private static final class FakeLearningEvents implements LearningEventMapper {
         private final List<SavedLearningEvent> saved = new ArrayList<>();
+        private long nextId = 1L;
 
         @Override
-        public boolean isPublishedChapter(String chapterId) {
-            return "03-stack-queue".equals(chapterId);
+        public int countPublishedChapter(String chapterId) {
+            return "03-stack-queue".equals(chapterId) ? 1 : 0;
         }
 
         @Override
-        public LearningEventView save(
-            long userId,
-            String eventType,
-            String chapterId,
-            String referenceId,
-            String payloadJson,
-            Instant createdAt
-        ) {
-            saved.add(new SavedLearningEvent(eventType, chapterId, referenceId, payloadJson));
-            return new LearningEventView(1L, eventType, chapterId, referenceId, createdAt);
+        public int insertEvent(LearningEventInsert row) {
+            row.setId(nextId++);
+            saved.add(new SavedLearningEvent(
+                row.getEventType(),
+                row.getChapterId(),
+                row.getReferenceId(),
+                row.getPayloadJson()
+            ));
+            return 1;
         }
     }
 

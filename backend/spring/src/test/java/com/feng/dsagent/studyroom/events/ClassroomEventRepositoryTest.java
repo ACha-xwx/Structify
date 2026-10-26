@@ -14,7 +14,9 @@ import org.springframework.jdbc.datasource.*;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 import static org.junit.jupiter.api.Assertions.*;
+import com.feng.dsagent.studyroom.draft.support.OutlineJson;
 
+import com.feng.dsagent.studyroom.events.domain.ClassroomEvent;
 class ClassroomEventRepositoryTest {
     final DriverManagerDataSource source = new DriverManagerDataSource("jdbc:h2:mem:events-" + UUID.randomUUID()
         + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1", "sa", "");

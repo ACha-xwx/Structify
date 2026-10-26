@@ -9,6 +9,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.feng.dsagent.knowledge.domain.KnowledgeAudience;
+import com.feng.dsagent.knowledge.domain.KnowledgeCorpusStats;
 @SpringBootTest(properties = {
     "app.knowledge.directory=src/test/resources/knowledge-fixture",
     "app.knowledge.auto-publish-local=true",
@@ -40,6 +42,6 @@ class KnowledgeBootstrapIntegrationTest {
             "单链表头插法的指针顺序", "02-linear-list", 4, KnowledgeAudience.STUDENT
         ))
             .isNotEmpty()
-            .allSatisfy(result -> assertThat(result.chunk().chapterId()).isEqualTo("02-linear-list"));
+            .allSatisfy(result -> assertThat(result.chapterId()).isEqualTo("02-linear-list"));
     }
 }

@@ -1,21 +1,24 @@
 package com.feng.dsagent.animation.service;
 
-import com.feng.dsagent.animation.AnimationGenerationResponse;
-import com.feng.dsagent.animation.AnimationGenerationCommand;
-import com.feng.dsagent.animation.AnimationValidationResult;
-import com.feng.dsagent.animation.AnimationDefinition;
-import com.feng.dsagent.animation.AnimationRepository;
-import com.feng.dsagent.animation.AnimationValidator;
-
-import com.feng.dsagent.aiquota.AiQuotaExecution;
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.aiquota.support.AiQuotaExecution;
+import com.feng.dsagent.animation.domain.AnimationDefinition;
+import com.feng.dsagent.animation.domain.AnimationValidationResult;
+import com.feng.dsagent.animation.dto.AnimationGenerationCommandDTO;
+import com.feng.dsagent.animation.mapper.AnimationMapper;
+import com.feng.dsagent.animation.prompt.AnimationGenerationPrompts;
+import com.feng.dsagent.animation.support.AnimationValidator;
+import com.feng.dsagent.animation.error.AnimationErrorCode;
+import com.feng.dsagent.animation.vo.AnimationGenerationVO;
+import com.feng.dsagent.common.exception.BizException;
 import com.feng.dsagent.model.ModelClient;
-import com.feng.dsagent.model.ModelClientException;
+import com.feng.dsagent.model.ModelErrorCode;
 import com.feng.dsagent.model.ModelMessage;
 import com.feng.dsagent.model.ModelRequest;
+import com.feng.dsagent.model.exception.ModelClientException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,49 +31,38 @@ public class AnimationGenerationService {
 
     private static final Set<String> TYPES = Set.of("stack", "list", "tree", "queue", "heap", "hash", "array");
     private static final Pattern FENCED_JSON = Pattern.compile("```(?:json)?\\s*([\\s\\S]*?)```", Pattern.CASE_INSENSITIVE);
-    private static final String SYSTEM_PROMPT = """
-        你是数据结构交互式动画规划器。只返回 JSON，不要返回解释、Markdown、HTML、SVG、CSS 或 JavaScript，禁止 HTML 和任何可执行代码。
-        JSON 格式必须是：
-        {"animation":true,"type":"stack|list|tree|queue|heap|hash|array","title":"简短标题","description":"演示目标","initial":[],"steps":[{"op":"操作","label":"步骤名","note":"本步观察","value":值或null,"index":null,"node":null,"i":null,"j":null,"key":null,"val":null}]}
-        最多 20 步。允许操作：
-        stack: push,pop,peek; list: append,insert,delete,deleteValue,find; tree: visit,highlight;
-        queue: enqueue,dequeue,peek; heap: insert,extract,peek; hash: put,get,delete;
-        array: set,insert,delete,swap,get。
-        note 必须描述可观察的状态变化，不得包含脚本、标签或外部链接。
-        """;
-
     private final AiQuotaExecution execution;
     private final AnimationValidator validator;
-    private final AnimationRepository repository;
+    private final AnimationMapper mapper;
     private final ObjectMapper objectMapper;
 
     public AnimationGenerationService(
         ModelClient model,
         AnimationValidator validator,
-        AnimationRepository repository,
+        AnimationMapper mapper,
         ObjectMapper objectMapper
     ) {
-        this(AiQuotaExecution.unmetered(model), validator, repository, objectMapper);
+        this(AiQuotaExecution.unmetered(model), validator, mapper, objectMapper);
     }
 
     @Autowired
     public AnimationGenerationService(
         AiQuotaExecution execution,
         AnimationValidator validator,
-        AnimationRepository repository,
+        AnimationMapper mapper,
         ObjectMapper objectMapper
     ) {
         this.execution = execution;
         this.validator = validator;
-        this.repository = repository;
+        this.mapper = mapper;
         this.objectMapper = objectMapper;
     }
 
-    public AnimationGenerationResponse generate(AnimationGenerationCommand command, Long userId) {
+    public AnimationGenerationVO generate(AnimationGenerationCommandDTO command, Long userId) {
         return generate(command, userId, null);
     }
 
-    public AnimationGenerationResponse generate(AnimationGenerationCommand command, Long userId, String requestId) {
+    public AnimationGenerationVO generate(AnimationGenerationCommandDTO command, Long userId, String requestId) {
         execution.requireFormalAuthentication(userId);
         String prompt = normalizePrompt(command.prompt());
         String preferredType = normalizeType(command.preferredType());
@@ -83,7 +75,7 @@ public class AnimationGenerationService {
         try {
             raw = execution.complete(userId, "animation", requestId, new ModelRequest(
                 List.of(
-                    new ModelMessage("system", SYSTEM_PROMPT),
+                    new ModelMessage("system", AnimationGenerationPrompts.SYSTEM_PROMPT),
                     new ModelMessage("user", userPrompt)
                 ),
                 0.15,
@@ -96,18 +88,20 @@ public class AnimationGenerationService {
         AnimationDefinition definition = parse(raw);
         AnimationValidationResult validation = validator.validate(definition);
         if (!validation.valid()) {
-            throw new ApiException(HttpStatus.BAD_GATEWAY, "ANIMATION_MODEL_INVALID", "模型返回的动画步骤不符合安全协议");
+            throw AnimationErrorCode.MODEL_INVALID.toException("模型返回的动画步骤不符合安全协议");
         }
         if (preferredType != null && !preferredType.equals(definition.type())) {
-            throw new ApiException(HttpStatus.BAD_GATEWAY, "ANIMATION_MODEL_INVALID", "模型返回了错误的动画类型");
+            throw AnimationErrorCode.MODEL_INVALID.toException("模型返回了错误的动画类型");
         }
 
         if (userId == null) {
-            return new AnimationGenerationResponse(definition, null, false);
+            return new AnimationGenerationVO(definition, null, false);
         }
         String payload = serialize(definition);
-        String recordId = repository.save(userId, chapterId, definition, payload);
-        return new AnimationGenerationResponse(definition, recordId, true);
+        String recordId = UUID.randomUUID().toString();
+        String chapter = chapterId == null || chapterId.isBlank() ? null : chapterId.trim();
+        mapper.insertRecord(recordId, userId, chapter, definition.type(), definition.title(), payload);
+        return new AnimationGenerationVO(definition, recordId, true);
     }
 
     private AnimationDefinition parse(String raw) {
@@ -144,10 +138,10 @@ public class AnimationGenerationService {
     private String normalizePrompt(String prompt) {
         String normalized = prompt == null ? "" : prompt.trim();
         if (normalized.isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_PROMPT_REQUIRED", "动画描述不能为空");
+            throw AnimationErrorCode.PROMPT_REQUIRED.toException();
         }
         if (normalized.length() > 2000) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_PROMPT_TOO_LONG", "动画描述过长");
+            throw AnimationErrorCode.PROMPT_TOO_LONG.toException();
         }
         return normalized;
     }
@@ -158,7 +152,7 @@ public class AnimationGenerationService {
         }
         String normalized = type.trim().toLowerCase(Locale.ROOT);
         if (!TYPES.contains(normalized)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_TYPE_UNSUPPORTED", "暂不支持该动画类型");
+            throw AnimationErrorCode.TYPE_UNSUPPORTED.toException();
         }
         return normalized;
     }
@@ -169,22 +163,27 @@ public class AnimationGenerationService {
         }
         String normalized = chapterId.trim();
         if (normalized.length() > 64 || !normalized.matches("^[0-9]{2}-[a-z0-9-]+$")
-                || !repository.isPublishedChapter(normalized)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_CHAPTER_INVALID", "章节不存在或尚未发布");
+                || mapper.countPublishedChapter(normalized) <= 0) {
+            throw AnimationErrorCode.CHAPTER_INVALID.toException();
         }
         return normalized;
     }
 
-    private ApiException modelFailure(ModelClientException error) {
+    private BizException modelFailure(ModelClientException error) {
+        for (ModelErrorCode value : ModelErrorCode.values()) {
+            if (value.code().equals(error.code())) {
+                return value.toException("动画生成服务暂时不可用");
+            }
+        }
         HttpStatus status = switch (error.code()) {
             case "MODEL_NOT_CONFIGURED" -> HttpStatus.SERVICE_UNAVAILABLE;
             case "MODEL_REQUEST_TIMEOUT" -> HttpStatus.GATEWAY_TIMEOUT;
             default -> HttpStatus.BAD_GATEWAY;
         };
-        return new ApiException(status, error.code(), "动画生成服务暂时不可用");
+        return new BizException(status, error.code(), "动画生成服务暂时不可用");
     }
 
-    private ApiException invalidModelResult() {
-        return new ApiException(HttpStatus.BAD_GATEWAY, "ANIMATION_MODEL_INVALID", "模型未返回有效的动画数据");
+    private BizException invalidModelResult() {
+        return AnimationErrorCode.MODEL_INVALID.toException();
     }
 }

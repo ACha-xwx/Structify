@@ -29,6 +29,9 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.feng.dsagent.modelconfig.domain.ModelConfigConnectionResult;
+import com.feng.dsagent.modelconfig.support.ModelConfigConnectionTester;
+import com.feng.dsagent.modelconfig.support.ModelConfigMasterKeySource;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(ConfiguredModelConfigApiIntegrationTest.TestMasterKeyConfiguration.class)

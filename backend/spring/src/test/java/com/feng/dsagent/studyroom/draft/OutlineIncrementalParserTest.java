@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.feng.dsagent.studyroom.draft.support.OutlineIncrementalParser;
+import com.feng.dsagent.studyroom.draft.support.OutlineJson;
 class OutlineIncrementalParserTest {
     final OutlineJson json=new OutlineJson(JsonMapper.builder().build());
     @Test void emitsOnlyClosedRootUnitsAcrossEveryCharacterBoundary() {

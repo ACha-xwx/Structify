@@ -2,7 +2,7 @@ package com.feng.dsagent.studyroom.checks;
 
 import com.feng.dsagent.studyroom.checks.service.ClassroomCheckService;
 
-import com.feng.dsagent.studyroom.draft.OutlineJson;
+import com.feng.dsagent.studyroom.draft.support.OutlineJson;
 import java.nio.file.*;
 import java.util.*;
 import org.junit.jupiter.api.Test;
@@ -10,6 +10,7 @@ import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.ObjectMapper;
 import static org.junit.jupiter.api.Assertions.*;
 
+import com.feng.dsagent.studyroom.checks.support.ClassroomQuestionBank;
 class ClassroomQuestionBankTest {
     @TempDir Path directory;
     @Test void exactBindingsAndDraftOptInUseCanonicalAnswer() throws Exception {

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.auth.mapper.VerificationCodeMapper">
+
+  <insert id="insertCode">
+    INSERT INTO verification_codes (email, purpose, code_hash, expires_at)
+    VALUES (#{email}, #{purpose}, #{codeHash}, #{expiresAt})
+  </insert>
+
+  <select id="selectLatestCreatedAt" resultType="java.sql.Timestamp">
+    SELECT created_at FROM verification_codes
+    WHERE email = #{email} AND purpose = #{purpose}
+    ORDER BY id DESC LIMIT 1
+  </select>
+
+  <select id="selectLatestActive" resultType="com.feng.dsagent.auth.mapper.VerificationCodeMapper$VerificationCodeRow">
+    SELECT id, code_hash AS codeHash, attempts, expires_at AS expiresAt
+    FROM verification_codes
+    WHERE email = #{email} AND purpose = #{purpose} AND consumed_at IS NULL
+    ORDER BY id DESC LIMIT 1
+  </select>
+
+  <update id="incrementAttemptsIfActive">
+    UPDATE verification_codes
+    SET attempts = attempts + 1
+    WHERE id = #{id} AND consumed_at IS NULL AND expires_at &gt; #{now} AND attempts &lt; #{maximumAttempts}
+  </update>
+
+  <update id="consumeIfActive">
+    UPDATE verification_codes
+    SET consumed_at = #{now}
+    WHERE id = #{id} AND consumed_at IS NULL AND expires_at &gt; #{now} AND attempts &lt; #{maximumAttempts}
+  </update>
+</mapper>

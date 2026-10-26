@@ -1,5 +1,6 @@
 package com.feng.dsagent.studyroom.fragment.mapper;
 
+import java.util.List;
 import java.util.Map;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -33,4 +34,23 @@ public interface FragmentLearningMapper {
         @Param("jobKey") String jobKey, @Param("payloadJson") String payloadJson);
     public int requeueFragmentJob(@Param("fragmentId") String fragmentId, @Param("jobId") String jobId);
     public int queueFragment(@Param("revision") int revision, @Param("fragmentId") String fragmentId);
+    public Map<String, Object> selectUnit(@Param("unitId") String unitId, @Param("runId") String runId);
+    public int insertFocusProgress(@Param("userId") long userId, @Param("runId") String runId,
+        @Param("unitId") String unitId, @Param("focusSequence") long focusSequence);
+    public int updateFocusProgress(@Param("unitId") String unitId, @Param("focusSequence") long focusSequence,
+        @Param("userId") long userId, @Param("runId") String runId);
+    public int touchRoomLearningAt(@Param("runId") String runId, @Param("userId") long userId);
+    public List<Map<String, Object>> selectUnitIds(@Param("runId") String runId);
+    public List<Map<String, Object>> selectFragmentIdsByUnit(@Param("unitId") String unitId);
+    public Map<String, Object> selectFirstFragmentId(@Param("unitId") Object unitId);
+    public List<Map<String, Object>> selectQueuedFragmentJobs(@Param("runId") String runId);
+    public int cancelQueuedJob(@Param("jobId") Object jobId);
+    public int resetQueuedFragment(@Param("fragmentId") Object fragmentId);
+    public Map<String, Object> selectFragmentForUpdate(@Param("fragmentId") String fragmentId);
+    public Map<String, Object> selectFragmentVersion(@Param("fragmentId") String fragmentId, @Param("revision") int revision);
+    public int bindFragmentJob(@Param("fragmentId") String fragmentId, @Param("priority") int priority,
+        @Param("jobId") String jobId);
+    public int insertFragment(@Param("id") String id, @Param("runId") String runId, @Param("unitId") String unitId,
+        @Param("fragmentKey") String fragmentKey, @Param("fragmentOrder") int fragmentOrder,
+        @Param("planJson") String planJson, @Param("planHash") String planHash);
 }
