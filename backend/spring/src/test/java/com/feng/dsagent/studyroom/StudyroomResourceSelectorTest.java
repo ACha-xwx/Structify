@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.*;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
+import com.feng.dsagent.studyroom.support.StudyroomModelOutput;
+import com.feng.dsagent.studyroom.support.StudyroomResourceCatalog;
+import com.feng.dsagent.studyroom.support.StudyroomResourceSelector;
 class StudyroomResourceSelectorTest {
     @Test void ranksCodeByStepObjectiveInsteadOfBroadOriginalQuestion() {
         var candidates = List.of(code("inorder", "中序遍历", "左根右"), code("preorder", "先序遍历递归实现", "根左右递归"), code("queue", "队列入队", "入队"));

@@ -13,6 +13,10 @@ import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 
+import com.feng.dsagent.knowledge.support.KnowledgeCorpus;
+import com.feng.dsagent.knowledge.domain.KnowledgeImportManifest;
+import com.feng.dsagent.knowledge.entity.KnowledgeChunkEntity;
+import com.feng.dsagent.knowledge.support.KnowledgeCorpusLoader;
 class KnowledgeCorpusLoaderTest {
 
     private static final String REVIEWED_LABEL = "> OCR质量：已对照原始教材 PDF 核验（2026-09-16）";
@@ -65,7 +69,7 @@ class KnowledgeCorpusLoaderTest {
         });
         // Chunks are page-scoped: each one names the single page it came from, so a classroom step can
         // cite the exact page it drew on instead of the whole lesson range.
-        assertThat(corpus.chunks()).extracting(KnowledgeChunk::pageLabel)
+        assertThat(corpus.chunks()).extracting(KnowledgeChunkEntity::pageLabel)
             .contains("第 35 页", "第 36 页");
         assertThat(corpus.chunks()).anySatisfy(chunk -> assertThat(chunk.content()).contains("头插法"));
     }
@@ -105,7 +109,7 @@ class KnowledgeCorpusLoaderTest {
         assertThat(corpus.stats().available()).isTrue();
         assertThat(corpus.stats().lessonFiles()).isGreaterThanOrEqualTo(4);
         assertThat(corpus.chunks()).isNotEmpty();
-        assertThat(corpus.chunks()).extracting(KnowledgeChunk::chapterId)
+        assertThat(corpus.chunks()).extracting(KnowledgeChunkEntity::chapterId)
             .contains("02-linear-list", "03-stack-queue", "06-tree", "07-graph");
         assertThat(corpus.chunks()).anySatisfy(chunk -> assertThat(chunk.content()).contains("栈"));
     }
@@ -246,8 +250,8 @@ class KnowledgeCorpusLoaderTest {
         KnowledgeCorpus second = new KnowledgeCorpusLoader(mapper).load(temporaryDirectory, 400);
 
         assertThat(first.stats().lessonFiles()).isEqualTo(1);
-        assertThat(first.chunks()).extracting(KnowledgeChunk::id)
-            .isEqualTo(second.chunks().stream().map(KnowledgeChunk::id).toList());
+        assertThat(first.chunks()).extracting(KnowledgeChunkEntity::id)
+            .isEqualTo(second.chunks().stream().map(KnowledgeChunkEntity::id).toList());
     }
 
     @Test

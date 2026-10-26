@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.studyroom.fragment.mapper.FragmentLearningMapper">
+  <select id="lockUser" resultType="long">SELECT id FROM users WHERE id=#{userId} FOR UPDATE</select>
+  <select id="selectOwnedRun" resultType="map">
+    SELECT r.* FROM studyroom_runs r JOIN study_rooms s ON s.id=r.room_id
+    WHERE r.id=#{runId} AND r.user_id=#{userId} AND s.deleted_at IS NULL
+  </select>
+  <select id="selectRoomCurrentRun" resultType="map">
+    SELECT id FROM study_rooms WHERE id=#{roomId} AND current_run_id=#{runId}
+  </select>
+  <select id="selectOwnedFragment" resultType="map">
+    SELECT * FROM studyroom_fragments WHERE id=#{fragmentId} AND run_id=#{runId}
+    <if test="lock"> FOR UPDATE</if>
+  </select>
+  <select id="findIdempotency" resultType="map">
+    SELECT * FROM studyroom_request_keys WHERE user_id=#{userId} AND operation=#{operation} AND idempotency_key=#{key}
+  </select>
+  <insert id="saveIdempotency">
+    INSERT INTO studyroom_request_keys(user_id,operation,idempotency_key,payload_hash,result_id)
+    VALUES(#{userId},#{operation},#{key},#{payloadHash},#{resultId})
+  </insert>
+  <select id="countRemainingFragments" resultType="int">
+    SELECT COUNT(*) FROM studyroom_fragments WHERE unit_id=#{unitId} AND (step_id IS NULL OR fragment_order&gt;#{fragmentOrder})
+  </select>
+  <select id="selectCompletedKnowledge" resultType="map">
+    SELECT unit_id FROM studyroom_completed_knowledge WHERE user_id=#{userId} AND run_id=#{runId} AND unit_id=#{unitId}
+  </select>
+  <insert id="insertCompletedKnowledge">
+    INSERT INTO studyroom_completed_knowledge(user_id,run_id,unit_id) VALUES(#{userId},#{runId},#{unitId})
+  </insert>
+  <select id="selectLearningProgressForUpdate" resultType="map">
+    SELECT * FROM studyroom_learning_progress WHERE user_id=#{userId} AND run_id=#{runId} FOR UPDATE
+  </select>
+  <insert id="insertLearningProgress">
+    INSERT INTO studyroom_learning_progress(user_id,run_id,unit_id,fragment_id,completed)
+    VALUES(#{userId},#{runId},#{unitId},#{fragmentId},#{completed})
+  </insert>
+  <update id="updateLearningProgress">
+    UPDATE studyroom_learning_progress SET unit_id=#{unitId},fragment_id=#{fragmentId},completed=#{completed},updated_at=CURRENT_TIMESTAMP
+    WHERE user_id=#{userId} AND run_id=#{runId}
+  </update>
+  <update id="updateRoomLearning">
+    UPDATE study_rooms SET current_step_id=#{stepId},last_learning_at=CURRENT_TIMESTAMP WHERE current_run_id=#{runId} AND user_id=#{userId}
+  </update>
+  <update id="touchRun">UPDATE studyroom_runs SET state_version=state_version+1 WHERE id=#{runId}</update>
+  <select id="selectActiveFragmentJob" resultType="map">
+    SELECT id FROM studyroom_generation_jobs WHERE fragment_id=#{fragmentId} AND status IN ('QUEUED','RUNNING')
+  </select>
+  <select id="nextFragmentRevision" resultType="int">
+    SELECT COALESCE(MAX(revision),0)+1 FROM studyroom_fragment_versions WHERE fragment_id=#{fragmentId}
+  </select>
+  <insert id="insertFragmentVersion">
+    INSERT INTO studyroom_fragment_versions(fragment_id,revision,status) VALUES(#{fragmentId},#{revision},'PENDING')
+  </insert>
+  <select id="selectFragmentVersionForUpdate" resultType="map">
+    SELECT * FROM studyroom_fragment_versions WHERE fragment_id=#{fragmentId} AND revision=#{revision} FOR UPDATE
+  </select>
+  <select id="selectExistingJobKey" resultType="map">
+    SELECT id FROM studyroom_generation_jobs WHERE job_key=#{jobKey}
+  </select>
+  <insert id="insertGenerationJob">
+    INSERT INTO studyroom_generation_jobs(id,user_id,draft_id,run_id,unit_id,job_type,job_key,status,payload_json)
+    VALUES(#{id},#{userId},#{draftId},#{runId},#{unitId},#{jobType},#{jobKey},'QUEUED',#{payloadJson})
+  </insert>
+  <update id="requeueFragmentJob">
+    UPDATE studyroom_generation_jobs SET fragment_id=#{fragmentId},priority=300,
+      attempt=CASE WHEN status IN ('FAILED','CANCELLED') THEN attempt+1 ELSE attempt END,
+      status='QUEUED',lease_token=NULL,lease_until=NULL,failure_code=NULL,failure_message=NULL,next_attempt_at=CURRENT_TIMESTAMP
+    WHERE id=#{jobId}
+  </update>
+  <update id="queueFragment">
+    UPDATE studyroom_fragments SET status='QUEUED',pending_revision=#{revision},error_code=NULL,issues_json=NULL WHERE id=#{fragmentId}
+  </update>
+  <select id="selectUnit" resultType="map">
+    SELECT id FROM studyroom_units WHERE id=#{unitId} AND run_id=#{runId}
+  </select>
+  <insert id="insertFocusProgress">
+    INSERT INTO studyroom_learning_progress(user_id,run_id,unit_id,focus_sequence)
+    VALUES(#{userId},#{runId},#{unitId},#{focusSequence})
+  </insert>
+  <update id="updateFocusProgress">
+    UPDATE studyroom_learning_progress
+    SET fragment_id=CASE WHEN unit_id=#{unitId} THEN fragment_id ELSE NULL END,
+        unit_id=#{unitId},completed=FALSE,focus_sequence=#{focusSequence},updated_at=CURRENT_TIMESTAMP
+    WHERE user_id=#{userId} AND run_id=#{runId}
+  </update>
+  <update id="touchRoomLearningAt">
+    UPDATE study_rooms SET last_learning_at=CURRENT_TIMESTAMP WHERE current_run_id=#{runId} AND user_id=#{userId}
+  </update>
+  <select id="selectUnitIds" resultType="map">
+    SELECT id FROM studyroom_units WHERE run_id=#{runId} ORDER BY unit_order
+  </select>
+  <select id="selectFragmentIdsByUnit" resultType="map">
+    SELECT id FROM studyroom_fragments WHERE unit_id=#{unitId} ORDER BY fragment_order
+  </select>
+  <select id="selectFirstFragmentId" resultType="map">
+    SELECT id FROM studyroom_fragments WHERE unit_id=#{unitId} ORDER BY fragment_order LIMIT 1
+  </select>
+  <select id="selectQueuedFragmentJobs" resultType="map">
+    SELECT id,fragment_id FROM studyroom_generation_jobs
+    WHERE run_id=#{runId} AND job_type='FRAGMENT' AND status='QUEUED'
+  </select>
+  <update id="cancelQueuedJob">
+    UPDATE studyroom_generation_jobs SET status='CANCELLED',failure_code='FOCUS_CHANGED'
+    WHERE id=#{jobId} AND status='QUEUED'
+  </update>
+  <update id="resetQueuedFragment">
+    UPDATE studyroom_fragments SET status='PENDING' WHERE id=#{fragmentId} AND status='QUEUED'
+  </update>
+  <select id="selectFragmentForUpdate" resultType="map">
+    SELECT * FROM studyroom_fragments WHERE id=#{fragmentId} FOR UPDATE
+  </select>
+  <select id="selectFragmentVersion" resultType="map">
+    SELECT revision FROM studyroom_fragment_versions WHERE fragment_id=#{fragmentId} AND revision=#{revision}
+  </select>
+  <update id="bindFragmentJob">
+    UPDATE studyroom_generation_jobs
+    SET fragment_id=#{fragmentId},priority=#{priority},
+        status=CASE WHEN status='CANCELLED' THEN 'QUEUED' ELSE status END,
+        next_attempt_at=CURRENT_TIMESTAMP
+    WHERE id=#{jobId}
+  </update>
+  <insert id="insertFragment">
+    INSERT INTO studyroom_fragments(id,run_id,unit_id,fragment_key,fragment_order,plan_json,plan_hash,status)
+    VALUES(#{id},#{runId},#{unitId},#{fragmentKey},#{fragmentOrder},#{planJson},#{planHash},'PENDING')
+  </insert>
+</mapper>

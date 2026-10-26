@@ -1,10 +1,15 @@
 package com.feng.dsagent.auth;
 
+import com.feng.dsagent.auth.converter.UserAccountConverterImpl;
+import com.feng.dsagent.auth.service.AuthService;
+import com.feng.dsagent.auth.service.UserAccountService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.security.JwtTokenService;
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.security.service.JwtTokenService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -18,9 +23,16 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import tools.jackson.databind.ObjectMapper;
 
+import com.feng.dsagent.auth.domain.VerificationCodeDelivery;
+import com.feng.dsagent.auth.entity.UserAccountEntity;
+import com.feng.dsagent.auth.mapper.UserMapper;
+import com.feng.dsagent.auth.support.RolePolicy;
+import com.feng.dsagent.auth.support.UsernamePolicy;
+import com.feng.dsagent.auth.support.VerificationCodeManager;
+import com.feng.dsagent.auth.vo.AuthSessionVO;
 class AuthServiceTest {
 
-    private final FakeUserRepository users = new FakeUserRepository();
+    private final FakeUserAccountService users = new FakeUserAccountService();
     private final FakeVerificationCodeManager codes = new FakeVerificationCodeManager();
     private final BCryptPasswordEncoder passwords = new BCryptPasswordEncoder();
     private final JwtTokenService tokens = new JwtTokenService(
@@ -36,7 +48,7 @@ class AuthServiceTest {
         AuthService service = service(new RolePolicy("", ""));
         codes.allow("student@example.com", "register", "123456");
 
-        AuthSession session = service.register("student@example.com", "123456", "correct-horse");
+        AuthSessionVO session = service.register("student@example.com", "123456", "correct-horse");
 
         assertThat(session.user().roles()).containsExactly("STUDENT");
         assertThat(passwords.matches("correct-horse", users.findByEmail("student@example.com").orElseThrow().passwordHash()))
@@ -49,7 +61,7 @@ class AuthServiceTest {
         AuthService service = service(new RolePolicy("admin@example.com", "teacher@example.com,admin@example.com"));
         codes.allow("admin@example.com", "register", "654321");
 
-        AuthSession session = service.register("ADMIN@example.com", "654321", "correct-horse");
+        AuthSessionVO session = service.register("ADMIN@example.com", "654321", "correct-horse");
 
         assertThat(session.user().roles()).containsExactlyInAnyOrder("STUDENT", "TEACHER", "ADMIN");
     }
@@ -71,7 +83,7 @@ class AuthServiceTest {
         service.register("student@example.com", "123456", "old-password");
         codes.allow("student@example.com", "reset", "654321");
 
-        AuthSession session = service.resetPassword("student@example.com", "654321", "new-password");
+        AuthSessionVO session = service.resetPassword("student@example.com", "654321", "new-password");
 
         assertThat(session.user().email()).isEqualTo("student@example.com");
         assertInvalidCredentials(() -> service.login("student@example.com", "old-password"));
@@ -84,7 +96,7 @@ class AuthServiceTest {
         AuthService service = service(new RolePolicy("", ""));
         codes.allow("username@example.com", "register", "123456");
 
-        AuthSession registration = service.register("username@example.com", "ACha_", "123456", "correct-horse");
+        AuthSessionVO registration = service.register("username@example.com", "ACha_", "123456", "correct-horse");
 
         assertThat(registration.user().username()).isEqualTo("ACha_");
         assertThat(service.login("acha_", "correct-horse").user().email()).isEqualTo("username@example.com");
@@ -99,7 +111,7 @@ class AuthServiceTest {
         codes.allow("second@example.com", "register", "654321");
 
         assertThatThrownBy(() -> service.register("second@example.com", "acha_", "654321", "correct-horse"))
-            .isInstanceOfSatisfying(ApiException.class, error -> {
+            .isInstanceOfSatisfying(BizException.class, error -> {
                 assertThat(error.status()).isEqualTo(HttpStatus.CONFLICT);
                 assertThat(error.code()).isEqualTo("AUTH_USERNAME_REGISTERED");
             });
@@ -107,7 +119,7 @@ class AuthServiceTest {
 
     private void assertInvalidCredentials(Runnable action) {
         assertThatThrownBy(action::run)
-            .isInstanceOfSatisfying(ApiException.class, error -> {
+            .isInstanceOfSatisfying(BizException.class, error -> {
                 assertThat(error.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
                 assertThat(error.code()).isEqualTo("AUTH_INVALID_CREDENTIALS");
                 assertThat(error.getMessage()).isEqualTo("邮箱或密码错误");
@@ -115,7 +127,7 @@ class AuthServiceTest {
     }
 
     private AuthService service(RolePolicy roles) {
-        return new AuthService(users, codes, passwords, tokens, roles);
+        return new AuthService(users, codes, passwords, tokens, roles, new UserAccountConverterImpl());
     }
 
     private static final class FakeVerificationCodeManager implements VerificationCodeManager {
@@ -134,34 +146,38 @@ class AuthServiceTest {
         public void consume(String email, String purpose, String code) {
             String expected = allowed.remove(email.toLowerCase() + ":" + purpose);
             if (!code.equals(expected)) {
-                throw new ApiException(HttpStatus.UNAUTHORIZED, "AUTH_CODE_INVALID", "验证码无效或已过期");
+                throw new BizException(HttpStatus.UNAUTHORIZED, "AUTH_CODE_INVALID", "验证码无效或已过期");
             }
         }
     }
 
-    private static final class FakeUserRepository implements UserRepository {
-        private final Map<String, UserAccount> byEmail = new LinkedHashMap<>();
-        private final Map<String, UserAccount> byUsername = new LinkedHashMap<>();
+    private static final class FakeUserAccountService extends UserAccountService {
+        private final Map<String, UserAccountEntity> byEmail = new LinkedHashMap<>();
+        private final Map<String, UserAccountEntity> byUsername = new LinkedHashMap<>();
         private long nextId = 1;
 
+        private FakeUserAccountService() {
+            super(mock(UserMapper.class));
+        }
+
         @Override
-        public Optional<UserAccount> findByEmail(String email) {
+        public Optional<UserAccountEntity> findByEmail(String email) {
             return Optional.ofNullable(byEmail.get(email.toLowerCase()));
         }
 
         @Override
-        public Optional<UserAccount> findByUsername(String normalizedUsername) {
+        public Optional<UserAccountEntity> findByUsername(String normalizedUsername) {
             return Optional.ofNullable(byUsername.get(normalizedUsername));
         }
 
         @Override
-        public Optional<UserAccount> findById(long id) {
+        public Optional<UserAccountEntity> findById(long id) {
             return byEmail.values().stream().filter(user -> user.id() == id).findFirst();
         }
 
         @Override
-        public UserAccount create(String email, String username, String passwordHash, Set<String> roles) {
-            UserAccount account = new UserAccount(nextId++, email.toLowerCase(), username, passwordHash, roles);
+        public UserAccountEntity create(String email, String username, String passwordHash, Set<String> roles) {
+            UserAccountEntity account = new UserAccountEntity(nextId++, email.toLowerCase(), username, passwordHash, roles);
             byEmail.put(account.email(), account);
             if (username != null) {
                 byUsername.put(UsernamePolicy.lookupKey(username), account);
@@ -171,11 +187,11 @@ class AuthServiceTest {
 
         @Override
         public void updatePassword(long userId, String passwordHash) {
-            UserAccount current = byEmail.values().stream()
+            UserAccountEntity current = byEmail.values().stream()
                 .filter(user -> user.id() == userId)
                 .findFirst()
                 .orElseThrow();
-            byEmail.put(current.email(), new UserAccount(
+            byEmail.put(current.email(), new UserAccountEntity(
                 current.id(), current.email(), current.username(), passwordHash, current.roles()
             ));
             if (current.username() != null) {

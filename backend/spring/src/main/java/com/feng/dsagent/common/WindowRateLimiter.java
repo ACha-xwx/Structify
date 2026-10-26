@@ -17,7 +17,7 @@ public final class WindowRateLimiter {
         this(maximumRequests, window, DEFAULT_MAXIMUM_TRACKED_KEYS);
     }
 
-    WindowRateLimiter(int maximumRequests, Duration window, int maximumTrackedKeys) {
+    public WindowRateLimiter(int maximumRequests, Duration window, int maximumTrackedKeys) {
         if (maximumRequests < 1) {
             throw new IllegalArgumentException("maximumRequests must be positive");
         }
@@ -55,7 +55,7 @@ public final class WindowRateLimiter {
         return next.allowed();
     }
 
-    int trackedKeyCount() {
+    public int trackedKeyCount() {
         return counters.size();
     }
 

@@ -1,5 +1,9 @@
 package com.feng.dsagent.knowledge;
 
+import com.feng.dsagent.knowledge.service.KnowledgeEvidenceReadinessService;
+import com.feng.dsagent.knowledge.service.KnowledgeIndexRefreshService;
+import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
@@ -10,6 +14,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.feng.dsagent.knowledge.domain.KnowledgeAudience;
+import com.feng.dsagent.knowledge.domain.KnowledgeEligibilityChanged;
 @SpringBootTest
 class KnowledgeEligibilityIntegrationTest {
 
@@ -179,7 +185,7 @@ class KnowledgeEligibilityIntegrationTest {
         refresh.refreshAfterEligibilityChange(new KnowledgeEligibilityChanged());
 
         assertThat(search.search("evidence", chapterId, 6, KnowledgeAudience.STUDENT))
-            .extracting(result -> result.chunk().id())
+            .extracting(result -> result.id())
             .containsExactly(CHUNK_ID);
 
         // Simulates a separate source-chain writer that has not emitted a review event yet.

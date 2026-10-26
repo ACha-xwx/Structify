@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.admin.observability.mapper.AdminObservabilityMapper">
+
+  <sql id="backgroundFilters">
+    1 = 1
+    <if test="status != null and status != ''">
+      AND status = #{status}
+    </if>
+    <if test="userId != null">
+      AND requested_by_user_id = #{userId}
+    </if>
+  </sql>
+
+  <sql id="studyroomFilters">
+    1 = 1
+    <if test="status != null and status != ''">
+      AND j.status = #{status}
+    </if>
+    <if test="userId != null">
+      AND j.user_id = #{userId}
+    </if>
+  </sql>
+
+  <select id="countBackground" resultType="long">
+    SELECT COUNT(*) FROM background_tasks WHERE
+    <include refid="backgroundFilters"/>
+  </select>
+
+  <select id="countStudyroom" resultType="long">
+    SELECT COUNT(*) FROM studyroom_generation_jobs j WHERE
+    <include refid="studyroomFilters"/>
+  </select>
+
+  <select id="selectBackground" resultType="com.feng.dsagent.admin.observability.mapper.AdminObservabilityMapper$BackgroundJobRow">
+    SELECT id, task_type AS taskType, status, created_at AS createdAt, finished_at AS finishedAt,
+           failure_reason AS failureReason, requested_by_user_id AS requestedByUserId
+    FROM background_tasks WHERE
+    <include refid="backgroundFilters"/>
+    ORDER BY created_at DESC LIMIT #{limit}
+  </select>
+
+  <select id="selectStudyroom" resultType="com.feng.dsagent.admin.observability.mapper.AdminObservabilityMapper$StudyroomJobRow">
+    SELECT j.id, j.job_type AS jobType, j.status, j.created_at AS createdAt, j.updated_at AS updatedAt,
+           j.failure_message AS failureMessage, j.user_id AS userId,
+      (SELECT COALESCE(SUM(COALESCE(q.actual_tokens, q.estimated_tokens)), 0)
+         FROM studyroom_generation_calls c
+         JOIN ai_quota_reservations q ON q.request_id = c.quota_request_id
+        WHERE c.job_id = j.id) AS tokens
+    FROM studyroom_generation_jobs j WHERE
+    <include refid="studyroomFilters"/>
+    ORDER BY j.created_at DESC LIMIT #{limit}
+  </select>
+
+  <select id="selectCostRows" resultType="com.feng.dsagent.admin.observability.mapper.AdminObservabilityMapper$CostRawRow">
+    SELECT quota_date AS quotaDate, user_id AS userId, COUNT(*) AS calls,
+           SUM(COALESCE(actual_tokens, estimated_tokens)) AS tokens
+    FROM ai_quota_reservations
+    WHERE completed_at IS NOT NULL AND quota_date BETWEEN #{from} AND #{to}
+    GROUP BY quota_date, user_id
+  </select>
+
+  <select id="countStudyRooms" resultType="long">SELECT COUNT(*) FROM study_rooms</select>
+  <select id="countStudyroomRuns" resultType="long">SELECT COUNT(*) FROM studyroom_runs</select>
+  <select id="countStudyroomJobs" resultType="long">SELECT COUNT(*) FROM studyroom_generation_jobs</select>
+  <select id="countStudyroomQueued" resultType="long">
+    SELECT COUNT(*) FROM studyroom_generation_jobs WHERE status IN ('QUEUED', 'RUNNING', 'LEASED')
+  </select>
+  <select id="countStudyroomFailed" resultType="long">
+    SELECT COUNT(*) FROM studyroom_generation_jobs
+    WHERE failure_code IS NOT NULL OR UPPER(status) IN ('FAILED', 'DEAD', 'ERROR', 'CANCELED', 'CANCELLED')
+  </select>
+  <select id="countFragments" resultType="long">SELECT COUNT(*) FROM studyroom_fragments</select>
+  <select id="countClassroomEvents" resultType="long">SELECT COUNT(*) FROM classroom_events</select>
+  <select id="countCodeRuns" resultType="long">SELECT COUNT(*) FROM code_runs</select>
+  <select id="countAnimationRecords" resultType="long">SELECT COUNT(*) FROM animation_records</select>
+  <select id="countLearners" resultType="long">
+    SELECT COUNT(DISTINCT s.user_id) FROM classroom_events e JOIN classroom_sessions s ON s.id = e.session_id
+  </select>
+  <select id="countReservationsToday" resultType="long">
+    SELECT COUNT(*) FROM ai_quota_reservations WHERE quota_date = CURRENT_DATE
+  </select>
+  <select id="sumTokensToday" resultType="long">
+    SELECT COALESCE(SUM(COALESCE(actual_tokens, estimated_tokens)), 0)
+    FROM ai_quota_reservations WHERE completed_at IS NOT NULL AND quota_date = CURRENT_DATE
+  </select>
+</mapper>

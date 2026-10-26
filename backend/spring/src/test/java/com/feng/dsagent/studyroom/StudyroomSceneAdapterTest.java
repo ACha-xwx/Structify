@@ -5,6 +5,9 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
+import com.feng.dsagent.studyroom.vo.StudyroomVO;
+import com.feng.dsagent.studyroom.domain.StudyroomScene;
+import com.feng.dsagent.studyroom.support.StudyroomSceneAdapter;
 class StudyroomSceneAdapterTest {
     @Test void rejectsUnboundReferencesAndInvalidLineRanges() {
         String json = """
@@ -14,7 +17,7 @@ class StudyroomSceneAdapterTest {
             .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new StudyroomScene.Item("code", "说明", 8, 2)).isInstanceOf(IllegalArgumentException.class);
     }
-    private StudyroomView.Resource resource(String type, String id) {
-        return new StudyroomView.Resource(type, id, id, "", java.util.Map.of(), true);
+    private StudyroomVO.Resource resource(String type, String id) {
+        return new StudyroomVO.Resource(type, id, id, "", java.util.Map.of(), true);
     }
 }

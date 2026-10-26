@@ -4,7 +4,11 @@ import static org.assertj.core.api.Assertions.*;
 import com.feng.dsagent.studyroom.draft.*;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import com.feng.dsagent.studyroom.draft.domain.LearningDepth;
+import com.feng.dsagent.studyroom.draft.domain.ReviewedOutline;
 
+import com.feng.dsagent.studyroom.fragment.domain.FragmentPlan;
+import com.feng.dsagent.studyroom.fragment.support.ContentPlanCompiler;
 class ContentPlanCompilerTest {
     private final ContentPlanCompiler compiler = new ContentPlanCompiler();
 

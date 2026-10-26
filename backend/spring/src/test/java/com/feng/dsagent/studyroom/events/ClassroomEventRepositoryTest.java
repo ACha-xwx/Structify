@@ -1,5 +1,10 @@
 package com.feng.dsagent.studyroom.events;
 
+import com.feng.dsagent.studyroom.events.mapper.ClassroomEventMapper;
+
+import com.feng.dsagent.studyroom.events.service.ClassroomEventService;
+import com.feng.dsagent.studyroom.support.StudyroomMapperFactory;
+
 import com.feng.dsagent.studyroom.draft.*;
 import java.util.*;
 import org.flywaydb.core.Flyway;
@@ -9,7 +14,9 @@ import org.springframework.jdbc.datasource.*;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 import static org.junit.jupiter.api.Assertions.*;
+import com.feng.dsagent.studyroom.draft.support.OutlineJson;
 
+import com.feng.dsagent.studyroom.events.domain.ClassroomEvent;
 class ClassroomEventRepositoryTest {
     final DriverManagerDataSource source = new DriverManagerDataSource("jdbc:h2:mem:events-" + UUID.randomUUID()
         + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1", "sa", "");
@@ -19,12 +26,12 @@ class ClassroomEventRepositoryTest {
     final ClassroomEventService service;
     final long user;
 
-    ClassroomEventRepositoryTest() {
+    ClassroomEventRepositoryTest() throws Exception {
         Flyway.configure().dataSource(source).locations("classpath:db/migration").load().migrate();
         db.update("INSERT INTO users(email,password_hash) VALUES('events@example.com','hash')");
         user = db.queryForObject("SELECT id FROM users WHERE email='events@example.com'", Long.class);
         db.update("INSERT INTO study_outline_drafts(id,user_id,question,depth,status) VALUES('draft',?,'q','STANDARD','GENERATING')", user);
-        service = new ClassroomEventService(new JdbcClassroomEventRepository(new JdbcOutlineRepository(db), json), new DataSourceTransactionManager(source));
+        service = new ClassroomEventService(StudyroomMapperFactory.create(source, ClassroomEventMapper.class), json, new DataSourceTransactionManager(source));
         service.open(user, "outline:draft", "OUTLINE", "draft", null, "operation", 1, null, 1, Map.of("phase", "QUEUED"));
     }
 

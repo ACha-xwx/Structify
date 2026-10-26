@@ -12,6 +12,13 @@ import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
+import com.feng.dsagent.modelconfig.domain.ModelConfigConnection;
+import com.feng.dsagent.modelconfig.domain.ModelConfigConnectionResult;
+import com.feng.dsagent.modelconfig.domain.ModelConfigResolvedTarget;
+import com.feng.dsagent.modelconfig.support.HttpModelConfigConnectionTester;
+import com.feng.dsagent.modelconfig.support.PinnedHttpsConnection;
+import com.feng.dsagent.modelconfig.support.PinnedHttpsConnectionFactory;
+import com.feng.dsagent.modelconfig.support.PinnedHttpsTransport;
 class HttpModelConfigConnectionTesterTest {
 
     @Test

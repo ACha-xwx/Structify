@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.modelconfig.mapper.ModelConfigMapper">
+
+  <select id="selectById" resultType="com.feng.dsagent.modelconfig.entity.ModelConfigEntity">
+    SELECT id,
+           provider,
+           base_url AS baseUrl,
+           model_name AS model,
+           api_key_ciphertext AS apiKeyCiphertext,
+           temperature,
+           max_output_tokens AS maxOutputTokens,
+           request_timeout_ms AS requestTimeoutMs,
+           retry_count AS retryCount,
+           daily_token_quota AS dailyTokenQuota,
+           enabled,
+           last_test_status AS lastConnectionTestStatus,
+           last_tested_at AS lastConnectionTestedAt,
+           updated_at AS updatedAt
+    FROM model_configurations
+    WHERE id = #{id}
+  </select>
+
+  <update id="updateKeepingConnectionTest">
+    UPDATE model_configurations
+    SET provider = #{provider},
+        base_url = #{baseUrl},
+        model_name = #{model},
+        api_key_ciphertext = #{apiKeyCiphertext},
+        temperature = #{temperature},
+        max_output_tokens = #{maxOutputTokens},
+        request_timeout_ms = #{requestTimeoutMs},
+        retry_count = #{retryCount},
+        daily_token_quota = #{dailyTokenQuota},
+        enabled = #{enabled},
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{id}
+  </update>
+
+  <update id="updateClearingConnectionTest">
+    UPDATE model_configurations
+    SET provider = #{provider},
+        base_url = #{baseUrl},
+        model_name = #{model},
+        api_key_ciphertext = #{apiKeyCiphertext},
+        temperature = #{temperature},
+        max_output_tokens = #{maxOutputTokens},
+        request_timeout_ms = #{requestTimeoutMs},
+        retry_count = #{retryCount},
+        daily_token_quota = #{dailyTokenQuota},
+        enabled = #{enabled},
+        last_test_status = NULL,
+        last_tested_at = NULL,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{id}
+  </update>
+
+  <insert id="insert">
+    INSERT INTO model_configurations (
+      id, provider, base_url, model_name, api_key_ciphertext,
+      temperature, max_output_tokens, request_timeout_ms, retry_count, daily_token_quota, enabled
+    ) VALUES (
+      #{id}, #{provider}, #{baseUrl}, #{model}, #{apiKeyCiphertext},
+      #{temperature}, #{maxOutputTokens}, #{requestTimeoutMs}, #{retryCount}, #{dailyTokenQuota}, #{enabled}
+    )
+  </insert>
+
+  <update id="updateConnectionTest">
+    UPDATE model_configurations
+    SET last_test_status = #{status},
+        last_tested_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{id}
+  </update>
+</mapper>

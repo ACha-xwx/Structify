@@ -9,7 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.feng.dsagent.security.JwtTokenService;
+import com.feng.dsagent.security.service.JwtTokenService;
 import java.security.SecureRandom;
 import java.util.Optional;
 import java.util.Set;
@@ -29,6 +29,9 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.feng.dsagent.modelconfig.domain.ModelConfigConnectionResult;
+import com.feng.dsagent.modelconfig.support.ModelConfigConnectionTester;
+import com.feng.dsagent.modelconfig.support.ModelConfigMasterKeySource;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(ConfiguredModelConfigApiIntegrationTest.TestMasterKeyConfiguration.class)

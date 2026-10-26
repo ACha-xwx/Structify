@@ -5,6 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
+import com.feng.dsagent.animation.domain.AnimationDefinition;
+import com.feng.dsagent.animation.domain.AnimationStep;
+import com.feng.dsagent.animation.domain.AnimationValidationError;
+import com.feng.dsagent.animation.domain.AnimationValidationResult;
+import com.feng.dsagent.animation.support.AnimationValidator;
 class AnimationValidatorTest {
 
     private final AnimationValidator validator = new AnimationValidator();

@@ -3,11 +3,13 @@ package com.feng.dsagent.modelconfig;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
 import java.net.InetAddress;
 import java.net.URI;
 import org.junit.jupiter.api.Test;
 
+import com.feng.dsagent.modelconfig.domain.ModelConfigResolvedTarget;
+import com.feng.dsagent.modelconfig.support.ModelConfigUrlValidator;
 class ModelConfigUrlValidatorTest {
 
     @Test
@@ -50,7 +52,7 @@ class ModelConfigUrlValidatorTest {
     }
 
     private void assertUnsafe(ModelConfigUrlValidator validator, String baseUrl) {
-        ApiException exception = assertThrows(ApiException.class, () -> validator.validate(baseUrl));
+        BizException exception = assertThrows(BizException.class, () -> validator.validate(baseUrl));
         assertThat(exception.code()).isEqualTo("MODEL_CONFIG_URL_UNSAFE");
     }
 

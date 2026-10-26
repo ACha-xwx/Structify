@@ -1,9 +1,11 @@
 package com.feng.dsagent.classroom;
 
+import com.feng.dsagent.classroom.service.ClassroomService;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -14,6 +16,11 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
+import com.feng.dsagent.classroom.vo.ClassroomSessionVO;
+import com.feng.dsagent.classroom.domain.ClassroomAction;
+import com.feng.dsagent.classroom.domain.ClassroomAnswerStatus;
+import com.feng.dsagent.classroom.domain.ClassroomState;
+import com.feng.dsagent.classroom.support.ClassroomModelJson;
 @SpringBootTest
 @Transactional
 class ClassroomServiceTest {
@@ -46,7 +53,7 @@ class ClassroomServiceTest {
     @Test void keepsTheQuestionsAskedDuringTheLessonAndTellsTheNextAnswerAboutThem() {
         String id = service.create(user, "timeline-test").id();
 
-        ClassroomSessionView first = service.apply(user, id, ClassroomAction.ASK, "这个例子我不懂");
+        ClassroomSessionVO first = service.apply(user, id, ClassroomAction.ASK, "这个例子我不懂");
         assertThat(first.stage().path("asks")).hasSize(1);
         assertThat(first.stage().path("asks").get(0).path("question").asText()).isEqualTo("这个例子我不懂");
         assertThat(first.stage().path("asks").get(0).path("answer").asText()).isEqualTo("先直接回答你的插问");
@@ -85,14 +92,14 @@ class ClassroomServiceTest {
         String id = service.create(user,"timeline-test").id();
         service.apply(user,id,ClassroomAction.CONTINUE,null);
         service.apply(user,id,ClassroomAction.CONTINUE,null);
-        ClassroomSessionView response = service.apply(user,id,ClassroomAction.ASK,"请重新解释一下");
+        ClassroomSessionVO response = service.apply(user,id,ClassroomAction.ASK,"请重新解释一下");
         assertThat(response.stage().path("teacherResponse").path("feedback").asText()).contains("插问");
         assertThat(service.get(user,id).stage()).isEqualTo(response.stage());
-        ClassroomSessionView resumed = service.apply(user,id,ClassroomAction.CONTINUE,null);
+        ClassroomSessionVO resumed = service.apply(user,id,ClassroomAction.CONTINUE,null);
         assertThat(resumed.state()).isEqualTo(ClassroomState.WAITING);
         assertThat(resumed.stage().path("stepIndex").asInt()).isEqualTo(1);
         assertThat(resumed.stage().has("teacherResponse")).isFalse();
-        assertThatThrownBy(() -> service.apply(user,id,ClassroomAction.CONTINUE,null)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> service.apply(user,id,ClassroomAction.CONTINUE,null)).isInstanceOf(BizException.class);
     }
     @Test void midLessonSummaryStepDoesNotEndTheLesson() {
         jdbc.update("""
@@ -108,14 +115,14 @@ class ClassroomServiceTest {
         assertThat(service.apply(user, id, ClassroomAction.CONTINUE, null).stage().path("content").asText()).isEqualTo("讲解 A");
         // A summary page of the deck reports the summary beat without ending the lesson: the next
         // sub-lesson still has to be reachable, otherwise the rest of the courseware is stranded.
-        ClassroomSessionView summary = service.apply(user, id, ClassroomAction.CONTINUE, null);
+        ClassroomSessionVO summary = service.apply(user, id, ClassroomAction.CONTINUE, null);
         assertThat(summary.state()).isEqualTo(ClassroomState.SUMMARY);
         assertThat(summary.stage().path("stepIndex").asInt()).isEqualTo(1);
         assertThat(service.apply(user, id, ClassroomAction.CONTINUE, null).stage().path("content").asText()).isEqualTo("讲解 B");
         // Only running past the last step ends the lesson.
-        ClassroomSessionView done = service.apply(user, id, ClassroomAction.CONTINUE, null);
+        ClassroomSessionVO done = service.apply(user, id, ClassroomAction.CONTINUE, null);
         assertThat(done.stage().path("stepIndex").asInt()).isEqualTo(3);
-        assertThatThrownBy(() -> service.apply(user, id, ClassroomAction.CONTINUE, null)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> service.apply(user, id, ClassroomAction.CONTINUE, null)).isInstanceOf(BizException.class);
     }
     @Test void aWrongAnswerKeepsTheQuestionUntilItIsAnsweredAgain() {
         String id = service.create(user, "timeline-test").id();
@@ -123,7 +130,7 @@ class ClassroomServiceTest {
         service.apply(user,id,ClassroomAction.CONTINUE,null);
         when(model.generate(anyLong(),anyString(),anyString(),anyInt(),any()))
             .thenReturn(mapper.readTree("{\"status\":\"INCORRECT\",\"feedback\":\"漏掉了右子树，再按中序看一遍\",\"misconception\":\"只考虑了左子树\"}"));
-        ClassroomSessionView wrong = service.apply(user,id,ClassroomAction.ANSWER,"只说了左子树");
+        ClassroomSessionVO wrong = service.apply(user,id,ClassroomAction.ANSWER,"只说了左子树");
         // The question is not consumed: it stays open on the same step and is reported as unanswered,
         // which is what stops CONTINUE from walking past it.
         assertThat(wrong.state()).isEqualTo(ClassroomState.WAITING);
@@ -136,7 +143,7 @@ class ClassroomServiceTest {
         // Answering the same open question again is accepted, and the attempt count follows along.
         when(model.generate(anyLong(),anyString(),anyString(),anyInt(),any()))
             .thenReturn(mapper.readTree("{\"status\":\"CORRECT\",\"feedback\":\"这次对了\",\"misconception\":null}"));
-        ClassroomSessionView correct = service.apply(user,id,ClassroomAction.ANSWER,"左子树、根结点、右子树");
+        ClassroomSessionVO correct = service.apply(user,id,ClassroomAction.ANSWER,"左子树、根结点、右子树");
         assertThat(correct.state()).isEqualTo(ClassroomState.DISCUSS);
         assertThat(correct.stage().path("teacherResponse").path("answered").asBoolean()).isTrue();
         assertThat(correct.stage().path("teacherResponse").path("attempts").asInt()).isEqualTo(2);
@@ -149,7 +156,7 @@ class ClassroomServiceTest {
         service.apply(user,id,ClassroomAction.CONTINUE,null);
         when(model.generate(anyLong(),anyString(),anyString(),anyInt(),any()))
             .thenReturn(mapper.readTree("{\"feedback\":\"先看它有没有孩子\"}"));
-        ClassroomSessionView hinted = service.apply(user,id,ClassroomAction.HINT,null);
+        ClassroomSessionVO hinted = service.apply(user,id,ClassroomAction.HINT,null);
         // A hint is not an answer and not a move: the same question stays open on the same step, so the
         // learner can still answer it, and CONTINUE still cannot walk past it.
         assertThat(hinted.state()).isEqualTo(ClassroomState.WAITING);
@@ -159,7 +166,7 @@ class ClassroomServiceTest {
         assertThat(hinted.stage().path("teacherResponse").path("feedback").asText()).isEqualTo("先看它有没有孩子");
         assertThat(service.apply(user,id,ClassroomAction.CONTINUE,null).stage().path("stepIndex").asInt()).isEqualTo(1);
         // A second hint would be the answer in disguise; the way out from here is answering or skipping.
-        assertThatThrownBy(() -> service.apply(user,id,ClassroomAction.HINT,null)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> service.apply(user,id,ClassroomAction.HINT,null)).isInstanceOf(BizException.class);
     }
     @Test void skippingResolvesTheQuestionWithinTheLessonBudget() {
         String id = service.create(user, "timeline-test").id();
@@ -167,7 +174,7 @@ class ClassroomServiceTest {
         service.apply(user,id,ClassroomAction.CONTINUE,null);
         when(model.generate(anyLong(),anyString(),anyString(),anyInt(),any()))
             .thenReturn(mapper.readTree("{\"feedback\":\"参考答案：根结点先访问，再递归左右子树\"}"));
-        ClassroomSessionView skipped = service.apply(user,id,ClassroomAction.SKIP,null);
+        ClassroomSessionVO skipped = service.apply(user,id,ClassroomAction.SKIP,null);
         // The question is resolved without an answer: the explanation stands in for it, the cursor has not
         // moved (the learner reads it here), and the next step is free to take.
         assertThat(skipped.state()).isEqualTo(ClassroomState.BLACKBOARD);
@@ -190,11 +197,11 @@ class ClassroomServiceTest {
         service.apply(user,id,ClassroomAction.ANSWER,"前序遍历的结果");
         // CONTINUE only clears the failed attempt and returns to the very same question: it never
         // advances the cursor, so a wrong answer cannot carry the lesson forward.
-        ClassroomSessionView reopened = service.apply(user,id,ClassroomAction.CONTINUE,null);
+        ClassroomSessionVO reopened = service.apply(user,id,ClassroomAction.CONTINUE,null);
         assertThat(reopened.stage().path("stepIndex").asInt()).isEqualTo(1);
         assertThat(reopened.state()).isEqualTo(ClassroomState.WAITING);
         assertThat(reopened.stage().has("teacherResponse")).isFalse();
-        assertThatThrownBy(() -> service.apply(user,id,ClassroomAction.CONTINUE,null)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> service.apply(user,id,ClassroomAction.CONTINUE,null)).isInstanceOf(BizException.class);
     }
     @Test void aWrongAnswerOnTheLastStepDoesNotEndTheLesson() {
         jdbc.update("""
@@ -210,11 +217,11 @@ class ClassroomServiceTest {
         service.apply(user,id,ClassroomAction.CONTINUE,null);
         when(model.generate(anyLong(),anyString(),anyString(),anyInt(),any()))
             .thenReturn(mapper.readTree("{\"status\":\"INCORRECT\",\"feedback\":\"再想想\",\"misconception\":null}"));
-        ClassroomSessionView wrong = service.apply(user,id,ClassroomAction.ANSWER,"答错");
+        ClassroomSessionVO wrong = service.apply(user,id,ClassroomAction.ANSWER,"答错");
         assertThat(wrong.state()).isEqualTo(ClassroomState.WAITING);
         // The regression this guards: a wrong answer on the final step used to consume it, so the next
         // CONTINUE ran the cursor past the end and reported the whole lesson as finished.
-        ClassroomSessionView again = service.apply(user,id,ClassroomAction.CONTINUE,null);
+        ClassroomSessionVO again = service.apply(user,id,ClassroomAction.CONTINUE,null);
         assertThat(again.state()).isEqualTo(ClassroomState.WAITING);
         assertThat(again.stage().path("stepIndex").asInt()).isEqualTo(1);
         assertThat(again.stage().path("stepCount").asInt()).isEqualTo(2);
@@ -222,9 +229,9 @@ class ClassroomServiceTest {
     }
     @Test void pausesAndEnforcesOwnership() {
         String id = service.create(user,"timeline-test").id();
-        assertThatThrownBy(() -> service.get(user+1,id)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> service.get(user+1,id)).isInstanceOf(BizException.class);
         service.apply(user,id,ClassroomAction.PAUSE,null);
-        assertThatThrownBy(() -> service.apply(user,id,ClassroomAction.ASK,"问题")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> service.apply(user,id,ClassroomAction.ASK,"问题")).isInstanceOf(BizException.class);
         service.apply(user,id,ClassroomAction.RESUME,null);
         assertThat(service.apply(user,id,ClassroomAction.CONTINUE,null).stage().path("stepIndex").asInt()).isZero();
     }
@@ -238,7 +245,7 @@ class ClassroomServiceTest {
     @Test void rejectsReplayedNextWithoutConsumingAnotherStep() {
         String id = service.create(user,"timeline-test").id();
         service.apply(user,id,ClassroomAction.CONTINUE,null,0);
-        assertThatThrownBy(() -> service.apply(user,id,ClassroomAction.CONTINUE,null,0)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> service.apply(user,id,ClassroomAction.CONTINUE,null,0)).isInstanceOf(BizException.class);
         assertThat(service.get(user,id).stage().path("stepIndex").asInt()).isZero();
         assertThat(service.get(user,id).stage().path("revision").asInt()).isEqualTo(1);
     }
@@ -248,7 +255,7 @@ class ClassroomServiceTest {
         when(model.generate(anyLong(),anyString(),anyString(),anyInt(),any())).thenReturn(mapper.readTree("""
             {"feedback":"先回答插问","status":"FINISHED","answered":true,"stepIndex":99,"kind":"answer"}
             """));
-        ClassroomSessionView result = service.apply(user,id,ClassroomAction.ASK,"为什么？");
+        ClassroomSessionVO result = service.apply(user,id,ClassroomAction.ASK,"为什么？");
         assertThat(result.answerEvaluation()).isNull();
         assertThat(result.stage().path("teacherResponse").has("status")).isFalse();
         assertThat(result.stage().path("teacherResponse").path("answered").asBoolean()).isFalse();

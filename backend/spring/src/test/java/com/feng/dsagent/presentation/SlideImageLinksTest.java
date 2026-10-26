@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
+import com.feng.dsagent.presentation.config.PresentationProperties;
+import com.feng.dsagent.presentation.support.SlideImageLinks;
 /**
  * The signature is what stands in for a session on the page-image urls, so it has to be unguessable,
  * stable, and specific to one page. These tests pin all three, because a regression here is either a

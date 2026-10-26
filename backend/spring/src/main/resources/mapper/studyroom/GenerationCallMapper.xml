@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.studyroom.generation.mapper.GenerationCallMapper">
+  <select id="lockUser" resultType="long">SELECT id FROM users WHERE id=#{userId} FOR UPDATE</select>
+  <select id="selectJobForUpdate" resultType="map">
+    SELECT * FROM studyroom_generation_jobs WHERE id=#{jobId} AND user_id=#{userId} FOR UPDATE
+  </select>
+  <select id="selectJob" resultType="map">SELECT * FROM studyroom_generation_jobs WHERE id=#{jobId}</select>
+  <select id="selectJobStatus" resultType="map">
+    SELECT status FROM studyroom_generation_jobs WHERE id=#{jobId} AND user_id=#{userId}
+  </select>
+  <select id="countCurrentRun" resultType="int">
+    SELECT COUNT(*) FROM studyroom_runs r JOIN study_rooms s ON s.current_run_id=r.id
+    WHERE r.id=#{runId} AND r.user_id=#{userId}
+  </select>
+  <select id="selectPriorCall" resultType="map">
+    SELECT * FROM studyroom_generation_calls WHERE job_id=#{jobId} AND attempt=#{attempt} AND phase=#{phase}
+  </select>
+  <select id="selectCall" resultType="map">SELECT * FROM studyroom_generation_calls WHERE id=#{callId}</select>
+  <insert id="insertSentCall">
+    INSERT INTO studyroom_generation_calls(id,job_id,attempt,phase,status,quota_request_id)
+    VALUES(#{id},#{jobId},#{attempt},#{phase},'SENT',#{quotaRequestId})
+  </insert>
+  <update id="updateCallContext">UPDATE studyroom_generation_calls SET request_context_json=#{contextJson} WHERE id=#{callId}</update>
+  <update id="markCallSucceeded">
+    UPDATE studyroom_generation_calls SET status='SUCCEEDED',response_json=#{responseJson},updated_at=CURRENT_TIMESTAMP
+    WHERE id=#{callId} AND status='SENT'
+  </update>
+  <update id="markCallFailed">
+    UPDATE studyroom_generation_calls SET status='FAILED',failure_code='MODEL_EXECUTION_FAILED',updated_at=CURRENT_TIMESTAMP
+    WHERE id=#{callId} AND status='SENT'
+  </update>
+  <select id="selectCallsByJob" resultType="map">
+    SELECT request_context_json,usage_json,elapsed_ms FROM studyroom_generation_calls WHERE job_id=#{jobId}
+  </select>
+  <update id="updateCallIssues">
+    UPDATE studyroom_generation_calls SET issues_json=#{issuesJson}
+    WHERE job_id=#{jobId} AND phase=#{phase} AND status='SUCCEEDED'
+      AND EXISTS(SELECT 1 FROM studyroom_generation_jobs WHERE id=#{jobId} AND user_id=#{userId})
+  </update>
+  <select id="selectFragmentVersionForUpdate" resultType="map">
+    SELECT * FROM studyroom_fragment_versions WHERE fragment_id=#{fragmentId} AND revision=#{revision} FOR UPDATE
+  </select>
+  <update id="reserveFragmentBudget">
+    UPDATE studyroom_fragment_versions SET consumed_calls=consumed_calls+1,consumed_tokens=consumed_tokens+#{tokens}
+    WHERE fragment_id=#{fragmentId} AND revision=#{revision}
+  </update>
+  <update id="updateCallUsage">
+    UPDATE studyroom_generation_calls SET usage_json=#{usageJson},elapsed_ms=#{elapsedMs} WHERE id=#{callId}
+  </update>
+  <update id="adjustFragmentUsage">
+    UPDATE studyroom_fragment_versions SET consumed_tokens=consumed_tokens+#{tokenDelta},active_duration_ms=active_duration_ms+#{elapsedMs}
+    WHERE fragment_id=#{fragmentId} AND revision=#{revision}
+  </update>
+  <select id="selectActiveJob" resultType="map">
+    SELECT id FROM studyroom_generation_jobs WHERE id=#{jobId} AND status='RUNNING' AND lease_token=#{leaseToken}
+      AND lease_until&gt;CURRENT_TIMESTAMP
+  </select>
+</mapper>

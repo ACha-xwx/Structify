@@ -1,22 +1,29 @@
 package com.feng.dsagent.studyroom.draft;
 
+import com.feng.dsagent.compiler.support.CodeExecutionReadiness;
+import com.feng.dsagent.studyroom.draft.service.OutlineFeasibilityService;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import com.feng.dsagent.studyroom.*;
-import com.feng.dsagent.studyroom.curriculum.CurriculumCatalog;
+import com.feng.dsagent.studyroom.curriculum.support.CurriculumCatalog;
 
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
+import com.feng.dsagent.studyroom.support.StudyroomModelOutput;
+import com.feng.dsagent.studyroom.support.StudyroomResourceCatalog;
 
+import com.feng.dsagent.studyroom.draft.domain.LearningDepth;
+import com.feng.dsagent.studyroom.draft.domain.ReviewedOutline;
 class OutlineFeasibilityTest {
     final StudyroomResourceCatalog catalog = mock(StudyroomResourceCatalog.class);
     final OutlineFeasibilityService service =
             new OutlineFeasibilityService(
                     catalog,
                     new CurriculumCatalog(),
-                    mock(com.feng.dsagent.compiler.CodeExecutionReadiness.class));
+                    mock(com.feng.dsagent.compiler.support.CodeExecutionReadiness.class));
 
     ReviewedOutline outline(
             List<String> coverage, List<String> activities, List<String> exclusions) {

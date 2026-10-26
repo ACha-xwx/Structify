@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.admin.mapper.BackgroundTaskMapper">
+
+  <sql id="taskColumns">
+    id,
+    task_type AS taskType,
+    status,
+    created_at AS createdAt,
+    started_at AS startedAt,
+    deadline_at AS deadlineAt,
+    heartbeat_at AS heartbeatAt,
+    finished_at AS finishedAt,
+    failure_code AS failureCode,
+    failure_reason AS failureReason,
+    result_count AS resultCount,
+    retry_count AS retryCount,
+    max_attempts AS maxAttempts,
+    cancel_requested_at AS cancelRequestedAt,
+    requested_by_user_id AS requestedByUserId,
+    request_id AS requestId
+  </sql>
+
+  <sql id="taskWhere">
+    <where>
+      <if test="status != null">
+        AND status = #{status}
+      </if>
+      <if test="taskType != null">
+        AND task_type = #{taskType}
+      </if>
+    </where>
+  </sql>
+
+  <select id="countTasks" resultType="long">
+    SELECT COUNT(*) FROM background_tasks
+    <include refid="taskWhere"/>
+  </select>
+
+  <select id="selectTasks" resultType="com.feng.dsagent.admin.entity.BackgroundTaskEntity">
+    SELECT <include refid="taskColumns"/>
+    FROM background_tasks
+    <include refid="taskWhere"/>
+    ORDER BY created_at DESC, id DESC
+    LIMIT #{size} OFFSET #{offset}
+  </select>
+
+  <select id="find" resultType="com.feng.dsagent.admin.entity.BackgroundTaskEntity">
+    SELECT <include refid="taskColumns"/>
+    FROM background_tasks WHERE id = #{taskId}
+  </select>
+
+  <select id="lock" resultType="com.feng.dsagent.admin.entity.BackgroundTaskEntity">
+    SELECT <include refid="taskColumns"/>
+    FROM background_tasks WHERE id = #{taskId} FOR UPDATE
+  </select>
+
+  <insert id="insertRecoveryTask" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+    INSERT INTO background_tasks (
+      task_type, status, created_at, deadline_at, requested_by_user_id, request_id
+    ) VALUES (
+      'STALE_TASK_RECOVERY', 'PENDING', #{createdAt}, #{deadlineAt}, #{requestedByUserId}, #{requestId}
+    )
+  </insert>
+
+  <update id="start">
+    UPDATE background_tasks
+    SET status = 'RUNNING', started_at = #{startedAt}, heartbeat_at = #{startedAt}, deadline_at = #{deadlineAt}
+    WHERE id = #{taskId} AND status = 'PENDING' AND cancel_requested_at IS NULL
+  </update>
+
+  <update id="complete">
+    UPDATE background_tasks
+    SET status = 'SUCCEEDED', finished_at = #{completedAt}, heartbeat_at = #{completedAt},
+        failure_code = NULL, failure_reason = NULL, result_count = #{resultCount}
+    WHERE id = #{taskId} AND status = 'RUNNING'
+  </update>
+
+  <update id="fail">
+    UPDATE background_tasks
+    SET status = 'FAILED', finished_at = #{failedAt}, heartbeat_at = #{failedAt},
+        failure_code = #{code}, failure_reason = #{reason}
+    WHERE id = #{taskId} AND status = 'RUNNING'
+  </update>
+
+  <update id="queueRetry">
+    UPDATE background_tasks
+    SET status = 'PENDING', started_at = NULL, heartbeat_at = NULL, finished_at = NULL,
+        deadline_at = #{deadlineAt}, failure_code = NULL, failure_reason = NULL,
+        cancel_requested_at = NULL, result_count = NULL, retry_count = retry_count + 1
+    WHERE id = #{taskId}
+  </update>
+
+  <update id="cancel">
+    UPDATE background_tasks
+    SET status = 'CANCELED', cancel_requested_at = #{canceledAt}, finished_at = #{canceledAt},
+        heartbeat_at = #{canceledAt}
+    WHERE id = #{taskId} AND status = 'PENDING'
+  </update>
+
+  <update id="failExpired">
+    UPDATE background_tasks
+    SET status = 'FAILED', finished_at = #{now}, heartbeat_at = #{now},
+        failure_code = 'BACKGROUND_TASK_TIMEOUT',
+        failure_reason = 'Task exceeded its execution deadline'
+    WHERE status IN ('PENDING', 'RUNNING') AND deadline_at IS NOT NULL AND deadline_at &lt; #{now}
+  </update>
+
+</mapper>

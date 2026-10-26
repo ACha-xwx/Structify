@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.studyroom.checks.mapper.ClassroomCheckMapper">
+  <select id="selectLastFragment" resultType="map">
+    SELECT f.* FROM studyroom_fragments f
+    JOIN studyroom_runs r ON r.id=f.run_id
+    JOIN study_rooms s ON s.current_run_id=r.id
+    JOIN study_outline_drafts d ON d.id=r.draft_id
+    WHERE f.run_id=#{runId} AND f.unit_id=#{unitId} AND r.user_id=#{userId}
+      AND s.deleted_at IS NULL AND d.deleted_at IS NULL
+    ORDER BY f.fragment_order DESC LIMIT 1
+  </select>
+  <select id="selectJob" resultType="map">SELECT * FROM studyroom_generation_jobs WHERE id=#{jobId}</select>
+  <select id="selectUnitSpec" resultType="map">SELECT unit_spec_json FROM studyroom_units WHERE id=#{unitId}</select>
+  <select id="selectCheckSet" resultType="map">
+    SELECT * FROM studyroom_check_sets WHERE fragment_id=#{fragmentId} AND content_revision=#{revision}
+  </select>
+  <insert id="insertCheckSetPending">
+    INSERT INTO studyroom_check_sets(fragment_id,content_revision,status) VALUES(#{fragmentId},#{revision},'PENDING')
+  </insert>
+  <update id="failCheckSet">
+    UPDATE studyroom_check_sets SET status='FAILED',failure_code='CHECK_INVALID'
+    WHERE fragment_id=#{fragmentId} AND content_revision=#{revision}
+  </update>
+  <insert id="insertCheck">
+    INSERT INTO studyroom_checks(id,user_id,run_id,unit_id,fragment_id,content_revision,generation_id,question_order,prompt,options_json,answer_option,analysis)
+    VALUES(#{id},#{userId},#{runId},#{unitId},#{fragmentId},#{revision},#{generationId},#{order},#{prompt},#{optionsJson},#{answerOption},#{analysis})
+  </insert>
+  <update id="readyCheckSet">
+    UPDATE studyroom_check_sets SET status='READY',generation_id=#{generationId},failure_code=NULL,pending_job_id=NULL
+    WHERE fragment_id=#{fragmentId} AND content_revision=#{revision}
+  </update>
+  <select id="selectChecks" resultType="map">
+    SELECT * FROM studyroom_checks WHERE fragment_id=#{fragmentId} AND content_revision=#{revision} AND generation_id=#{generationId}
+    ORDER BY question_order
+  </select>
+  <select id="selectAttempts" resultType="map">
+    SELECT * FROM studyroom_check_attempts WHERE check_id=#{checkId} AND user_id=#{userId} ORDER BY created_at,id
+  </select>
+  <select id="selectCheck" resultType="map">
+    SELECT * FROM studyroom_checks WHERE id=#{checkId} AND run_id=#{runId} AND user_id=#{userId}
+  </select>
+  <select id="selectGenerationId" resultType="map">
+    SELECT generation_id FROM studyroom_check_sets WHERE fragment_id=#{fragmentId} AND content_revision=#{revision}
+  </select>
+  <select id="selectAttempt" resultType="map">SELECT * FROM studyroom_check_attempts WHERE id=#{id}</select>
+  <insert id="insertAttempt">
+    INSERT INTO studyroom_check_attempts(id,check_id,user_id,selected_option,correct)
+    VALUES(#{id},#{checkId},#{userId},#{selected},#{correct})
+  </insert>
+  <select id="selectActiveCheckJobs" resultType="map">
+    SELECT payload_json FROM studyroom_generation_jobs WHERE run_id=#{runId} AND job_type='CHECK' AND status IN ('QUEUED','RUNNING')
+  </select>
+  <update id="setJobPriority">UPDATE studyroom_generation_jobs SET priority=#{priority} WHERE id=#{jobId}</update>
+  <update id="resetCheckSetPending">
+    UPDATE studyroom_check_sets SET status='PENDING',failure_code=NULL WHERE fragment_id=#{fragmentId} AND content_revision=#{revision}
+  </update>
+  <update id="setPendingJob">
+    UPDATE studyroom_check_sets SET pending_job_id=#{jobId} WHERE fragment_id=#{fragmentId} AND content_revision=#{revision}
+  </update>
+  <select id="selectLessonContent" resultType="string">
+    SELECT content_json FROM studyroom_fragments WHERE run_id=#{runId} AND unit_id=#{unitId} AND step_id IS NOT NULL ORDER BY fragment_order
+  </select>
+  <update id="reconcileFailedPreparation">
+    UPDATE studyroom_check_sets SET status='FAILED',failure_code='CHECK_PREPARATION_FAILED',pending_job_id=NULL
+    WHERE status='PENDING' AND pending_job_id IN (SELECT id FROM studyroom_generation_jobs WHERE status IN ('FAILED','CANCELLED'))
+  </update>
+</mapper>

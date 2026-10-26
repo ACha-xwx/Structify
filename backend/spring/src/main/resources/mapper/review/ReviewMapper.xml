@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.review.mapper.ReviewMapper">
+
+  <sql id="resourceCandidate">
+    SELECT 'RESOURCE' AS type, r.id AS id, r.title, r.review_status AS status, r.chapter_id AS chapterId,
+           r.version_label AS versionLabel, r.source_name AS sourceName, r.file_path AS sourcePath,
+           NULL AS parentId, NULL AS sourceType, NULL AS sourceRef, NULL AS contentHash, r.updated_at AS updatedAt
+    FROM resources r
+  </sql>
+
+  <sql id="knowledgeChunkCandidate">
+    SELECT 'KNOWLEDGE_CHUNK' AS type, k.id AS id, k.title, k.review_status AS status, k.chapter_id AS chapterId,
+           '' AS versionLabel, '' AS sourceName, k.source_path AS sourcePath, k.resource_id AS parentId,
+           NULL AS sourceType, NULL AS sourceRef, NULL AS contentHash, k.created_at AS updatedAt
+    FROM knowledge_chunks k
+  </sql>
+
+  <sql id="presentationManifestCandidate">
+    SELECT 'PRESENTATION_MANIFEST' AS type, p.id AS id, p.title, p.review_status AS status, p.chapter_id AS chapterId,
+           p.version_label AS versionLabel, p.source_name AS sourceName, p.source_path AS sourcePath,
+           p.resource_id AS parentId, NULL AS sourceType, NULL AS sourceRef, p.content_hash AS contentHash,
+           p.updated_at AS updatedAt
+    FROM presentation_manifests p
+  </sql>
+
+  <sql id="presentationPageCandidate">
+    SELECT 'PRESENTATION_PAGE' AS type, p.id AS id, p.title, p.review_status AS status, m.chapter_id AS chapterId,
+           p.version_label AS versionLabel, m.source_name AS sourceName, p.source_ref AS sourcePath,
+           p.manifest_id AS parentId, NULL AS sourceType, p.source_ref AS sourceRef, p.content_hash AS contentHash,
+           p.updated_at AS updatedAt
+    FROM presentation_pages p
+    INNER JOIN presentation_manifests m ON m.id = p.manifest_id
+  </sql>
+
+  <sql id="dsvpRequestSnapshotCandidate">
+    SELECT 'DSVP_REQUEST_SNAPSHOT' AS type, d.id AS id, CONCAT('DSVP ', d.id) AS title,
+           d.review_status AS status, m.chapter_id AS chapterId, d.version_label AS versionLabel,
+           d.source_type AS sourceName, d.source_ref AS sourcePath, d.animation_record_id AS parentId,
+           d.source_type AS sourceType, d.source_ref AS sourceRef, d.request_hash AS contentHash,
+           d.updated_at AS updatedAt
+    FROM dsvp_request_snapshots d
+    INNER JOIN presentation_pages p ON d.source_type = 'PPT' AND p.source_ref = d.source_ref
+    INNER JOIN presentation_manifests m ON m.id = p.manifest_id
+  </sql>
+
+  <sql id="candidateForType">
+    <choose>
+      <when test="item.name() == 'RESOURCE'">
+        <include refid="resourceCandidate"/>
+      </when>
+      <when test="item.name() == 'KNOWLEDGE_CHUNK'">
+        <include refid="knowledgeChunkCandidate"/>
+      </when>
+      <when test="item.name() == 'PRESENTATION_MANIFEST'">
+        <include refid="presentationManifestCandidate"/>
+      </when>
+      <when test="item.name() == 'PRESENTATION_PAGE'">
+        <include refid="presentationPageCandidate"/>
+      </when>
+      <when test="item.name() == 'DSVP_REQUEST_SNAPSHOT'">
+        <include refid="dsvpRequestSnapshotCandidate"/>
+      </when>
+    </choose>
+  </sql>
+
+  <sql id="candidatesUnion">
+    <foreach collection="types" item="item" separator=" UNION ALL ">
+      <include refid="candidateForType"/>
+    </foreach>
+  </sql>
+
+  <sql id="reviewWhere">
+    <where>
+      <if test="status != null">
+        AND status = #{status}
+      </if>
+      <if test="search != null">
+        AND LOWER(title) LIKE CONCAT('%', LOWER(#{search}), '%')
+      </if>
+    </where>
+  </sql>
+
+  <sql id="singleTypeCandidate">
+    <choose>
+      <when test="type.name() == 'RESOURCE'">
+        <include refid="resourceCandidate"/>
+      </when>
+      <when test="type.name() == 'KNOWLEDGE_CHUNK'">
+        <include refid="knowledgeChunkCandidate"/>
+      </when>
+      <when test="type.name() == 'PRESENTATION_MANIFEST'">
+        <include refid="presentationManifestCandidate"/>
+      </when>
+      <when test="type.name() == 'PRESENTATION_PAGE'">
+        <include refid="presentationPageCandidate"/>
+      </when>
+      <when test="type.name() == 'DSVP_REQUEST_SNAPSHOT'">
+        <include refid="dsvpRequestSnapshotCandidate"/>
+      </when>
+    </choose>
+  </sql>
+
+  <select id="countReviews" resultType="long">
+    SELECT COUNT(*) FROM (
+      <include refid="candidatesUnion"/>
+    ) q
+    <include refid="reviewWhere"/>
+  </select>
+
+  <select id="selectReviews" resultType="com.feng.dsagent.review.entity.ReviewEntity">
+    SELECT type, id, title, status, chapterId, versionLabel, sourceName, sourcePath,
+           parentId, sourceType, sourceRef, contentHash, updatedAt
+    FROM (
+      <include refid="candidatesUnion"/>
+    ) q
+    <include refid="reviewWhere"/>
+    ORDER BY updatedAt DESC, id ASC
+    LIMIT #{size} OFFSET #{offset}
+  </select>
+
+  <select id="find" resultType="com.feng.dsagent.review.entity.ReviewEntity">
+    SELECT type, id, title, status, chapterId, versionLabel, sourceName, sourcePath,
+           parentId, sourceType, sourceRef, contentHash, updatedAt
+    FROM (
+      <include refid="singleTypeCandidate"/>
+    ) q
+    WHERE id = #{id}
+  </select>
+
+  <select id="findPresentationPageBySourceRef" resultType="com.feng.dsagent.review.entity.ReviewEntity">
+    SELECT type, id, title, status, chapterId, versionLabel, sourceName, sourcePath,
+           parentId, sourceType, sourceRef, contentHash, updatedAt
+    FROM (
+      <include refid="presentationPageCandidate"/>
+    ) q
+    WHERE sourceRef = #{sourceRef}
+  </select>
+
+  <select id="lock" resultType="com.feng.dsagent.review.entity.ReviewEntity">
+    SELECT type, id, title, status, chapterId, versionLabel, sourceName, sourcePath,
+           parentId, sourceType, sourceRef, contentHash, updatedAt
+    FROM (
+      <include refid="singleTypeCandidate"/>
+    ) q
+    WHERE id = #{id}
+    FOR UPDATE
+  </select>
+
+  <select id="chapter" resultType="com.feng.dsagent.review.entity.ReviewSourceEntity">
+    SELECT 'CHAPTER' AS type, id, title, status FROM chapters WHERE id = #{id}
+  </select>
+
+  <update id="updateStatus">
+    <choose>
+      <when test="type.name() == 'RESOURCE'">
+        UPDATE resources SET review_status = #{status}, updated_at = CURRENT_TIMESTAMP WHERE id = #{id}
+      </when>
+      <when test="type.name() == 'KNOWLEDGE_CHUNK'">
+        UPDATE knowledge_chunks SET review_status = #{status} WHERE id = #{id}
+      </when>
+      <when test="type.name() == 'PRESENTATION_MANIFEST'">
+        UPDATE presentation_manifests SET review_status = #{status}, updated_at = CURRENT_TIMESTAMP WHERE id = #{id}
+      </when>
+      <when test="type.name() == 'PRESENTATION_PAGE'">
+        UPDATE presentation_pages SET review_status = #{status}, updated_at = CURRENT_TIMESTAMP WHERE id = #{id}
+      </when>
+      <when test="type.name() == 'DSVP_REQUEST_SNAPSHOT'">
+        UPDATE dsvp_request_snapshots SET review_status = #{status}, updated_at = CURRENT_TIMESTAMP WHERE id = #{id}
+      </when>
+    </choose>
+  </update>
+
+  <insert id="appendReviewEvent">
+    INSERT INTO content_review_events (
+      content_type, content_id, previous_status, next_status, note, reviewer_user_id, request_id
+    ) VALUES (
+      #{type}, #{id}, #{previousStatus}, #{nextStatus}, #{note}, #{reviewerUserId}, #{requestId}
+    )
+  </insert>
+
+  <insert id="appendAdminAudit">
+    INSERT INTO admin_audit_events (
+      actor_user_id, action, target_type, target_id, result, request_id, before_summary, after_summary
+    ) VALUES (
+      #{actorUserId}, 'REVIEW_STATUS_CHANGED', #{type}, #{id}, #{result}, #{requestId},
+      #{beforeSummary}, #{afterSummary}
+    )
+  </insert>
+
+  <select id="history" resultType="com.feng.dsagent.review.entity.ReviewHistoryEntity">
+    SELECT id,
+           previous_status AS previousStatus,
+           next_status AS nextStatus,
+           note,
+           reviewer_user_id AS reviewerUserId,
+           request_id AS requestId,
+           created_at AS createdAt
+    FROM content_review_events
+    WHERE content_type = #{type} AND content_id = #{id}
+    ORDER BY created_at DESC, id DESC
+  </select>
+
+</mapper>

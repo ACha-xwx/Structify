@@ -2,11 +2,12 @@ package com.feng.dsagent.learning;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.feng.dsagent.learning.MasteryEstimator.Estimate;
-import com.feng.dsagent.learning.MasteryEstimator.Evidence;
+import com.feng.dsagent.learning.support.MasteryEstimator.Estimate;
+import com.feng.dsagent.learning.support.MasteryEstimator.Evidence;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.feng.dsagent.learning.support.MasteryEstimator;
 /**
  * The properties the map's colours have to hold, whatever the numbers end up being.
  *

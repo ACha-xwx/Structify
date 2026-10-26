@@ -1,5 +1,7 @@
 package com.feng.dsagent.admin.observability;
 
+import com.feng.dsagent.admin.observability.service.AdminObservabilityService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.LocalDate;

@@ -1,0 +1,1486 @@
+[
+  {
+    "simple": "UserStatus",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.admin.UserStatus",
+    "newFqcn": "com.feng.dsagent.admin.domain.UserStatus",
+    "rel": "admin/UserStatus.java"
+  },
+  {
+    "simple": "AiQuotaAccount",
+    "leaf": "entity",
+    "oldFqcn": "com.feng.dsagent.aiquota.AiQuotaAccount",
+    "newFqcn": "com.feng.dsagent.aiquota.entity.AiQuotaAccount",
+    "rel": "aiquota/AiQuotaAccount.java"
+  },
+  {
+    "simple": "AiQuotaBucket",
+    "leaf": "entity",
+    "oldFqcn": "com.feng.dsagent.aiquota.AiQuotaBucket",
+    "newFqcn": "com.feng.dsagent.aiquota.entity.AiQuotaBucket",
+    "rel": "aiquota/AiQuotaBucket.java"
+  },
+  {
+    "simple": "AiQuotaConcurrency",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.aiquota.AiQuotaConcurrency",
+    "newFqcn": "com.feng.dsagent.aiquota.domain.AiQuotaConcurrency",
+    "rel": "aiquota/AiQuotaConcurrency.java"
+  },
+  {
+    "simple": "AiQuotaExecution",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.aiquota.AiQuotaExecution",
+    "newFqcn": "com.feng.dsagent.aiquota.support.AiQuotaExecution",
+    "rel": "aiquota/AiQuotaExecution.java"
+  },
+  {
+    "simple": "AiQuotaRequestId",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.aiquota.AiQuotaRequestId",
+    "newFqcn": "com.feng.dsagent.aiquota.support.AiQuotaRequestId",
+    "rel": "aiquota/AiQuotaRequestId.java"
+  },
+  {
+    "simple": "AiQuotaReservation",
+    "leaf": "entity",
+    "oldFqcn": "com.feng.dsagent.aiquota.AiQuotaReservation",
+    "newFqcn": "com.feng.dsagent.aiquota.entity.AiQuotaReservation",
+    "rel": "aiquota/AiQuotaReservation.java"
+  },
+  {
+    "simple": "AiQuotaReservationAttempt",
+    "leaf": "entity",
+    "oldFqcn": "com.feng.dsagent.aiquota.AiQuotaReservationAttempt",
+    "newFqcn": "com.feng.dsagent.aiquota.entity.AiQuotaReservationAttempt",
+    "rel": "aiquota/AiQuotaReservationAttempt.java"
+  },
+  {
+    "simple": "AiQuotaReservationRecoveryRunner",
+    "leaf": "worker",
+    "oldFqcn": "com.feng.dsagent.aiquota.AiQuotaReservationRecoveryRunner",
+    "newFqcn": "com.feng.dsagent.aiquota.worker.AiQuotaReservationRecoveryRunner",
+    "rel": "aiquota/AiQuotaReservationRecoveryRunner.java"
+  },
+  {
+    "simple": "AiQuotaReservationRequest",
+    "leaf": "dto",
+    "oldFqcn": "com.feng.dsagent.aiquota.AiQuotaReservationRequest",
+    "newFqcn": "com.feng.dsagent.aiquota.dto.AiQuotaReservationRequest",
+    "rel": "aiquota/AiQuotaReservationRequest.java"
+  },
+  {
+    "simple": "AiQuotaReservationStatus",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.aiquota.AiQuotaReservationStatus",
+    "newFqcn": "com.feng.dsagent.aiquota.domain.AiQuotaReservationStatus",
+    "rel": "aiquota/AiQuotaReservationStatus.java"
+  },
+  {
+    "simple": "AiQuotaUsageSource",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.aiquota.AiQuotaUsageSource",
+    "newFqcn": "com.feng.dsagent.aiquota.domain.AiQuotaUsageSource",
+    "rel": "aiquota/AiQuotaUsageSource.java"
+  },
+  {
+    "simple": "DevTestAccountQuotaPolicy",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.aiquota.DevTestAccountQuotaPolicy",
+    "newFqcn": "com.feng.dsagent.aiquota.support.DevTestAccountQuotaPolicy",
+    "rel": "aiquota/DevTestAccountQuotaPolicy.java"
+  },
+  {
+    "simple": "AnimationDefinition",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.animation.AnimationDefinition",
+    "newFqcn": "com.feng.dsagent.animation.domain.AnimationDefinition",
+    "rel": "animation/AnimationDefinition.java"
+  },
+  {
+    "simple": "AnimationGenerationCommand",
+    "leaf": "dto",
+    "oldFqcn": "com.feng.dsagent.animation.AnimationGenerationCommand",
+    "newFqcn": "com.feng.dsagent.animation.dto.AnimationGenerationCommand",
+    "rel": "animation/AnimationGenerationCommand.java"
+  },
+  {
+    "simple": "AnimationRecord",
+    "leaf": "entity",
+    "oldFqcn": "com.feng.dsagent.animation.AnimationRecord",
+    "newFqcn": "com.feng.dsagent.animation.entity.AnimationRecord",
+    "rel": "animation/AnimationRecord.java"
+  },
+  {
+    "simple": "AnimationStep",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.animation.AnimationStep",
+    "newFqcn": "com.feng.dsagent.animation.domain.AnimationStep",
+    "rel": "animation/AnimationStep.java"
+  },
+  {
+    "simple": "AnimationValidationError",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.animation.AnimationValidationError",
+    "newFqcn": "com.feng.dsagent.animation.domain.AnimationValidationError",
+    "rel": "animation/AnimationValidationError.java"
+  },
+  {
+    "simple": "AnimationValidationResult",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.animation.AnimationValidationResult",
+    "newFqcn": "com.feng.dsagent.animation.domain.AnimationValidationResult",
+    "rel": "animation/AnimationValidationResult.java"
+  },
+  {
+    "simple": "AnimationValidator",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.animation.AnimationValidator",
+    "newFqcn": "com.feng.dsagent.animation.support.AnimationValidator",
+    "rel": "animation/AnimationValidator.java"
+  },
+  {
+    "simple": "DsvpAnimationAdapter",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.animation.DsvpAnimationAdapter",
+    "newFqcn": "com.feng.dsagent.animation.support.DsvpAnimationAdapter",
+    "rel": "animation/DsvpAnimationAdapter.java"
+  },
+  {
+    "simple": "DsvpConcurrencyLimiter",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.animation.DsvpConcurrencyLimiter",
+    "newFqcn": "com.feng.dsagent.animation.support.DsvpConcurrencyLimiter",
+    "rel": "animation/DsvpConcurrencyLimiter.java"
+  },
+  {
+    "simple": "DsvpEvidenceContext",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.animation.DsvpEvidenceContext",
+    "newFqcn": "com.feng.dsagent.animation.domain.DsvpEvidenceContext",
+    "rel": "animation/DsvpEvidenceContext.java"
+  },
+  {
+    "simple": "DsvpEvidenceResolution",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.animation.DsvpEvidenceResolution",
+    "newFqcn": "com.feng.dsagent.animation.domain.DsvpEvidenceResolution",
+    "rel": "animation/DsvpEvidenceResolution.java"
+  },
+  {
+    "simple": "DsvpEvidenceResolver",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.animation.DsvpEvidenceResolver",
+    "newFqcn": "com.feng.dsagent.animation.support.DsvpEvidenceResolver",
+    "rel": "animation/DsvpEvidenceResolver.java"
+  },
+  {
+    "simple": "DsvpEvidenceSource",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.animation.DsvpEvidenceSource",
+    "newFqcn": "com.feng.dsagent.animation.domain.DsvpEvidenceSource",
+    "rel": "animation/DsvpEvidenceSource.java"
+  },
+  {
+    "simple": "DsvpLocalEngine",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.animation.DsvpLocalEngine",
+    "newFqcn": "com.feng.dsagent.animation.support.DsvpLocalEngine",
+    "rel": "animation/DsvpLocalEngine.java"
+  },
+  {
+    "simple": "DsvpSimulator",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.animation.DsvpSimulator",
+    "newFqcn": "com.feng.dsagent.animation.support.DsvpSimulator",
+    "rel": "animation/DsvpSimulator.java"
+  },
+  {
+    "simple": "AdminAccountProvisioner",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.auth.AdminAccountProvisioner",
+    "newFqcn": "com.feng.dsagent.auth.support.AdminAccountProvisioner",
+    "rel": "auth/AdminAccountProvisioner.java"
+  },
+  {
+    "simple": "AuthRequestRateLimiter",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.auth.AuthRequestRateLimiter",
+    "newFqcn": "com.feng.dsagent.auth.support.AuthRequestRateLimiter",
+    "rel": "auth/AuthRequestRateLimiter.java"
+  },
+  {
+    "simple": "AuthSession",
+    "leaf": "vo",
+    "oldFqcn": "com.feng.dsagent.auth.AuthSession",
+    "newFqcn": "com.feng.dsagent.auth.vo.AuthSession",
+    "rel": "auth/AuthSession.java"
+  },
+  {
+    "simple": "BootstrapAdminRunner",
+    "leaf": "worker",
+    "oldFqcn": "com.feng.dsagent.auth.BootstrapAdminRunner",
+    "newFqcn": "com.feng.dsagent.auth.worker.BootstrapAdminRunner",
+    "rel": "auth/BootstrapAdminRunner.java"
+  },
+  {
+    "simple": "DefaultVerificationCodeManager",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.auth.DefaultVerificationCodeManager",
+    "newFqcn": "com.feng.dsagent.auth.support.DefaultVerificationCodeManager",
+    "rel": "auth/DefaultVerificationCodeManager.java"
+  },
+  {
+    "simple": "DevTestAccountRunner",
+    "leaf": "worker",
+    "oldFqcn": "com.feng.dsagent.auth.DevTestAccountRunner",
+    "newFqcn": "com.feng.dsagent.auth.worker.DevTestAccountRunner",
+    "rel": "auth/DevTestAccountRunner.java"
+  },
+  {
+    "simple": "RolePolicy",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.auth.RolePolicy",
+    "newFqcn": "com.feng.dsagent.auth.support.RolePolicy",
+    "rel": "auth/RolePolicy.java"
+  },
+  {
+    "simple": "UserAccount",
+    "leaf": "entity",
+    "oldFqcn": "com.feng.dsagent.auth.UserAccount",
+    "newFqcn": "com.feng.dsagent.auth.entity.UserAccount",
+    "rel": "auth/UserAccount.java"
+  },
+  {
+    "simple": "UsernamePolicy",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.auth.UsernamePolicy",
+    "newFqcn": "com.feng.dsagent.auth.support.UsernamePolicy",
+    "rel": "auth/UsernamePolicy.java"
+  },
+  {
+    "simple": "VerificationCodeDelivery",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.auth.VerificationCodeDelivery",
+    "newFqcn": "com.feng.dsagent.auth.domain.VerificationCodeDelivery",
+    "rel": "auth/VerificationCodeDelivery.java"
+  },
+  {
+    "simple": "VerificationCodeHasher",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.auth.VerificationCodeHasher",
+    "newFqcn": "com.feng.dsagent.auth.support.VerificationCodeHasher",
+    "rel": "auth/VerificationCodeHasher.java"
+  },
+  {
+    "simple": "VerificationCodeManager",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.auth.VerificationCodeManager",
+    "newFqcn": "com.feng.dsagent.auth.support.VerificationCodeManager",
+    "rel": "auth/VerificationCodeManager.java"
+  },
+  {
+    "simple": "VerificationCodeRecord",
+    "leaf": "entity",
+    "oldFqcn": "com.feng.dsagent.auth.VerificationCodeRecord",
+    "newFqcn": "com.feng.dsagent.auth.entity.VerificationCodeRecord",
+    "rel": "auth/VerificationCodeRecord.java"
+  },
+  {
+    "simple": "VerificationCodeSender",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.auth.VerificationCodeSender",
+    "newFqcn": "com.feng.dsagent.auth.support.VerificationCodeSender",
+    "rel": "auth/VerificationCodeSender.java"
+  },
+  {
+    "simple": "ChatAttachment",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.chat.ChatAttachment",
+    "newFqcn": "com.feng.dsagent.chat.domain.ChatAttachment",
+    "rel": "chat/ChatAttachment.java"
+  },
+  {
+    "simple": "ChatAttachmentFile",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.chat.ChatAttachmentFile",
+    "newFqcn": "com.feng.dsagent.chat.domain.ChatAttachmentFile",
+    "rel": "chat/ChatAttachmentFile.java"
+  },
+  {
+    "simple": "ChatAttachmentStorage",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.chat.ChatAttachmentStorage",
+    "newFqcn": "com.feng.dsagent.chat.support.ChatAttachmentStorage",
+    "rel": "chat/ChatAttachmentStorage.java"
+  },
+  {
+    "simple": "ChatCommand",
+    "leaf": "dto",
+    "oldFqcn": "com.feng.dsagent.chat.ChatCommand",
+    "newFqcn": "com.feng.dsagent.chat.dto.ChatCommand",
+    "rel": "chat/ChatCommand.java"
+  },
+  {
+    "simple": "ChatEvidenceFingerprint",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.chat.ChatEvidenceFingerprint",
+    "newFqcn": "com.feng.dsagent.chat.support.ChatEvidenceFingerprint",
+    "rel": "chat/ChatEvidenceFingerprint.java"
+  },
+  {
+    "simple": "ChatRateLimiter",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.chat.ChatRateLimiter",
+    "newFqcn": "com.feng.dsagent.chat.support.ChatRateLimiter",
+    "rel": "chat/ChatRateLimiter.java"
+  },
+  {
+    "simple": "ChatRetry",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.chat.ChatRetry",
+    "newFqcn": "com.feng.dsagent.chat.domain.ChatRetry",
+    "rel": "chat/ChatRetry.java"
+  },
+  {
+    "simple": "ChatSessionSummary",
+    "leaf": "vo",
+    "oldFqcn": "com.feng.dsagent.chat.ChatSessionSummary",
+    "newFqcn": "com.feng.dsagent.chat.vo.ChatSessionSummary",
+    "rel": "chat/ChatSessionSummary.java"
+  },
+  {
+    "simple": "ChatSource",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.chat.ChatSource",
+    "newFqcn": "com.feng.dsagent.chat.domain.ChatSource",
+    "rel": "chat/ChatSource.java"
+  },
+  {
+    "simple": "ChatTurn",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.chat.ChatTurn",
+    "newFqcn": "com.feng.dsagent.chat.domain.ChatTurn",
+    "rel": "chat/ChatTurn.java"
+  },
+  {
+    "simple": "PendingChat",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.chat.PendingChat",
+    "newFqcn": "com.feng.dsagent.chat.support.PendingChat",
+    "rel": "chat/PendingChat.java"
+  },
+  {
+    "simple": "StoredChatAttachment",
+    "leaf": "entity",
+    "oldFqcn": "com.feng.dsagent.chat.StoredChatAttachment",
+    "newFqcn": "com.feng.dsagent.chat.entity.StoredChatAttachment",
+    "rel": "chat/StoredChatAttachment.java"
+  },
+  {
+    "simple": "ClassroomAction",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomAction",
+    "newFqcn": "com.feng.dsagent.classroom.domain.ClassroomAction",
+    "rel": "classroom/ClassroomAction.java"
+  },
+  {
+    "simple": "ClassroomAnswerEvaluation",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomAnswerEvaluation",
+    "newFqcn": "com.feng.dsagent.classroom.domain.ClassroomAnswerEvaluation",
+    "rel": "classroom/ClassroomAnswerEvaluation.java"
+  },
+  {
+    "simple": "ClassroomAnswerStatus",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomAnswerStatus",
+    "newFqcn": "com.feng.dsagent.classroom.domain.ClassroomAnswerStatus",
+    "rel": "classroom/ClassroomAnswerStatus.java"
+  },
+  {
+    "simple": "ClassroomAskExchange",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomAskExchange",
+    "newFqcn": "com.feng.dsagent.classroom.domain.ClassroomAskExchange",
+    "rel": "classroom/ClassroomAskExchange.java"
+  },
+  {
+    "simple": "ClassroomBookmark",
+    "leaf": "entity",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomBookmark",
+    "newFqcn": "com.feng.dsagent.classroom.entity.ClassroomBookmark",
+    "rel": "classroom/ClassroomBookmark.java"
+  },
+  {
+    "simple": "ClassroomBookmarkDraft",
+    "leaf": "dto",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomBookmarkDraft",
+    "newFqcn": "com.feng.dsagent.classroom.dto.ClassroomBookmarkDraft",
+    "rel": "classroom/ClassroomBookmarkDraft.java"
+  },
+  {
+    "simple": "ClassroomEventRecord",
+    "leaf": "entity",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomEventRecord",
+    "newFqcn": "com.feng.dsagent.classroom.entity.ClassroomEventRecord",
+    "rel": "classroom/ClassroomEventRecord.java"
+  },
+  {
+    "simple": "ClassroomModelJson",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomModelJson",
+    "newFqcn": "com.feng.dsagent.classroom.support.ClassroomModelJson",
+    "rel": "classroom/ClassroomModelJson.java"
+  },
+  {
+    "simple": "ClassroomPreparation",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomPreparation",
+    "newFqcn": "com.feng.dsagent.classroom.support.ClassroomPreparation",
+    "rel": "classroom/ClassroomPreparation.java"
+  },
+  {
+    "simple": "ClassroomScript",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomScript",
+    "newFqcn": "com.feng.dsagent.classroom.domain.ClassroomScript",
+    "rel": "classroom/ClassroomScript.java"
+  },
+  {
+    "simple": "ClassroomScriptParser",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomScriptParser",
+    "newFqcn": "com.feng.dsagent.classroom.support.ClassroomScriptParser",
+    "rel": "classroom/ClassroomScriptParser.java"
+  },
+  {
+    "simple": "ClassroomScriptPlan",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomScriptPlan",
+    "newFqcn": "com.feng.dsagent.classroom.domain.ClassroomScriptPlan",
+    "rel": "classroom/ClassroomScriptPlan.java"
+  },
+  {
+    "simple": "ClassroomScriptSummary",
+    "leaf": "vo",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomScriptSummary",
+    "newFqcn": "com.feng.dsagent.classroom.vo.ClassroomScriptSummary",
+    "rel": "classroom/ClassroomScriptSummary.java"
+  },
+  {
+    "simple": "ClassroomSessionRecord",
+    "leaf": "entity",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomSessionRecord",
+    "newFqcn": "com.feng.dsagent.classroom.entity.ClassroomSessionRecord",
+    "rel": "classroom/ClassroomSessionRecord.java"
+  },
+  {
+    "simple": "ClassroomSlideAlignment",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomSlideAlignment",
+    "newFqcn": "com.feng.dsagent.classroom.support.ClassroomSlideAlignment",
+    "rel": "classroom/ClassroomSlideAlignment.java"
+  },
+  {
+    "simple": "ClassroomState",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomState",
+    "newFqcn": "com.feng.dsagent.classroom.domain.ClassroomState",
+    "rel": "classroom/ClassroomState.java"
+  },
+  {
+    "simple": "ClassroomStateMachine",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomStateMachine",
+    "newFqcn": "com.feng.dsagent.classroom.support.ClassroomStateMachine",
+    "rel": "classroom/ClassroomStateMachine.java"
+  },
+  {
+    "simple": "ClassroomStatus",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomStatus",
+    "newFqcn": "com.feng.dsagent.classroom.domain.ClassroomStatus",
+    "rel": "classroom/ClassroomStatus.java"
+  },
+  {
+    "simple": "ClassroomTimeline",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomTimeline",
+    "newFqcn": "com.feng.dsagent.classroom.support.ClassroomTimeline",
+    "rel": "classroom/ClassroomTimeline.java"
+  },
+  {
+    "simple": "LessonPassageIndex",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.classroom.LessonPassageIndex",
+    "newFqcn": "com.feng.dsagent.classroom.support.LessonPassageIndex",
+    "rel": "classroom/LessonPassageIndex.java"
+  },
+  {
+    "simple": "SlideSpinePlan",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.classroom.SlideSpinePlan",
+    "newFqcn": "com.feng.dsagent.classroom.support.SlideSpinePlan",
+    "rel": "classroom/SlideSpinePlan.java"
+  },
+  {
+    "simple": "TextbookLessonIds",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.classroom.TextbookLessonIds",
+    "newFqcn": "com.feng.dsagent.classroom.support.TextbookLessonIds",
+    "rel": "classroom/TextbookLessonIds.java"
+  },
+  {
+    "simple": "AsciiSafeStringSerializer",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.compiler.AsciiSafeStringSerializer",
+    "newFqcn": "com.feng.dsagent.compiler.support.AsciiSafeStringSerializer",
+    "rel": "compiler/AsciiSafeStringSerializer.java"
+  },
+  {
+    "simple": "ClassroomCodeCatalog",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.compiler.ClassroomCodeCatalog",
+    "newFqcn": "com.feng.dsagent.compiler.support.ClassroomCodeCatalog",
+    "rel": "compiler/ClassroomCodeCatalog.java"
+  },
+  {
+    "simple": "ClassroomCodeLesson",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.compiler.ClassroomCodeLesson",
+    "newFqcn": "com.feng.dsagent.compiler.domain.ClassroomCodeLesson",
+    "rel": "compiler/ClassroomCodeLesson.java"
+  },
+  {
+    "simple": "ClassroomCodeSample",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.compiler.ClassroomCodeSample",
+    "newFqcn": "com.feng.dsagent.compiler.domain.ClassroomCodeSample",
+    "rel": "compiler/ClassroomCodeSample.java"
+  },
+  {
+    "simple": "ClassroomCodeStudyroomCatalog",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.compiler.ClassroomCodeStudyroomCatalog",
+    "newFqcn": "com.feng.dsagent.compiler.support.ClassroomCodeStudyroomCatalog",
+    "rel": "compiler/ClassroomCodeStudyroomCatalog.java"
+  },
+  {
+    "simple": "CodeAnalysisRequest",
+    "leaf": "dto",
+    "oldFqcn": "com.feng.dsagent.compiler.CodeAnalysisRequest",
+    "newFqcn": "com.feng.dsagent.compiler.dto.CodeAnalysisRequest",
+    "rel": "compiler/CodeAnalysisRequest.java"
+  },
+  {
+    "simple": "CodeExecutionReadiness",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.compiler.CodeExecutionReadiness",
+    "newFqcn": "com.feng.dsagent.compiler.support.CodeExecutionReadiness",
+    "rel": "compiler/CodeExecutionReadiness.java"
+  },
+  {
+    "simple": "CodeRunSnapshot",
+    "leaf": "entity",
+    "oldFqcn": "com.feng.dsagent.compiler.CodeRunSnapshot",
+    "newFqcn": "com.feng.dsagent.compiler.entity.CodeRunSnapshot",
+    "rel": "compiler/CodeRunSnapshot.java"
+  },
+  {
+    "simple": "CompilerConcurrencyLimiter",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.compiler.CompilerConcurrencyLimiter",
+    "newFqcn": "com.feng.dsagent.compiler.support.CompilerConcurrencyLimiter",
+    "rel": "compiler/CompilerConcurrencyLimiter.java"
+  },
+  {
+    "simple": "CompilerExecution",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.compiler.CompilerExecution",
+    "newFqcn": "com.feng.dsagent.compiler.domain.CompilerExecution",
+    "rel": "compiler/CompilerExecution.java"
+  },
+  {
+    "simple": "CompilerGateway",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.compiler.CompilerGateway",
+    "newFqcn": "com.feng.dsagent.compiler.support.CompilerGateway",
+    "rel": "compiler/CompilerGateway.java"
+  },
+  {
+    "simple": "HttpSandboxConnectionTester",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.compiler.HttpSandboxConnectionTester",
+    "newFqcn": "com.feng.dsagent.compiler.support.HttpSandboxConnectionTester",
+    "rel": "compiler/HttpSandboxConnectionTester.java"
+  },
+  {
+    "simple": "InteractiveCodeSession",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.compiler.InteractiveCodeSession",
+    "newFqcn": "com.feng.dsagent.compiler.support.InteractiveCodeSession",
+    "rel": "compiler/InteractiveCodeSession.java"
+  },
+  {
+    "simple": "InteractiveRuntimeHeader",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.compiler.InteractiveRuntimeHeader",
+    "newFqcn": "com.feng.dsagent.compiler.support.InteractiveRuntimeHeader",
+    "rel": "compiler/InteractiveRuntimeHeader.java"
+  },
+  {
+    "simple": "LocalCodeRunner",
+    "leaf": "worker",
+    "oldFqcn": "com.feng.dsagent.compiler.LocalCodeRunner",
+    "newFqcn": "com.feng.dsagent.compiler.worker.LocalCodeRunner",
+    "rel": "compiler/LocalCodeRunner.java"
+  },
+  {
+    "simple": "PistonCompilerGateway",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.compiler.PistonCompilerGateway",
+    "newFqcn": "com.feng.dsagent.compiler.support.PistonCompilerGateway",
+    "rel": "compiler/PistonCompilerGateway.java"
+  },
+  {
+    "simple": "RunCodeRequest",
+    "leaf": "dto",
+    "oldFqcn": "com.feng.dsagent.compiler.RunCodeRequest",
+    "newFqcn": "com.feng.dsagent.compiler.dto.RunCodeRequest",
+    "rel": "compiler/RunCodeRequest.java"
+  },
+  {
+    "simple": "SandboxConfigHostResolver",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.compiler.SandboxConfigHostResolver",
+    "newFqcn": "com.feng.dsagent.compiler.support.SandboxConfigHostResolver",
+    "rel": "compiler/SandboxConfigHostResolver.java"
+  },
+  {
+    "simple": "SandboxConfigResolvedTarget",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.compiler.SandboxConfigResolvedTarget",
+    "newFqcn": "com.feng.dsagent.compiler.domain.SandboxConfigResolvedTarget",
+    "rel": "compiler/SandboxConfigResolvedTarget.java"
+  },
+  {
+    "simple": "SandboxConfigRuntimeSettingsSource",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.compiler.SandboxConfigRuntimeSettingsSource",
+    "newFqcn": "com.feng.dsagent.compiler.support.SandboxConfigRuntimeSettingsSource",
+    "rel": "compiler/SandboxConfigRuntimeSettingsSource.java"
+  },
+  {
+    "simple": "SandboxConfigUrlValidator",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.compiler.SandboxConfigUrlValidator",
+    "newFqcn": "com.feng.dsagent.compiler.support.SandboxConfigUrlValidator",
+    "rel": "compiler/SandboxConfigUrlValidator.java"
+  },
+  {
+    "simple": "SandboxConnectionResult",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.compiler.SandboxConnectionResult",
+    "newFqcn": "com.feng.dsagent.compiler.domain.SandboxConnectionResult",
+    "rel": "compiler/SandboxConnectionResult.java"
+  },
+  {
+    "simple": "SandboxConnectionTester",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.compiler.SandboxConnectionTester",
+    "newFqcn": "com.feng.dsagent.compiler.support.SandboxConnectionTester",
+    "rel": "compiler/SandboxConnectionTester.java"
+  },
+  {
+    "simple": "SandboxProvider",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.compiler.SandboxProvider",
+    "newFqcn": "com.feng.dsagent.compiler.domain.SandboxProvider",
+    "rel": "compiler/SandboxProvider.java"
+  },
+  {
+    "simple": "SandboxRuntimeSettings",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.compiler.SandboxRuntimeSettings",
+    "newFqcn": "com.feng.dsagent.compiler.domain.SandboxRuntimeSettings",
+    "rel": "compiler/SandboxRuntimeSettings.java"
+  },
+  {
+    "simple": "SupportedLanguage",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.compiler.SupportedLanguage",
+    "newFqcn": "com.feng.dsagent.compiler.domain.SupportedLanguage",
+    "rel": "compiler/SupportedLanguage.java"
+  },
+  {
+    "simple": "SystemSandboxConfigHostResolver",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.compiler.SystemSandboxConfigHostResolver",
+    "newFqcn": "com.feng.dsagent.compiler.support.SystemSandboxConfigHostResolver",
+    "rel": "compiler/SystemSandboxConfigHostResolver.java"
+  },
+  {
+    "simple": "TextbookCodeChapter",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.compiler.TextbookCodeChapter",
+    "newFqcn": "com.feng.dsagent.compiler.domain.TextbookCodeChapter",
+    "rel": "compiler/TextbookCodeChapter.java"
+  },
+  {
+    "simple": "TextbookCodeExample",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.compiler.TextbookCodeExample",
+    "newFqcn": "com.feng.dsagent.compiler.domain.TextbookCodeExample",
+    "rel": "compiler/TextbookCodeExample.java"
+  },
+  {
+    "simple": "TextbookCodeFragment",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.compiler.TextbookCodeFragment",
+    "newFqcn": "com.feng.dsagent.compiler.domain.TextbookCodeFragment",
+    "rel": "compiler/TextbookCodeFragment.java"
+  },
+  {
+    "simple": "TextbookCodeLibrary",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.compiler.TextbookCodeLibrary",
+    "newFqcn": "com.feng.dsagent.compiler.support.TextbookCodeLibrary",
+    "rel": "compiler/TextbookCodeLibrary.java"
+  },
+  {
+    "simple": "CoursewareKnowledgeLoader",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.knowledge.CoursewareKnowledgeLoader",
+    "newFqcn": "com.feng.dsagent.knowledge.support.CoursewareKnowledgeLoader",
+    "rel": "knowledge/CoursewareKnowledgeLoader.java"
+  },
+  {
+    "simple": "KnowledgeAudience",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.knowledge.KnowledgeAudience",
+    "newFqcn": "com.feng.dsagent.knowledge.domain.KnowledgeAudience",
+    "rel": "knowledge/KnowledgeAudience.java"
+  },
+  {
+    "simple": "KnowledgeBootstrapRunner",
+    "leaf": "worker",
+    "oldFqcn": "com.feng.dsagent.knowledge.KnowledgeBootstrapRunner",
+    "newFqcn": "com.feng.dsagent.knowledge.worker.KnowledgeBootstrapRunner",
+    "rel": "knowledge/KnowledgeBootstrapRunner.java"
+  },
+  {
+    "simple": "KnowledgeChunk",
+    "leaf": "entity",
+    "oldFqcn": "com.feng.dsagent.knowledge.KnowledgeChunk",
+    "newFqcn": "com.feng.dsagent.knowledge.entity.KnowledgeChunk",
+    "rel": "knowledge/KnowledgeChunk.java"
+  },
+  {
+    "simple": "KnowledgeCorpus",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.knowledge.KnowledgeCorpus",
+    "newFqcn": "com.feng.dsagent.knowledge.domain.KnowledgeCorpus",
+    "rel": "knowledge/KnowledgeCorpus.java"
+  },
+  {
+    "simple": "KnowledgeCorpusLoader",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.knowledge.KnowledgeCorpusLoader",
+    "newFqcn": "com.feng.dsagent.knowledge.support.KnowledgeCorpusLoader",
+    "rel": "knowledge/KnowledgeCorpusLoader.java"
+  },
+  {
+    "simple": "KnowledgeCorpusStats",
+    "leaf": "vo",
+    "oldFqcn": "com.feng.dsagent.knowledge.KnowledgeCorpusStats",
+    "newFqcn": "com.feng.dsagent.knowledge.vo.KnowledgeCorpusStats",
+    "rel": "knowledge/KnowledgeCorpusStats.java"
+  },
+  {
+    "simple": "KnowledgeEligibilityChanged",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.knowledge.KnowledgeEligibilityChanged",
+    "newFqcn": "com.feng.dsagent.knowledge.domain.KnowledgeEligibilityChanged",
+    "rel": "knowledge/KnowledgeEligibilityChanged.java"
+  },
+  {
+    "simple": "KnowledgeEligibilitySql",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.knowledge.KnowledgeEligibilitySql",
+    "newFqcn": "com.feng.dsagent.knowledge.support.KnowledgeEligibilitySql",
+    "rel": "knowledge/KnowledgeEligibilitySql.java"
+  },
+  {
+    "simple": "KnowledgeImportManifest",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.knowledge.KnowledgeImportManifest",
+    "newFqcn": "com.feng.dsagent.knowledge.domain.KnowledgeImportManifest",
+    "rel": "knowledge/KnowledgeImportManifest.java"
+  },
+  {
+    "simple": "KnowledgeSearchResult",
+    "leaf": "vo",
+    "oldFqcn": "com.feng.dsagent.knowledge.KnowledgeSearchResult",
+    "newFqcn": "com.feng.dsagent.knowledge.vo.KnowledgeSearchResult",
+    "rel": "knowledge/KnowledgeSearchResult.java"
+  },
+  {
+    "simple": "KnowledgeText",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.knowledge.KnowledgeText",
+    "newFqcn": "com.feng.dsagent.knowledge.support.KnowledgeText",
+    "rel": "knowledge/KnowledgeText.java"
+  },
+  {
+    "simple": "TextbookSections",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.knowledge.TextbookSections",
+    "newFqcn": "com.feng.dsagent.knowledge.support.TextbookSections",
+    "rel": "knowledge/TextbookSections.java"
+  },
+  {
+    "simple": "ChapterLearningProgress",
+    "leaf": "vo",
+    "oldFqcn": "com.feng.dsagent.learning.ChapterLearningProgress",
+    "newFqcn": "com.feng.dsagent.learning.vo.ChapterLearningProgress",
+    "rel": "learning/ChapterLearningProgress.java"
+  },
+  {
+    "simple": "LearningEventCommand",
+    "leaf": "dto",
+    "oldFqcn": "com.feng.dsagent.learning.LearningEventCommand",
+    "newFqcn": "com.feng.dsagent.learning.dto.LearningEventCommand",
+    "rel": "learning/LearningEventCommand.java"
+  },
+  {
+    "simple": "MasteryEstimator",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.learning.MasteryEstimator",
+    "newFqcn": "com.feng.dsagent.learning.support.MasteryEstimator",
+    "rel": "learning/MasteryEstimator.java"
+  },
+  {
+    "simple": "EnvironmentMailConfigMasterKeySource",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.mail.EnvironmentMailConfigMasterKeySource",
+    "newFqcn": "com.feng.dsagent.mail.support.EnvironmentMailConfigMasterKeySource",
+    "rel": "mail/EnvironmentMailConfigMasterKeySource.java"
+  },
+  {
+    "simple": "JavaMailSenderRoutingBeanPostProcessor",
+    "leaf": "config",
+    "oldFqcn": "com.feng.dsagent.mail.JavaMailSenderRoutingBeanPostProcessor",
+    "newFqcn": "com.feng.dsagent.mail.config.JavaMailSenderRoutingBeanPostProcessor",
+    "rel": "mail/JavaMailSenderRoutingBeanPostProcessor.java"
+  },
+  {
+    "simple": "JavaMailTransport",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.mail.JavaMailTransport",
+    "newFqcn": "com.feng.dsagent.mail.support.JavaMailTransport",
+    "rel": "mail/JavaMailTransport.java"
+  },
+  {
+    "simple": "MailConfigCrypto",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.mail.MailConfigCrypto",
+    "newFqcn": "com.feng.dsagent.mail.support.MailConfigCrypto",
+    "rel": "mail/MailConfigCrypto.java"
+  },
+  {
+    "simple": "MailConfigKeyBinding",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.mail.MailConfigKeyBinding",
+    "newFqcn": "com.feng.dsagent.mail.domain.MailConfigKeyBinding",
+    "rel": "mail/MailConfigKeyBinding.java"
+  },
+  {
+    "simple": "MailConfigMasterKeySource",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.mail.MailConfigMasterKeySource",
+    "newFqcn": "com.feng.dsagent.mail.support.MailConfigMasterKeySource",
+    "rel": "mail/MailConfigMasterKeySource.java"
+  },
+  {
+    "simple": "MailConfigStartupCheck",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.mail.MailConfigStartupCheck",
+    "newFqcn": "com.feng.dsagent.mail.support.MailConfigStartupCheck",
+    "rel": "mail/MailConfigStartupCheck.java"
+  },
+  {
+    "simple": "MailConnection",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.mail.MailConnection",
+    "newFqcn": "com.feng.dsagent.mail.domain.MailConnection",
+    "rel": "mail/MailConnection.java"
+  },
+  {
+    "simple": "MailPolicy",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.mail.MailPolicy",
+    "newFqcn": "com.feng.dsagent.mail.domain.MailPolicy",
+    "rel": "mail/MailPolicy.java"
+  },
+  {
+    "simple": "MailTemplateRenderer",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.mail.MailTemplateRenderer",
+    "newFqcn": "com.feng.dsagent.mail.support.MailTemplateRenderer",
+    "rel": "mail/MailTemplateRenderer.java"
+  },
+  {
+    "simple": "MailTransport",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.mail.MailTransport",
+    "newFqcn": "com.feng.dsagent.mail.support.MailTransport",
+    "rel": "mail/MailTransport.java"
+  },
+  {
+    "simple": "MailVerificationCodeSender",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.mail.MailVerificationCodeSender",
+    "newFqcn": "com.feng.dsagent.mail.support.MailVerificationCodeSender",
+    "rel": "mail/MailVerificationCodeSender.java"
+  },
+  {
+    "simple": "SecurityMode",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.mail.SecurityMode",
+    "newFqcn": "com.feng.dsagent.mail.domain.SecurityMode",
+    "rel": "mail/SecurityMode.java"
+  },
+  {
+    "simple": "SmtpEndpointRouting",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.mail.SmtpEndpointRouting",
+    "newFqcn": "com.feng.dsagent.mail.support.SmtpEndpointRouting",
+    "rel": "mail/SmtpEndpointRouting.java"
+  },
+  {
+    "simple": "DatabaseModelConfigRuntimeSettingsSource",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.DatabaseModelConfigRuntimeSettingsSource",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.DatabaseModelConfigRuntimeSettingsSource",
+    "rel": "modelconfig/DatabaseModelConfigRuntimeSettingsSource.java"
+  },
+  {
+    "simple": "EnvironmentModelConfigMasterKeySource",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.EnvironmentModelConfigMasterKeySource",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.EnvironmentModelConfigMasterKeySource",
+    "rel": "modelconfig/EnvironmentModelConfigMasterKeySource.java"
+  },
+  {
+    "simple": "HttpModelConfigConnectionTester",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.HttpModelConfigConnectionTester",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.HttpModelConfigConnectionTester",
+    "rel": "modelconfig/HttpModelConfigConnectionTester.java"
+  },
+  {
+    "simple": "ModelConfigConnection",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.modelconfig.ModelConfigConnection",
+    "newFqcn": "com.feng.dsagent.modelconfig.domain.ModelConfigConnection",
+    "rel": "modelconfig/ModelConfigConnection.java"
+  },
+  {
+    "simple": "ModelConfigConnectionResult",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.modelconfig.ModelConfigConnectionResult",
+    "newFqcn": "com.feng.dsagent.modelconfig.domain.ModelConfigConnectionResult",
+    "rel": "modelconfig/ModelConfigConnectionResult.java"
+  },
+  {
+    "simple": "ModelConfigConnectionTester",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.ModelConfigConnectionTester",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.ModelConfigConnectionTester",
+    "rel": "modelconfig/ModelConfigConnectionTester.java"
+  },
+  {
+    "simple": "ModelConfigCrypto",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.ModelConfigCrypto",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.ModelConfigCrypto",
+    "rel": "modelconfig/ModelConfigCrypto.java"
+  },
+  {
+    "simple": "ModelConfigGenerationControls",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.modelconfig.ModelConfigGenerationControls",
+    "newFqcn": "com.feng.dsagent.modelconfig.domain.ModelConfigGenerationControls",
+    "rel": "modelconfig/ModelConfigGenerationControls.java"
+  },
+  {
+    "simple": "ModelConfigHostResolver",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.ModelConfigHostResolver",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.ModelConfigHostResolver",
+    "rel": "modelconfig/ModelConfigHostResolver.java"
+  },
+  {
+    "simple": "ModelConfigKeyBinding",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.modelconfig.ModelConfigKeyBinding",
+    "newFqcn": "com.feng.dsagent.modelconfig.domain.ModelConfigKeyBinding",
+    "rel": "modelconfig/ModelConfigKeyBinding.java"
+  },
+  {
+    "simple": "ModelConfigMasterKeySource",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.ModelConfigMasterKeySource",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.ModelConfigMasterKeySource",
+    "rel": "modelconfig/ModelConfigMasterKeySource.java"
+  },
+  {
+    "simple": "ModelConfigResolvedTarget",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.modelconfig.ModelConfigResolvedTarget",
+    "newFqcn": "com.feng.dsagent.modelconfig.domain.ModelConfigResolvedTarget",
+    "rel": "modelconfig/ModelConfigResolvedTarget.java"
+  },
+  {
+    "simple": "ModelConfigRuntimeClientFactory",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.ModelConfigRuntimeClientFactory",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.ModelConfigRuntimeClientFactory",
+    "rel": "modelconfig/ModelConfigRuntimeClientFactory.java"
+  },
+  {
+    "simple": "ModelConfigRuntimeSettings",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.modelconfig.ModelConfigRuntimeSettings",
+    "newFqcn": "com.feng.dsagent.modelconfig.domain.ModelConfigRuntimeSettings",
+    "rel": "modelconfig/ModelConfigRuntimeSettings.java"
+  },
+  {
+    "simple": "ModelConfigRuntimeSettingsSource",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.ModelConfigRuntimeSettingsSource",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.ModelConfigRuntimeSettingsSource",
+    "rel": "modelconfig/ModelConfigRuntimeSettingsSource.java"
+  },
+  {
+    "simple": "ModelConfigUrlValidator",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.ModelConfigUrlValidator",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.ModelConfigUrlValidator",
+    "rel": "modelconfig/ModelConfigUrlValidator.java"
+  },
+  {
+    "simple": "ModelGenerationReadiness",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.ModelGenerationReadiness",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.ModelGenerationReadiness",
+    "rel": "modelconfig/ModelGenerationReadiness.java"
+  },
+  {
+    "simple": "OpenAiCompatibleModelConfigRuntimeClientFactory",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.OpenAiCompatibleModelConfigRuntimeClientFactory",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.OpenAiCompatibleModelConfigRuntimeClientFactory",
+    "rel": "modelconfig/OpenAiCompatibleModelConfigRuntimeClientFactory.java"
+  },
+  {
+    "simple": "PersistedModelConfigClient",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.PersistedModelConfigClient",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.PersistedModelConfigClient",
+    "rel": "modelconfig/PersistedModelConfigClient.java"
+  },
+  {
+    "simple": "PinnedHttpsConnection",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.PinnedHttpsConnection",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.PinnedHttpsConnection",
+    "rel": "modelconfig/PinnedHttpsConnection.java"
+  },
+  {
+    "simple": "PinnedHttpsConnectionFactory",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.PinnedHttpsConnectionFactory",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.PinnedHttpsConnectionFactory",
+    "rel": "modelconfig/PinnedHttpsConnectionFactory.java"
+  },
+  {
+    "simple": "PinnedHttpsRequest",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.modelconfig.PinnedHttpsRequest",
+    "newFqcn": "com.feng.dsagent.modelconfig.domain.PinnedHttpsRequest",
+    "rel": "modelconfig/PinnedHttpsRequest.java"
+  },
+  {
+    "simple": "PinnedHttpsResponse",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.modelconfig.PinnedHttpsResponse",
+    "newFqcn": "com.feng.dsagent.modelconfig.domain.PinnedHttpsResponse",
+    "rel": "modelconfig/PinnedHttpsResponse.java"
+  },
+  {
+    "simple": "PinnedHttpsTransport",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.PinnedHttpsTransport",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.PinnedHttpsTransport",
+    "rel": "modelconfig/PinnedHttpsTransport.java"
+  },
+  {
+    "simple": "PinnedOpenAiCompatibleModelClient",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.PinnedOpenAiCompatibleModelClient",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.PinnedOpenAiCompatibleModelClient",
+    "rel": "modelconfig/PinnedOpenAiCompatibleModelClient.java"
+  },
+  {
+    "simple": "SystemModelConfigHostResolver",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.SystemModelConfigHostResolver",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.SystemModelConfigHostResolver",
+    "rel": "modelconfig/SystemModelConfigHostResolver.java"
+  },
+  {
+    "simple": "TlsPinnedHttpsConnectionFactory",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.modelconfig.TlsPinnedHttpsConnectionFactory",
+    "newFqcn": "com.feng.dsagent.modelconfig.support.TlsPinnedHttpsConnectionFactory",
+    "rel": "modelconfig/TlsPinnedHttpsConnectionFactory.java"
+  },
+  {
+    "simple": "PresentationCatalog",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.presentation.PresentationCatalog",
+    "newFqcn": "com.feng.dsagent.presentation.support.PresentationCatalog",
+    "rel": "presentation/PresentationCatalog.java"
+  },
+  {
+    "simple": "PresentationSlide",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.presentation.PresentationSlide",
+    "newFqcn": "com.feng.dsagent.presentation.domain.PresentationSlide",
+    "rel": "presentation/PresentationSlide.java"
+  },
+  {
+    "simple": "SlideImageLinks",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.presentation.SlideImageLinks",
+    "newFqcn": "com.feng.dsagent.presentation.support.SlideImageLinks",
+    "rel": "presentation/SlideImageLinks.java"
+  },
+  {
+    "simple": "SlidePlanner",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.presentation.SlidePlanner",
+    "newFqcn": "com.feng.dsagent.presentation.support.SlidePlanner",
+    "rel": "presentation/SlidePlanner.java"
+  },
+  {
+    "simple": "ResourceAsset",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.resource.ResourceAsset",
+    "newFqcn": "com.feng.dsagent.resource.support.ResourceAsset",
+    "rel": "resource/ResourceAsset.java"
+  },
+  {
+    "simple": "ResourceAudience",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.resource.ResourceAudience",
+    "newFqcn": "com.feng.dsagent.resource.domain.ResourceAudience",
+    "rel": "resource/ResourceAudience.java"
+  },
+  {
+    "simple": "ResourceContent",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.resource.ResourceContent",
+    "newFqcn": "com.feng.dsagent.resource.domain.ResourceContent",
+    "rel": "resource/ResourceContent.java"
+  },
+  {
+    "simple": "ReviewType",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.review.ReviewType",
+    "newFqcn": "com.feng.dsagent.review.domain.ReviewType",
+    "rel": "review/ReviewType.java"
+  },
+  {
+    "simple": "AuthenticatedUser",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.security.AuthenticatedUser",
+    "newFqcn": "com.feng.dsagent.security.domain.AuthenticatedUser",
+    "rel": "security/AuthenticatedUser.java"
+  },
+  {
+    "simple": "JwtAuthenticationFilter",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.security.JwtAuthenticationFilter",
+    "newFqcn": "com.feng.dsagent.security.support.JwtAuthenticationFilter",
+    "rel": "security/JwtAuthenticationFilter.java"
+  },
+  {
+    "simple": "NodeCompatibilityToken",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.security.NodeCompatibilityToken",
+    "newFqcn": "com.feng.dsagent.security.domain.NodeCompatibilityToken",
+    "rel": "security/NodeCompatibilityToken.java"
+  },
+  {
+    "simple": "NodeCompatibilityTokenIssuer",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.security.NodeCompatibilityTokenIssuer",
+    "newFqcn": "com.feng.dsagent.security.support.NodeCompatibilityTokenIssuer",
+    "rel": "security/NodeCompatibilityTokenIssuer.java"
+  },
+  {
+    "simple": "NodeCompatibilityTokenVerifier",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.security.NodeCompatibilityTokenVerifier",
+    "newFqcn": "com.feng.dsagent.security.support.NodeCompatibilityTokenVerifier",
+    "rel": "security/NodeCompatibilityTokenVerifier.java"
+  },
+  {
+    "simple": "NodeCompatibilityUserResolver",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.security.NodeCompatibilityUserResolver",
+    "newFqcn": "com.feng.dsagent.security.support.NodeCompatibilityUserResolver",
+    "rel": "security/NodeCompatibilityUserResolver.java"
+  },
+  {
+    "simple": "StudyroomFollowUpContext",
+    "leaf": "dto",
+    "oldFqcn": "com.feng.dsagent.studyroom.StudyroomFollowUpContext",
+    "newFqcn": "com.feng.dsagent.studyroom.dto.StudyroomFollowUpContext",
+    "rel": "studyroom/StudyroomFollowUpContext.java"
+  },
+  {
+    "simple": "StudyroomModelOutput",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.StudyroomModelOutput",
+    "newFqcn": "com.feng.dsagent.studyroom.support.StudyroomModelOutput",
+    "rel": "studyroom/StudyroomModelOutput.java"
+  },
+  {
+    "simple": "StudyroomRecords",
+    "leaf": "entity",
+    "oldFqcn": "com.feng.dsagent.studyroom.StudyroomRecords",
+    "newFqcn": "com.feng.dsagent.studyroom.entity.StudyroomRecords",
+    "rel": "studyroom/StudyroomRecords.java"
+  },
+  {
+    "simple": "StudyroomResourceCatalog",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.StudyroomResourceCatalog",
+    "newFqcn": "com.feng.dsagent.studyroom.support.StudyroomResourceCatalog",
+    "rel": "studyroom/StudyroomResourceCatalog.java"
+  },
+  {
+    "simple": "StudyroomResourceSelector",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.StudyroomResourceSelector",
+    "newFqcn": "com.feng.dsagent.studyroom.support.StudyroomResourceSelector",
+    "rel": "studyroom/StudyroomResourceSelector.java"
+  },
+  {
+    "simple": "StudyroomScene",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.studyroom.StudyroomScene",
+    "newFqcn": "com.feng.dsagent.studyroom.domain.StudyroomScene",
+    "rel": "studyroom/StudyroomScene.java"
+  },
+  {
+    "simple": "StudyroomSceneAdapter",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.StudyroomSceneAdapter",
+    "newFqcn": "com.feng.dsagent.studyroom.support.StudyroomSceneAdapter",
+    "rel": "studyroom/StudyroomSceneAdapter.java"
+  },
+  {
+    "simple": "ClassroomQuestionBank",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.checks.ClassroomQuestionBank",
+    "newFqcn": "com.feng.dsagent.studyroom.checks.support.ClassroomQuestionBank",
+    "rel": "studyroom/checks/ClassroomQuestionBank.java"
+  },
+  {
+    "simple": "CurriculumCatalog",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.curriculum.CurriculumCatalog",
+    "newFqcn": "com.feng.dsagent.studyroom.curriculum.support.CurriculumCatalog",
+    "rel": "studyroom/curriculum/CurriculumCatalog.java"
+  },
+  {
+    "simple": "LearningDepth",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.studyroom.draft.LearningDepth",
+    "newFqcn": "com.feng.dsagent.studyroom.draft.domain.LearningDepth",
+    "rel": "studyroom/draft/LearningDepth.java"
+  },
+  {
+    "simple": "OutlineDiff",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.draft.OutlineDiff",
+    "newFqcn": "com.feng.dsagent.studyroom.draft.support.OutlineDiff",
+    "rel": "studyroom/draft/OutlineDiff.java"
+  },
+  {
+    "simple": "OutlineIncrementalParser",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.draft.OutlineIncrementalParser",
+    "newFqcn": "com.feng.dsagent.studyroom.draft.support.OutlineIncrementalParser",
+    "rel": "studyroom/draft/OutlineIncrementalParser.java"
+  },
+  {
+    "simple": "OutlineJson",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.draft.OutlineJson",
+    "newFqcn": "com.feng.dsagent.studyroom.draft.support.OutlineJson",
+    "rel": "studyroom/draft/OutlineJson.java"
+  },
+  {
+    "simple": "OutlineModelGateway",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.draft.OutlineModelGateway",
+    "newFqcn": "com.feng.dsagent.studyroom.draft.support.OutlineModelGateway",
+    "rel": "studyroom/draft/OutlineModelGateway.java"
+  },
+  {
+    "simple": "OutlineValidator",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.draft.OutlineValidator",
+    "newFqcn": "com.feng.dsagent.studyroom.draft.support.OutlineValidator",
+    "rel": "studyroom/draft/OutlineValidator.java"
+  },
+  {
+    "simple": "ReviewedOutline",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.studyroom.draft.ReviewedOutline",
+    "newFqcn": "com.feng.dsagent.studyroom.draft.domain.ReviewedOutline",
+    "rel": "studyroom/draft/ReviewedOutline.java"
+  },
+  {
+    "simple": "ClassroomEvent",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.studyroom.events.ClassroomEvent",
+    "newFqcn": "com.feng.dsagent.studyroom.events.domain.ClassroomEvent",
+    "rel": "studyroom/events/ClassroomEvent.java"
+  },
+  {
+    "simple": "ClassroomEventSubscriptions",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.events.ClassroomEventSubscriptions",
+    "newFqcn": "com.feng.dsagent.studyroom.events.support.ClassroomEventSubscriptions",
+    "rel": "studyroom/events/ClassroomEventSubscriptions.java"
+  },
+  {
+    "simple": "ContentPlanCompiler",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.fragment.ContentPlanCompiler",
+    "newFqcn": "com.feng.dsagent.studyroom.fragment.support.ContentPlanCompiler",
+    "rel": "studyroom/fragment/ContentPlanCompiler.java"
+  },
+  {
+    "simple": "FragmentBudget",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.studyroom.fragment.FragmentBudget",
+    "newFqcn": "com.feng.dsagent.studyroom.fragment.domain.FragmentBudget",
+    "rel": "studyroom/fragment/FragmentBudget.java"
+  },
+  {
+    "simple": "FragmentComposer",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.fragment.FragmentComposer",
+    "newFqcn": "com.feng.dsagent.studyroom.fragment.support.FragmentComposer",
+    "rel": "studyroom/fragment/FragmentComposer.java"
+  },
+  {
+    "simple": "FragmentExecutionContext",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.studyroom.fragment.FragmentExecutionContext",
+    "newFqcn": "com.feng.dsagent.studyroom.fragment.domain.FragmentExecutionContext",
+    "rel": "studyroom/fragment/FragmentExecutionContext.java"
+  },
+  {
+    "simple": "FragmentOutputContract",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.fragment.FragmentOutputContract",
+    "newFqcn": "com.feng.dsagent.studyroom.fragment.support.FragmentOutputContract",
+    "rel": "studyroom/fragment/FragmentOutputContract.java"
+  },
+  {
+    "simple": "FragmentPlan",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.studyroom.fragment.FragmentPlan",
+    "newFqcn": "com.feng.dsagent.studyroom.fragment.domain.FragmentPlan",
+    "rel": "studyroom/fragment/FragmentPlan.java"
+  },
+  {
+    "simple": "FragmentResourceResolver",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.fragment.FragmentResourceResolver",
+    "newFqcn": "com.feng.dsagent.studyroom.fragment.support.FragmentResourceResolver",
+    "rel": "studyroom/fragment/FragmentResourceResolver.java"
+  },
+  {
+    "simple": "FragmentValidator",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.fragment.FragmentValidator",
+    "newFqcn": "com.feng.dsagent.studyroom.fragment.support.FragmentValidator",
+    "rel": "studyroom/fragment/FragmentValidator.java"
+  },
+  {
+    "simple": "PreparationScheduler",
+    "leaf": "worker",
+    "oldFqcn": "com.feng.dsagent.studyroom.fragment.PreparationScheduler",
+    "newFqcn": "com.feng.dsagent.studyroom.fragment.worker.PreparationScheduler",
+    "rel": "studyroom/fragment/PreparationScheduler.java"
+  },
+  {
+    "simple": "TeachingReviewContract",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.fragment.TeachingReviewContract",
+    "newFqcn": "com.feng.dsagent.studyroom.fragment.support.TeachingReviewContract",
+    "rel": "studyroom/fragment/TeachingReviewContract.java"
+  },
+  {
+    "simple": "GenerationLease",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.generation.GenerationLease",
+    "newFqcn": "com.feng.dsagent.studyroom.generation.support.GenerationLease",
+    "rel": "studyroom/generation/GenerationLease.java"
+  },
+  {
+    "simple": "StudyroomGenerationWorker",
+    "leaf": "worker",
+    "oldFqcn": "com.feng.dsagent.studyroom.generation.StudyroomGenerationWorker",
+    "newFqcn": "com.feng.dsagent.studyroom.generation.worker.StudyroomGenerationWorker",
+    "rel": "studyroom/generation/StudyroomGenerationWorker.java"
+  },
+  {
+    "simple": "ClassroomQuestionWorker",
+    "leaf": "worker",
+    "oldFqcn": "com.feng.dsagent.studyroom.questions.ClassroomQuestionWorker",
+    "newFqcn": "com.feng.dsagent.studyroom.questions.worker.ClassroomQuestionWorker",
+    "rel": "studyroom/questions/ClassroomQuestionWorker.java"
+  },
+  {
+    "simple": "LectureCompiler",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.teaching.LectureCompiler",
+    "newFqcn": "com.feng.dsagent.studyroom.teaching.support.LectureCompiler",
+    "rel": "studyroom/teaching/LectureCompiler.java"
+  },
+  {
+    "simple": "LectureRegion",
+    "leaf": "domain",
+    "oldFqcn": "com.feng.dsagent.studyroom.teaching.LectureRegion",
+    "newFqcn": "com.feng.dsagent.studyroom.teaching.domain.LectureRegion",
+    "rel": "studyroom/teaching/LectureRegion.java"
+  },
+  {
+    "simple": "TeachingActionValidator",
+    "leaf": "support",
+    "oldFqcn": "com.feng.dsagent.studyroom.teaching.TeachingActionValidator",
+    "newFqcn": "com.feng.dsagent.studyroom.teaching.support.TeachingActionValidator",
+    "rel": "studyroom/teaching/TeachingActionValidator.java"
+  }
+]

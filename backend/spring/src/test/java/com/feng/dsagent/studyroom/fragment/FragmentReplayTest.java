@@ -1,16 +1,27 @@
 package com.feng.dsagent.studyroom.fragment;
 
+import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.mock;
-import com.feng.dsagent.compiler.CodeExecutionReadiness;
+import com.feng.dsagent.compiler.support.CodeExecutionReadiness;
 import com.feng.dsagent.knowledge.*;
 import com.feng.dsagent.studyroom.*;
-import com.feng.dsagent.studyroom.draft.OutlineJson;
+import com.feng.dsagent.studyroom.draft.support.OutlineJson;
 import java.util.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 import tools.jackson.databind.json.JsonMapper;
+import com.feng.dsagent.knowledge.entity.KnowledgeChunkEntity;
+import com.feng.dsagent.knowledge.vo.KnowledgeSearchResultVO;
+import com.feng.dsagent.studyroom.support.StudyroomModelOutput;
+import com.feng.dsagent.studyroom.support.StudyroomResourceCatalog;
 
+import com.feng.dsagent.studyroom.fragment.domain.FragmentPlan;
+import com.feng.dsagent.studyroom.fragment.support.FragmentOutputContract;
+import com.feng.dsagent.studyroom.fragment.support.FragmentResourceResolver;
+import com.feng.dsagent.studyroom.fragment.support.FragmentValidator;
+import com.feng.dsagent.studyroom.fragment.support.TeachingReviewContract;
 /** Runs production contracts and binding without an execution client or a running server. */
 class FragmentReplayTest {
     @Test void replaysSanitizedFailuresAndAdviceWithoutModelOrCodeExecution() throws Exception {
@@ -20,7 +31,7 @@ class FragmentReplayTest {
         var catalog=new StudyroomResourceCatalog(null,null,null,null);
         var resolver=new FragmentResourceResolver(catalog,new KnowledgeSearchService(List.of(),0));
         var validator=new FragmentValidator(new FragmentOutputContract(mapper),resolver,catalog,mock(CodeExecutionReadiness.class));
-        var evidence=new KnowledgeSearchResult(new KnowledgeChunk("public-stack",null,"栈","栈遵循后进先出。","synthetic","1","PUBLIC"),1);
+        var evidence=new KnowledgeSearchResultVO("public-stack",null,"栈","栈遵循后进先出。","synthetic","1","PUBLIC",1);
         var candidate=new StudyroomResourceCatalog.Candidate(StudyroomModelOutput.ResourceType.C_CODE,"public-code","源码","合成源码",List.of());
         var resources=new FragmentResourceResolver.ResolvedResources(Map.of("e1",evidence),Map.of("r1",candidate),Map.of("r1",Map.of()),
             List.of(Map.of("id","public-code","source",manifest.path("code").path("source").asString(),"lineCount","2")),"synthetic-revision");

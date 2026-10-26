@@ -19,7 +19,7 @@ export function commandsFor(scope, { root = repoRoot, platform = process.platfor
     ],
     contracts: [{ name: 'API contracts', command: process.execPath, args: ['scripts/verify-api-contract-fixtures.js'], cwd: root }],
     architecture: [{ name: 'execution boundaries', command: maven,
-      args: ['-B', '-Dtest=StudyroomArchitectureTest,FragmentContractTest', 'test'], cwd: backend }],
+      args: ['-B', '-Dtest=StudyroomArchitectureTest,FragmentContractTest,BackendArchitectureTest,MyBatisConfigurationSmokeTest', 'test'], cwd: backend }],
     e2e: [{ name: 'browser regression', command: npm, args: ['run', 'test:e2e'], cwd: frontend }],
   };
   if (scope === 'all') return scopes.flatMap(name => commands[name]);

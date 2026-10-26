@@ -4,7 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.compiler.config.CompilerProperties;
+import com.feng.dsagent.compiler.config.SandboxProperties;
+import com.feng.dsagent.compiler.domain.CompilerExecution;
+import com.feng.dsagent.compiler.domain.SupportedLanguage;
+import com.feng.dsagent.compiler.dto.RunCodeDTO;
+import com.feng.dsagent.compiler.service.CompilerService;
+import com.feng.dsagent.compiler.vo.RunCodeVO;
+import com.feng.dsagent.compiler.worker.LocalCodeRunner;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
@@ -44,7 +52,7 @@ class LocalCodeRunnerTest {
             new LocalCodeRunner(sandbox(false, "gcc"), properties())
         );
 
-        RunCodeResponse response = service.run(new RunCodeRequest("c", "int main(){}", ""));
+        RunCodeVO response = service.run(new RunCodeDTO("c", "int main(){}", ""));
 
         assertThat(response.stdout()).isEqualTo("from-upstream");
         assertThat(calls).hasValue(1);
@@ -64,7 +72,7 @@ class LocalCodeRunnerTest {
             new LocalCodeRunner(sandbox(true, "gcc"), properties())
         );
 
-        RunCodeResponse response = service.run(new RunCodeRequest("python", "print('x')", ""));
+        RunCodeVO response = service.run(new RunCodeDTO("python", "print('x')", ""));
 
         assertThat(response.stdout()).isEqualTo("from-upstream");
         assertThat(calls).hasValue(1);
@@ -91,8 +99,8 @@ class LocalCodeRunnerTest {
             runner
         );
 
-        assertThatThrownBy(() -> service.run(new RunCodeRequest("c", "int main(){}", "")))
-            .isInstanceOfSatisfying(ApiException.class, error -> {
+        assertThatThrownBy(() -> service.run(new RunCodeDTO("c", "int main(){}", "")))
+            .isInstanceOfSatisfying(BizException.class, error -> {
                 assertThat(error.status()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
                 assertThat(error.code()).isEqualTo("SANDBOX_UNAVAILABLE");
             });

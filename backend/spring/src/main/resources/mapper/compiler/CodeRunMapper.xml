@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.compiler.mapper.CodeRunMapper">
+
+  <insert id="insert">
+    INSERT INTO code_runs
+      (id, user_id, chapter_id, language, source_code, stdin_text, status, output_text, error_text, duration_ms)
+    VALUES
+      (#{id}, #{userId}, #{chapterId}, #{language}, #{sourceCode}, #{stdinText}, #{status}, #{outputText}, #{errorText}, #{durationMs})
+  </insert>
+
+  <select id="countPublishedChapter" resultType="int">
+    SELECT COUNT(*) FROM chapters WHERE id = #{chapterId} AND status = 'PUBLISHED'
+  </select>
+
+  <select id="selectOwned" resultType="com.feng.dsagent.compiler.entity.CodeRunSnapshotEntity">
+    SELECT id,
+           chapter_id AS chapterId,
+           language,
+           source_code AS code,
+           stdin_text AS stdin,
+           output_text AS stdout,
+           error_text AS stderr,
+           status
+    FROM code_runs
+    WHERE id = #{runId} AND user_id = #{userId}
+  </select>
+</mapper>

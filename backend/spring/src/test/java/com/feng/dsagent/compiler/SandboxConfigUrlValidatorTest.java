@@ -3,7 +3,9 @@ package com.feng.dsagent.compiler;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.compiler.domain.SandboxConfigResolvedTarget;
+import com.feng.dsagent.compiler.support.SandboxConfigUrlValidator;
 import java.net.InetAddress;
 import java.net.URI;
 import org.junit.jupiter.api.Test;
@@ -79,7 +81,7 @@ class SandboxConfigUrlValidatorTest {
     }
 
     private void assertUnsafe(SandboxConfigUrlValidator validator, String value) {
-        ApiException exception = assertThrows(ApiException.class, () -> validator.validate(value));
+        BizException exception = assertThrows(BizException.class, () -> validator.validate(value));
         assertThat(exception.code()).isEqualTo("SANDBOX_CONFIG_URL_UNSAFE");
     }
 

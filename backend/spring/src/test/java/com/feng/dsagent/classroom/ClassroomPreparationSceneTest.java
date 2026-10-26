@@ -2,10 +2,12 @@ package com.feng.dsagent.classroom;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.feng.dsagent.presentation.PresentationSlide;
+import com.feng.dsagent.presentation.domain.PresentationSlide;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
+import com.feng.dsagent.classroom.support.ClassroomPreparation;
+import com.feng.dsagent.classroom.support.SlideSpinePlan;
 /** The scene a step declares must describe the page on screen, so it is derived from that page alone. */
 class ClassroomPreparationSceneTest {
 

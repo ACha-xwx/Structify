@@ -7,6 +7,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.DefaultApplicationArguments;
 
+import com.feng.dsagent.auth.config.BootstrapAdminProperties;
+import com.feng.dsagent.auth.support.AdminAccountProvisioner;
+import com.feng.dsagent.auth.worker.BootstrapAdminRunner;
 class BootstrapAdminRunnerTest {
 
     @Test

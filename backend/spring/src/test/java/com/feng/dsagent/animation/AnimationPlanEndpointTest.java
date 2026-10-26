@@ -1,17 +1,22 @@
 package com.feng.dsagent.animation;
 
+import com.feng.dsagent.animation.controller.AnimationIntentController;
+import com.feng.dsagent.animation.service.AnimationChapterService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.mockito.Mockito.mock;
 
-import com.feng.dsagent.classroom.ClassroomModelJson;
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.classroom.support.ClassroomModelJson;
+import com.feng.dsagent.common.exception.BizException;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
+import com.feng.dsagent.animation.support.AnimationValidator;
+import com.feng.dsagent.animation.support.DsvpAnimationAdapter;
+import com.feng.dsagent.animation.support.DsvpLocalEngine;
 /**
  * The animation lab's deterministic path: a picked capability becomes a request without a model call.
  *
@@ -21,7 +26,7 @@ import tools.jackson.databind.node.ObjectNode;
 class AnimationPlanEndpointTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
-    private final JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    private final AnimationChapterService chapters = mock(AnimationChapterService.class);
 
     private DsvpLocalEngine engine() {
         return new DsvpLocalEngine(true, "node", "../dsvp/dsvp-service.js", 20_000, mapper);
@@ -30,8 +35,8 @@ class AnimationPlanEndpointTest {
     private AnimationIntentController controller(DsvpLocalEngine engine) {
         ClassroomModelJson model = mock(ClassroomModelJson.class);
         var adapter = new DsvpAnimationAdapter(mapper, new AnimationValidator());
-        if (engine == null) return new AnimationIntentController(model, adapter, jdbc, mapper);
-        return new AnimationIntentController(model, adapter, jdbc, mapper, engine);
+        if (engine == null) return new AnimationIntentController(model, adapter, chapters, mapper);
+        return new AnimationIntentController(model, adapter, chapters, mapper, engine);
     }
 
     @Test
@@ -84,7 +89,7 @@ class AnimationPlanEndpointTest {
 
             assertThatThrownBy(() -> controller(engine)
                 .plan(new AnimationIntentController.PlanInput("graph.red_black_rotation", null, null)))
-                .isInstanceOf(ApiException.class)
+                .isInstanceOf(BizException.class)
                 .hasMessageContaining("graph.red_black_rotation");
         } finally {
             engine.shutdown();
@@ -95,7 +100,7 @@ class AnimationPlanEndpointTest {
     void reportsUnreachableEngineRatherThanGuessingARequest() {
         assertThatThrownBy(() -> controller(null)
             .plan(new AnimationIntentController.PlanInput("stack.push", null, null)))
-            .isInstanceOf(ApiException.class)
+            .isInstanceOf(BizException.class)
             .hasMessageContaining("本地动画引擎不可用");
     }
 }

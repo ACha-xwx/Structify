@@ -1,5 +1,8 @@
 package com.feng.dsagent.presentation;
 
+import com.feng.dsagent.presentation.controller.PresentationController;
+import com.feng.dsagent.presentation.service.PresentationService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -10,6 +13,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.ResponseEntity;
 
+import com.feng.dsagent.presentation.config.PresentationProperties;
+import com.feng.dsagent.presentation.domain.PresentationSlide;
+import com.feng.dsagent.presentation.support.PresentationCatalog;
+import com.feng.dsagent.presentation.support.SlideImageLinks;
 /**
  * These headers are the contract the cache in front of the deployment obeys. Without a cacheable slide
  * image every page turn costs a round trip; without a short catalogue window every visit refetches the

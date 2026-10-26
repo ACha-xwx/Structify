@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.knowledge.mapper.KnowledgeChunkMapper">
+
+  <sql id="reviewedSourceChain">
+    k.review_status = 'VERIFIED'
+      AND NULLIF(TRIM(k.source_path), '') IS NOT NULL
+      AND (k.chapter_id IS NULL OR kc.status = 'PUBLISHED')
+      AND (k.resource_id IS NULL OR (
+        r.review_status = 'VERIFIED'
+        AND rc.status = 'PUBLISHED'
+        AND NULLIF(TRIM(r.source_name), '') IS NOT NULL
+        AND NULLIF(TRIM(r.version_label), '') IS NOT NULL
+      ))
+  </sql>
+
+  <sql id="effectiveLicenseScope">
+    CASE WHEN k.resource_id IS NULL THEN k.license_scope ELSE r.license_scope END
+  </sql>
+
+  <delete id="deleteBySourcePrefix">
+    DELETE FROM knowledge_chunks WHERE source_path LIKE #{prefix}
+  </delete>
+
+  <insert id="insertChunks">
+    INSERT INTO knowledge_chunks
+      (id, chapter_id, title, content, source_path, page_label, review_status, license_scope)
+    VALUES
+    <foreach collection="chunks" item="chunk" separator=",">
+      (#{chunk.id}, #{chunk.chapterId}, #{chunk.title}, #{chunk.content},
+       #{chunk.source}, #{chunk.pageLabel}, 'VERIFIED', 'CLASSROOM_ONLY')
+    </foreach>
+  </insert>
+
+  <select id="selectPublished" resultType="com.feng.dsagent.knowledge.entity.KnowledgeChunkEntity">
+    SELECT k.id,
+           k.chapter_id AS chapterId,
+           k.title,
+           k.content,
+           k.source_path AS source,
+           k.page_label AS pageLabel,
+           <include refid="effectiveLicenseScope"/> AS licenseScope
+    FROM knowledge_chunks k
+    LEFT JOIN chapters kc ON kc.id = k.chapter_id
+    LEFT JOIN resources r ON r.id = k.resource_id
+    LEFT JOIN chapters rc ON rc.id = r.chapter_id
+    WHERE <include refid="reviewedSourceChain"/>
+    ORDER BY k.source_path, k.id
+  </select>
+
+  <select id="selectEligibleIds" resultType="string">
+    SELECT k.id
+    FROM knowledge_chunks k
+    LEFT JOIN chapters kc ON kc.id = k.chapter_id
+    LEFT JOIN resources r ON r.id = k.resource_id
+    LEFT JOIN chapters rc ON rc.id = r.chapter_id
+    WHERE k.id IN
+    <foreach collection="chunkIds" item="id" open="(" separator="," close=")">
+      #{id}
+    </foreach>
+      AND <include refid="reviewedSourceChain"/>
+      AND <include refid="effectiveLicenseScope"/> IN
+    <foreach collection="licenseScopes" item="scope" open="(" separator="," close=")">
+      #{scope}
+    </foreach>
+  </select>
+</mapper>

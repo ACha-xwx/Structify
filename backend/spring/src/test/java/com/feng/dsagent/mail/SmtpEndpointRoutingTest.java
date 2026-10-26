@@ -11,6 +11,7 @@ import javax.net.ssl.SSLSocketFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 
+import com.feng.dsagent.mail.support.SmtpEndpointRouting;
 class SmtpEndpointRoutingTest {
 
     @Test

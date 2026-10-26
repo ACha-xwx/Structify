@@ -1,5 +1,7 @@
 package com.feng.dsagent.review;
 
+import com.feng.dsagent.review.service.ReviewService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -7,11 +9,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.feng.dsagent.knowledge.KnowledgeAudience;
-import com.feng.dsagent.knowledge.KnowledgeChunk;
-import com.feng.dsagent.knowledge.KnowledgeSearchService;
-import com.feng.dsagent.security.AuthenticatedUser;
-import com.feng.dsagent.security.JwtTokenService;
+import com.feng.dsagent.knowledge.domain.KnowledgeAudience;
+import com.feng.dsagent.knowledge.entity.KnowledgeChunkEntity;
+import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
+import com.feng.dsagent.security.service.JwtTokenService;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
@@ -75,7 +77,7 @@ class ReviewKnowledgeIndexRefreshIntegrationTest {
         long adminId = seedAdmin();
 
         assertThat(knowledge.search("evidence", chapterId, 6, KnowledgeAudience.STUDENT))
-            .extracting(result -> result.chunk().id())
+            .extracting(result -> result.id())
             .containsExactly(CHUNK_ID);
 
         mockMvc.perform(patch("/api/v1/admin/reviews/KNOWLEDGE_CHUNK/" + CHUNK_ID + "/status")
@@ -112,7 +114,7 @@ class ReviewKnowledgeIndexRefreshIntegrationTest {
         long adminId = seedAdmin();
 
         assertThat(knowledge.search("evidence", chapterId, 6, KnowledgeAudience.STUDENT))
-            .extracting(result -> result.chunk().id())
+            .extracting(result -> result.id())
             .containsExactly(SOURCE_CHUNK_ID);
 
         mockMvc.perform(patch("/api/v1/admin/reviews/RESOURCE/" + SOURCE_ID + "/status")
@@ -157,7 +159,7 @@ class ReviewKnowledgeIndexRefreshIntegrationTest {
             .andExpect(status().isOk());
 
         assertThat(knowledge.search("evidence", chapterId, 6, KnowledgeAudience.STUDENT))
-            .extracting(result -> result.chunk().id())
+            .extracting(result -> result.id())
             .containsExactly(VERIFIED_CHUNK_ID);
     }
 
@@ -185,7 +187,7 @@ class ReviewKnowledgeIndexRefreshIntegrationTest {
             CHUNK_ID
         )).isEqualTo("VERIFIED");
         assertThat(knowledge.search("evidence", chapterId, 6, KnowledgeAudience.STUDENT))
-            .extracting(result -> result.chunk().id())
+            .extracting(result -> result.id())
             .containsExactly(CHUNK_ID);
     }
 
@@ -234,8 +236,8 @@ class ReviewKnowledgeIndexRefreshIntegrationTest {
         );
     }
 
-    private KnowledgeChunk chunk(String id, String chapterId) {
-        return new KnowledgeChunk(
+    private KnowledgeChunkEntity chunk(String id, String chapterId) {
+        return new KnowledgeChunkEntity(
             id,
             chapterId,
             "Runtime evidence evidence",

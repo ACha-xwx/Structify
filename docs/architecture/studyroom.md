@@ -13,7 +13,7 @@ material position restoration and server-graded single-choice checks. SSE reads
 committed state; reconnecting or disconnecting never starts or cancels a model
 invocation. The classroom experience has passed backend, frontend, contract,
 architecture and deterministic browser verification; see the
-[verification record](../project/studyroom-classroom-experience-verification.md).
+[verification record](../archive/verification/studyroom-classroom-experience-verification.md).
 
 The classroom uses a viewport-sized workspace: a collapsible knowledge route,
 retained material/explanation panels, an explicitly selected self-check panel,

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.resource.mapper.ResourceMapper">
+
+  <select id="selectPublishedChapters" resultType="com.feng.dsagent.resource.mapper.ResourceMapper$ChapterRow">
+    SELECT id, chapter_number AS chapterNumber, title, summary
+    FROM chapters
+    WHERE status = 'PUBLISHED'
+    ORDER BY chapter_number
+  </select>
+
+  <sql id="resourceColumns">
+    r.id AS id, r.chapter_id AS chapterId, r.resource_type AS resourceType, r.title AS title,
+    r.description AS description, r.file_path AS filePath, r.source_name AS sourceName,
+    r.version_label AS versionLabel, r.review_status AS reviewStatus, r.license_scope AS licenseScope
+  </sql>
+
+  <sql id="audienceFilter">
+    AND (
+      r.license_scope = 'PUBLIC'
+      OR (r.license_scope = 'CLASSROOM_ONLY' AND #{allowClassroomOnly})
+      OR (r.license_scope = 'TEAM_ONLY' AND #{allowTeamOnly})
+    )
+  </sql>
+
+  <select id="selectPublishedByChapterId" resultType="com.feng.dsagent.resource.mapper.ResourceMapper$ResourceRow">
+    SELECT <include refid="resourceColumns"/>
+    FROM resources r
+    INNER JOIN chapters c ON c.id = r.chapter_id
+    WHERE r.chapter_id = #{chapterId}
+      AND r.review_status IN ('PUBLISHED', 'VERIFIED')
+      AND c.status = 'PUBLISHED'
+      <include refid="audienceFilter"/>
+    ORDER BY r.updated_at DESC, r.id
+  </select>
+
+  <select id="selectPublishedById" resultType="com.feng.dsagent.resource.mapper.ResourceMapper$ResourceRow">
+    SELECT <include refid="resourceColumns"/>
+    FROM resources r
+    INNER JOIN chapters c ON c.id = r.chapter_id
+    WHERE r.id = #{id}
+      AND r.review_status IN ('PUBLISHED', 'VERIFIED')
+      AND c.status = 'PUBLISHED'
+      <include refid="audienceFilter"/>
+  </select>
+</mapper>

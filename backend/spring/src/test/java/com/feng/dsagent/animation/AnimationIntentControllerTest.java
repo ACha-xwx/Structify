@@ -1,28 +1,34 @@
 package com.feng.dsagent.animation;
 
+import com.feng.dsagent.animation.controller.AnimationIntentController;
+import com.feng.dsagent.animation.service.AnimationChapterService;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
-import com.feng.dsagent.classroom.ClassroomModelJson;
+import com.feng.dsagent.classroom.support.ClassroomModelJson;
 import com.feng.dsagent.model.ModelResponse;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.animation.support.AnimationValidator;
+import com.feng.dsagent.animation.support.DsvpAnimationAdapter;
+import com.feng.dsagent.animation.support.DsvpLocalEngine;
 class AnimationIntentControllerTest {
     final ObjectMapper mapper = new ObjectMapper();
-    final JdbcTemplate jdbc = mock(JdbcTemplate.class);
+    final AnimationChapterService chapters = mock(AnimationChapterService.class);
     final AuthenticatedUser user = new AuthenticatedUser(1,"test@example.test",Set.of("STUDENT"));
     final String valid = """
         {"version":"1.0","structure":"tree","operation":"traverse","params":{"order":"preorder"},"initial_state":{"data":["A","B","C"]}}
         """;
 
     @Test void asksModelAndRepairsInvalidRequestBeforeReturningExecutableInput() {
-        when(jdbc.queryForList(anyString(),eq(String.class),eq("06-tree"))).thenReturn(List.of("树与二叉树"));
+        when(chapters.requirePublishedTitle(eq("06-tree"))).thenReturn("树与二叉树");
         AtomicInteger calls = new AtomicInteger();
         var model = new ClassroomModelJson((id,feature,key,request) -> {
             assertThat(feature).isEqualTo("animation-intent");
@@ -31,7 +37,7 @@ class AnimationIntentControllerTest {
             assertThat(request.messages().getLast().content()).contains("initial_state must be an object");
             return new ModelResponse(valid);
         },mapper);
-        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),jdbc,mapper);
+        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),chapters,mapper);
         var result = controller.interpret(user,new AnimationIntentController.Input("06-tree","讲先序遍历"));
         assertThat(result.path("initial_state").path("data")).hasSize(3);
         assertThat(calls.get()).isEqualTo(2);
@@ -39,8 +45,8 @@ class AnimationIntentControllerTest {
 
     @Test void missingChapterNeverCallsTheModel() {
         ClassroomModelJson model = mock(ClassroomModelJson.class);
-        when(jdbc.queryForList(anyString(),eq(String.class),eq("missing"))).thenReturn(List.of());
-        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),jdbc,mapper);
+        when(chapters.requirePublishedTitle(eq("missing"))).thenThrow(new com.feng.dsagent.common.exception.BizException(org.springframework.http.HttpStatus.NOT_FOUND, "CHAPTER_NOT_FOUND", "章节未发布或不存在"));
+        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),chapters,mapper);
         assertThatThrownBy(() -> controller.interpret(user,new AnimationIntentController.Input("missing","动画"))).hasMessageContaining("章节未发布");
         verifyNoInteractions(model);
     }
@@ -62,20 +68,20 @@ class AnimationIntentControllerTest {
      * asked for. "包的" and "o而k之" are the same yes as "好的", and no word list holds them all.
      */
     @Test void aReplyThatIsNoAgreementIsDeclinedInsteadOfBecomingADemo() {
-        when(jdbc.queryForList(anyString(),eq(String.class),eq("06-tree"))).thenReturn(List.of("树与二叉树"));
+        when(chapters.requirePublishedTitle(eq("06-tree"))).thenReturn("树与二叉树");
         var model = new ClassroomModelJson((id,feature,key,request) -> {
             assertThat(request.messages().getLast().content()).contains("那队列呢");
             return new ModelResponse("{\"declined\":true,\"reason\":\"学生在问队列，不是答应看演示\"}");
         },mapper);
-        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),jdbc,mapper);
+        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),chapters,mapper);
         assertThatThrownBy(() -> controller.interpret(user,new AnimationIntentController.Input("06-tree","讲先序遍历",null,false,"那队列呢")))
             .hasMessageContaining("学生在问队列");
     }
 
     @Test void unsupportedAlgorithmIsNotReplacedWithAnUnrelatedDemo() {
-        when(jdbc.queryForList(anyString(),eq(String.class),eq("06-tree"))).thenReturn(List.of("树与二叉树"));
+        when(chapters.requirePublishedTitle(eq("06-tree"))).thenReturn("树与二叉树");
         var model = new ClassroomModelJson((id,feature,key,request) -> new ModelResponse("{\"unsupported\":true,\"reason\":\"尚未实现AVL旋转\"}"),mapper);
-        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),jdbc,mapper);
+        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),chapters,mapper);
         assertThatThrownBy(() -> controller.interpret(user,new AnimationIntentController.Input("06-tree","AVL旋转"))).hasMessageContaining("尚未实现AVL旋转");
     }
 
@@ -86,7 +92,7 @@ class AnimationIntentControllerTest {
      * believed, and a wrong one becomes the demo that was asked for.
      */
     @Test void aRefusalIsCheckedAgainstTheCapabilityTableBeforeItIsBelieved() {
-        when(jdbc.queryForList(anyString(),eq(String.class),eq("06-tree"))).thenReturn(List.of("树与二叉树"));
+        when(chapters.requirePublishedTitle(eq("06-tree"))).thenReturn("树与二叉树");
         var engine = mock(DsvpLocalEngine.class);
         when(engine.enabled()).thenReturn(true);
         ObjectNode capabilities = (ObjectNode) mapper.readTree("""
@@ -111,7 +117,7 @@ class AnimationIntentControllerTest {
             assertThat(request.messages().getFirst().content()).contains("bst.insert").contains("二叉排序树插入");
             return new ModelResponse("{\"needed\":true,\"confidence\":0.9,\"capability\":\"bst.insert\",\"purpose\":\"看结点怎么找到位置\",\"arguments\":{}}");
         },mapper);
-        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),jdbc,mapper,engine);
+        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),chapters,mapper,engine);
 
         var result = controller.interpret(user,new AnimationIntentController.Input("06-tree","我想学一下排序树"));
 
@@ -126,7 +132,7 @@ class AnimationIntentControllerTest {
      * the whole registry now.
      */
     @Test void aRefusalIsCheckedAgainstTheWholeRegistryNotOnlyTheChapter() {
-        when(jdbc.queryForList(anyString(),eq(String.class),eq("03-stack-queue"))).thenReturn(List.of("栈与队列"));
+        when(chapters.requirePublishedTitle(eq("03-stack-queue"))).thenReturn("栈与队列");
         var engine = mock(DsvpLocalEngine.class);
         when(engine.enabled()).thenReturn(true);
         when(engine.capabilities("03-")).thenReturn(java.util.Optional.of((ObjectNode) mapper.readTree("""
@@ -152,7 +158,7 @@ class AnimationIntentControllerTest {
             assertThat(request.messages().getFirst().content()).contains("search.binary").contains("折半查找");
             return new ModelResponse("{\"needed\":true,\"confidence\":0.9,\"capability\":\"search.binary\",\"purpose\":\"看区间怎么折半\",\"arguments\":{}}");
         },mapper);
-        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),jdbc,mapper,engine);
+        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),chapters,mapper,engine);
 
         var result = controller.interpret(user,new AnimationIntentController.Input("03-stack-queue","折半查找"));
 
@@ -166,7 +172,7 @@ class AnimationIntentControllerTest {
      * the facts improvises. An empty chapter widens to the whole textbook instead.
      */
     @Test void aChapterWithNoDemosOfItsOwnReadsTheWholeRegistryInsteadOfGuessing() {
-        when(jdbc.queryForList(anyString(),eq(String.class),eq("01-introduction"))).thenReturn(List.of("绪论"));
+        when(chapters.requirePublishedTitle(eq("01-introduction"))).thenReturn("绪论");
         var engine = mock(DsvpLocalEngine.class);
         when(engine.enabled()).thenReturn(true);
         when(engine.capabilities("01-")).thenReturn(java.util.Optional.of((ObjectNode) mapper.readTree("""
@@ -186,7 +192,7 @@ class AnimationIntentControllerTest {
             assertThat(request.messages().getFirst().content()).contains("linked_list.reverse");
             return new ModelResponse("{\"needed\":true,\"confidence\":0.9,\"capability\":\"linked_list.reverse\",\"purpose\":\"看指针怎么反过来\",\"arguments\":{}}");
         },mapper);
-        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),jdbc,mapper,engine);
+        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),chapters,mapper,engine);
 
         var result = controller.interpret(user,new AnimationIntentController.Input("01-introduction","单链表逆置"));
 
@@ -199,7 +205,7 @@ class AnimationIntentControllerTest {
      * so the wider table is checked here too.
      */
     @Test void aNotNeededAnswerIsRecheckedWhenAnotherChapterHoldsTheDemo() {
-        when(jdbc.queryForList(anyString(),eq(String.class),eq("03-stack-queue"))).thenReturn(List.of("栈与队列"));
+        when(chapters.requirePublishedTitle(eq("03-stack-queue"))).thenReturn("栈与队列");
         var engine = mock(DsvpLocalEngine.class);
         when(engine.enabled()).thenReturn(true);
         when(engine.capabilities("03-")).thenReturn(java.util.Optional.of((ObjectNode) mapper.readTree("""
@@ -224,7 +230,7 @@ class AnimationIntentControllerTest {
             assertThat(request.messages().getFirst().content()).contains("search.binary").contains("折半查找");
             return new ModelResponse("{\"needed\":true,\"confidence\":0.9,\"capability\":\"search.binary\",\"purpose\":\"看区间怎么折半\",\"arguments\":{}}");
         },mapper);
-        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),jdbc,mapper,engine);
+        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),chapters,mapper,engine);
 
         var result = controller.interpret(user,new AnimationIntentController.Input("03-stack-queue","折半查找"));
 
@@ -238,7 +244,7 @@ class AnimationIntentControllerTest {
      * spent.
      */
     @Test void aNotNeededAnswerForAConceptQuestionStaysWithoutASecondCall() {
-        when(jdbc.queryForList(anyString(),eq(String.class),eq("03-stack-queue"))).thenReturn(List.of("栈与队列"));
+        when(chapters.requirePublishedTitle(eq("03-stack-queue"))).thenReturn("栈与队列");
         var engine = mock(DsvpLocalEngine.class);
         when(engine.enabled()).thenReturn(true);
         when(engine.capabilities("03-")).thenReturn(java.util.Optional.of((ObjectNode) mapper.readTree("""
@@ -258,7 +264,7 @@ class AnimationIntentControllerTest {
             calls.getAndIncrement();
             return new ModelResponse("{\"needed\":false,\"confidence\":0.9,\"capability\":\"\",\"purpose\":\"栈的定义是静态概念，讲一句话即可\",\"arguments\":{}}");
         },mapper);
-        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),jdbc,mapper,engine);
+        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),chapters,mapper,engine);
 
         assertThatThrownBy(() -> controller.interpret(user,new AnimationIntentController.Input("03-stack-queue","栈是什么")))
             .hasMessageContaining("静态概念");
@@ -289,18 +295,18 @@ class AnimationIntentControllerTest {
             assertThat(request.messages().getLast().content()).contains("全部章节");
             return new ModelResponse("{\"needed\":true,\"confidence\":0.9,\"capability\":\"linked_list.reverse\",\"purpose\":\"看指针怎么反过来\",\"arguments\":{}}");
         },mapper);
-        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),jdbc,mapper,engine);
+        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),chapters,mapper,engine);
 
         var result = controller.interpret(user,new AnimationIntentController.Input(null,"单链表逆置"));
 
         assertThat(result.path("operation").asText()).isEqualTo("reverse");
         // The empty scope is the whole registry, and no chapter row is read on the way there.
         verify(engine).capabilities("");
-        verifyNoMoreInteractions(jdbc);
+        verifyNoMoreInteractions(chapters);
     }
 
     /** When the table offers nothing close, the refusal stands and costs no second call. */    @Test void aRefusalWithNothingCloseStandsWithoutASecondCall() {
-        when(jdbc.queryForList(anyString(),eq(String.class),eq("06-tree"))).thenReturn(List.of("树与二叉树"));
+        when(chapters.requirePublishedTitle(eq("06-tree"))).thenReturn("树与二叉树");
         var engine = mock(DsvpLocalEngine.class);
         when(engine.enabled()).thenReturn(true);
         ObjectNode capabilities = (ObjectNode) mapper.readTree("""
@@ -315,7 +321,7 @@ class AnimationIntentControllerTest {
             calls.incrementAndGet();
             return new ModelResponse("{\"unsupported\":true,\"reason\":\"尚未实现AVL旋转\"}");
         },mapper);
-        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),jdbc,mapper,engine);
+        var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),chapters,mapper,engine);
 
         assertThatThrownBy(() -> controller.interpret(user,new AnimationIntentController.Input("06-tree","AVL旋转怎么调整")))
             .hasMessageContaining("尚未实现AVL旋转");

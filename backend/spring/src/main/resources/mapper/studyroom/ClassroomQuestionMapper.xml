@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.studyroom.questions.mapper.ClassroomQuestionMapper">
+  <select id="selectOwned" resultType="map">
+    SELECT q.* FROM studyroom_questions q
+    JOIN studyroom_runs r ON r.id=q.run_id
+    JOIN study_rooms s ON s.id=q.room_id AND s.current_run_id=q.run_id
+    JOIN study_outline_drafts d ON d.id=r.draft_id
+    WHERE q.id=#{questionId} AND q.room_id=#{roomId} AND q.user_id=#{userId}
+      AND s.deleted_at IS NULL AND d.deleted_at IS NULL
+    <if test="lock"> FOR UPDATE</if>
+  </select>
+  <select id="selectFragmentSource" resultType="map">
+    SELECT f.*,r.draft_id FROM studyroom_fragments f
+    JOIN studyroom_runs r ON r.id=f.run_id
+    JOIN study_rooms s ON s.current_run_id=r.id
+    JOIN study_outline_drafts d ON d.id=r.draft_id
+    WHERE f.id=#{fragmentId} AND f.run_id=#{runId} AND s.id=#{roomId} AND r.user_id=#{userId}
+      AND s.deleted_at IS NULL AND d.deleted_at IS NULL
+  </select>
+  <select id="selectActiveQuestion" resultType="map">
+    SELECT q.id FROM studyroom_questions q JOIN studyroom_generation_jobs j ON j.id=q.job_id
+    WHERE q.user_id=#{userId} AND q.run_id=#{runId} AND q.status IN ('QUEUED','RUNNING') AND j.status IN ('QUEUED','RUNNING')
+  </select>
+  <insert id="insertQuestion">
+    INSERT INTO studyroom_questions(id,user_id,room_id,run_id,fragment_id,content_revision,question,context_json,audience,status,answer_text,sources_json,actions_json,assistant_message_id,user_message_id)
+    VALUES(#{id},#{userId},#{roomId},#{runId},#{fragmentId},#{revision},#{question},#{contextJson},#{audience},'QUEUED','','[]','[]',#{assistantMessageId},#{userMessageId})
+  </insert>
+  <update id="setJobPriority">UPDATE studyroom_generation_jobs SET priority=#{priority} WHERE id=#{jobId}</update>
+  <update id="setQuestionJob">UPDATE studyroom_questions SET job_id=#{jobId} WHERE id=#{questionId}</update>
+  <select id="selectActiveQuestionInRoom" resultType="map">
+    SELECT q.id FROM studyroom_questions q
+    JOIN study_rooms s ON s.id=q.room_id AND s.current_run_id=q.run_id
+    WHERE q.user_id=#{userId} AND q.room_id=#{roomId} AND q.status IN ('QUEUED','RUNNING') AND s.deleted_at IS NULL
+    ORDER BY q.created_at DESC LIMIT 1
+  </select>
+  <select id="selectStoppedQuestions" resultType="map">
+    SELECT q.id,q.user_id,q.room_id FROM studyroom_questions q
+    JOIN studyroom_generation_jobs j ON j.id=q.job_id
+    JOIN study_rooms s ON s.id=q.room_id AND s.current_run_id=q.run_id
+    WHERE q.status IN ('QUEUED','RUNNING') AND j.status IN ('FAILED','CANCELLED') AND s.deleted_at IS NULL
+  </select>
+  <select id="selectJobStatus" resultType="map">
+    SELECT status,failure_code,failure_message FROM studyroom_generation_jobs WHERE id=#{jobId}
+  </select>
+  <update id="updateQuestionFromJob">
+    UPDATE studyroom_questions SET status=#{status},failure_code=#{failureCode},failure_message=#{failureMessage} WHERE id=#{questionId}
+  </update>
+  <select id="selectJobForUpdate" resultType="map">
+    SELECT * FROM studyroom_generation_jobs WHERE id=#{jobId} FOR UPDATE
+  </select>
+  <update id="cancelQuestion">
+    UPDATE studyroom_questions SET status='CANCELLED',updated_at=CURRENT_TIMESTAMP WHERE id=#{questionId}
+  </update>
+  <update id="cancelJob">
+    UPDATE studyroom_generation_jobs SET status='CANCELLED',lease_token=NULL,lease_until=NULL
+    WHERE id=#{jobId} AND status IN ('QUEUED','RUNNING')
+  </update>
+  <select id="selectByUser" resultType="map">
+    SELECT * FROM studyroom_questions WHERE id=#{questionId} AND user_id=#{userId}
+  </select>
+  <update id="markRunning">UPDATE studyroom_questions SET status='RUNNING' WHERE id=#{questionId}</update>
+  <update id="updateAnswerText">
+    UPDATE studyroom_questions SET answer_text=#{answerText},updated_at=CURRENT_TIMESTAMP WHERE id=#{questionId}
+  </update>
+  <update id="completeQuestion">
+    UPDATE studyroom_questions
+    SET status='COMPLETED',answer_text=#{answerText},sources_json=#{sourcesJson},actions_json=#{actionsJson},
+        updated_at=CURRENT_TIMESTAMP
+    WHERE id=#{questionId}
+  </update>
+  <select id="selectFragmentRevision" resultType="map">
+    SELECT content_revision FROM studyroom_fragments WHERE id=#{fragmentId} AND run_id=#{runId}
+  </select>
+  <select id="selectQuizContext" resultType="map">
+    SELECT c.id,c.prompt,c.options_json,c.answer_option,c.analysis,a.selected_option,a.correct
+    FROM studyroom_checks c
+    JOIN studyroom_check_sets cs ON cs.fragment_id=c.fragment_id AND cs.content_revision=c.content_revision
+      AND cs.generation_id=c.generation_id
+    LEFT JOIN studyroom_check_attempts a ON a.id=(
+      SELECT latest.id FROM studyroom_check_attempts latest
+      WHERE latest.check_id=c.id AND latest.user_id=c.user_id
+      ORDER BY latest.created_at DESC,latest.id DESC LIMIT 1)
+    WHERE c.user_id=#{userId} AND c.run_id=#{runId} AND c.fragment_id=#{fragmentId}
+      AND c.content_revision=#{contentRevision}
+    ORDER BY c.question_order LIMIT 3
+  </select>
+</mapper>

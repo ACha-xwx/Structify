@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.aiquota.mapper.AiQuotaLedgerMapper">
+
+  <sql id="reservationSelect">
+    SELECT id,
+           user_id AS userId,
+           quota_date AS quotaDate,
+           request_id AS requestId,
+           status,
+           estimated_tokens AS estimatedTokens,
+           actual_tokens AS actualTokens,
+           created_at AS createdAt,
+           expires_at AS expiresAt,
+           completed_at AS completedAt,
+           failure_code AS failureCode,
+           usage_source AS usageSource
+    FROM ai_quota_reservations
+  </sql>
+
+  <sql id="bucketSelect">
+    SELECT user_id AS userId,
+           quota_date AS quotaDate,
+           daily_token_quota AS dailyTokenQuota,
+           reserved_tokens AS reservedTokens,
+           consumed_tokens AS consumedTokens
+    FROM ai_quota_buckets
+  </sql>
+
+  <insert id="insertConcurrencyRow">
+    INSERT INTO ai_quota_user_concurrency (user_id, active_reservations, updated_at)
+    VALUES (#{userId}, 0, #{now})
+  </insert>
+
+  <select id="lockConcurrency" resultType="com.feng.dsagent.aiquota.domain.AiQuotaConcurrency">
+    SELECT user_id AS userId, active_reservations AS activeReservations
+    FROM ai_quota_user_concurrency
+    WHERE user_id = #{userId}
+    FOR UPDATE
+  </select>
+
+  <select id="selectActiveReservations" resultType="int">
+    SELECT active_reservations FROM ai_quota_user_concurrency WHERE user_id = #{userId}
+  </select>
+
+  <insert id="insertBucket">
+    INSERT INTO ai_quota_buckets (
+      user_id, quota_date, daily_token_quota, reserved_tokens, consumed_tokens, created_at, updated_at
+    ) VALUES (#{userId}, #{quotaDate}, #{dailyTokenQuota}, 0, 0, #{now}, #{now})
+  </insert>
+
+  <select id="lockBucket" resultType="com.feng.dsagent.aiquota.entity.AiQuotaBucketEntity">
+    <include refid="bucketSelect"/>
+    WHERE user_id = #{userId} AND quota_date = #{quotaDate}
+    FOR UPDATE
+  </select>
+
+  <update id="updateDailyTokenQuota">
+    UPDATE ai_quota_buckets
+    SET daily_token_quota = #{dailyTokenQuota}, updated_at = #{now}
+    WHERE user_id = #{userId} AND quota_date = #{quotaDate}
+  </update>
+
+  <select id="findBucket" resultType="com.feng.dsagent.aiquota.entity.AiQuotaBucketEntity">
+    <include refid="bucketSelect"/>
+    WHERE user_id = #{userId} AND quota_date = #{quotaDate}
+  </select>
+
+  <select id="findReservation" resultType="com.feng.dsagent.aiquota.entity.AiQuotaReservationEntity">
+    <include refid="reservationSelect"/>
+    WHERE id = #{reservationId}
+  </select>
+
+  <select id="lockReservation" resultType="com.feng.dsagent.aiquota.entity.AiQuotaReservationEntity">
+    <include refid="reservationSelect"/>
+    WHERE id = #{reservationId}
+    FOR UPDATE
+  </select>
+
+  <select id="findByRequestForUpdate" resultType="com.feng.dsagent.aiquota.entity.AiQuotaReservationEntity">
+    <include refid="reservationSelect"/>
+    WHERE user_id = #{userId} AND quota_date = #{quotaDate} AND request_id = #{requestId}
+    FOR UPDATE
+  </select>
+
+  <select id="expiredReservationIdsForUser" resultType="string">
+    SELECT id FROM ai_quota_reservations
+    WHERE user_id = #{userId} AND status = 'RESERVED' AND expires_at &lt;= #{now}
+    ORDER BY expires_at ASC, id ASC
+  </select>
+
+  <select id="expiredReservationIds" resultType="string">
+    SELECT id FROM ai_quota_reservations
+    WHERE status = 'RESERVED' AND expires_at &lt;= #{now}
+    ORDER BY expires_at ASC, id ASC
+    LIMIT #{maximumCount}
+  </select>
+
+  <insert id="createReservation">
+    INSERT INTO ai_quota_reservations (
+      id, user_id, quota_date, request_id, status, estimated_tokens, actual_tokens,
+      created_at, expires_at, completed_at, failure_code, usage_source
+    ) VALUES (
+      #{id}, #{userId}, #{quotaDate}, #{requestId}, #{status}, #{estimatedTokens}, NULL,
+      #{createdAt}, #{expiresAt}, NULL, NULL, NULL
+    )
+  </insert>
+
+  <update id="reserveTokens">
+    UPDATE ai_quota_buckets
+    SET reserved_tokens = reserved_tokens + #{tokens}, updated_at = #{now}
+    WHERE user_id = #{userId} AND quota_date = #{quotaDate}
+  </update>
+
+  <update id="releaseAndCharge">
+    UPDATE ai_quota_buckets
+    SET reserved_tokens = reserved_tokens - #{reservedTokens},
+        consumed_tokens = consumed_tokens + #{actualTokens},
+        updated_at = #{now}
+    WHERE user_id = #{userId} AND quota_date = #{quotaDate}
+  </update>
+
+  <update id="charge">
+    UPDATE ai_quota_buckets
+    SET consumed_tokens = consumed_tokens + #{actualTokens}, updated_at = #{now}
+    WHERE user_id = #{userId} AND quota_date = #{quotaDate}
+  </update>
+
+  <update id="incrementConcurrency">
+    UPDATE ai_quota_user_concurrency
+    SET active_reservations = active_reservations + 1, updated_at = #{now}
+    WHERE user_id = #{userId}
+  </update>
+
+  <update id="decrementConcurrency">
+    UPDATE ai_quota_user_concurrency
+    SET active_reservations = active_reservations - 1, updated_at = #{now}
+    WHERE user_id = #{userId}
+  </update>
+
+  <update id="markSettled">
+    UPDATE ai_quota_reservations
+    SET status = 'SETTLED', actual_tokens = #{actualTokens}, completed_at = #{now},
+        failure_code = NULL, usage_source = #{usageSource}
+    WHERE id = #{reservationId} AND status = 'RESERVED'
+  </update>
+
+  <update id="markExpiredSettlement">
+    UPDATE ai_quota_reservations
+    SET status = 'SETTLED', actual_tokens = #{actualTokens}, completed_at = #{now},
+        failure_code = NULL, usage_source = #{usageSource}
+    WHERE id = #{reservationId} AND status = 'EXPIRED'
+  </update>
+
+  <update id="markFailed">
+    UPDATE ai_quota_reservations
+    SET status = 'FAILED', actual_tokens = #{actualTokens}, completed_at = #{now},
+        failure_code = #{failureCode}, usage_source = #{usageSource}
+    WHERE id = #{reservationId} AND status = 'RESERVED'
+  </update>
+
+  <update id="markExpiredFailure">
+    UPDATE ai_quota_reservations
+    SET status = 'FAILED', actual_tokens = #{actualTokens}, completed_at = #{now},
+        failure_code = #{failureCode}, usage_source = #{usageSource}
+    WHERE id = #{reservationId} AND status = 'EXPIRED'
+  </update>
+
+  <update id="markExpired">
+    UPDATE ai_quota_reservations
+    SET status = 'EXPIRED', completed_at = #{now},
+        failure_code = 'AI_QUOTA_RESERVATION_EXPIRED',
+        usage_source = 'NO_USAGE_REPORTED'
+    WHERE id = #{reservationId} AND status = 'RESERVED' AND expires_at &lt;= #{now}
+  </update>
+</mapper>

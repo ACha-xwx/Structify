@@ -8,7 +8,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.feng.dsagent.security.JwtTokenService;
+import com.feng.dsagent.security.service.JwtTokenService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -28,6 +28,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import com.feng.dsagent.mail.domain.MailConnection;
+import com.feng.dsagent.mail.support.MailConfigMasterKeySource;
+import com.feng.dsagent.mail.support.MailTransport;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(MailConfigApiIntegrationTest.MailTestConfiguration.class)

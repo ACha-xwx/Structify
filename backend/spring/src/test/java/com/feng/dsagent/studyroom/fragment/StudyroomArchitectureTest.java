@@ -1,5 +1,8 @@
 package com.feng.dsagent.studyroom.fragment;
 
+import com.feng.dsagent.studyroom.fragment.service.FragmentPublicationService;
+import com.feng.dsagent.studyroom.generation.service.GenerationCallService;
+
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.assertj.core.api.Assertions.*;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
@@ -7,6 +10,8 @@ import com.tngtech.archunit.core.importer.ImportOption;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.feng.dsagent.studyroom.fragment.support.ContentPlanCompiler;
+import com.feng.dsagent.studyroom.fragment.support.FragmentComposer;
 class StudyroomArchitectureTest {
     @Test void planCompilerCannotCallModelsOrWriteTheDatabase() {
         var classes = new ClassFileImporter().withImportOption(new ImportOption.DoNotIncludeTests())

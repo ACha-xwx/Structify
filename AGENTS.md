@@ -1,14 +1,31 @@
 # Working in Structify
 
+## Authority
+
+**Mandatory AI / agent rules:** [docs/AI开发规范.md](docs/AI开发规范.md).
+Cursor injects `.cursor/rules/structify-ai-development.mdc` on every session.
+If guidance conflicts, follow that constitution and Accepted backend ADRs;
+implementation truth is source + OpenAPI + Flyway.
+
 ## Repository map
 
 - `frontend/`: Vue 3 + TypeScript application. Run frontend commands here.
 - `backend/spring/`: Java 21 Spring Boot API. Use the Maven wrapper here.
 - `backend/node/`: existing compatibility service for other product features;
-  do not remove it as part of the studyroom redesign.
+  do not remove it as part of the studyroom redesign; do not add new studyroom
+  workflows here.
 - `contracts/openapi-v1.yaml`: HTTP API contract.
+- [Docs index](docs/README.md): living docs entry; historical material under
+  `docs/archive/`.
 - [Studyroom architecture](docs/architecture/studyroom.md): current behavior,
   target boundaries, and the active implementation plan.
+- [Spring backend standards](docs/architecture/backend-standards.md): forced
+  leaf packages (no capability-root types), naming, MyBatis-only persistence
+  (`resources/mapper/**` XML), cross-package dependency rules, ArchUnit.
+- [Node/Spring compat](docs/architecture/node-spring-compat.md): API and data-model
+  migration boundaries.
+- [Backend ADRs](docs/adr/backend/阅读指南.md): agent permissions, reliability,
+  bounded prep, and publication decisions.
 
 ## Development
 
@@ -26,11 +43,20 @@ On PowerShell, quote Maven properties such as `'-Dtest=SomeTest'`.
 
 From the root, run `node scripts/verify-studyroom.mjs --scope <scope>`.
 Scopes: `backend`, `frontend`, `contracts`, `architecture`, `e2e`, `all`.
-Architecture and browser scopes intentionally fail until their planned tests
-are installed; an unimplemented check must never report success.
+An unimplemented check must never report success.
 Test the runner with `node --test scripts/verify-studyroom.test.mjs`.
 CI uses the same verification commands. Other existing project checks remain
 required; this entry point does not replace unrelated regression coverage.
+
+## Spring packaging (mandatory)
+
+Before adding or moving Spring types, read
+[backend-standards](docs/architecture/backend-standards.md). Every production
+type belongs in a forced leaf package (incl. `converter`); capability roots stay
+empty. Suffixes: `*DTO` / `*VO` / `*Entity`; MapStruct `*Converter` only (never
+`*Mapper`); no BeanUtils. Class names must show purpose; search and read existing
+types before creating new ones. Mapper XML lives only under
+`backend/spring/src/main/resources/mapper/`. Logging uses SLF4J + MDC `requestId`.
 
 ## Studyroom boundaries
 

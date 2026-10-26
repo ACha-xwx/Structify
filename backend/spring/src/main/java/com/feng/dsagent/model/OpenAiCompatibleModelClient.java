@@ -35,10 +35,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import com.feng.dsagent.model.config.ModelProperties;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import com.feng.dsagent.model.config.ModelProperties;
+import com.feng.dsagent.model.config.ModelProperties;
+import com.feng.dsagent.model.exception.ModelClientException;
 @Component
 public final class OpenAiCompatibleModelClient implements ModelClient {
 
@@ -183,6 +187,7 @@ public final class OpenAiCompatibleModelClient implements ModelClient {
         boolean outputTruncated = false;
         InputStream limitedInput = new ResponseSizeLimitedInputStream(input, maximumResponseBytes());
         try (
+            // Scoped virtual-thread executor for one streaming read; closed with the response body.
             ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
             BufferedReader reader = new BufferedReader(new InputStreamReader(limitedInput, StandardCharsets.UTF_8));
             limitedInput

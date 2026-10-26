@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.feng.dsagent.model.ModelClient;
-import com.feng.dsagent.model.ModelClientException;
+import com.feng.dsagent.model.exception.ModelClientException;
 import com.feng.dsagent.model.ModelErrorCode;
 import com.feng.dsagent.model.ModelMessage;
 import com.feng.dsagent.model.ModelRequest;
@@ -17,6 +17,10 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
+import com.feng.dsagent.modelconfig.exception.ModelConfigRuntimeUnavailableException;
+import com.feng.dsagent.modelconfig.domain.ModelConfigResolvedTarget;
+import com.feng.dsagent.modelconfig.domain.ModelConfigRuntimeSettings;
+import com.feng.dsagent.modelconfig.support.PersistedModelConfigClient;
 class PersistedModelConfigClientTest {
 
     @Test

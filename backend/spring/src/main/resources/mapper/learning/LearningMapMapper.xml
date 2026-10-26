@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.learning.mapper.LearningMapMapper">
+
+  <select id="selectChapters" resultType="com.feng.dsagent.learning.mapper.LearningMapMapper$ChapterRow">
+    SELECT id, title FROM chapters ORDER BY chapter_number
+  </select>
+
+  <select id="selectClassroomEvents" resultType="com.feng.dsagent.learning.mapper.LearningMapMapper$ClassroomEventRow">
+    SELECT c.chapter_id AS chapterId, e.action, e.answer_status AS answerStatus,
+           e.attempt_no AS attemptNo, e.hint_used AS hintUsed, e.created_at AS createdAt,
+           e.session_id AS sessionId, e.step_index AS stepIndex
+    FROM classroom_events e
+    JOIN classroom_sessions s ON s.id = e.session_id
+    JOIN classroom_scripts c ON c.id = s.script_id
+    WHERE s.user_id = #{userId}
+  </select>
+
+  <select id="selectLessonChunkPaths" resultType="com.feng.dsagent.learning.mapper.LearningMapMapper$ChunkPathRow">
+    SELECT id, source_path AS sourcePath FROM knowledge_chunks WHERE source_path LIKE 'textbook/lessons/%'
+  </select>
+
+  <select id="selectSessionScripts" resultType="com.feng.dsagent.learning.mapper.LearningMapMapper$SessionScriptRow">
+    SELECT s.id AS sessionId, c.script_json AS scriptJson
+    FROM classroom_sessions s JOIN classroom_scripts c ON c.id = s.script_id
+    WHERE s.user_id = #{userId}
+  </select>
+
+  <select id="selectAnimations" resultType="com.feng.dsagent.learning.mapper.LearningMapMapper$AnimationRow">
+    SELECT chapter_id AS chapterId, title, payload_json AS payloadJson, created_at AS createdAt
+    FROM animation_records WHERE user_id = #{userId}
+  </select>
+
+  <select id="selectCodeRuns" resultType="com.feng.dsagent.learning.mapper.LearningMapMapper$CodeRunRow">
+    SELECT chapter_id AS chapterId, source_code AS sourceCode, status, created_at AS createdAt
+    FROM code_runs WHERE user_id = #{userId}
+  </select>
+
+  <select id="selectChatMessages" resultType="com.feng.dsagent.learning.mapper.LearningMapMapper$ChatMessageRow">
+    SELECT s.chapter_id AS chapterId, m.content
+    FROM chat_sessions s
+    JOIN chat_messages m ON m.session_id = s.id AND m.role = 'user'
+    WHERE s.user_id = #{userId}
+  </select>
+
+  <select id="selectLessonChunksByChapter" resultType="com.feng.dsagent.learning.mapper.LearningMapMapper$LessonChunkRow">
+    SELECT DISTINCT title, source_path AS sourcePath FROM knowledge_chunks
+    WHERE chapter_id = #{chapterId} AND source_path LIKE 'textbook/lessons/%' ORDER BY source_path
+  </select>
+</mapper>

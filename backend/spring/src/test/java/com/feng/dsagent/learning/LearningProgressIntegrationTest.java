@@ -1,5 +1,7 @@
 package com.feng.dsagent.learning;
 
+import com.feng.dsagent.learning.service.LearningProgressService;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -8,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.feng.dsagent.learning.vo.LearningProgressVO;
 @SpringBootTest
 class LearningProgressIntegrationTest {
 
@@ -56,7 +59,7 @@ class LearningProgressIntegrationTest {
 
     @Test
     void aggregatesActivitiesByChapter() {
-        LearningProgressView progress = service.progress(USER_ID);
+        LearningProgressVO progress = service.progress(USER_ID);
 
         assertThat(progress.totalActivities()).isEqualTo(4);
         assertThat(progress.chapters())
@@ -93,7 +96,7 @@ class LearningProgressIntegrationTest {
             "UPDATE classroom_scripts SET chapter_id = '02-linear-list' WHERE id = 'progress-snapshot-script'"
         );
 
-        LearningProgressView progress = service.progress(USER_ID);
+        LearningProgressVO progress = service.progress(USER_ID);
 
         assertThat(progress.chapters())
             .filteredOn(chapter -> chapter.chapterId().equals("03-stack-queue"))

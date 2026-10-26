@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.knowledge.mapper.KnowledgeEvidenceReadinessMapper">
+
+  <sql id="reviewedSourceChain">
+    k.review_status = 'VERIFIED'
+      AND NULLIF(TRIM(k.source_path), '') IS NOT NULL
+      AND (k.chapter_id IS NULL OR kc.status = 'PUBLISHED')
+      AND (k.resource_id IS NULL OR (
+        r.review_status = 'VERIFIED'
+        AND rc.status = 'PUBLISHED'
+        AND NULLIF(TRIM(r.source_name), '') IS NOT NULL
+        AND NULLIF(TRIM(r.version_label), '') IS NOT NULL
+      ))
+  </sql>
+
+  <sql id="effectiveLicenseScope">
+    CASE WHEN k.resource_id IS NULL THEN k.license_scope ELSE r.license_scope END
+  </sql>
+
+  <select id="countExcludedOrUnverified" resultType="int">
+    SELECT COUNT(*)
+    FROM knowledge_chunks k
+    LEFT JOIN chapters kc ON kc.id = k.chapter_id
+    LEFT JOIN resources r ON r.id = k.resource_id
+    LEFT JOIN chapters rc ON rc.id = r.chapter_id
+    WHERE (#{chapterId} IS NULL OR k.chapter_id = #{chapterId})
+      AND NOT (
+        <include refid="reviewedSourceChain"/>
+        AND <include refid="effectiveLicenseScope"/> IN
+        <choose>
+          <when test="audience == 'GUEST'">
+            ('PUBLIC')
+          </when>
+          <when test="audience == 'STUDENT'">
+            ('PUBLIC', 'CLASSROOM_ONLY')
+          </when>
+          <otherwise>
+            ('PUBLIC', 'CLASSROOM_ONLY', 'TEAM_ONLY')
+          </otherwise>
+        </choose>
+      )
+  </select>
+</mapper>

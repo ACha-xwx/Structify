@@ -1,10 +1,21 @@
 package com.feng.dsagent.studyroom.draft;
 
+import com.feng.dsagent.aiquota.service.AiQuotaExecutionService;
+import com.feng.dsagent.model.ModelResponse;
+import com.feng.dsagent.security.service.JwtTokenService;
+import com.feng.dsagent.studyroom.draft.controller.OutlineController;
+import com.feng.dsagent.studyroom.draft.dto.ManualUnitDTO;
+import com.feng.dsagent.studyroom.draft.dto.RepairFixDTO;
+import com.feng.dsagent.studyroom.draft.service.OutlineService;
+import com.feng.dsagent.studyroom.fragment.domain.FragmentPlan;
+import com.feng.dsagent.studyroom.generation.service.GenerationCallService;
+import com.feng.dsagent.studyroom.generation.service.GenerationJobService;
+import com.feng.dsagent.studyroom.generation.worker.StudyroomGenerationWorker;
+
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.studyroom.generation.*;
+import com.feng.dsagent.common.exception.BizException;
 
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +25,10 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.*;
 
+import com.feng.dsagent.studyroom.draft.domain.LearningDepth;
+import com.feng.dsagent.studyroom.draft.domain.ReviewedOutline;
+import com.feng.dsagent.studyroom.draft.support.OutlineJson;
+import com.feng.dsagent.studyroom.draft.support.OutlineModelGateway;
 @org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 @SpringBootTest(
         properties = {
@@ -23,13 +38,12 @@ import java.util.*;
 class ReviewedOutlineWorkflowTest {
     @Autowired OutlineService service;
     @Autowired org.springframework.test.web.servlet.MockMvc http;
-    @Autowired com.feng.dsagent.security.JwtTokenService tokens;
+    @Autowired com.feng.dsagent.security.service.JwtTokenService tokens;
     @Autowired StudyroomGenerationWorker worker;
     @Autowired JdbcTemplate jdbc;
-    @Autowired JdbcGenerationRepository jobs;
+    @Autowired GenerationJobService jobs;
     @Autowired GenerationCallService calls;
-    @Autowired com.feng.dsagent.studyroom.StudyroomRepository rooms;
-    @MockitoBean com.feng.dsagent.aiquota.AiQuotaExecutionService execution;
+    @MockitoBean com.feng.dsagent.aiquota.service.AiQuotaExecutionService execution;
     @MockitoBean OutlineModelGateway model;
     @Autowired OutlineJson json;
     long user;
@@ -76,11 +90,11 @@ class ReviewedOutlineWorkflowTest {
     @Test
     void manualRevisionPreservesHistoryAndFreezesOrderWithoutModelCalls() {
         String id=create();
-        assertThatThrownBy(()->service.manualRevision(user,id,1,List.of(new OutlineController.ManualUnit("concept","Title","Objective")),"pending")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->service.manualRevision(user,id,1,List.of(new ManualUnitDTO("concept","Title","Objective")),"pending")).isInstanceOf(BizException.class);
         worker.runOnce();clearInvocations(model);
         var hash=service.get(user,id).get("planHash");
-        var edits=List.of(new OutlineController.ManualUnit("new-unit","Added","Understand added"),
-            new OutlineController.ManualUnit("concept","Edited","Understand edited"));
+        var edits=List.of(new ManualUnitDTO("new-unit","Added","Understand added"),
+            new ManualUnitDTO("concept","Edited","Understand edited"));
         var result=service.manualRevision(user,id,1,edits,"manual");
         assertThat(result).containsEntry("revision",2);
         assertThat(service.manualRevision(user,id,1,edits,"manual")).isEqualTo(result);
@@ -88,16 +102,16 @@ class ReviewedOutlineWorkflowTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM studyroom_generation_jobs WHERE draft_id=?",Integer.class,id)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM study_outline_revisions WHERE draft_id=?",Integer.class,id)).isEqualTo(2);
         assertThat(service.get(user,id).get("planHash")).isNotEqualTo(hash);
-        assertThatThrownBy(()->service.manualRevision(user,id,1,edits,"stale")).isInstanceOf(ApiException.class);
-        assertThatThrownBy(()->service.manualRevision(user+1,id,2,edits,"foreign")).isInstanceOf(ApiException.class);
-        assertThatThrownBy(()->service.manualRevision(user,id,2,List.of(edits.get(0),edits.get(0)),"duplicate")).isInstanceOf(ApiException.class);
-        assertThatThrownBy(()->service.manualRevision(user,id,2,List.of(),"empty")).isInstanceOf(ApiException.class);
-        assertThatThrownBy(()->service.manualRevision(user,id,2,List.of(new OutlineController.ManualUnit("concept"," ","Objective")),"blank")).isInstanceOf(ApiException.class);
-        assertThatThrownBy(()->service.manualRevision(user,id,2,List.of(new OutlineController.ManualUnit("invalid id","Title","Objective")),"bad-id")).isInstanceOf(ApiException.class);
-        assertThatThrownBy(()->service.manualRevision(user,id,2,edits,"manual")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->service.manualRevision(user,id,1,edits,"stale")).isInstanceOf(BizException.class);
+        assertThatThrownBy(()->service.manualRevision(user+1,id,2,edits,"foreign")).isInstanceOf(BizException.class);
+        assertThatThrownBy(()->service.manualRevision(user,id,2,List.of(edits.get(0),edits.get(0)),"duplicate")).isInstanceOf(BizException.class);
+        assertThatThrownBy(()->service.manualRevision(user,id,2,List.of(),"empty")).isInstanceOf(BizException.class);
+        assertThatThrownBy(()->service.manualRevision(user,id,2,List.of(new ManualUnitDTO("concept"," ","Objective")),"blank")).isInstanceOf(BizException.class);
+        assertThatThrownBy(()->service.manualRevision(user,id,2,List.of(new ManualUnitDTO("invalid id","Title","Objective")),"bad-id")).isInstanceOf(BizException.class);
+        assertThatThrownBy(()->service.manualRevision(user,id,2,edits,"manual")).isInstanceOf(BizException.class);
         var run=service.confirm(user,id,2,"confirm-manual",(String)service.get(user,id).get("planHash"));
         assertThat(jdbc.queryForList("SELECT unit_key FROM studyroom_units WHERE run_id=? ORDER BY unit_order",String.class,run.get("runId"))).containsExactly("new-unit","concept");
-        assertThatThrownBy(()->service.manualRevision(user,id,2,edits,"confirmed")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->service.manualRevision(user,id,2,edits,"confirmed")).isInstanceOf(BizException.class);
     }
 
     @Test
@@ -136,7 +150,7 @@ class ReviewedOutlineWorkflowTest {
         worker.runOnce();
         service.revise(user, id, 1, "换个例子", LearningDepth.DEEP, "revision-one");
         assertThatThrownBy(() -> service.confirm(user, id, 1, "confirm-pending", (String) service.get(user, id).get("planHash")))
-                .isInstanceOf(ApiException.class);
+                .isInstanceOf(BizException.class);
         when(model.plan(anyLong(), anyString(), any(), anyString(), anyString(), anyString()))
                 .thenThrow(new IllegalArgumentException("模型不可用"));
         worker.runOnce();
@@ -144,7 +158,7 @@ class ReviewedOutlineWorkflowTest {
         assertThat(service.get(user, id).get("outline")).isNotNull();
         assertThat(service.get(user, id).get("depth")).isEqualTo("STANDARD");
         assertThat(service.confirm(user, id, 1, "confirm-preserved", (String) service.get(user, id).get("planHash"))).containsKey("runId");
-        assertThatThrownBy(() -> service.get(user + 1, id)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> service.get(user + 1, id)).isInstanceOf(BizException.class);
     }
 
     @Test
@@ -154,7 +168,7 @@ class ReviewedOutlineWorkflowTest {
                         () ->
                                 service.create(
                                         user, "概念二", LearningDepth.QUICK, null, null, "same-key"))
-                .isInstanceOf(ApiException.class);
+                .isInstanceOf(BizException.class);
         assertThat(
                         jdbc.queryForObject(
                                 "SELECT COUNT(*) FROM studyroom_generation_jobs WHERE user_id=?",
@@ -220,7 +234,7 @@ class ReviewedOutlineWorkflowTest {
                 UUID.randomUUID().toString());
         assertThatThrownBy(
                         () -> calls.complete(user, jobId, "uncertain", "system", "question", 100))
-                .isInstanceOf(ApiException.class);
+                .isInstanceOf(BizException.class);
         verify(execution, times(1)).complete(anyLong(), anyString(), anyString(), any());
     }
 
@@ -315,7 +329,7 @@ class ReviewedOutlineWorkflowTest {
                     assertThat(issue.unitId()).isEqualTo("ops");
                 });
         var hash = blocked.get("planHash");
-        var fixes = List.of(new OutlineController.RepairFix("PROCESS_ACTIVITY_MISSING", "ops"));
+        var fixes = List.of(new RepairFixDTO("PROCESS_ACTIVITY_MISSING", "ops"));
         var result = service.repair(user, id, 1, fixes, "repair-one");
         assertThat(result).containsEntry("revision", 2);
         assertThat(service.repair(user, id, 1, fixes, "repair-one")).isEqualTo(result);
@@ -337,7 +351,7 @@ class ReviewedOutlineWorkflowTest {
         assertThat((List<ReviewedOutline.Issue>) after.get("issues"))
                 .noneMatch(issue -> "BLOCKER".equals(issue.severity()));
         var preview =
-                (Map<String, List<com.feng.dsagent.studyroom.fragment.FragmentPlan>>)
+                (Map<String, List<com.feng.dsagent.studyroom.fragment.domain.FragmentPlan>>)
                         after.get("fragmentPreview");
         assertThat(preview.get("ops")).anySatisfy(plan -> assertThat(plan.activity()).isEqualTo("PROCESS"));
         assertThat(
@@ -355,23 +369,23 @@ class ReviewedOutlineWorkflowTest {
                 .thenReturn(BLOCKED_OUTLINE);
         String id = create();
         assertThat(worker.runOnce()).isTrue();
-        var fixes = List.of(new OutlineController.RepairFix("PROCESS_ACTIVITY_MISSING", "ops"));
-        assertThatThrownBy(() -> service.repair(user, id, 2, fixes, "stale")).isInstanceOf(ApiException.class);
-        assertThatThrownBy(() -> service.repair(user, id, 1, List.of(), "empty")).isInstanceOf(ApiException.class);
+        var fixes = List.of(new RepairFixDTO("PROCESS_ACTIVITY_MISSING", "ops"));
+        assertThatThrownBy(() -> service.repair(user, id, 2, fixes, "stale")).isInstanceOf(BizException.class);
+        assertThatThrownBy(() -> service.repair(user, id, 1, List.of(), "empty")).isInstanceOf(BizException.class);
         assertThatThrownBy(
                         () ->
                                 service.repair(
                                         user,
                                         id,
                                         1,
-                                        List.of(new OutlineController.RepairFix("PROCESS_ACTIVITY_MISSING", "absent")),
+                                        List.of(new RepairFixDTO("PROCESS_ACTIVITY_MISSING", "absent")),
                                         "absent"))
-                .isInstanceOf(ApiException.class);
+                .isInstanceOf(BizException.class);
         assertThatThrownBy(() -> service.repair(user + 1, id, 1, fixes, "foreign"))
-                .isInstanceOf(ApiException.class);
+                .isInstanceOf(BizException.class);
         service.repair(user, id, 1, fixes, "repair-refused");
         service.confirm(user, id, 2, "confirm-refused", (String) service.get(user, id).get("planHash"));
-        assertThatThrownBy(() -> service.repair(user, id, 2, fixes, "confirmed")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> service.repair(user, id, 2, fixes, "confirmed")).isInstanceOf(BizException.class);
     }
 
 }

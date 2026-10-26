@@ -3,7 +3,7 @@ package com.feng.dsagent.classroom;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +15,12 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
+import com.feng.dsagent.classroom.domain.ClassroomState;
+import com.feng.dsagent.classroom.support.ClassroomModelJson;
+import com.feng.dsagent.classroom.support.ClassroomPreparation;
+import com.feng.dsagent.classroom.support.ClassroomScriptParser;
+import com.feng.dsagent.classroom.support.LessonPassageIndex;
+import com.feng.dsagent.classroom.support.SlideSpinePlan;
 /**
  * The part validator is where a model answer for one part of a courseware lesson is accepted or refused.
  * Its promise to the classroom is that a teaching step teaches the page its position dictates and that the
@@ -266,7 +272,7 @@ class ClassroomPreparationPartTest {
             page("deck-a-s002", 2, "8.3.7 B 树查找示例", "08-04B", "practice"));
         LessonPassageIndex textbook = LessonPassageIndex.of(rowsWithWorkedExample());
 
-        ApiException rejected = new ApiException(HttpStatus.INTERNAL_SERVER_ERROR,
+        BizException rejected = new BizException(HttpStatus.INTERNAL_SERVER_ERROR,
             ClassroomModelJson.REJECTED_ANSWER, "模型修正后仍未通过校验：$.steps[6] …");
         assertThat(ClassroomPreparation.fallbackSteps(rejected, mapper, part, textbook, true))
             .as("a rejected answer is taught from the deck")
@@ -274,7 +280,7 @@ class ClassroomPreparationPartTest {
         assertThat(ClassroomPreparation.fallbackSteps(rejected, mapper, part, textbook, false))
             .as("only the last part appends textbook extensions")
             .hasSize(2);
-        assertThat(ClassroomPreparation.fallbackSteps(new ApiException(HttpStatus.TOO_MANY_REQUESTS,
+        assertThat(ClassroomPreparation.fallbackSteps(new BizException(HttpStatus.TOO_MANY_REQUESTS,
             "AI_QUOTA_EXHAUSTED", "今日额度已用完"), mapper, part, textbook, true))
             .as("a quota problem is not a lesson to be improvised")
             .isEmpty();

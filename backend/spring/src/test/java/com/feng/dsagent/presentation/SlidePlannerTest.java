@@ -7,6 +7,9 @@ import java.util.Map;
 import java.util.function.Function;
 import org.junit.jupiter.api.Test;
 
+import com.feng.dsagent.presentation.domain.PresentationSlide;
+import com.feng.dsagent.presentation.support.PresentationCatalog;
+import com.feng.dsagent.presentation.support.SlidePlanner;
 /**
  * The decks follow the same sub-lesson split as the reviewed textbook (08-02A 查找与插入 versus
  * 08-02B 删除与性能) but rarely hold a page for every textbook example. These cases pin the behaviour

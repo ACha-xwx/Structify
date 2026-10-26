@@ -1,7 +1,11 @@
 package com.feng.dsagent.studyroom.harness;
 
-import com.feng.dsagent.aiquota.AiQuotaExecution;
-import com.feng.dsagent.auth.UserRepository;
+import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
+import com.feng.dsagent.model.ModelRequest;
+import com.feng.dsagent.model.ModelStreamHandler;
+
+import com.feng.dsagent.aiquota.support.AiQuotaExecution;
+import com.feng.dsagent.auth.service.UserAccountService;
 import com.feng.dsagent.compiler.*;
 import com.feng.dsagent.knowledge.*;
 import com.feng.dsagent.model.ModelResponse;
@@ -16,11 +20,17 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import tools.jackson.databind.ObjectMapper;
+import com.feng.dsagent.compiler.support.ClassroomCodeStudyroomCatalog;
+import com.feng.dsagent.knowledge.entity.KnowledgeChunkEntity;
+import com.feng.dsagent.studyroom.support.StudyroomModelOutput;
+import com.feng.dsagent.studyroom.support.StudyroomResourceCatalog;
+import com.feng.dsagent.studyroom.draft.domain.LearningDepth;
+import com.feng.dsagent.studyroom.draft.domain.ReviewedOutline;
 
 @TestConfiguration(proxyBeanMethods=false)
 public class StudyroomHarnessConfiguration {
     @Bean @Primary KnowledgeSearchService harnessKnowledge() {
-        return new KnowledgeSearchService(List.of(new KnowledgeChunk("harness-stack",null,"栈的定义与实现",
+        return new KnowledgeSearchService(List.of(new KnowledgeChunkEntity("harness-stack",null,"栈的定义与实现",
             "公开合成教学样本：栈遵循后进先出。top指示栈顶，入栈增加元素，出栈移除栈顶元素。代码阅读必须以提供的源码为准。",
             "harness/public-stack","1","PUBLIC")),0);
     }
@@ -93,7 +103,7 @@ public class StudyroomHarnessConfiguration {
         };
     }
 
-    @Bean ApplicationRunner harnessAccount(UserRepository users,PasswordEncoder passwords) {
+    @Bean ApplicationRunner harnessAccount(UserAccountService users,PasswordEncoder passwords) {
         return args->{if(users.findByEmail("harness@structify.test").isEmpty())
             users.create("harness@structify.test","HarnessStudent",passwords.encode("HarnessOnly123!"),Set.of("STUDENT"));};
     }

@@ -2,6 +2,10 @@ package com.feng.dsagent.compiler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.feng.dsagent.compiler.domain.SandboxConnectionResult;
+import com.feng.dsagent.compiler.domain.SandboxProvider;
+import com.feng.dsagent.compiler.domain.SandboxRuntimeSettings;
+import com.feng.dsagent.compiler.support.HttpSandboxConnectionTester;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;

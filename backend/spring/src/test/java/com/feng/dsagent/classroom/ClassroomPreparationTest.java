@@ -12,6 +12,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import com.feng.dsagent.classroom.support.ClassroomModelJson;
+import com.feng.dsagent.classroom.support.ClassroomPreparation;
 @SpringBootTest
 class ClassroomPreparationTest {
     @Autowired ClassroomPreparation preparation;

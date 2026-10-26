@@ -9,6 +9,8 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
+import com.feng.dsagent.classroom.support.ClassroomPreparation;
+import com.feng.dsagent.classroom.support.SlideSpinePlan;
 /**
  * Keeping a step's narration on the page it shows.
  *
