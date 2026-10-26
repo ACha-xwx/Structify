@@ -40,7 +40,7 @@ for (const f of javaRoots.flatMap((d) => walk(d))) {
       // Look back for modifiers on previous tokens in same "statement"
       const ahead = text.slice(Math.max(0, offset - 40), offset);
       if (/\b(public|private|protected)\s*$/.test(ahead)) return m;
-      // Avoid matching class/record declaration itself: `public record Name (` 
+      // Avoid matching class/record declaration itself: `public record Name (`
       if (/record\s+$/.test(ahead) || /class\s+$/.test(ahead) || /enum\s+$/.test(ahead)) return m;
       edits++;
       return `${pre}public ${n}${brace}`;

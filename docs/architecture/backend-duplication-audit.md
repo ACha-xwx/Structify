@@ -1,6 +1,6 @@
 # Spring 后端重复逻辑审计
 
-整理日期：2026-10-26（状态更新同日晚）。范围：`backend/spring` 按能力模块的重复点与可合并类。  
+整理日期：2026-10-26（状态更新同日晚）。范围：`backend/spring` 按能力模块的重复点与可合并类。
 策略：P0 低风险合并已落地；B2 中 ConnectionTest/Capability VO、Rate limiter、`ApiException`→`BizException` 已完成；SSRF / Crypto / studyroom `Classroom*` 重命名仍延期。
 
 相关规范：[backend-standards.md](backend-standards.md)。

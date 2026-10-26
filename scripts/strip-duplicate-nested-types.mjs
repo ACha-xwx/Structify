@@ -69,7 +69,7 @@ for (const f of files) {
     const doc = before.match(/(\/\*\*[\s\S]*?\*\/\s*)$/);
     if (doc) start = start - doc[1].length;
 
-    // Find opening brace or semicolon (for empty?) 
+    // Find opening brace or semicolon (for empty?)
     let i = text.indexOf('{', item.index);
     const semi = text.indexOf(';', item.index);
     let end;
