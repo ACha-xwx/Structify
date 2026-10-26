@@ -1,27 +1,27 @@
 package com.feng.dsagent.chat.controller;
 
-import com.feng.dsagent.chat.ChatAttachmentFile;
-import com.feng.dsagent.chat.ChatSessionSummary;
-import com.feng.dsagent.chat.ChatRateLimiter;
-import com.feng.dsagent.chat.ChatSessionView;
-import com.feng.dsagent.chat.ChatAttachment;
-import com.feng.dsagent.chat.ChatResponse;
-import com.feng.dsagent.chat.ChatCommand;
-import com.feng.dsagent.chat.ChatTurn;
+import com.feng.dsagent.chat.domain.ChatAttachmentFile;
+import com.feng.dsagent.chat.vo.ChatSessionSummaryVO;
+import com.feng.dsagent.chat.vo.ChatSessionVO;
+import com.feng.dsagent.common.FeatureRateLimiter;
+import com.feng.dsagent.common.error.CommonErrorCode;
+import com.feng.dsagent.chat.domain.ChatAttachment;
+import com.feng.dsagent.chat.vo.ChatVO;
+import com.feng.dsagent.chat.domain.ChatCommand;
+import com.feng.dsagent.chat.domain.ChatTurn;
 
 import com.feng.dsagent.chat.service.ChatService;
 
 import com.feng.dsagent.chat.service.ChatHistoryService;
 
-import com.feng.dsagent.aiquota.AiQuotaRequestId;
-import com.feng.dsagent.aiquota.AiStreamAbortedException;
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.knowledge.KnowledgeAudience;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.aiquota.support.AiQuotaRequestId;
+import com.feng.dsagent.aiquota.exception.AiStreamAbortedException;
+import com.feng.dsagent.chat.error.ChatErrorCode;
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.knowledge.domain.KnowledgeAudience;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
@@ -50,6 +50,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import com.feng.dsagent.chat.dto.ChatDTO;
+import com.feng.dsagent.chat.dto.ChatSessionUpdateDTO;
 
 @RestController
 @RequestMapping("/api/v1/chat")
@@ -73,22 +75,22 @@ public class ChatController {
 
     private final ChatService chat;
     private final ChatHistoryService history;
-    private final ChatRateLimiter rateLimiter;
+    private final FeatureRateLimiter rateLimiter;
 
-    public ChatController(ChatService chat, ChatHistoryService history, ChatRateLimiter rateLimiter) {
+    public ChatController(ChatService chat, ChatHistoryService history, FeatureRateLimiter rateLimiter) {
         this.chat = chat;
         this.history = history;
         this.rateLimiter = rateLimiter;
     }
 
     @PostMapping
-    public ChatResponse complete(
+    public ChatVO complete(
         @AuthenticationPrincipal AuthenticatedUser user,
         HttpServletRequest servletRequest,
-        @Valid @RequestBody ChatRequest request
+        @Valid @RequestBody ChatDTO request
     ) {
         Long userId = user == null ? null : user.userId();
-        rateLimiter.check(userId, servletRequest.getRemoteAddr());
+        rateLimiter.check("", userId, servletRequest.getRemoteAddr(), CommonErrorCode.CHAT_RATE_LIMITED);
         return chat.complete(request.command(), userId, KnowledgeAudience.from(user), AiQuotaRequestId.from(servletRequest));
     }
 
@@ -96,10 +98,10 @@ public class ChatController {
     public SseEmitter stream(
         @AuthenticationPrincipal AuthenticatedUser user,
         HttpServletRequest servletRequest,
-        @Valid @RequestBody ChatRequest request
+        @Valid @RequestBody ChatDTO request
     ) {
         Long userId = user == null ? null : user.userId();
-        rateLimiter.check(userId, servletRequest.getRemoteAddr());
+        rateLimiter.check("", userId, servletRequest.getRemoteAddr(), CommonErrorCode.CHAT_RATE_LIMITED);
         chat.requireFormalAuthentication(userId);
         SseEmitter emitter = new SseEmitter(600_000L);
         // Commit the response headers now with an SSE comment (clients ignore ":" lines). Without it
@@ -193,7 +195,7 @@ public class ChatController {
         try {
             log.info("chat stream: start user={} promptChars={}", userId,
                 command.prompt() == null ? 0 : command.prompt().length());
-            ChatResponse response = chat.stream(
+            ChatVO response = chat.stream(
                 command,
                 userId,
                 audience,
@@ -222,7 +224,7 @@ public class ChatController {
             log.info("chat stream: aborted after {} ms", millis(startedAt));
             finished.set(true);
             emitter.complete();
-        } catch (ApiException error) {
+        } catch (BizException error) {
             log.warn("chat stream: refused after {} ms code={} message={}", millis(startedAt), error.code(),
                 error.getMessage());
             send(emitter, "error", Map.of("code", error.code(), "message", error.getMessage()), closed, lastWrite);
@@ -255,23 +257,23 @@ public class ChatController {
     }
 
     @GetMapping("/sessions")
-    public List<ChatSessionSummary> sessions(@AuthenticationPrincipal AuthenticatedUser user) {
+    public List<ChatSessionSummaryVO> sessions(@AuthenticationPrincipal AuthenticatedUser user) {
         return history.sessions(user.userId());
     }
 
     @GetMapping("/sessions/{id}")
-    public ChatSessionView session(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable String id) {
+    public ChatSessionVO session(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable String id) {
         return history.session(user.userId(), id);
     }
 
     @PatchMapping("/sessions/{id}")
-    public ChatSessionView updateSession(
+    public ChatSessionVO updateSession(
         @AuthenticationPrincipal AuthenticatedUser user,
         @PathVariable String id,
-        @RequestBody ChatSessionUpdateRequest request
+        @RequestBody ChatSessionUpdateDTO request
     ) {
         if (request == null) {
-            throw new ApiException(org.springframework.http.HttpStatus.BAD_REQUEST, "CHAT_SESSION_UPDATE_EMPTY", "至少需要修改名称或置顶状态");
+            throw ChatErrorCode.SESSION_UPDATE_EMPTY.toException();
         }
         return history.update(user.userId(), id, request.title(), request.pinned());
     }
@@ -295,34 +297,4 @@ public class ChatController {
             .body(new ByteArrayResource(file.bytes()));
     }
 
-    public record ChatRequest(
-        @NotBlank @Size(max = 4000) String prompt,
-        @Size(max = 64) String chapterId,
-        @Size(max = 64) String sessionId,
-        @Size(max = 12) List<@Valid TurnRequest> history,
-        Boolean thinkingEnabled,
-        @jakarta.validation.constraints.Pattern(regexp = "low|high|max") String reasoningEffort,
-        @Size(max = 6) List<ChatAttachment> attachments,
-        @jakarta.validation.constraints.Positive Long retryMessageId
-    ) {
-        public ChatCommand command() {
-            List<ChatTurn> turns = history == null ? List.of() : history.stream()
-                .map(turn -> new ChatTurn(turn.role(), turn.content(), turn.attachments()))
-                .toList();
-            return new ChatCommand(prompt, chapterId, sessionId, turns, thinkingEnabled, reasoningEffort, attachments, retryMessageId);
-        }
-    }
-
-    public record TurnRequest(
-        @NotBlank @Size(max = 16) String role,
-        @NotBlank @Size(max = 4000) String content,
-        @Size(max = 6) List<ChatAttachment> attachments
-    ) {
-    }
-
-    public record ChatSessionUpdateRequest(
-        @Size(max = 200) String title,
-        Boolean pinned
-    ) {
-    }
 }

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.animation.mapper.AnimationMapper">
+
+  <select id="countPublishedChapter" resultType="int">
+    SELECT COUNT(*) FROM chapters WHERE id = #{chapterId} AND status = 'PUBLISHED'
+  </select>
+
+  <insert id="insertRecord">
+    INSERT INTO animation_records
+      (id, user_id, chapter_id, animation_type, title, payload_json)
+    VALUES (#{id}, #{userId}, #{chapterId}, #{animationType}, #{title}, #{payloadJson})
+  </insert>
+
+  <select id="findOwned" resultType="com.feng.dsagent.animation.entity.AnimationRecordEntity">
+    SELECT id, chapter_id AS chapterId
+    FROM animation_records
+    WHERE id = #{recordId} AND user_id = #{userId}
+  </select>
+
+  <insert id="insertObservation">
+    INSERT INTO animation_observations
+      (animation_record_id, user_id, observation, source_type, source_ref, version_label, review_status)
+    VALUES (#{recordId}, #{userId}, #{observation}, #{sourceType}, #{sourceRef}, #{versionLabel}, 'UNREVIEWED')
+  </insert>
+
+  <insert id="insertObservationSimple">
+    INSERT INTO animation_observations (animation_record_id, user_id, observation)
+    VALUES (#{recordId}, #{userId}, #{observation})
+  </insert>
+
+  <update id="updateRecordObservation">
+    UPDATE animation_records
+    SET observation = #{observation}, updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{recordId} AND user_id = #{userId}
+  </update>
+</mapper>

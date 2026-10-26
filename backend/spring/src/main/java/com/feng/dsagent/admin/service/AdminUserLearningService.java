@@ -1,16 +1,16 @@
 package com.feng.dsagent.admin.service;
 
+import com.feng.dsagent.admin.error.AdminErrorCode;
 import com.feng.dsagent.admin.service.AdminAuditService;
-
 import com.feng.dsagent.admin.mapper.AdminUserLearningMapper;
-import com.feng.dsagent.common.ApiException;
 import com.feng.dsagent.learning.service.LearningMapService;
 import com.feng.dsagent.studyroom.library.service.CourseLibraryService;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.util.List;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+
+import com.feng.dsagent.admin.vo.AdminUserLearningVO;
 
 /**
  * Everything an administrator needs to understand one learner, in a single read.
@@ -27,23 +27,6 @@ public class AdminUserLearningService {
 
     /** One recent studyroom generation job of the user, with what it cost. */
     public record RecentJob(String id, String type, String status, String createdAt, long tokens) {}
-
-    /** The learning footprint of one account. */
-    public record AdminUserLearningView(
-        long userId,
-        String email,
-        String username,
-        String status,
-        List<CourseLibraryService.Course> courses,
-        long bookmarks,
-        long classroomSessions,
-        long classroomEvents,
-        String lastActivityAt,
-        long tokensLast30Days,
-        long callsLast30Days,
-        List<RecentJob> recentJobs,
-        LearningMapService.LearningMap learningMap
-    ) {}
 
     private static final int RECENT_JOBS = 5;
 
@@ -64,7 +47,7 @@ public class AdminUserLearningService {
         this.audit = audit;
     }
 
-    public AdminUserLearningView learning(long userId, long actorUserId, String requestId) {
+    public AdminUserLearningVO learning(long userId, long actorUserId, String requestId) {
         AdminUserLearningMapper.UserRowData user = requireUser(userId);
         audit.recordRead(actorUserId, "ADMIN_VIEW_LEARNING_MAP", "USER", String.valueOf(userId), requestId);
 
@@ -79,7 +62,7 @@ public class AdminUserLearningService {
             ))
             .toList();
 
-        return new AdminUserLearningView(
+        return new AdminUserLearningVO(
             user.id(),
             user.email(),
             user.username(),
@@ -99,7 +82,7 @@ public class AdminUserLearningService {
     private AdminUserLearningMapper.UserRowData requireUser(long userId) {
         AdminUserLearningMapper.UserRowData row = learning.selectUser(userId);
         if (row == null) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "没有这个用户。");
+            throw AdminErrorCode.USER_LOOKUP_NOT_FOUND.toException();
         }
         return row;
     }

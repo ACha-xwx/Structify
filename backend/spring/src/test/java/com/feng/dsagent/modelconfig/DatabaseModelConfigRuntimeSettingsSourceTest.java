@@ -17,6 +17,12 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.feng.dsagent.modelconfig.domain.ModelConfigKeyBinding;
+import com.feng.dsagent.modelconfig.domain.ModelConfigRuntimeSettings;
+import com.feng.dsagent.modelconfig.support.DatabaseModelConfigRuntimeSettingsSource;
+import com.feng.dsagent.modelconfig.support.ModelConfigCrypto;
+import com.feng.dsagent.modelconfig.support.ModelConfigHostResolver;
+import com.feng.dsagent.modelconfig.support.ModelConfigMasterKeySource;
 @SpringBootTest
 @Import(DatabaseModelConfigRuntimeSettingsSourceTest.TestModelConfigConfiguration.class)
 class DatabaseModelConfigRuntimeSettingsSourceTest {

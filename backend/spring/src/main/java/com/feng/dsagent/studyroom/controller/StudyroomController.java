@@ -1,13 +1,13 @@
 package com.feng.dsagent.studyroom.controller;
 
-import com.feng.dsagent.studyroom.StudyroomFollowUpContext;
-import com.feng.dsagent.studyroom.StudyroomView;
+import com.feng.dsagent.studyroom.dto.StudyroomFollowUpContextDTO;
+import com.feng.dsagent.studyroom.vo.StudyroomVO;
 
 import com.feng.dsagent.studyroom.service.StudyroomService;
 
-import com.feng.dsagent.aiquota.AiQuotaRequestId;
-import com.feng.dsagent.knowledge.KnowledgeAudience;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.aiquota.support.AiQuotaRequestId;
+import com.feng.dsagent.knowledge.domain.KnowledgeAudience;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -26,8 +26,10 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Min;
 import com.feng.dsagent.studyroom.questions.service.ClassroomQuestionService;
-import com.feng.dsagent.studyroom.draft.OutlineJson;
+import com.feng.dsagent.studyroom.draft.support.OutlineJson;
 import java.util.Map;
+import com.feng.dsagent.studyroom.dto.FollowUpDTO;
+import com.feng.dsagent.studyroom.dto.ProgressDTO;
 
 @RestController
 @RequestMapping("/api/v1/study-rooms")
@@ -54,7 +56,7 @@ public class StudyroomController {
         HttpServletRequest request,
         @PathVariable String id,
         @RequestHeader(value="Idempotency-Key",required=false) String key,
-        @Valid @RequestBody FollowUpRequest body
+        @Valid @RequestBody FollowUpDTO body
     ) {
         return ResponseEntity.accepted().body(questions.create(user.userId(),id,body.runId(),body.fragmentId(),body.contentRevision(),body.question(),body.context(),key,KnowledgeAudience.from(user)));
     }
@@ -65,18 +67,12 @@ public class StudyroomController {
     public Map<String,Object> cancel(@AuthenticationPrincipal AuthenticatedUser user,@PathVariable String id,@PathVariable String question) {return questions.cancel(user.userId(),id,question);}
 
     @PatchMapping("/{id}/progress")
-    public StudyroomView.Progress updateProgress(
+    public StudyroomVO.Progress updateProgress(
         @AuthenticationPrincipal AuthenticatedUser user,
         @PathVariable String id,
-        @Valid @RequestBody ProgressRequest body
+        @Valid @RequestBody ProgressDTO body
     ) {
         return studyrooms.updateProgress(user.userId(), id, body.stepId());
     }
 
-    public record FollowUpRequest(@NotBlank @Size(max = 4_000) String question, @Valid StudyroomFollowUpContext context,
-        @NotBlank @Size(max=36) String runId,@NotBlank @Size(max=36) String fragmentId,@NotNull @Min(1) Integer contentRevision) {
-    }
-
-    public record ProgressRequest(@NotBlank @Size(max = 64) String stepId) {
-    }
 }

@@ -2,8 +2,8 @@ package com.feng.dsagent.ai.controller;
 
 import com.feng.dsagent.ai.service.AiReadinessService;
 
-import com.feng.dsagent.knowledge.KnowledgeAudience;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.knowledge.domain.KnowledgeAudience;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;

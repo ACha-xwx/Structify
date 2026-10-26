@@ -2,11 +2,11 @@ package com.feng.dsagent.contracts;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.feng.dsagent.animation.AnimationDefinition;
-import com.feng.dsagent.animation.AnimationValidator;
-import com.feng.dsagent.classroom.ClassroomScriptParser;
-import com.feng.dsagent.classroom.ClassroomScriptPlan;
-import com.feng.dsagent.classroom.ClassroomState;
+import com.feng.dsagent.animation.domain.AnimationDefinition;
+import com.feng.dsagent.animation.support.AnimationValidator;
+import com.feng.dsagent.classroom.support.ClassroomScriptParser;
+import com.feng.dsagent.classroom.domain.ClassroomScriptPlan;
+import com.feng.dsagent.classroom.domain.ClassroomState;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;

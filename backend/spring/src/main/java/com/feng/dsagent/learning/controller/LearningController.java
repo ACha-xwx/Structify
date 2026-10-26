@@ -1,9 +1,9 @@
 package com.feng.dsagent.learning.controller;
 
-import com.feng.dsagent.learning.LearningWorkbenchView;
-import com.feng.dsagent.learning.LearningEventCommand;
-import com.feng.dsagent.learning.LearningProgressView;
-import com.feng.dsagent.learning.LearningEventView;
+import com.feng.dsagent.learning.vo.LearningWorkbenchVO;
+import com.feng.dsagent.learning.dto.LearningEventCommandDTO;
+import com.feng.dsagent.learning.vo.LearningProgressVO;
+import com.feng.dsagent.learning.vo.LearningEventVO;
 
 import com.feng.dsagent.learning.service.LearningWorkbenchService;
 
@@ -11,7 +11,7 @@ import com.feng.dsagent.learning.service.LearningProgressService;
 
 import com.feng.dsagent.learning.service.LearningEventService;
 
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.feng.dsagent.learning.dto.LearningEventDTO;
 
 @RestController
 @RequestMapping("/api/v1/learning")
@@ -42,31 +43,24 @@ public class LearningController {
     }
 
     @GetMapping("/progress")
-    public LearningProgressView progress(@AuthenticationPrincipal AuthenticatedUser user) {
+    public LearningProgressVO progress(@AuthenticationPrincipal AuthenticatedUser user) {
         return learning.progress(user.userId());
     }
 
     @GetMapping("/workbench")
-    public LearningWorkbenchView workbench(@AuthenticationPrincipal AuthenticatedUser user) {
+    public LearningWorkbenchVO workbench(@AuthenticationPrincipal AuthenticatedUser user) {
         return workbench.workbench(user.userId());
     }
 
     @PostMapping("/events")
     @org.springframework.web.bind.annotation.ResponseStatus(HttpStatus.CREATED)
-    public LearningEventView event(
+    public LearningEventVO event(
         @AuthenticationPrincipal AuthenticatedUser user,
-        @Valid @RequestBody LearningEventRequest request
+        @Valid @RequestBody LearningEventDTO request
     ) {
-        return events.recordUserSubmitted(user.userId(), new LearningEventCommand(
+        return events.recordUserSubmitted(user.userId(), new LearningEventCommandDTO(
             request.eventType(), request.chapterId(), request.referenceId(), request.payload()
         ));
     }
 
-    public record LearningEventRequest(
-        @NotBlank @Size(max = 48) String eventType,
-        @Size(max = 64) String chapterId,
-        @Size(max = 96) String referenceId,
-        tools.jackson.databind.JsonNode payload
-    ) {
-    }
 }

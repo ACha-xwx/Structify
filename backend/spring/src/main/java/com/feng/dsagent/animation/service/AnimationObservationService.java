@@ -1,49 +1,50 @@
 package com.feng.dsagent.animation.service;
 
-import com.feng.dsagent.animation.AnimationObservationRepository;
-import com.feng.dsagent.animation.AnimationObservationView;
-import com.feng.dsagent.animation.AnimationRecord;
-
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.learning.LearningEventCommand;
+import com.feng.dsagent.animation.entity.AnimationRecordEntity;
+import com.feng.dsagent.animation.error.AnimationErrorCode;
+import com.feng.dsagent.animation.mapper.AnimationMapper;
+import com.feng.dsagent.animation.vo.AnimationObservationVO;
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.learning.dto.LearningEventCommandDTO;
 import com.feng.dsagent.learning.service.LearningEventService;
-import org.springframework.http.HttpStatus;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AnimationObservationService {
 
-    private final AnimationObservationRepository repository;
+    private final AnimationMapper mapper;
     private final LearningEventService learningEvents;
 
-    public AnimationObservationService(AnimationObservationRepository repository, LearningEventService learningEvents) {
-        this.repository = repository;
+    public AnimationObservationService(AnimationMapper mapper, LearningEventService learningEvents) {
+        this.mapper = mapper;
         this.learningEvents = learningEvents;
     }
 
     @Transactional
-    public AnimationObservationView record(long userId, String recordId, String observation) {
-        AnimationRecord animation = repository.findOwned(userId, normalizeRecordId(recordId))
+    public AnimationObservationVO record(long userId, String recordId, String observation) {
+        AnimationRecordEntity animation = Optional.ofNullable(mapper.findOwned(userId, normalizeRecordId(recordId)))
             .orElseThrow(this::notFound);
         String normalizedObservation = normalizeObservation(observation);
-        repository.appendObservation(
-            userId,
+        mapper.insertObservation(
             animation.id(),
+            userId,
             normalizedObservation,
             "USER",
             "api/v1/animations/" + animation.id() + "/observations",
             "1.0"
         );
+        mapper.updateRecordObservation(animation.id(), userId, normalizedObservation);
         tools.jackson.databind.node.ObjectNode payload = tools.jackson.databind.node.JsonNodeFactory.instance.objectNode();
         payload.put("observation", normalizedObservation);
-        learningEvents.record(userId, new LearningEventCommand(
+        learningEvents.record(userId, new LearningEventCommandDTO(
             "ANIMATION_OBSERVATION",
             animation.chapterId(),
             animation.id(),
             payload
         ));
-        return new AnimationObservationView(animation.id(), normalizedObservation);
+        return new AnimationObservationVO(animation.id(), normalizedObservation);
     }
 
     private String normalizeRecordId(String recordId) {
@@ -56,15 +57,15 @@ public class AnimationObservationService {
     private String normalizeObservation(String observation) {
         String normalized = observation == null ? "" : observation.trim();
         if (normalized.isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_OBSERVATION_REQUIRED", "请填写动画观察结论");
+            throw AnimationErrorCode.OBSERVATION_REQUIRED.toException();
         }
         if (normalized.length() > 2_000) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ANIMATION_OBSERVATION_TOO_LONG", "动画观察内容过长");
+            throw AnimationErrorCode.OBSERVATION_TOO_LONG.toException();
         }
         return normalized;
     }
 
-    private ApiException notFound() {
-        return new ApiException(HttpStatus.NOT_FOUND, "ANIMATION_RECORD_NOT_FOUND", "动画记录不存在");
+    private BizException notFound() {
+        return AnimationErrorCode.RECORD_NOT_FOUND.toException();
     }
 }

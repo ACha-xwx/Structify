@@ -1,13 +1,12 @@
 package com.feng.dsagent.admin.controller;
 
-import com.feng.dsagent.admin.AdminPage;
+import com.feng.dsagent.common.vo.PageVO;
 
 import com.feng.dsagent.admin.service.AdminKnowledgeService;
 
 import com.feng.dsagent.common.RequestIdFilter;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -22,6 +21,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import com.feng.dsagent.admin.dto.SettingsDTO;
+import com.feng.dsagent.admin.dto.TestSearchDTO;
+import com.feng.dsagent.admin.dto.CreateChunkDTO;
+import com.feng.dsagent.admin.dto.PatchChunkDTO;
+import com.feng.dsagent.admin.vo.KnowledgeSettingsVO;
 
 /**
  * Knowledge-base maintenance: the retrieval tuning plus chunk CRUD. The console is where an administrator
@@ -32,41 +36,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/admin/knowledge")
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminKnowledgeController {
-
-    public record SettingsRequest(
-        Double minimumScore,
-        Integer searchLimit,
-        Double titleWeightLong,
-        Double titleWeightShort
-    ) {}
-
-    public record TestSearchRequest(
-        @NotBlank String query,
-        String chapterId,
-        String audience,
-        Double minimumScore,
-        Integer searchLimit,
-        Double titleWeightLong,
-        Double titleWeightShort
-    ) {}
-
-    public record CreateChunkRequest(
-        String chapterId,
-        @NotBlank String title,
-        @NotBlank String content,
-        String pageLabel,
-        String reviewStatus,
-        String licenseScope
-    ) {}
-
-    public record PatchChunkRequest(
-        String chapterId,
-        String title,
-        String content,
-        String pageLabel,
-        String reviewStatus,
-        String licenseScope
-    ) {}
 
     private final AdminKnowledgeService knowledge;
 
@@ -80,13 +49,13 @@ public class AdminKnowledgeController {
     }
 
     @GetMapping("/settings")
-    public AdminKnowledgeService.KnowledgeSettingsView settings() {
+    public KnowledgeSettingsVO settings() {
         return knowledge.settingsView();
     }
 
     @PutMapping("/settings")
-    public AdminKnowledgeService.KnowledgeSettingsView saveSettings(
-        @RequestBody SettingsRequest request,
+    public KnowledgeSettingsVO saveSettings(
+        @RequestBody SettingsDTO request,
         @AuthenticationPrincipal AuthenticatedUser actor,
         HttpServletRequest servletRequest
     ) {
@@ -101,7 +70,7 @@ public class AdminKnowledgeController {
     }
 
     @DeleteMapping("/settings")
-    public AdminKnowledgeService.KnowledgeSettingsView resetSettings(
+    public KnowledgeSettingsVO resetSettings(
         @AuthenticationPrincipal AuthenticatedUser actor,
         HttpServletRequest servletRequest
     ) {
@@ -109,7 +78,7 @@ public class AdminKnowledgeController {
     }
 
     @PostMapping("/test-search")
-    public AdminKnowledgeService.TestSearchResult testSearch(@RequestBody TestSearchRequest request) {
+    public AdminKnowledgeService.TestSearchResult testSearch(@RequestBody TestSearchDTO request) {
         return knowledge.testSearch(
             request.query(),
             request.chapterId(),
@@ -122,7 +91,7 @@ public class AdminKnowledgeController {
     }
 
     @GetMapping("/chunks")
-    public AdminPage<AdminKnowledgeService.ChunkRow> chunks(
+    public PageVO<AdminKnowledgeService.ChunkRow> chunks(
         @RequestParam(defaultValue = "0") int page,
         @RequestParam(defaultValue = "20") int size,
         @RequestParam(required = false) String chapterId,
@@ -141,7 +110,7 @@ public class AdminKnowledgeController {
     @PostMapping("/chunks")
     @ResponseStatus(HttpStatus.CREATED)
     public AdminKnowledgeService.ChunkDetail createChunk(
-        @RequestBody CreateChunkRequest request,
+        @RequestBody CreateChunkDTO request,
         @AuthenticationPrincipal AuthenticatedUser actor,
         HttpServletRequest servletRequest
     ) {
@@ -160,7 +129,7 @@ public class AdminKnowledgeController {
     @PatchMapping("/chunks/{chunkId}")
     public AdminKnowledgeService.ChunkDetail updateChunk(
         @PathVariable String chunkId,
-        @RequestBody PatchChunkRequest request,
+        @RequestBody PatchChunkDTO request,
         @AuthenticationPrincipal AuthenticatedUser actor,
         HttpServletRequest servletRequest
     ) {

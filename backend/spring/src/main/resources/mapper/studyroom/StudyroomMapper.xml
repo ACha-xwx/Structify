@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.studyroom.mapper.StudyroomMapper">
+  <select id="selectCurrentRunId" resultType="string">
+    SELECT current_run_id FROM study_rooms WHERE id=#{roomId} AND user_id=#{userId} AND deleted_at IS NULL
+  </select>
+  <select id="selectOwnedRoomForUpdate" resultType="map">
+    SELECT current_run_id FROM study_rooms
+    WHERE id=#{roomId} AND user_id=#{userId} AND deleted_at IS NULL FOR UPDATE
+  </select>
+  <select id="selectOwnedRoom" resultType="map">
+    SELECT id, user_id, chapter_id, title, initial_question, summary, current_step_id, version, created_at, updated_at
+    FROM study_rooms WHERE id=#{roomId} AND user_id=#{userId} AND deleted_at IS NULL
+  </select>
+  <select id="selectCurrentSteps" resultType="map">
+    SELECT id, step_key, step_type, title, explanation, evidence_json, resources_json, step_order, supplemental,
+           parent_step_id, created_at, orchestration_json
+    FROM study_room_steps
+    WHERE study_room_id=#{roomId} AND run_id=(SELECT current_run_id FROM study_rooms WHERE id=study_room_id)
+    ORDER BY step_order, id
+  </select>
+  <select id="selectCurrentMessages" resultType="map">
+    SELECT id, role, content, sources_json, step_id, created_at
+    FROM study_room_messages
+    WHERE study_room_id=#{roomId} AND run_id=(SELECT current_run_id FROM study_rooms WHERE id=study_room_id)
+    ORDER BY message_order
+  </select>
+  <select id="countCurrentStep" resultType="int">
+    SELECT COUNT(*) FROM study_room_steps
+    WHERE study_room_id=#{roomId} AND id=#{stepId}
+      AND run_id=(SELECT current_run_id FROM study_rooms WHERE id=study_room_id)
+  </select>
+  <update id="bumpRoomVersion">
+    UPDATE study_rooms SET version=version+1, updated_at=CURRENT_TIMESTAMP WHERE id=#{roomId}
+  </update>
+  <select id="nextMessageOrder" resultType="int">
+    SELECT COALESCE(MAX(message_order),-1)+1 FROM study_room_messages WHERE study_room_id=#{roomId}
+  </select>
+  <insert id="insertMessage">
+    INSERT INTO study_room_messages (id, study_room_id, message_order, role, content, sources_json, step_id, created_at, run_id)
+    VALUES (#{id}, #{roomId}, #{messageOrder}, #{role}, #{content}, #{sourcesJson}, #{stepId}, #{createdAt},
+            (SELECT current_run_id FROM study_rooms WHERE id=#{roomId}))
+  </insert>
+  <update id="clearProgress">
+    UPDATE study_rooms SET current_step_id=NULL, version=version+1, updated_at=CURRENT_TIMESTAMP
+    WHERE id=#{roomId} AND user_id=#{userId}
+  </update>
+  <update id="updateProgress">
+    UPDATE study_rooms SET current_step_id=#{stepId}, version=version+1, updated_at=CURRENT_TIMESTAMP
+    WHERE id=#{roomId} AND user_id=#{userId}
+      AND EXISTS (
+        SELECT 1 FROM study_room_steps
+        WHERE id=#{stepId} AND study_room_id=#{roomId} AND run_id=current_run_id
+      )
+  </update>
+  <select id="selectVerifiedCoursewareSourcePaths" resultType="string">
+    SELECT DISTINCT source_path FROM knowledge_chunks k JOIN chapters c ON c.id = k.chapter_id
+    WHERE k.chapter_id = #{chapterId}
+      AND (k.source_path LIKE 'textbook/%' OR k.source_path LIKE 'courseware/%')
+      AND k.review_status = 'VERIFIED'
+      AND k.resource_id IS NULL AND k.license_scope IN ('PUBLIC','CLASSROOM_ONLY') AND c.status = 'PUBLISHED'
+    ORDER BY source_path
+  </select>
+</mapper>

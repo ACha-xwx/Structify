@@ -1,8 +1,8 @@
 package com.feng.dsagent.presentation.controller;
 
-import com.feng.dsagent.presentation.PresentationCatalog;
-import com.feng.dsagent.presentation.PresentationSlide;
-import com.feng.dsagent.presentation.SlideImageLinks;
+import com.feng.dsagent.presentation.support.PresentationCatalog;
+import com.feng.dsagent.presentation.domain.PresentationSlide;
+import com.feng.dsagent.presentation.support.SlideImageLinks;
 
 import com.feng.dsagent.presentation.service.PresentationService;
 

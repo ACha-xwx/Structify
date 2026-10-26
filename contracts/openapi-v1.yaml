@@ -3708,7 +3708,7 @@ components:
         provider: {type: string, enum: [PISTON, JUDGE0]}
         baseUrl: {type: string, format: uri, minLength: 1, maxLength: 2048}
         enabled: {type: boolean}
-    SandboxConnectionTest:
+    ConnectionTest:
       type: object
       required: [connected, code]
       properties:
@@ -3717,6 +3717,8 @@ components:
           type: string
           pattern: '^[A-Z0-9_]{1,64}$'
           description: Controlled result code; no upstream response details are exposed.
+    SandboxConnectionTest:
+      $ref: '#/components/schemas/ConnectionTest'
     ModelConfigCapability:
       type: object
       required: [available]
@@ -3788,14 +3790,7 @@ components:
         dailyTokenQuota: {type: integer, format: int64, minimum: 0, maximum: 10000000}
         enabled: {type: boolean}
     ModelConfigConnectionTest:
-      type: object
-      required: [connected, code]
-      properties:
-        connected: {type: boolean}
-        code:
-          type: string
-          pattern: '^[A-Z0-9_]{1,64}$'
-          description: Controlled result code. CONNECTION_OK requires a 2xx OpenAI-compatible chat-completion envelope (a non-empty choices array whose first entry carries a message object), so a reasoning model that returns reasoning_content or an empty content under the capped probe is still reported as connected; CONNECTION_RESPONSE_INVALID means a 2xx response failed that shape check. Other standard outcomes are CONNECTION_FAILED, REDIRECT_REJECTED, UPSTREAM_REJECTED, and the actionable upstream rejections UPSTREAM_AUTHENTICATION_REJECTED (401/403), UPSTREAM_PAYMENT_REQUIRED (402), and UPSTREAM_RATE_LIMITED (429).
+      $ref: '#/components/schemas/ConnectionTest'
     MailConfigCapability:
       type: object
       required: [available]
@@ -3878,11 +3873,7 @@ components:
         verificationSubject: {type: string, minLength: 1, maxLength: 300}
         verificationTemplateHtml: {type: string, minLength: 1, maxLength: 100000}
     MailConnectionTest:
-      type: object
-      required: [connected, code]
-      properties:
-        connected: {type: boolean}
-        code: {type: string, pattern: '^[A-Z0-9_]{1,64}$'}
+      $ref: '#/components/schemas/ConnectionTest'
     TestMailRequest:
       type: object
       required: [config, recipient]

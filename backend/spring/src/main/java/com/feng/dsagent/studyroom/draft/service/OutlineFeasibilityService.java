@@ -1,11 +1,13 @@
 package com.feng.dsagent.studyroom.draft.service;
 
-import com.feng.dsagent.compiler.CodeExecutionReadiness;
-import com.feng.dsagent.studyroom.curriculum.CurriculumCatalog;
+import com.feng.dsagent.compiler.support.CodeExecutionReadiness;
+import com.feng.dsagent.studyroom.curriculum.support.CurriculumCatalog;
 
-import com.feng.dsagent.studyroom.draft.ReviewedOutline;
+import com.feng.dsagent.studyroom.draft.domain.ReviewedOutline;
 
-import com.feng.dsagent.studyroom.*;
+import com.feng.dsagent.studyroom.support.StudyroomModelOutput;
+import com.feng.dsagent.studyroom.support.StudyroomResourceCatalog;
+import com.feng.dsagent.studyroom.support.StudyroomResourceSelector;
 
 import org.springframework.stereotype.Service;
 
@@ -14,13 +16,13 @@ import java.util.*;
 @Service
 public class OutlineFeasibilityService {
     private final StudyroomResourceCatalog catalog;
-    private final com.feng.dsagent.compiler.CodeExecutionReadiness execution;
-    private final com.feng.dsagent.studyroom.curriculum.CurriculumCatalog curriculum;
+    private final CodeExecutionReadiness execution;
+    private final CurriculumCatalog curriculum;
 
     public OutlineFeasibilityService(
             StudyroomResourceCatalog catalog,
-            com.feng.dsagent.studyroom.curriculum.CurriculumCatalog curriculum,
-            com.feng.dsagent.compiler.CodeExecutionReadiness execution) {
+            CurriculumCatalog curriculum,
+            CodeExecutionReadiness execution) {
         this.catalog = catalog;
         this.curriculum = curriculum;
         this.execution = execution;

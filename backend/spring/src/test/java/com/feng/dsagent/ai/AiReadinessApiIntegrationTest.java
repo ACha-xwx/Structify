@@ -4,7 +4,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.feng.dsagent.knowledge.KnowledgeEligibilityChanged;
+import com.feng.dsagent.knowledge.domain.KnowledgeEligibilityChanged;
 import com.feng.dsagent.knowledge.service.KnowledgeIndexRefreshService;
 import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
 import com.feng.dsagent.security.service.JwtTokenService;

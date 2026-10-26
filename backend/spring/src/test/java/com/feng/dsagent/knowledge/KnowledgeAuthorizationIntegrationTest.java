@@ -1,5 +1,6 @@
 package com.feng.dsagent.knowledge;
 
+import com.feng.dsagent.knowledge.service.KnowledgeChunkService;
 import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -11,12 +12,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.feng.dsagent.knowledge.domain.KnowledgeAudience;
+import com.feng.dsagent.knowledge.vo.KnowledgeSearchResultVO;
 @SpringBootTest
 @Transactional
 class KnowledgeAuthorizationIntegrationTest {
 
     @Autowired
-    private KnowledgeChunkRepository repository;
+    private KnowledgeChunkService repository;
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -97,7 +100,7 @@ class KnowledgeAuthorizationIntegrationTest {
         );
     }
 
-    private List<String> ids(List<KnowledgeSearchResult> results) {
-        return results.stream().map(result -> result.chunk().id()).toList();
+    private List<String> ids(List<KnowledgeSearchResultVO> results) {
+        return results.stream().map(result -> result.id()).toList();
     }
 }

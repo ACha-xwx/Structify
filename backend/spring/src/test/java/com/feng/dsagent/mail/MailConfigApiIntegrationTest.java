@@ -28,6 +28,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import com.feng.dsagent.mail.domain.MailConnection;
+import com.feng.dsagent.mail.support.MailConfigMasterKeySource;
+import com.feng.dsagent.mail.support.MailTransport;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(MailConfigApiIntegrationTest.MailTestConfiguration.class)

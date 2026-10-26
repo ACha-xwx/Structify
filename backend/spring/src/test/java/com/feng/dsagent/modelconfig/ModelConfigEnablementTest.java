@@ -9,6 +9,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.feng.dsagent.modelconfig.exception.ModelConfigRuntimeUnavailableException;
+import com.feng.dsagent.modelconfig.support.DatabaseModelConfigRuntimeSettingsSource;
+import com.feng.dsagent.modelconfig.support.ModelGenerationReadiness;
 @SpringBootTest
 class ModelConfigEnablementTest {
 

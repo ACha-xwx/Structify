@@ -1,0 +1,530 @@
+[
+  {
+    "oldFqcn": "com.feng.dsagent.common.ApiException",
+    "newFqcn": "com.feng.dsagent.common.exception.ApiException",
+    "oldSimple": "ApiException",
+    "newSimple": "ApiException",
+    "oldPkg": "com.feng.dsagent.common",
+    "newPkg": "com.feng.dsagent.common.exception"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.common.ApiError",
+    "newFqcn": "com.feng.dsagent.common.exception.ApiError",
+    "oldSimple": "ApiError",
+    "newSimple": "ApiError",
+    "oldPkg": "com.feng.dsagent.common",
+    "newPkg": "com.feng.dsagent.common.exception"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.common.ApiErrors",
+    "newFqcn": "com.feng.dsagent.common.exception.ApiErrors",
+    "oldSimple": "ApiErrors",
+    "newSimple": "ApiErrors",
+    "oldPkg": "com.feng.dsagent.common",
+    "newPkg": "com.feng.dsagent.common.exception"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.common.ApiExceptionHandler",
+    "newFqcn": "com.feng.dsagent.common.exception.ApiExceptionHandler",
+    "oldSimple": "ApiExceptionHandler",
+    "newSimple": "ApiExceptionHandler",
+    "oldPkg": "com.feng.dsagent.common",
+    "newPkg": "com.feng.dsagent.common.exception"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.common.ApiErrorFallbackResolver",
+    "newFqcn": "com.feng.dsagent.common.exception.ApiErrorFallbackResolver",
+    "oldSimple": "ApiErrorFallbackResolver",
+    "newSimple": "ApiErrorFallbackResolver",
+    "oldPkg": "com.feng.dsagent.common",
+    "newPkg": "com.feng.dsagent.common.exception"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.admin.AdminUser",
+    "newFqcn": "com.feng.dsagent.admin.entity.AdminUserEntity",
+    "oldSimple": "AdminUser",
+    "newSimple": "AdminUserEntity",
+    "oldPkg": "com.feng.dsagent.admin",
+    "newPkg": "com.feng.dsagent.admin.entity"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.admin.AdminUserQuery",
+    "newFqcn": "com.feng.dsagent.admin.entity.AdminUserQuery",
+    "oldSimple": "AdminUserQuery",
+    "newSimple": "AdminUserQuery",
+    "oldPkg": "com.feng.dsagent.admin",
+    "newPkg": "com.feng.dsagent.admin.entity"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.admin.AdminAuditQuery",
+    "newFqcn": "com.feng.dsagent.admin.entity.AdminAuditQuery",
+    "oldSimple": "AdminAuditQuery",
+    "newSimple": "AdminAuditQuery",
+    "oldPkg": "com.feng.dsagent.admin",
+    "newPkg": "com.feng.dsagent.admin.entity"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.admin.AdminAuditEvent",
+    "newFqcn": "com.feng.dsagent.admin.entity.AdminAuditEvent",
+    "oldSimple": "AdminAuditEvent",
+    "newSimple": "AdminAuditEvent",
+    "oldPkg": "com.feng.dsagent.admin",
+    "newPkg": "com.feng.dsagent.admin.entity"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.admin.BackgroundTaskQuery",
+    "newFqcn": "com.feng.dsagent.admin.entity.BackgroundTaskQuery",
+    "oldSimple": "BackgroundTaskQuery",
+    "newSimple": "BackgroundTaskQuery",
+    "oldPkg": "com.feng.dsagent.admin",
+    "newPkg": "com.feng.dsagent.admin.entity"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.admin.AdminAuditWrite",
+    "newFqcn": "com.feng.dsagent.admin.dto.AdminAuditWrite",
+    "oldSimple": "AdminAuditWrite",
+    "newSimple": "AdminAuditWrite",
+    "oldPkg": "com.feng.dsagent.admin",
+    "newPkg": "com.feng.dsagent.admin.dto"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.admin.service.AdminUserView",
+    "newFqcn": "com.feng.dsagent.admin.vo.AdminUserView",
+    "oldSimple": "AdminUserView",
+    "newSimple": "AdminUserView",
+    "oldPkg": "com.feng.dsagent.admin.service",
+    "newPkg": "com.feng.dsagent.admin.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.admin.service.AdminCapabilityView",
+    "newFqcn": "com.feng.dsagent.admin.vo.AdminCapabilityView",
+    "oldSimple": "AdminCapabilityView",
+    "newSimple": "AdminCapabilityView",
+    "oldPkg": "com.feng.dsagent.admin.service",
+    "newPkg": "com.feng.dsagent.admin.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.admin.AdminPage",
+    "newFqcn": "com.feng.dsagent.admin.vo.AdminPage",
+    "oldSimple": "AdminPage",
+    "newSimple": "AdminPage",
+    "oldPkg": "com.feng.dsagent.admin",
+    "newPkg": "com.feng.dsagent.admin.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.admin.BackgroundTaskView",
+    "newFqcn": "com.feng.dsagent.admin.vo.BackgroundTaskView",
+    "oldSimple": "BackgroundTaskView",
+    "newSimple": "BackgroundTaskView",
+    "oldPkg": "com.feng.dsagent.admin",
+    "newPkg": "com.feng.dsagent.admin.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.admin.BackgroundTaskPage",
+    "newFqcn": "com.feng.dsagent.admin.vo.BackgroundTaskPage",
+    "oldSimple": "BackgroundTaskPage",
+    "newSimple": "BackgroundTaskPage",
+    "oldPkg": "com.feng.dsagent.admin",
+    "newPkg": "com.feng.dsagent.admin.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.review.ReviewEntity",
+    "newFqcn": "com.feng.dsagent.review.entity.ReviewEntity",
+    "oldSimple": "ReviewEntity",
+    "newSimple": "ReviewEntity",
+    "oldPkg": "com.feng.dsagent.review",
+    "newPkg": "com.feng.dsagent.review.entity"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.review.ReviewSourceEntity",
+    "newFqcn": "com.feng.dsagent.review.entity.ReviewSourceEntity",
+    "oldSimple": "ReviewSourceEntity",
+    "newSimple": "ReviewSourceEntity",
+    "oldPkg": "com.feng.dsagent.review",
+    "newPkg": "com.feng.dsagent.review.entity"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.review.ReviewQuery",
+    "newFqcn": "com.feng.dsagent.review.entity.ReviewQuery",
+    "oldSimple": "ReviewQuery",
+    "newSimple": "ReviewQuery",
+    "oldPkg": "com.feng.dsagent.review",
+    "newPkg": "com.feng.dsagent.review.entity"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.review.service.ReviewItemView",
+    "newFqcn": "com.feng.dsagent.review.vo.ReviewItemView",
+    "oldSimple": "ReviewItemView",
+    "newSimple": "ReviewItemView",
+    "oldPkg": "com.feng.dsagent.review.service",
+    "newPkg": "com.feng.dsagent.review.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.review.service.ReviewDetailView",
+    "newFqcn": "com.feng.dsagent.review.vo.ReviewDetailView",
+    "oldSimple": "ReviewDetailView",
+    "newSimple": "ReviewDetailView",
+    "oldPkg": "com.feng.dsagent.review.service",
+    "newPkg": "com.feng.dsagent.review.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.review.service.ReviewHistoryView",
+    "newFqcn": "com.feng.dsagent.review.vo.ReviewHistoryView",
+    "oldSimple": "ReviewHistoryView",
+    "newSimple": "ReviewHistoryView",
+    "oldPkg": "com.feng.dsagent.review.service",
+    "newPkg": "com.feng.dsagent.review.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.review.service.ReviewSourceView",
+    "newFqcn": "com.feng.dsagent.review.vo.ReviewSourceView",
+    "oldSimple": "ReviewSourceView",
+    "newSimple": "ReviewSourceView",
+    "oldPkg": "com.feng.dsagent.review.service",
+    "newPkg": "com.feng.dsagent.review.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.review.service.ReviewPage",
+    "newFqcn": "com.feng.dsagent.review.vo.ReviewPage",
+    "oldSimple": "ReviewPage",
+    "newSimple": "ReviewPage",
+    "oldPkg": "com.feng.dsagent.review.service",
+    "newPkg": "com.feng.dsagent.review.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.review.service.ReviewType",
+    "newFqcn": "com.feng.dsagent.review.ReviewType",
+    "oldSimple": "ReviewType",
+    "newSimple": "ReviewType",
+    "oldPkg": "com.feng.dsagent.review.service",
+    "newPkg": "com.feng.dsagent.review"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.review.service.SourceAssessment",
+    "newFqcn": "com.feng.dsagent.review.support.SourceAssessment",
+    "oldSimple": "SourceAssessment",
+    "newSimple": "SourceAssessment",
+    "oldPkg": "com.feng.dsagent.review.service",
+    "newPkg": "com.feng.dsagent.review.support"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.auth.UserView",
+    "newFqcn": "com.feng.dsagent.auth.vo.UserView",
+    "oldSimple": "UserView",
+    "newSimple": "UserView",
+    "oldPkg": "com.feng.dsagent.auth",
+    "newPkg": "com.feng.dsagent.auth.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.auth.AuthProperties",
+    "newFqcn": "com.feng.dsagent.auth.config.AuthProperties",
+    "oldSimple": "AuthProperties",
+    "newSimple": "AuthProperties",
+    "oldPkg": "com.feng.dsagent.auth",
+    "newPkg": "com.feng.dsagent.auth.config"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.auth.BootstrapAdminProperties",
+    "newFqcn": "com.feng.dsagent.auth.config.BootstrapAdminProperties",
+    "oldSimple": "BootstrapAdminProperties",
+    "newSimple": "BootstrapAdminProperties",
+    "oldPkg": "com.feng.dsagent.auth",
+    "newPkg": "com.feng.dsagent.auth.config"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.chat.ChatResponse",
+    "newFqcn": "com.feng.dsagent.chat.vo.ChatResponse",
+    "oldSimple": "ChatResponse",
+    "newSimple": "ChatResponse",
+    "oldPkg": "com.feng.dsagent.chat",
+    "newPkg": "com.feng.dsagent.chat.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.chat.ChatMessageView",
+    "newFqcn": "com.feng.dsagent.chat.vo.ChatMessageView",
+    "oldSimple": "ChatMessageView",
+    "newSimple": "ChatMessageView",
+    "oldPkg": "com.feng.dsagent.chat",
+    "newPkg": "com.feng.dsagent.chat.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.chat.ChatSessionView",
+    "newFqcn": "com.feng.dsagent.chat.vo.ChatSessionView",
+    "oldSimple": "ChatSessionView",
+    "newSimple": "ChatSessionView",
+    "oldPkg": "com.feng.dsagent.chat",
+    "newPkg": "com.feng.dsagent.chat.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.chat.ChatAttachmentProperties",
+    "newFqcn": "com.feng.dsagent.chat.config.ChatAttachmentProperties",
+    "oldSimple": "ChatAttachmentProperties",
+    "newSimple": "ChatAttachmentProperties",
+    "oldPkg": "com.feng.dsagent.chat",
+    "newPkg": "com.feng.dsagent.chat.config"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.learning.LearningEventView",
+    "newFqcn": "com.feng.dsagent.learning.vo.LearningEventView",
+    "oldSimple": "LearningEventView",
+    "newSimple": "LearningEventView",
+    "oldPkg": "com.feng.dsagent.learning",
+    "newPkg": "com.feng.dsagent.learning.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.learning.LearningProgressView",
+    "newFqcn": "com.feng.dsagent.learning.vo.LearningProgressView",
+    "oldSimple": "LearningProgressView",
+    "newSimple": "LearningProgressView",
+    "oldPkg": "com.feng.dsagent.learning",
+    "newPkg": "com.feng.dsagent.learning.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.learning.LearningWorkbenchView",
+    "newFqcn": "com.feng.dsagent.learning.vo.LearningWorkbenchView",
+    "oldSimple": "LearningWorkbenchView",
+    "newSimple": "LearningWorkbenchView",
+    "oldPkg": "com.feng.dsagent.learning",
+    "newPkg": "com.feng.dsagent.learning.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.learning.PersistedWorkbenchSceneView",
+    "newFqcn": "com.feng.dsagent.learning.vo.PersistedWorkbenchSceneView",
+    "oldSimple": "PersistedWorkbenchSceneView",
+    "newSimple": "PersistedWorkbenchSceneView",
+    "oldPkg": "com.feng.dsagent.learning",
+    "newPkg": "com.feng.dsagent.learning.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.resource.ResourceView",
+    "newFqcn": "com.feng.dsagent.resource.vo.ResourceView",
+    "oldSimple": "ResourceView",
+    "newSimple": "ResourceView",
+    "oldPkg": "com.feng.dsagent.resource",
+    "newPkg": "com.feng.dsagent.resource.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.resource.ChapterView",
+    "newFqcn": "com.feng.dsagent.resource.vo.ChapterView",
+    "oldSimple": "ChapterView",
+    "newSimple": "ChapterView",
+    "oldPkg": "com.feng.dsagent.resource",
+    "newPkg": "com.feng.dsagent.resource.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.resource.ResourceProperties",
+    "newFqcn": "com.feng.dsagent.resource.config.ResourceProperties",
+    "oldSimple": "ResourceProperties",
+    "newSimple": "ResourceProperties",
+    "oldPkg": "com.feng.dsagent.resource",
+    "newPkg": "com.feng.dsagent.resource.config"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.compiler.CodeAnalysisResponse",
+    "newFqcn": "com.feng.dsagent.compiler.vo.CodeAnalysisResponse",
+    "oldSimple": "CodeAnalysisResponse",
+    "newSimple": "CodeAnalysisResponse",
+    "oldPkg": "com.feng.dsagent.compiler",
+    "newPkg": "com.feng.dsagent.compiler.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.compiler.RunCodeResponse",
+    "newFqcn": "com.feng.dsagent.compiler.vo.RunCodeResponse",
+    "oldSimple": "RunCodeResponse",
+    "newSimple": "RunCodeResponse",
+    "oldPkg": "com.feng.dsagent.compiler",
+    "newPkg": "com.feng.dsagent.compiler.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.compiler.TextbookCodeLibraryResponse",
+    "newFqcn": "com.feng.dsagent.compiler.vo.TextbookCodeLibraryResponse",
+    "oldSimple": "TextbookCodeLibraryResponse",
+    "newSimple": "TextbookCodeLibraryResponse",
+    "oldPkg": "com.feng.dsagent.compiler",
+    "newPkg": "com.feng.dsagent.compiler.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.compiler.ClassroomCodeSamplesResponse",
+    "newFqcn": "com.feng.dsagent.compiler.vo.ClassroomCodeSamplesResponse",
+    "oldSimple": "ClassroomCodeSamplesResponse",
+    "newSimple": "ClassroomCodeSamplesResponse",
+    "oldPkg": "com.feng.dsagent.compiler",
+    "newPkg": "com.feng.dsagent.compiler.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.compiler.CompilerProperties",
+    "newFqcn": "com.feng.dsagent.compiler.config.CompilerProperties",
+    "oldSimple": "CompilerProperties",
+    "newSimple": "CompilerProperties",
+    "oldPkg": "com.feng.dsagent.compiler",
+    "newPkg": "com.feng.dsagent.compiler.config"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.compiler.SandboxProperties",
+    "newFqcn": "com.feng.dsagent.compiler.config.SandboxProperties",
+    "oldSimple": "SandboxProperties",
+    "newSimple": "SandboxProperties",
+    "oldPkg": "com.feng.dsagent.compiler",
+    "newPkg": "com.feng.dsagent.compiler.config"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.animation.AnimationObservationView",
+    "newFqcn": "com.feng.dsagent.animation.vo.AnimationObservationView",
+    "oldSimple": "AnimationObservationView",
+    "newSimple": "AnimationObservationView",
+    "oldPkg": "com.feng.dsagent.animation",
+    "newPkg": "com.feng.dsagent.animation.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.animation.AnimationGenerationResponse",
+    "newFqcn": "com.feng.dsagent.animation.vo.AnimationGenerationResponse",
+    "oldSimple": "AnimationGenerationResponse",
+    "newSimple": "AnimationGenerationResponse",
+    "oldPkg": "com.feng.dsagent.animation",
+    "newPkg": "com.feng.dsagent.animation.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.animation.DsvpSimulationResponse",
+    "newFqcn": "com.feng.dsagent.animation.vo.DsvpSimulationResponse",
+    "oldSimple": "DsvpSimulationResponse",
+    "newSimple": "DsvpSimulationResponse",
+    "oldPkg": "com.feng.dsagent.animation",
+    "newPkg": "com.feng.dsagent.animation.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.animation.AnimationConfiguration",
+    "newFqcn": "com.feng.dsagent.animation.config.AnimationConfiguration",
+    "oldSimple": "AnimationConfiguration",
+    "newSimple": "AnimationConfiguration",
+    "oldPkg": "com.feng.dsagent.animation",
+    "newPkg": "com.feng.dsagent.animation.config"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.animation.DsvpModelContract",
+    "newFqcn": "com.feng.dsagent.animation.prompt.DsvpModelContract",
+    "oldSimple": "DsvpModelContract",
+    "newSimple": "DsvpModelContract",
+    "oldPkg": "com.feng.dsagent.animation",
+    "newPkg": "com.feng.dsagent.animation.prompt"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomSessionView",
+    "newFqcn": "com.feng.dsagent.classroom.vo.ClassroomSessionView",
+    "oldSimple": "ClassroomSessionView",
+    "newSimple": "ClassroomSessionView",
+    "oldPkg": "com.feng.dsagent.classroom",
+    "newPkg": "com.feng.dsagent.classroom.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.classroom.ClassroomConfiguration",
+    "newFqcn": "com.feng.dsagent.classroom.config.ClassroomConfiguration",
+    "oldSimple": "ClassroomConfiguration",
+    "newSimple": "ClassroomConfiguration",
+    "oldPkg": "com.feng.dsagent.classroom",
+    "newPkg": "com.feng.dsagent.classroom.config"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.classroom.IllegalClassroomTransitionException",
+    "newFqcn": "com.feng.dsagent.classroom.exception.IllegalClassroomTransitionException",
+    "oldSimple": "IllegalClassroomTransitionException",
+    "newSimple": "IllegalClassroomTransitionException",
+    "oldPkg": "com.feng.dsagent.classroom",
+    "newPkg": "com.feng.dsagent.classroom.exception"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.studyroom.StudyroomView",
+    "newFqcn": "com.feng.dsagent.studyroom.vo.StudyroomView",
+    "oldSimple": "StudyroomView",
+    "newSimple": "StudyroomView",
+    "oldPkg": "com.feng.dsagent.studyroom",
+    "newPkg": "com.feng.dsagent.studyroom.vo"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.knowledge.KnowledgeConfiguration",
+    "newFqcn": "com.feng.dsagent.knowledge.config.KnowledgeConfiguration",
+    "oldSimple": "KnowledgeConfiguration",
+    "newSimple": "KnowledgeConfiguration",
+    "oldPkg": "com.feng.dsagent.knowledge",
+    "newPkg": "com.feng.dsagent.knowledge.config"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.knowledge.KnowledgeProperties",
+    "newFqcn": "com.feng.dsagent.knowledge.config.KnowledgeProperties",
+    "oldSimple": "KnowledgeProperties",
+    "newSimple": "KnowledgeProperties",
+    "oldPkg": "com.feng.dsagent.knowledge",
+    "newPkg": "com.feng.dsagent.knowledge.config"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.presentation.PresentationProperties",
+    "newFqcn": "com.feng.dsagent.presentation.config.PresentationProperties",
+    "oldSimple": "PresentationProperties",
+    "newSimple": "PresentationProperties",
+    "oldPkg": "com.feng.dsagent.presentation",
+    "newPkg": "com.feng.dsagent.presentation.config"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.security.SecurityConfig",
+    "newFqcn": "com.feng.dsagent.security.config.SecurityConfiguration",
+    "oldSimple": "SecurityConfig",
+    "newSimple": "SecurityConfiguration",
+    "oldPkg": "com.feng.dsagent.security",
+    "newPkg": "com.feng.dsagent.security.config"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.security.SecurityProperties",
+    "newFqcn": "com.feng.dsagent.security.config.SecurityProperties",
+    "oldSimple": "SecurityProperties",
+    "newSimple": "SecurityProperties",
+    "oldPkg": "com.feng.dsagent.security",
+    "newPkg": "com.feng.dsagent.security.config"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.security.InvalidTokenException",
+    "newFqcn": "com.feng.dsagent.security.exception.InvalidTokenException",
+    "oldSimple": "InvalidTokenException",
+    "newSimple": "InvalidTokenException",
+    "oldPkg": "com.feng.dsagent.security",
+    "newPkg": "com.feng.dsagent.security.exception"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.aiquota.AiQuotaExecutionProperties",
+    "newFqcn": "com.feng.dsagent.aiquota.config.AiQuotaExecutionProperties",
+    "oldSimple": "AiQuotaExecutionProperties",
+    "newSimple": "AiQuotaExecutionProperties",
+    "oldPkg": "com.feng.dsagent.aiquota",
+    "newPkg": "com.feng.dsagent.aiquota.config"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.aiquota.AiStreamAbortedException",
+    "newFqcn": "com.feng.dsagent.aiquota.exception.AiStreamAbortedException",
+    "oldSimple": "AiStreamAbortedException",
+    "newSimple": "AiStreamAbortedException",
+    "oldPkg": "com.feng.dsagent.aiquota",
+    "newPkg": "com.feng.dsagent.aiquota.exception"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.modelconfig.ModelConfigRuntimeUnavailableException",
+    "newFqcn": "com.feng.dsagent.modelconfig.exception.ModelConfigRuntimeUnavailableException",
+    "oldSimple": "ModelConfigRuntimeUnavailableException",
+    "newSimple": "ModelConfigRuntimeUnavailableException",
+    "oldPkg": "com.feng.dsagent.modelconfig",
+    "newPkg": "com.feng.dsagent.modelconfig.exception"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.model.ModelClientException",
+    "newFqcn": "com.feng.dsagent.model.exception.ModelClientException",
+    "oldSimple": "ModelClientException",
+    "newSimple": "ModelClientException",
+    "oldPkg": "com.feng.dsagent.model",
+    "newPkg": "com.feng.dsagent.model.exception"
+  },
+  {
+    "oldFqcn": "com.feng.dsagent.model.ModelProperties",
+    "newFqcn": "com.feng.dsagent.model.config.ModelProperties",
+    "oldSimple": "ModelProperties",
+    "newSimple": "ModelProperties",
+    "oldPkg": "com.feng.dsagent.model",
+    "newPkg": "com.feng.dsagent.model.config"
+  }
+]

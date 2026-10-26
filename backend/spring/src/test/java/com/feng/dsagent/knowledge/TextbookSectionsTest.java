@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
+import com.feng.dsagent.knowledge.support.TextbookSections;
 /**
  * The reviewed pages keep section numbers as running text, so reading them back has to be strict enough
  * not to mistake a figure caption or a sentence for a section title.

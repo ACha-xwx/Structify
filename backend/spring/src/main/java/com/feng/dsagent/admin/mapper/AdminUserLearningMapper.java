@@ -6,6 +6,9 @@ import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+/**
+ * 职责：按用户汇总学习活动与用量的只读查询。
+ */
 @Mapper
 public interface AdminUserLearningMapper {
 

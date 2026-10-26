@@ -6,6 +6,9 @@ import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
+/**
+ * 职责：运维观测所需任务与 token 用量的只读查询。
+ */
 @Mapper
 public interface AdminObservabilityMapper {
 

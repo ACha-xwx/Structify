@@ -1,10 +1,11 @@
 package com.feng.dsagent.studyroom.fragment.service;
 
-import com.feng.dsagent.compiler.CodeExecutionReadiness;
-import com.feng.dsagent.studyroom.draft.OutlineJson;
+
+import com.feng.dsagent.studyroom.error.StudyroomErrorCode;
+import com.feng.dsagent.compiler.support.CodeExecutionReadiness;
+import com.feng.dsagent.studyroom.draft.support.OutlineJson;
 import com.feng.dsagent.studyroom.fragment.mapper.FragmentReadMapper;
 import java.util.*;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,8 +25,8 @@ public class FragmentReadService {
     public Map<String, Object> current(long user, String room) {
         var row = fragments.selectCurrentRunId(room, user);
         if (row == null)
-            throw OutlineJson.error(HttpStatus.NOT_FOUND, "STUDYROOM_NOT_FOUND", "学习空间不存在");
-        OutlineJson.require(row.get("current_run_id") != null, "OUTLINE_REQUIRED", "请先确认学习大纲");
+            throw OutlineJson.error(StudyroomErrorCode.STUDYROOM_NOT_FOUND, "学习空间不存在");
+        OutlineJson.require(row.get("current_run_id") != null, StudyroomErrorCode.OUTLINE_REQUIRED);
         return get(user, (String) row.get("current_run_id"));
     }
 
@@ -33,7 +34,7 @@ public class FragmentReadService {
     public Map<String, Object> get(long user, String id) {
         var run = fragments.selectOwnedRun(id, user);
         if (run == null)
-            throw OutlineJson.error(HttpStatus.NOT_FOUND, "RUN_NOT_FOUND", "学习路线不存在");
+            throw OutlineJson.error(StudyroomErrorCode.RUN_NOT_FOUND);
         List<Map<String, Object>> points = new ArrayList<>();
         String first = null;
         for (var unit : fragments.selectUnits(id)) {

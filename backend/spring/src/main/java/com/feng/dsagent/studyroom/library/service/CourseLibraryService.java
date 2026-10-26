@@ -1,15 +1,16 @@
 package com.feng.dsagent.studyroom.library.service;
 
-import com.feng.dsagent.studyroom.draft.OutlineJson;
+
+
+import com.feng.dsagent.studyroom.error.StudyroomErrorCode;
+import org.springframework.stereotype.Service;
+import com.feng.dsagent.studyroom.draft.support.OutlineJson;
 import com.feng.dsagent.studyroom.library.mapper.CourseLibraryMapper;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.*;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Owned library projection. Publication timestamps deliberately do not define user activity. */
 @Service
 public class CourseLibraryService {
     private final CourseLibraryMapper library;
@@ -104,8 +105,7 @@ public class CourseLibraryService {
     @Transactional
     public void rename(long user, String id, String title) {
         if (title == null || title.isBlank() || title.trim().length() > 160)
-            throw OutlineJson.error(
-                    HttpStatus.BAD_REQUEST, "INVALID_COURSE_TITLE", "课程名称须为 1–160 个字符");
+            throw OutlineJson.error(StudyroomErrorCode.INVALID_COURSE_TITLE);
         library.lockUser(user);
         visible(user, id);
         library.updateDisplayTitle(title.trim(), id, user);
@@ -114,11 +114,11 @@ public class CourseLibraryService {
     private Map<String, Object> visible(long user, String id) {
         var draft = library.selectOwnedDraft(user, id);
         if (draft == null)
-            throw OutlineJson.error(HttpStatus.NOT_FOUND, "OUTLINE_NOT_FOUND", "学习大纲不存在");
+            throw OutlineJson.error(StudyroomErrorCode.OUTLINE_NOT_FOUND);
         if (draft.get("confirmed_run_id") != null
                 && library.selectRoomByCurrentRun((String) draft.get("confirmed_run_id"), user)
                         == null)
-            throw OutlineJson.error(HttpStatus.NOT_FOUND, "COURSE_NOT_FOUND", "课程不存在");
+            throw OutlineJson.error(StudyroomErrorCode.COURSE_NOT_FOUND);
         return draft;
     }
 
@@ -127,7 +127,7 @@ public class CourseLibraryService {
         library.lockUser(user);
         var owned = library.selectDraftForUpdate(user, id);
         if (owned == null)
-            throw OutlineJson.error(HttpStatus.NOT_FOUND, "COURSE_NOT_FOUND", "课程不存在");
+            throw OutlineJson.error(StudyroomErrorCode.COURSE_NOT_FOUND);
         if (owned.get("deleted_at") != null) return;
         var draft = visible(user, id);
         // An unconfirmed revision is only a draft: deleting it must not delete its source course.

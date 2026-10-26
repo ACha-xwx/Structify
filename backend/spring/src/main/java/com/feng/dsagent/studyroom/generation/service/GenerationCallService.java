@@ -1,12 +1,18 @@
 package com.feng.dsagent.studyroom.generation.service;
 
-import com.feng.dsagent.studyroom.generation.GenerationLease;
 
-import com.feng.dsagent.aiquota.AiQuotaExecution;
+import com.feng.dsagent.studyroom.error.StudyroomErrorCode;
+import com.feng.dsagent.studyroom.generation.support.GenerationLease;
+import com.feng.dsagent.aiquota.support.AiQuotaExecution;
 import com.feng.dsagent.model.*;
-import com.feng.dsagent.studyroom.draft.*;
-import com.feng.dsagent.studyroom.fragment.*;
 import com.feng.dsagent.studyroom.generation.mapper.GenerationCallMapper;
+import com.feng.dsagent.studyroom.draft.support.OutlineJson;
+import com.feng.dsagent.studyroom.fragment.domain.FragmentBudget;
+import com.feng.dsagent.model.exception.ModelClientException;
+import com.feng.dsagent.model.ModelMessage;
+import com.feng.dsagent.model.ModelRequest;
+import com.feng.dsagent.model.ModelResponse;
+import com.feng.dsagent.model.ModelStreamHandler;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -65,7 +71,7 @@ public class GenerationCallService {
 
     private String execute(long user,String jobId,String phase,String system,String prompt,int budget,java.util.function.Consumer<String> delta,boolean jsonObject) {
         var lease = GenerationLease.current();
-        OutlineJson.require(lease == null || active(lease), "JOB_LEASE_LOST", "生成任务租约已失效");
+        OutlineJson.require(lease == null || active(lease), StudyroomErrorCode.JOB_LEASE_LOST, "生成任务租约已失效");
         String newCallId = OutlineJson.id();
         var call =
                 tx.execute(
@@ -73,18 +79,12 @@ public class GenerationCallService {
                                     calls.lockUser(user);
                                     var job = calls.selectJobForUpdate(jobId, user);
                                     OutlineJson.require(
-                                            job != null && "RUNNING".equals(job.get("status")),
-                                            "JOB_NOT_RUNNING",
-                                            "生成任务已失效");
+                                            job != null && "RUNNING".equals(job.get("status")), StudyroomErrorCode.JOB_NOT_RUNNING);
                                     if (job.get("run_id") != null)
                                         OutlineJson.require(
-                                                calls.countCurrentRun(job.get("run_id"), user) == 1,
-                                                "RUN_SUPERSEDED",
-                                                "学习路线已更新，本次生成停止");
+                                                calls.countCurrentRun(job.get("run_id"), user) == 1, StudyroomErrorCode.RUN_SUPERSEDED, "学习路线已更新，本次生成停止");
                                     OutlineJson.require(
-                                            lease == null || active(lease),
-                                            "JOB_LEASE_LOST",
-                                            "生成任务租约已失效");
+                                            lease == null || active(lease), StudyroomErrorCode.JOB_LEASE_LOST, "生成任务租约已失效");
                                     var prior = calls.selectPriorCall(jobId, job.get("attempt"), phase);
                                     if (prior != null) return prior;
                                     if(job.get("fragment_id")!=null)reserveFragmentBudget(job,system,prompt,budget);
@@ -104,9 +104,7 @@ public class GenerationCallService {
         // Only the inserting caller owns a new call; a job lease prevents another worker entering
         // this phase.
         OutlineJson.require(
-                newCallId.equals(call.get("id")) && "SENT".equals(call.get("status")),
-                "MODEL_CALL_UNCERTAIN",
-                "前次模型调用结果不确定，请主动重试");
+                newCallId.equals(call.get("id")) && "SENT".equals(call.get("status")), StudyroomErrorCode.MODEL_CALL_UNCERTAIN);
         long started=System.nanoTime();
         var observation=Observation.start("studyroom.model.call",observations).lowCardinalityKeyValue("phase",phase);
         try {
@@ -126,11 +124,11 @@ public class GenerationCallService {
                 execution.stream(user,"study_outline",(String)call.get("quota_request_id"),request,new ModelStreamHandler() {
                     public void onContent(String value) {
                         if(value==null || value.isEmpty())return;
-                        OutlineJson.require(System.nanoTime()-started<120_000_000_000L,"MODEL_ACTIVE_TIME_EXCEEDED","本次生成时间已超出上限");
-                        OutlineJson.require(lease==null || active(lease),"JOB_LEASE_LOST","生成任务租约已失效");
+                        OutlineJson.require(System.nanoTime()-started<120_000_000_000L, StudyroomErrorCode.MODEL_ACTIVE_TIME_EXCEEDED);
+                        OutlineJson.require(lease==null || active(lease), StudyroomErrorCode.JOB_LEASE_LOST, "生成任务租约已失效");
                         var current=calls.selectJobStatus(jobId,user);
-                        OutlineJson.require(current!=null && "RUNNING".equals(current.get("status")),"JOB_NOT_RUNNING","生成任务已停止");
-                        OutlineJson.require(textBuf.length()+value.length()<=64000,"MODEL_OUTPUT_TOO_LARGE","模型输出超出单次生成上限");
+                        OutlineJson.require(current!=null && "RUNNING".equals(current.get("status")), StudyroomErrorCode.JOB_NOT_RUNNING, "生成任务已停止");
+                        OutlineJson.require(textBuf.length()+value.length()<=64000, StudyroomErrorCode.MODEL_OUTPUT_TOO_LARGE, "模型输出超出单次生成上限");
                         textBuf.append(value);delta.accept(value);
                     }
                     public void onUsage(Long tokens) { if(tokens!=null && tokens>=0)usage.set(tokens); }
@@ -139,9 +137,7 @@ public class GenerationCallService {
             }
             String content = response.content();
             OutlineJson.require(
-                    content != null && content.length() <= 64000,
-                    "MODEL_OUTPUT_TOO_LARGE",
-                    "模型输出超出单次生成上限");
+                    content != null && content.length() <= 64000, StudyroomErrorCode.MODEL_OUTPUT_TOO_LARGE, "模型输出超出单次生成上限");
             calls.markCallSucceeded(content, call.get("id"));
             long usage=response.totalTokens()!=null&&response.totalTokens()>=0?response.totalTokens():estimate(system,prompt,budget);
             recordUsage(call,usage,response.totalTokens()==null?"ESTIMATED":"PROVIDER_REPORTED",started,estimate(system,prompt,budget));
@@ -173,7 +169,7 @@ public class GenerationCallService {
             if(call.get("elapsed_ms")!=null)time+=((Number)call.get("elapsed_ms")).longValue();
         }
         boolean check="CHECK".equals(job.get("job_type"));
-        OutlineJson.require(previous.size()<(check?1:2)&&tokens+estimate(system,prompt,output)<=(check?10000:20000)&&time<120000,"CLASSROOM_BUDGET_EXHAUSTED","本次课堂任务预算已用尽，已完成的回答会保留");
+        OutlineJson.require(previous.size()<(check?1:2)&&tokens+estimate(system,prompt,output)<=(check?10000:20000)&&time<120000, StudyroomErrorCode.CLASSROOM_BUDGET_EXHAUSTED);
     }
 
     public void recordReview(long user,String job,String phase,String raw) {
@@ -187,13 +183,12 @@ public class GenerationCallService {
         String fragment=(String)job.get("fragment_id");
         int revision=((Number)json.object((String)job.get("payload_json")).get("revision")).intValue();
         var version=calls.selectFragmentVersionForUpdate(fragment,revision);
-        OutlineJson.require(version!=null,"FRAGMENT_REVISION_MISSING","片段修订不存在");
+        OutlineJson.require(version!=null, StudyroomErrorCode.FRAGMENT_REVISION_MISSING);
         long charged=((Number)version.get("consumed_tokens")).longValue();
         boolean permitted=fragmentBudget.permits(((Number)version.get("consumed_calls")).intValue(),charged,
             Duration.ofMillis(((Number)version.get("active_duration_ms")).longValue()));
         long reserved=estimate(system,prompt,output);
-        OutlineJson.require(permitted&&reserved<=fragmentBudget.maximumTokens()-charged,"FRAGMENT_BUDGET_EXHAUSTED",
-            "本片段生成预算已用尽；可明确重新生成该片段，已发布内容会保留。");
+        OutlineJson.require(permitted&&reserved<=fragmentBudget.maximumTokens()-charged, StudyroomErrorCode.FRAGMENT_BUDGET_EXHAUSTED, "本片段生成预算已用尽；可明确重新生成该片段，已发布内容会保留。");
         calls.reserveFragmentBudget(reserved,fragment,revision);
     }
 

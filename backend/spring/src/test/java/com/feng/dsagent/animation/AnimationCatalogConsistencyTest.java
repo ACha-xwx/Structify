@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import com.feng.dsagent.animation.support.DsvpLocalEngine;
 /**
  * The animation lab's picker is a build-time snapshot of the engine's capability registry.
  *

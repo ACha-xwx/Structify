@@ -1,16 +1,17 @@
 package com.feng.dsagent.studyroom.teaching.service;
 
+
+import com.feng.dsagent.studyroom.error.StudyroomErrorCode;
 import com.feng.dsagent.studyroom.service.StudyroomService;
-
-import com.feng.dsagent.studyroom.teaching.LectureCompiler;
-import com.feng.dsagent.studyroom.teaching.LectureRegion;
-
-import com.feng.dsagent.animation.*;
-import com.feng.dsagent.studyroom.*;
-import com.feng.dsagent.studyroom.draft.OutlineJson;
+import com.feng.dsagent.studyroom.teaching.support.LectureCompiler;
+import com.feng.dsagent.studyroom.teaching.domain.LectureRegion;
+import com.feng.dsagent.studyroom.draft.support.OutlineJson;
 import com.feng.dsagent.studyroom.teaching.mapper.ClassroomLectureMapper;
+import com.feng.dsagent.studyroom.support.StudyroomResourceCatalog;
+import com.feng.dsagent.animation.support.DsvpLocalEngine;
+import com.feng.dsagent.animation.support.DsvpAnimationAdapter;
+import com.feng.dsagent.studyroom.vo.StudyroomVO;
 import java.util.*;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,11 +42,9 @@ public class ClassroomLectureService {
     private Map<String, Object> currentRun(long user, String run) {
         var row = fragments.selectOwnedRun(run, user);
         if (row == null)
-            throw OutlineJson.error(HttpStatus.NOT_FOUND, "RUN_NOT_FOUND", "学习路线不存在");
+            throw OutlineJson.error(StudyroomErrorCode.RUN_NOT_FOUND);
         OutlineJson.require(
-                fragments.selectRoomCurrentRun(row.get("room_id"), run) != null,
-                "RUN_SUPERSEDED",
-                "学习路线已更新");
+                fragments.selectRoomCurrentRun(row.get("room_id"), run) != null, StudyroomErrorCode.RUN_SUPERSEDED, "学习路线已更新");
         return row;
     }
 
@@ -53,16 +52,14 @@ public class ClassroomLectureService {
         currentRun(user, run);
         var row = fragments.selectOwnedFragment(fragment, run);
         if (row == null)
-            throw OutlineJson.error(HttpStatus.NOT_FOUND, "FRAGMENT_NOT_FOUND", "学习片段不存在");
+            throw OutlineJson.error(StudyroomErrorCode.FRAGMENT_NOT_FOUND);
         OutlineJson.require(
                 row.get("step_id") != null
-                        && ((Number) row.get("content_revision")).intValue() == revision,
-                "LECTURE_REVISION_CHANGED",
-                "讲解内容已更新，请重新打开课堂");
+                        && ((Number) row.get("content_revision")).intValue() == revision, StudyroomErrorCode.LECTURE_REVISION_CHANGED);
         return row;
     }
 
-    private StudyroomView.Step step(long user, String run, Map<String, Object> fragment) {
+    private StudyroomVO.Step step(long user, String run, Map<String, Object> fragment) {
         var owned = currentRun(user, run);
         return rooms.get(user, (String) owned.get("room_id")).steps().stream()
                 .filter(s -> s.id().equals(fragment.get("step_id")))
@@ -160,7 +157,7 @@ public class ClassroomLectureService {
                                                 r.available()
                                                         && r.type().equalsIgnoreCase("PPT")
                                                         && r.id().equals(region.resourceId()));
-        OutlineJson.require(bound, "LECTURE_TARGET_INVALID", "区域必须属于当前讲解的可用课件");
+        OutlineJson.require(bound, StudyroomErrorCode.LECTURE_TARGET_INVALID);
         var existing = fragments.selectRegionById(region.id());
         if (existing != null) {
             OutlineJson.require(
@@ -168,12 +165,10 @@ public class ClassroomLectureService {
                             && ((Number) existing.get("user_id")).longValue() == user
                             && ((Number) existing.get("content_revision")).intValue() == revision
                             && existing.get("region_json").equals(json.write(region))
-                            && !Boolean.TRUE.equals(existing.get("deleted")),
-                    "LECTURE_REGION_CONFLICT",
-                    "该区域标识已被使用");
+                            && !Boolean.TRUE.equals(existing.get("deleted")), StudyroomErrorCode.LECTURE_REGION_CONFLICT);
             return region;
         }
-        OutlineJson.require(regions(fragment, revision).size() < 12, "LECTURE_REGION_LIMIT", "每段讲解最多保存 12 个区域");
+        OutlineJson.require(regions(fragment, revision).size() < 12, StudyroomErrorCode.LECTURE_REGION_LIMIT);
         fragments.insertRegion(
                 region.id(),
                 user,

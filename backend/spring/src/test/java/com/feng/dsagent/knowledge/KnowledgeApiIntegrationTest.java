@@ -1,5 +1,6 @@
 package com.feng.dsagent.knowledge;
 
+import com.feng.dsagent.knowledge.service.KnowledgeChunkService;
 import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
 
 import static org.hamcrest.Matchers.containsString;
@@ -44,7 +45,7 @@ class KnowledgeApiIntegrationTest {
     private KnowledgeSearchService search;
 
     @Autowired
-    private KnowledgeChunkRepository repository;
+    private KnowledgeChunkService repository;
 
     @BeforeEach
     void resetFixtures() {

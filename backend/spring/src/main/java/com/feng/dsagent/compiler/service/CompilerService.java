@@ -1,17 +1,17 @@
 package com.feng.dsagent.compiler.service;
 
-import com.feng.dsagent.compiler.CompilerProperties;
-import com.feng.dsagent.compiler.CodeRunRepository;
-import com.feng.dsagent.compiler.CompilerExecution;
-import com.feng.dsagent.compiler.SupportedLanguage;
-import com.feng.dsagent.compiler.CompilerGateway;
-import com.feng.dsagent.compiler.LocalCodeRunner;
-import com.feng.dsagent.compiler.RunCodeResponse;
-import com.feng.dsagent.compiler.RunCodeRequest;
+import com.feng.dsagent.compiler.config.CompilerProperties;
+import com.feng.dsagent.compiler.mapper.CodeRunMapper;
+import java.util.UUID;
+import com.feng.dsagent.compiler.domain.CompilerExecution;
+import com.feng.dsagent.compiler.domain.SupportedLanguage;
+import com.feng.dsagent.compiler.support.CompilerGateway;
+import com.feng.dsagent.compiler.worker.LocalCodeRunner;
+import com.feng.dsagent.compiler.vo.RunCodeVO;
+import com.feng.dsagent.compiler.dto.RunCodeDTO;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.compiler.error.CompilerErrorCode;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -21,63 +21,55 @@ public final class CompilerService {
 
     private final CompilerProperties properties;
     private final CompilerGateway gateway;
-    private final CodeRunRepository runs;
+    private final CodeRunMapper codeRuns;
     private final LocalCodeRunner local;
 
     public CompilerService(CompilerProperties properties, CompilerGateway gateway) {
         this(properties, gateway, null, null);
     }
 
-    public CompilerService(CompilerProperties properties, CompilerGateway gateway, CodeRunRepository runs) {
-        this(properties, gateway, runs, null);
+    public CompilerService(CompilerProperties properties, CompilerGateway gateway, CodeRunMapper codeRuns) {
+        this(properties, gateway, codeRuns, null);
     }
 
     @Autowired
     public CompilerService(
         CompilerProperties properties,
         CompilerGateway gateway,
-        CodeRunRepository runs,
+        CodeRunMapper codeRuns,
         LocalCodeRunner local
     ) {
         this.properties = properties;
         this.gateway = gateway;
-        this.runs = runs;
+        this.codeRuns = codeRuns;
         this.local = local;
     }
 
-    public RunCodeResponse run(RunCodeRequest request) {
+    public RunCodeVO run(RunCodeDTO request) {
         return run(request, null);
     }
 
-    public RunCodeResponse run(RunCodeRequest request, Long userId) {
+    public RunCodeVO run(RunCodeDTO request, Long userId) {
         if (request == null) {
-            throw badRequest("COMPILER_REQUEST_INVALID", "请输入代码执行参数");
+            throw CompilerErrorCode.REQUEST_INVALID.toException();
         }
         SupportedLanguage language = SupportedLanguage.fromApiName(request.language())
-            .orElseThrow(() -> badRequest("COMPILER_LANGUAGE_UNSUPPORTED", "仅支持 C 和 Python"));
+            .orElseThrow(CompilerErrorCode.LANGUAGE_UNSUPPORTED::toException);
         String code = request.code();
         String stdin = request.stdin() == null ? "" : request.stdin();
 
         if (code == null || code.isBlank()) {
-            throw badRequest("COMPILER_CODE_REQUIRED", "代码不能为空");
+            throw CompilerErrorCode.CODE_REQUIRED.toException();
         }
         if (code.length() > properties.maximumCodeLength()) {
-            throw new ApiException(
-                HttpStatus.PAYLOAD_TOO_LARGE,
-                "COMPILER_CODE_TOO_LONG",
-                "代码长度超过允许上限"
-            );
+            throw CompilerErrorCode.CODE_TOO_LONG.toException();
         }
         if (stdin.length() > properties.maximumInputLength()) {
-            throw new ApiException(
-                HttpStatus.PAYLOAD_TOO_LARGE,
-                "COMPILER_INPUT_TOO_LONG",
-                "标准输入长度超过允许上限"
-            );
+            throw CompilerErrorCode.INPUT_TOO_LONG.toException();
         }
         String chapterId = normalizeChapterId(request.chapterId());
-        if (userId != null && chapterId != null && runs != null && !runs.chapterExists(chapterId)) {
-            throw badRequest("COMPILER_CHAPTER_INVALID", "章节不存在或尚未发布");
+        if (userId != null && chapterId != null && codeRuns != null && codeRuns.countPublishedChapter(chapterId) == 0) {
+            throw CompilerErrorCode.CHAPTER_INVALID.toException();
         }
 
         long startedAt = System.nanoTime();
@@ -87,7 +79,7 @@ public final class CompilerService {
             ? local.execute(language, code, stdin)
             : gateway.execute(language, code, stdin);
         long durationMs = Math.max(0L, (System.nanoTime() - startedAt) / 1_000_000L);
-        RunCodeResponse response = new RunCodeResponse(
+        RunCodeVO response = new RunCodeVO(
             language.apiName(),
             execution.status(),
             truncate(execution.stdout()),
@@ -95,9 +87,9 @@ public final class CompilerService {
             durationMs,
             null
         );
-        if (userId != null && runs != null) {
-            String runId = runs.save(userId, chapterId, request, response);
-            return new RunCodeResponse(
+        if (userId != null && codeRuns != null) {
+            String runId = saveCodeRun(userId, chapterId, request, response);
+            return new RunCodeVO(
                 response.language(),
                 response.status(),
                 response.stdout(),
@@ -115,7 +107,7 @@ public final class CompilerService {
         }
         String normalized = chapterId.trim();
         if (normalized.length() > 64 || !normalized.matches("^[0-9]{2}-[a-z0-9-]+$")) {
-            throw badRequest("COMPILER_CHAPTER_INVALID", "章节参数无效");
+            throw CompilerErrorCode.CHAPTER_PARAM_INVALID.toException();
         }
         return normalized;
     }
@@ -132,7 +124,21 @@ public final class CompilerService {
         return output.substring(0, maximumLength - TRUNCATION_MARKER.length()) + TRUNCATION_MARKER;
     }
 
-    private static ApiException badRequest(String code, String message) {
-        return new ApiException(HttpStatus.BAD_REQUEST, code, message);
+
+    private String saveCodeRun(long userId, String chapterId, RunCodeDTO request, RunCodeVO response) {
+        String id = UUID.randomUUID().toString();
+        codeRuns.insert(
+            id,
+            userId,
+            chapterId == null || chapterId.isBlank() ? null : chapterId.trim(),
+            response.language(),
+            request.code(),
+            request.stdin(),
+            response.status(),
+            response.stdout(),
+            response.stderr(),
+            response.durationMs()
+        );
+        return id;
     }
 }

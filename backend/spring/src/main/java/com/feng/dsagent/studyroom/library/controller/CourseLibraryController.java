@@ -2,7 +2,7 @@ package com.feng.dsagent.studyroom.library.controller;
 
 import com.feng.dsagent.studyroom.library.service.CourseLibraryService;
 
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.util.List;

@@ -1,25 +1,28 @@
 package com.feng.dsagent.admin.service;
 
-import com.feng.dsagent.admin.BackgroundTaskQuery;
-import com.feng.dsagent.admin.BackgroundTaskPage;
-import com.feng.dsagent.admin.BackgroundTaskView;
-import com.feng.dsagent.admin.AdminAuditWrite;
-
-import com.feng.dsagent.admin.BackgroundTaskRepository;
-import com.feng.dsagent.admin.AdminRepository;
-
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.admin.converter.BackgroundTaskConverter;
+import com.feng.dsagent.admin.entity.BackgroundTaskEntity;
+import com.feng.dsagent.admin.error.AdminErrorCode;
+import com.feng.dsagent.admin.mapper.AdminMapper;
+import com.feng.dsagent.admin.mapper.BackgroundTaskMapper;
+import com.feng.dsagent.admin.query.BackgroundTaskQuery;
+import com.feng.dsagent.admin.vo.BackgroundTaskVO;
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.common.support.PageParams;
+import com.feng.dsagent.common.support.StringNormalizer;
+import com.feng.dsagent.common.vo.PageVO;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Locale;
 import java.util.Set;
-import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 职责：管理端后台任务的查询、重试与过期回收。
+ */
 @Service
 public class BackgroundTaskService {
     private static final Set<String> STATUSES = Set.of(
@@ -28,73 +31,77 @@ public class BackgroundTaskService {
     private static final String STALE_TASK_RECOVERY = "STALE_TASK_RECOVERY";
     private static final Duration TASK_EXECUTION_DEADLINE = Duration.ofMinutes(1);
 
-    private final BackgroundTaskRepository repository;
-    private final AdminRepository adminRepository;
+    private final BackgroundTaskMapper mapper;
+    private final AdminMapper adminMapper;
+    private final BackgroundTaskConverter backgroundTaskConverter;
     private final Clock clock;
 
-    public BackgroundTaskService(BackgroundTaskRepository repository, AdminRepository adminRepository, Clock clock) {
-        this.repository = repository;
-        this.adminRepository = adminRepository;
+    public BackgroundTaskService(
+        BackgroundTaskMapper mapper,
+        AdminMapper adminMapper,
+        BackgroundTaskConverter backgroundTaskConverter,
+        Clock clock
+    ) {
+        this.mapper = mapper;
+        this.adminMapper = adminMapper;
+        this.backgroundTaskConverter = backgroundTaskConverter;
         this.clock = clock;
     }
 
-    public BackgroundTaskPage list(int page, int size, String requestedStatus, String requestedTaskType) {
-        if (page < 0 || size < 1 || size > 100) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ADMIN_PAGE_INVALID", "分页参数无效");
-        }
-        return repository.list(new BackgroundTaskQuery(
+    public PageVO<BackgroundTaskVO> list(int page, int size, String requestedStatus, String requestedTaskType) {
+        PageParams.requireValid(page, size, AdminErrorCode.PAGE_INVALID);
+        BackgroundTaskQuery query = new BackgroundTaskQuery(
             page,
             size,
             status(requestedStatus),
             taskType(requestedTaskType)
-        ));
+        );
+        long total = mapper.countTasks(query);
+        return PageVO.of(
+            page,
+            size,
+            total,
+            mapper.selectTasks(query).stream().map(backgroundTaskConverter::toView).toList()
+        );
     }
 
-    public BackgroundTaskView task(long taskId) {
-        return require(taskId);
+    public BackgroundTaskVO task(long taskId) {
+        return backgroundTaskConverter.toView(require(taskId));
     }
 
     @Transactional
-    public BackgroundTaskView submitTimeoutRecovery(AuthenticatedUser actor, String requestId) {
+    public BackgroundTaskVO submitTimeoutRecovery(AuthenticatedUser actor, String requestId) {
         Instant now = clock.instant();
-        BackgroundTaskView task = repository.createRecoveryTask(
+        BackgroundTaskEntity task = mapper.createRecoveryTask(
             actor.userId(), safeRequestId(requestId), now, now.plus(TASK_EXECUTION_DEADLINE)
         );
         appendAudit(actor, "BACKGROUND_TASK_SUBMITTED", task, task, "SUCCESS", requestId);
-        return task;
+        return backgroundTaskConverter.toView(task);
     }
 
     @Transactional
-    public BackgroundTaskView retry(AuthenticatedUser actor, long taskId, String requestId) {
-        BackgroundTaskView before = repository.lock(taskId).orElseThrow(() -> notFound(taskId));
+    public BackgroundTaskVO retry(AuthenticatedUser actor, long taskId, String requestId) {
+        BackgroundTaskEntity before = mapper.lockOptional(taskId).orElseThrow(() -> notFound(taskId));
         if (!"FAILED".equals(before.status()) || !STALE_TASK_RECOVERY.equals(before.taskType())
                 || before.retryCount() >= before.maxAttempts()) {
-            throw new ApiException(
-                HttpStatus.CONFLICT,
-                "ADMIN_BACKGROUND_TASK_RETRY_NOT_ALLOWED",
-                "当前后台任务不能重试"
-            );
+            throw AdminErrorCode.BACKGROUND_TASK_RETRY_NOT_ALLOWED.toException();
         }
-        repository.queueRetry(taskId, clock.instant().plus(TASK_EXECUTION_DEADLINE));
-        BackgroundTaskView after = require(taskId);
+        mapper.queueRetry(taskId, clock.instant().plus(TASK_EXECUTION_DEADLINE));
+        BackgroundTaskEntity after = require(taskId);
         appendAudit(actor, "BACKGROUND_TASK_RETRIED", before, after, "SUCCESS", requestId);
-        return after;
+        return backgroundTaskConverter.toView(after);
     }
 
     @Transactional
-    public BackgroundTaskView cancel(AuthenticatedUser actor, long taskId, String requestId) {
-        BackgroundTaskView before = repository.lock(taskId).orElseThrow(() -> notFound(taskId));
+    public BackgroundTaskVO cancel(AuthenticatedUser actor, long taskId, String requestId) {
+        BackgroundTaskEntity before = mapper.lockOptional(taskId).orElseThrow(() -> notFound(taskId));
         if (!"PENDING".equals(before.status()) || !STALE_TASK_RECOVERY.equals(before.taskType())) {
-            throw new ApiException(
-                HttpStatus.CONFLICT,
-                "ADMIN_BACKGROUND_TASK_CANCEL_NOT_ALLOWED",
-                "只能取消尚未开始的后台任务"
-            );
+            throw AdminErrorCode.BACKGROUND_TASK_CANCEL_NOT_ALLOWED.toException();
         }
-        repository.cancel(taskId, clock.instant());
-        BackgroundTaskView after = require(taskId);
+        mapper.cancel(taskId, clock.instant());
+        BackgroundTaskEntity after = require(taskId);
         appendAudit(actor, "BACKGROUND_TASK_CANCELED", before, after, "SUCCESS", requestId);
-        return after;
+        return backgroundTaskConverter.toView(after);
     }
 
     public void dispatch(long taskId) {
@@ -103,19 +110,19 @@ public class BackgroundTaskService {
 
     @Scheduled(fixedDelayString = "${app.background-tasks.timeout-recovery-interval:PT30S}")
     public void recoverExpiredTasks() {
-        repository.failExpired(clock.instant());
+        mapper.failExpired(clock.instant());
     }
 
     private void execute(long taskId) {
         Instant startedAt = clock.instant();
-        if (!repository.start(taskId, startedAt, startedAt.plus(TASK_EXECUTION_DEADLINE))) {
+        if (mapper.start(taskId, startedAt, startedAt.plus(TASK_EXECUTION_DEADLINE)) != 1) {
             return;
         }
         try {
-            int recoveredTaskCount = repository.failExpired(clock.instant());
-            repository.complete(taskId, clock.instant(), recoveredTaskCount);
+            int recoveredTaskCount = mapper.failExpired(clock.instant());
+            mapper.complete(taskId, clock.instant(), recoveredTaskCount);
         } catch (RuntimeException ignored) {
-            repository.fail(
+            mapper.fail(
                 taskId,
                 clock.instant(),
                 "BACKGROUND_TASK_EXECUTION_FAILED",
@@ -125,56 +132,47 @@ public class BackgroundTaskService {
     }
 
     private String status(String value) {
-        String normalized = normalize(value);
+        String normalized = StringNormalizer.upper(value);
         if (normalized == null) {
             return null;
         }
-        String result = normalized.toUpperCase(Locale.ROOT);
-        if (!STATUSES.contains(result)) {
-            throw new ApiException(
-                HttpStatus.BAD_REQUEST,
-                "ADMIN_BACKGROUND_TASK_STATUS_INVALID",
-                "后台任务状态无效"
-            );
-        }
-        return result;
-    }
-
-    private String taskType(String value) {
-        String normalized = normalize(value);
-        if (normalized == null) {
-            return null;
-        }
-        if (!normalized.matches("^[A-Za-z0-9_.-]{1,64}$")) {
-            throw new ApiException(
-                HttpStatus.BAD_REQUEST,
-                "ADMIN_BACKGROUND_TASK_TYPE_INVALID",
-                "后台任务类型无效"
-            );
+        if (!STATUSES.contains(normalized)) {
+            throw AdminErrorCode.BACKGROUND_TASK_STATUS_INVALID.toException();
         }
         return normalized;
     }
 
-    private BackgroundTaskView require(long taskId) {
+    private String taskType(String value) {
+        String normalized = StringNormalizer.optional(value);
+        if (normalized == null) {
+            return null;
+        }
+        if (!normalized.matches("^[A-Za-z0-9_.-]{1,64}$")) {
+            throw AdminErrorCode.BACKGROUND_TASK_TYPE_INVALID.toException();
+        }
+        return normalized;
+    }
+
+    private BackgroundTaskEntity require(long taskId) {
         if (taskId < 1) {
             throw notFound(taskId);
         }
-        return repository.find(taskId).orElseThrow(() -> notFound(taskId));
+        return mapper.findOptional(taskId).orElseThrow(() -> notFound(taskId));
     }
 
-    private ApiException notFound(long taskId) {
-        return new ApiException(HttpStatus.NOT_FOUND, "ADMIN_BACKGROUND_TASK_NOT_FOUND", "后台任务不存在");
+    private BizException notFound(long taskId) {
+        return AdminErrorCode.BACKGROUND_TASK_NOT_FOUND.toException();
     }
 
     private void appendAudit(
         AuthenticatedUser actor,
         String action,
-        BackgroundTaskView before,
-        BackgroundTaskView after,
+        BackgroundTaskEntity before,
+        BackgroundTaskEntity after,
         String result,
         String requestId
     ) {
-        adminRepository.appendAuditEvent(new AdminAuditWrite(
+        adminMapper.appendAuditEvent(
             actor.userId(),
             action,
             "BACKGROUND_TASK",
@@ -183,20 +181,16 @@ public class BackgroundTaskService {
             safeRequestId(requestId),
             summary(before),
             summary(after)
-        ));
+        );
     }
 
-    private static String summary(BackgroundTaskView task) {
+    private static String summary(BackgroundTaskEntity task) {
         return "status=" + task.status() + ";type=" + task.taskType() + ";retryCount=" + task.retryCount()
             + (task.resultCount() == null ? "" : ";resultCount=" + task.resultCount());
     }
 
     private static String safeRequestId(String value) {
-        String normalized = normalize(value);
+        String normalized = StringNormalizer.optional(value);
         return normalized == null ? "" : normalized.substring(0, Math.min(normalized.length(), 128));
-    }
-
-    private static String normalize(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
     }
 }

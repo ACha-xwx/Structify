@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.json.JsonMapper;
 
+import com.feng.dsagent.knowledge.support.KnowledgeCorpus;
+import com.feng.dsagent.knowledge.support.KnowledgeCorpusLoader;
 class CoursewareKnowledgeLoaderTest {
     @TempDir Path root;
 

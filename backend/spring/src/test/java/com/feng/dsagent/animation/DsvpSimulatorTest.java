@@ -1,11 +1,13 @@
 package com.feng.dsagent.animation;
 
 import static org.assertj.core.api.Assertions.*;
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import com.feng.dsagent.animation.support.AnimationValidator;
+import com.feng.dsagent.animation.support.DsvpAnimationAdapter;
 class DsvpSimulatorTest {
     final ObjectMapper mapper = new ObjectMapper();
     final DsvpAnimationAdapter adapter = new DsvpAnimationAdapter(mapper,new AnimationValidator());
@@ -19,8 +21,8 @@ class DsvpSimulatorTest {
         assertThat(trace.path("steps").get(0).path("state")).isEqualTo(mapper.readTree("[1]"));
     }
     @Test void rejectsUnsortedAndOverflowingMergeInsteadOfTruncating() {
-        assertThatThrownBy(() -> run("sequential_list","merge","[[3,1],[2]]","{}")).isInstanceOf(ApiException.class);
-        assertThatThrownBy(() -> run("sequential_list","merge","[[1,3],[2,4]]","{\"capacity\":3}")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> run("sequential_list","merge","[[3,1],[2]]","{}")).isInstanceOf(BizException.class);
+        assertThatThrownBy(() -> run("sequential_list","merge","[[1,3],[2,4]]","{\"capacity\":3}")).isInstanceOf(BizException.class);
     }
     @Test void insertAndDeleteHaveCorrectIntermediateStates() {
         JsonNode trace = run("sequential_list","insert","[12,18,27,31,44]","{\"index\":2,\"value\":23,\"capacity\":8}");
@@ -29,8 +31,8 @@ class DsvpSimulatorTest {
         assertThat(run("sequential_list","delete","[1,2,3,4]","{\"index\":1}").path("final_state")).isEqualTo(mapper.readTree("[1,3,4]"));
     }
     @Test void rejectsEmptyPopAndMissingPosition() {
-        assertThatThrownBy(() -> run("stack","pop","[]","{}")).isInstanceOf(ApiException.class);
-        assertThatThrownBy(() -> run("array","insert","[1,2]","{\"value\":3}")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> run("stack","pop","[]","{}")).isInstanceOf(BizException.class);
+        assertThatThrownBy(() -> run("array","insert","[1,2]","{\"value\":3}")).isInstanceOf(BizException.class);
     }
     @Test void traversesGraphsRatherThanReturningOneHighlight() {
         String graph = "{\"node\":0,\"edges\":[[0,1],[0,2],[1,3]],\"directed\":true}";

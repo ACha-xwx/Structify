@@ -1,14 +1,13 @@
 package com.feng.dsagent.classroom.service;
 
-import com.feng.dsagent.classroom.ClassroomBookmarkDraft;
-
-import com.feng.dsagent.classroom.ClassroomBookmarkRepository;
-import com.feng.dsagent.classroom.ClassroomBookmark;
-import com.feng.dsagent.classroom.ClassroomTimeline;
-
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.classroom.converter.ClassroomBookmarkConverter;
+import com.feng.dsagent.classroom.entity.ClassroomBookmarkEntity;
+import com.feng.dsagent.classroom.mapper.ClassroomBookmarkMapper;
+import com.feng.dsagent.classroom.support.ClassroomTimeline;
+import com.feng.dsagent.classroom.vo.ClassroomBookmarkVO;
+import com.feng.dsagent.classroom.error.ClassroomErrorCode;
 import java.util.List;
-import org.springframework.http.HttpStatus;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 /**
@@ -21,27 +20,50 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class ClassroomBookmarkService {
-    private final ClassroomBookmarkRepository bookmarks;
+    private final ClassroomBookmarkMapper bookmarks;
     private final ClassroomTimeline timeline;
+    private final ClassroomBookmarkConverter classroomBookmarkConverter;
 
-    public ClassroomBookmarkService(ClassroomBookmarkRepository bookmarks, ClassroomTimeline timeline) {
+    public ClassroomBookmarkService(
+        ClassroomBookmarkMapper bookmarks,
+        ClassroomTimeline timeline,
+        ClassroomBookmarkConverter classroomBookmarkConverter
+    ) {
         this.bookmarks = bookmarks;
         this.timeline = timeline;
+        this.classroomBookmarkConverter = classroomBookmarkConverter;
     }
 
-    public ClassroomBookmark save(long userId, String sessionId, int stepIndex) {
+    public ClassroomBookmarkVO save(long userId, String sessionId, int stepIndex) {
         ClassroomTimeline.StepPage page = timeline.stepPage(userId, sessionId, stepIndex);
-        return bookmarks.save(userId, new ClassroomBookmarkDraft(page.sessionId(), page.lessonId(),
-            page.lessonTitle(), page.chapterId(), page.stepIndex(), page.slideId(), page.title()));
+        try {
+            bookmarks.insert(
+                userId,
+                page.sessionId(),
+                page.lessonId(),
+                page.lessonTitle(),
+                page.chapterId(),
+                page.stepIndex(),
+                page.slideId(),
+                page.title()
+            );
+        } catch (DuplicateKeyException ignored) {
+            // Same step already saved: return the existing bookmark.
+        }
+        ClassroomBookmarkEntity bookmark = bookmarks.findByStep(userId, page.sessionId(), page.stepIndex());
+        if (bookmark == null) {
+            throw new IllegalStateException("bookmark row missing after save");
+        }
+        return classroomBookmarkConverter.toView(bookmark);
     }
 
-    public List<ClassroomBookmark> list(long userId) {
-        return bookmarks.listByUser(userId);
+    public List<ClassroomBookmarkVO> list(long userId) {
+        return bookmarks.listByUser(userId).stream().map(classroomBookmarkConverter::toView).toList();
     }
 
     public void delete(long userId, long id) {
-        if (!bookmarks.delete(userId, id)) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "CLASSROOM_BOOKMARK_NOT_FOUND", "收藏不存在");
+        if (bookmarks.delete(userId, id) != 1) {
+            throw ClassroomErrorCode.BOOKMARK_NOT_FOUND.toException();
         }
     }
 }

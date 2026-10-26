@@ -5,6 +5,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 
+import com.feng.dsagent.classroom.exception.IllegalClassroomTransitionException;
+import com.feng.dsagent.classroom.domain.ClassroomAction;
+import com.feng.dsagent.classroom.domain.ClassroomState;
+import com.feng.dsagent.classroom.domain.ClassroomStatus;
+import com.feng.dsagent.classroom.support.ClassroomStateMachine;
 class ClassroomStateMachineTest {
 
     private final ClassroomStateMachine stateMachine = new ClassroomStateMachine();

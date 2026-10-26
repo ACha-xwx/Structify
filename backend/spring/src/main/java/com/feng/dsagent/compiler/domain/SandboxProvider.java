@@ -1,0 +1,20 @@
+package com.feng.dsagent.compiler.domain;
+
+import java.util.Locale;
+import java.util.Optional;
+
+public enum SandboxProvider {
+    PISTON,
+    JUDGE0;
+
+    public static Optional<SandboxProvider> fromApiName(String value) {
+        if (value == null) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(value.strip().toUpperCase(Locale.ROOT)).map(SandboxProvider::valueOf);
+        } catch (IllegalArgumentException ignored) {
+            return Optional.empty();
+        }
+    }
+}

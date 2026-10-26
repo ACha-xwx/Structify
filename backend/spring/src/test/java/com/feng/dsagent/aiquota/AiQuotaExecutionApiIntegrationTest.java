@@ -16,11 +16,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.feng.dsagent.knowledge.KnowledgeEligibilityChanged;
+import com.feng.dsagent.knowledge.domain.KnowledgeEligibilityChanged;
 import com.feng.dsagent.knowledge.service.KnowledgeIndexRefreshService;
 import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
 import com.feng.dsagent.model.ModelClient;
-import com.feng.dsagent.model.ModelClientException;
+import com.feng.dsagent.model.exception.ModelClientException;
 import com.feng.dsagent.model.ModelErrorCode;
 import com.feng.dsagent.model.ModelMessage;
 import com.feng.dsagent.model.ModelRequest;
@@ -41,6 +41,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import com.feng.dsagent.aiquota.exception.AiStreamAbortedException;
+import com.feng.dsagent.aiquota.support.AiQuotaExecution;
 @SpringBootTest(properties = {
     "app.model.provider=fake",
     "app.model.api-key=test-only-key",

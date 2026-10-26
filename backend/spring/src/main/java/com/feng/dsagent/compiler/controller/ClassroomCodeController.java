@@ -1,15 +1,14 @@
 package com.feng.dsagent.compiler.controller;
 
-import com.feng.dsagent.compiler.ClassroomCodeSamplesResponse;
-import com.feng.dsagent.compiler.TextbookCodeLibraryResponse;
-import com.feng.dsagent.compiler.ClassroomCodeCatalog;
-import com.feng.dsagent.compiler.ClassroomCodeLesson;
-import com.feng.dsagent.compiler.TextbookCodeLibrary;
+import com.feng.dsagent.compiler.vo.ClassroomCodeSamplesVO;
+import com.feng.dsagent.compiler.vo.TextbookCodeLibraryVO;
+import com.feng.dsagent.compiler.support.ClassroomCodeCatalog;
+import com.feng.dsagent.compiler.domain.ClassroomCodeLesson;
+import com.feng.dsagent.compiler.support.TextbookCodeLibrary;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.compiler.error.CompilerErrorCode;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -34,19 +33,15 @@ public final class ClassroomCodeController {
     }
 
     @GetMapping("/samples")
-    public ClassroomCodeSamplesResponse samples(
+    public ClassroomCodeSamplesVO samples(
         @RequestParam(name = "coursewareKey", required = false) String coursewareKey
     ) {
         if (coursewareKey == null || coursewareKey.isBlank()) {
-            return new ClassroomCodeSamplesResponse(catalog.lessons(), catalog.sampleCount());
+            return new ClassroomCodeSamplesVO(catalog.lessons(), catalog.sampleCount());
         }
         ClassroomCodeLesson lesson = catalog.lesson(coursewareKey)
-            .orElseThrow(() -> new ApiException(
-                HttpStatus.NOT_FOUND,
-                "CODE_SAMPLES_LESSON_UNKNOWN",
-                "该课时还没有配套的课堂代码"
-            ));
-        return new ClassroomCodeSamplesResponse(List.of(lesson), lesson.samples().size());
+            .orElseThrow(() -> CompilerErrorCode.CODE_SAMPLES_LESSON_UNKNOWN.toException());
+        return new ClassroomCodeSamplesVO(List.of(lesson), lesson.samples().size());
     }
 
     /**
@@ -54,7 +49,7 @@ public final class ClassroomCodeController {
      * learner with the class code - and a runnable example around it - in front of them.
      */
     @GetMapping("/library")
-    public TextbookCodeLibraryResponse library() {
-        return new TextbookCodeLibraryResponse(library.chapters(), library.fragmentCount());
+    public TextbookCodeLibraryVO library() {
+        return new TextbookCodeLibraryVO(library.chapters(), library.fragmentCount());
     }
 }

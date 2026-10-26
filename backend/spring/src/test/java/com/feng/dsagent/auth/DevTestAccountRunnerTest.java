@@ -13,11 +13,14 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.DefaultApplicationArguments;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import com.feng.dsagent.auth.entity.UserAccountEntity;
+import com.feng.dsagent.auth.service.UserAccountService;
+import com.feng.dsagent.auth.worker.DevTestAccountRunner;
 class DevTestAccountRunnerTest {
 
     @Test
     void provisionsTheConfiguredStudentOnlyWhenMissing() throws Exception {
-        UserRepository users = mock(UserRepository.class);
+        UserAccountService users = mock(UserAccountService.class);
         PasswordEncoder passwords = mock(PasswordEncoder.class);
         when(users.findByEmail("student@structify.test")).thenReturn(Optional.empty());
         when(passwords.encode("StructifyTest123!")).thenReturn("encoded-password");
@@ -32,10 +35,10 @@ class DevTestAccountRunnerTest {
 
     @Test
     void doesNotResetAnExistingAccountPassword() throws Exception {
-        UserRepository users = mock(UserRepository.class);
+        UserAccountService users = mock(UserAccountService.class);
         PasswordEncoder passwords = mock(PasswordEncoder.class);
         when(users.findByEmail("student@structify.test"))
-            .thenReturn(Optional.of(new UserAccount(1, "student@structify.test", "StructifyTest", "existing-hash", Set.of("STUDENT"))));
+            .thenReturn(Optional.of(new UserAccountEntity(1, "student@structify.test", "StructifyTest", "existing-hash", Set.of("STUDENT"))));
         DevTestAccountRunner runner = new DevTestAccountRunner(
             users, passwords, "student@structify.test", "StructifyTest", "StructifyTest123!"
         );

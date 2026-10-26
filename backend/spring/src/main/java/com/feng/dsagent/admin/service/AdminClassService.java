@@ -1,11 +1,9 @@
 package com.feng.dsagent.admin.service;
 
+import com.feng.dsagent.admin.error.AdminErrorCode;
 import com.feng.dsagent.teacher.service.TeacherService;
-
 import com.feng.dsagent.admin.service.AdminAuditService;
-
 import com.feng.dsagent.admin.mapper.AdminClassMapper;
-import com.feng.dsagent.common.ApiException;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -13,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 /**
@@ -71,8 +68,8 @@ public class AdminClassService {
     }
 
     public ClassRow create(String name, String term, long actorUserId, String requestId) {
-        String cleanName = requireText(name, MAX_NAME, "CLASS_NAME_REQUIRED", "班级名称不能为空。");
-        String cleanTerm = optionalText(term, MAX_TERM, "CLASS_TERM_TOO_LONG", "学期名称太长。");
+        String cleanName = requireText(name, MAX_NAME, AdminErrorCode.CLASS_NAME_REQUIRED);
+        String cleanTerm = optionalText(term, MAX_TERM, AdminErrorCode.CLASS_TERM_TOO_LONG);
         String id = UUID.randomUUID().toString();
         classes.insertClass(id, cleanName, cleanTerm);
         audit.record(actorUserId, "CLASS_CREATE", "CLASS", id, "SUCCESS", requestId,
@@ -91,15 +88,15 @@ public class AdminClassService {
     public AddMemberResult addMember(String classId, String identifier, String roleInClass, long actorUserId, String requestId) {
         requireClass(classId);
         String role = requireRole(roleInClass);
-        String who = requireText(identifier, 255, "IDENTIFIER_REQUIRED", "请填写邮箱或用户名。");
+        String who = requireText(identifier, 255, AdminErrorCode.IDENTIFIER_REQUIRED);
         Long userId = classes.findUserIdsByIdentifier(who).stream().findFirst().orElse(null);
         if (userId == null) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "USER_NOT_FOUND", "找不到这个邮箱或用户名对应的账号。");
+            throw AdminErrorCode.CLASS_USER_NOT_FOUND.toException();
         }
         try {
             classes.insertEnrollment(classId, userId, role);
         } catch (DuplicateKeyException duplicate) {
-            throw new ApiException(HttpStatus.CONFLICT, "ALREADY_ENROLLED", "这个账号已经在这个班里了。");
+            throw AdminErrorCode.ALREADY_ENROLLED.toException();
         }
         boolean granted = "TEACHER".equals(role) && ensureTeacherRole(userId);
         audit.record(actorUserId, "CLASS_ADD_MEMBER", "CLASS", classId, "SUCCESS", requestId,
@@ -142,7 +139,7 @@ public class AdminClassService {
     private void requireClass(String classId) {
         Long count = classes.countClass(classId);
         if (count == null || count == 0) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "CLASS_NOT_FOUND", "这个班级不存在。");
+            throw AdminErrorCode.CLASS_NOT_FOUND.toException();
         }
     }
 
@@ -158,21 +155,21 @@ public class AdminClassService {
 
     private static String requireRole(String roleInClass) {
         if ("STUDENT".equals(roleInClass) || "TEACHER".equals(roleInClass)) return roleInClass;
-        throw new ApiException(HttpStatus.BAD_REQUEST, "ROLE_IN_CLASS_INVALID", "班内角色只能是学生或教师。");
+        throw AdminErrorCode.ROLE_IN_CLASS_INVALID.toException();
     }
 
-    private static String requireText(String value, int max, String code, String message) {
+    private static String requireText(String value, int max, AdminErrorCode error) {
         String clean = value == null ? "" : value.trim();
         if (clean.isEmpty() || clean.length() > max) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, code, message);
+            throw error.toException();
         }
         return clean;
     }
 
-    private static String optionalText(String value, int max, String code, String message) {
+    private static String optionalText(String value, int max, AdminErrorCode error) {
         String clean = value == null ? "" : value.trim();
         if (clean.length() > max) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, code, message);
+            throw error.toException();
         }
         return clean.isEmpty() ? null : clean;
     }

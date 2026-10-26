@@ -1,22 +1,18 @@
 package com.feng.dsagent.auth.controller;
 
-import com.feng.dsagent.auth.AuthRequestRateLimiter;
-import com.feng.dsagent.auth.AuthSession;
-import com.feng.dsagent.auth.UserView;
+import com.feng.dsagent.auth.support.AuthRequestRateLimiter;
+import com.feng.dsagent.auth.vo.AuthSessionVO;
+import com.feng.dsagent.auth.vo.UserVO;
 
 import com.feng.dsagent.auth.service.AuthService;
 
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.security.SecurityProperties;
-import com.feng.dsagent.security.AuthenticatedUser;
-import com.feng.dsagent.security.NodeCompatibilityTokenIssuer;
+import com.feng.dsagent.auth.error.AuthErrorCode;
+import com.feng.dsagent.security.config.SecurityProperties;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
+import com.feng.dsagent.security.support.NodeCompatibilityTokenIssuer;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,7 +20,17 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import com.feng.dsagent.auth.dto.RequestCodeDTO;
+import com.feng.dsagent.auth.dto.RegisterDTO;
+import com.feng.dsagent.auth.dto.LoginDTO;
+import com.feng.dsagent.auth.dto.ResetPasswordDTO;
+import com.feng.dsagent.auth.vo.AuthVO;
+import com.feng.dsagent.auth.vo.NodeCompatibilityTokenVO;
+import com.feng.dsagent.auth.vo.VerificationCodeVO;
 
+/**
+ * 职责：注册登录、验证码与会话相关的认证 HTTP 入口。
+ */
 @RestController
 @RequestMapping("/api/v1/auth")
 public class AuthController {
@@ -47,21 +53,21 @@ public class AuthController {
     }
 
     @PostMapping("/request-code")
-    public VerificationCodeResponse requestCode(
-        @Valid @RequestBody RequestCodeRequest request,
+    public VerificationCodeVO requestCode(
+        @Valid @RequestBody RequestCodeDTO request,
         HttpServletRequest servletRequest
     ) {
         rateLimiter.checkCodeRequest(request.email(), servletRequest.getRemoteAddr());
         // Keep the delivery result (and any test-only in-memory code) inside the
         // service boundary. Verification codes must never cross the HTTP boundary.
-        return new VerificationCodeResponse(
+        return new VerificationCodeVO(
             auth.requestCode(request.email(), request.purpose()).message()
         );
     }
 
     @PostMapping("/register")
-    public ResponseEntity<AuthResponse> register(
-        @Valid @RequestBody RegisterRequest request,
+    public ResponseEntity<AuthVO> register(
+        @Valid @RequestBody RegisterDTO request,
         HttpServletRequest servletRequest
     ) {
         rateLimiter.checkCodeAttempt(request.email(), servletRequest.getRemoteAddr());
@@ -69,8 +75,8 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(
-        @Valid @RequestBody LoginRequest request,
+    public ResponseEntity<AuthVO> login(
+        @Valid @RequestBody LoginDTO request,
         HttpServletRequest servletRequest
     ) {
         String identity = request.identifier();
@@ -79,8 +85,8 @@ public class AuthController {
     }
 
     @PostMapping("/reset-password")
-    public ResponseEntity<AuthResponse> resetPassword(
-        @Valid @RequestBody ResetPasswordRequest request,
+    public ResponseEntity<AuthVO> resetPassword(
+        @Valid @RequestBody ResetPasswordDTO request,
         HttpServletRequest servletRequest
     ) {
         rateLimiter.checkCodeAttempt(request.email(), servletRequest.getRemoteAddr());
@@ -100,15 +106,15 @@ public class AuthController {
     }
 
     @org.springframework.web.bind.annotation.GetMapping("/node-compat-token")
-    public NodeCompatibilityTokenResponse nodeCompatibilityToken(@AuthenticationPrincipal AuthenticatedUser user) {
+    public NodeCompatibilityTokenVO nodeCompatibilityToken(@AuthenticationPrincipal AuthenticatedUser user) {
         if (!nodeCompatibilityTokens.enabled()) {
-            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "NODE_COMPAT_DISABLED", "课件兼容服务尚未启用");
+            throw AuthErrorCode.NODE_COMPAT_DISABLED.toException();
         }
         var issued = nodeCompatibilityTokens.issue(user);
-        return new NodeCompatibilityTokenResponse(issued.token(), issued.ttl().toSeconds());
+        return new NodeCompatibilityTokenVO(issued.token(), issued.ttl().toSeconds());
     }
 
-    private ResponseEntity<AuthResponse> authenticated(AuthSession session) {
+    private ResponseEntity<AuthVO> authenticated(AuthSessionVO session) {
         ResponseCookie cookie = ResponseCookie.from(security.cookieName(), session.token())
             .httpOnly(true)
             .secure(security.cookieSecure())
@@ -118,53 +124,7 @@ public class AuthController {
             .build();
         return ResponseEntity.ok()
             .header(HttpHeaders.SET_COOKIE, cookie.toString())
-            .body(new AuthResponse(session.token(), session.user()));
+            .body(new AuthVO(session.token(), session.user()));
     }
 
-    public record RequestCodeRequest(@Email @NotBlank String email, @NotBlank String purpose) {
-    }
-
-    public record RegisterRequest(
-        @Email @NotBlank String email,
-        @Size(max = 32) String username,
-        @NotBlank @Size(min = 6, max = 6) String code,
-        @NotBlank @Size(min = 8, max = 128) String password
-    ) {
-    }
-
-    public record LoginRequest(
-        @Size(max = 254) String email,
-        @Size(max = 32) String username,
-        @NotBlank @Size(max = 128) String password
-    ) {
-
-        public String identifier() {
-            boolean hasEmail = email != null && !email.isBlank();
-            boolean hasUsername = username != null && !username.isBlank();
-            if (hasEmail == hasUsername) {
-                throw new ApiException(
-                    HttpStatus.BAD_REQUEST,
-                    "AUTH_LOGIN_IDENTIFIER_INVALID",
-                    "请提供邮箱或用户名之一"
-                );
-            }
-            return hasUsername ? username : email;
-        }
-    }
-
-    public record ResetPasswordRequest(
-        @Email @NotBlank String email,
-        @NotBlank @Size(min = 6, max = 6) String code,
-        @NotBlank @Size(min = 8, max = 128) String password
-    ) {
-    }
-
-    public record AuthResponse(String token, UserView user) {
-    }
-
-    public record NodeCompatibilityTokenResponse(String token, long expiresInSeconds) {
-    }
-
-    public record VerificationCodeResponse(String message) {
-    }
 }

@@ -1,13 +1,11 @@
 package com.feng.dsagent.learning.service;
 
-import com.feng.dsagent.learning.LearningWorkbenchRepository;
-import com.feng.dsagent.learning.PersistedWorkbenchSceneView;
-import com.feng.dsagent.learning.LearningWorkbenchView;
-import com.feng.dsagent.learning.LearningProgressView;
-
-import com.feng.dsagent.learning.service.LearningProgressService;
-
-import com.feng.dsagent.animation.AnimationDefinition;
+import com.feng.dsagent.animation.domain.AnimationDefinition;
+import com.feng.dsagent.learning.mapper.LearningWorkbenchMapper;
+import com.feng.dsagent.learning.mapper.LearningWorkbenchMapper.PersistedSceneCandidate;
+import com.feng.dsagent.learning.vo.LearningProgressVO;
+import com.feng.dsagent.learning.vo.LearningWorkbenchVO;
+import com.feng.dsagent.learning.vo.PersistedWorkbenchSceneVO;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
@@ -15,37 +13,37 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class LearningWorkbenchService {
 
+    private static final int CANDIDATE_LIMIT = 8;
+
     private final LearningProgressService progress;
-    private final LearningWorkbenchRepository repository;
+    private final LearningWorkbenchMapper mapper;
     private final ObjectMapper objectMapper;
 
     public LearningWorkbenchService(
         LearningProgressService progress,
-        LearningWorkbenchRepository repository,
+        LearningWorkbenchMapper mapper,
         ObjectMapper objectMapper
     ) {
         this.progress = progress;
-        this.repository = repository;
+        this.mapper = mapper;
         this.objectMapper = objectMapper;
     }
 
-    public LearningWorkbenchView workbench(long userId) {
-        LearningProgressView learningProgress = progress.progress(userId);
-        PersistedWorkbenchSceneView scene = repository.findLatestOwnedDsvpScenes(userId).stream()
+    public LearningWorkbenchVO workbench(long userId) {
+        LearningProgressVO learningProgress = progress.progress(userId);
+        PersistedWorkbenchSceneVO scene = mapper.findLatestOwnedDsvpScenes(userId, CANDIDATE_LIMIT).stream()
             .map(this::restore)
             .flatMap(Optional::stream)
             .findFirst()
             .orElse(null);
-        return new LearningWorkbenchView(
+        return new LearningWorkbenchVO(
             scene == null ? null : scene.chapterId(),
             learningProgress,
             scene
         );
     }
 
-    private Optional<PersistedWorkbenchSceneView> restore(
-        LearningWorkbenchRepository.PersistedSceneCandidate candidate
-    ) {
+    private Optional<PersistedWorkbenchSceneVO> restore(PersistedSceneCandidate candidate) {
         if (candidate.payloadJson() == null || candidate.payloadJson().isBlank()) {
             return Optional.empty();
         }
@@ -54,14 +52,13 @@ public class LearningWorkbenchService {
             if (!isRenderable(definition)) {
                 return Optional.empty();
             }
-            return Optional.of(new PersistedWorkbenchSceneView(
+            return Optional.of(new PersistedWorkbenchSceneVO(
                 candidate.recordId(),
                 candidate.chapterId(),
                 definition,
                 candidate.updatedAt()
             ));
         } catch (Exception ignored) {
-            // Historical payloads are not trusted as a workbench scene unless they render safely.
             return Optional.empty();
         }
     }

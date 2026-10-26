@@ -2,6 +2,7 @@ package com.feng.dsagent.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.feng.dsagent.security.config.SecurityConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -12,8 +13,8 @@ import org.springframework.mock.web.MockHttpServletResponse;
  */
 class ApiCacheControlHeaderWriterTest {
 
-    private final SecurityConfig.ApiCacheControlHeaderWriter writer =
-        new SecurityConfig.ApiCacheControlHeaderWriter();
+    private final SecurityConfiguration.ApiCacheControlHeaderWriter writer =
+        new SecurityConfiguration.ApiCacheControlHeaderWriter();
 
     @Test
     void keepsNoStoreOnPerUserApiTraffic() {
@@ -22,7 +23,7 @@ class ApiCacheControlHeaderWriterTest {
         writer.writeHeaders(new MockHttpServletRequest("GET", "/api/v1/classroom/sessions/42"), response);
 
         assertThat(response.getHeader("Cache-Control"))
-            .isEqualTo(SecurityConfig.ApiCacheControlHeaderWriter.NO_STORE);
+            .isEqualTo(SecurityConfiguration.ApiCacheControlHeaderWriter.NO_STORE);
         assertThat(response.getHeader("Pragma")).isEqualTo("no-cache");
         assertThat(response.getHeader("Expires")).isEqualTo("0");
     }
@@ -34,7 +35,7 @@ class ApiCacheControlHeaderWriterTest {
         writer.writeHeaders(new MockHttpServletRequest("POST", "/api/v1/auth/login"), response);
 
         assertThat(response.getHeader("Cache-Control"))
-            .isEqualTo(SecurityConfig.ApiCacheControlHeaderWriter.NO_STORE);
+            .isEqualTo(SecurityConfiguration.ApiCacheControlHeaderWriter.NO_STORE);
     }
 
     /**
@@ -81,7 +82,7 @@ class ApiCacheControlHeaderWriterTest {
         );
 
         assertThat(response.getHeader("Cache-Control"))
-            .isEqualTo(SecurityConfig.ApiCacheControlHeaderWriter.NO_STORE);
+            .isEqualTo(SecurityConfiguration.ApiCacheControlHeaderWriter.NO_STORE);
         assertThat(response.getHeader("Pragma")).isEqualTo("no-cache");
     }
 }

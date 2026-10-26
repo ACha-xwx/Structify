@@ -1,9 +1,10 @@
 package com.feng.dsagent.learning.service;
 
-import com.feng.dsagent.learning.MasteryEstimator;
 
-import com.feng.dsagent.learning.MasteryEstimator.Estimate;
-import com.feng.dsagent.learning.MasteryEstimator.Evidence;
+import org.springframework.stereotype.Service;
+import com.feng.dsagent.learning.support.MasteryEstimator;
+import com.feng.dsagent.learning.support.MasteryEstimator.Estimate;
+import com.feng.dsagent.learning.support.MasteryEstimator.Evidence;
 import com.feng.dsagent.learning.mapper.LearningMapMapper;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -21,27 +22,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
-import org.springframework.stereotype.Service;
 
-/**
- * What one learner has actually done, grouped by the chapter it happened in, and what it says about how well
- * they know it.
- *
- * <p>Four modules already record their activity against a user and a chapter - the classroom, the animation
- * lab, the course dialogue and the C editor - so the profile is built from behaviour that is already in the
- * database. Two corrections are applied before anything is scored, because raw counts lie:
- *
- * <ul>
- *   <li><b>Recency</b>: an evening of work in October counts for less every week after it, halving every 30
- *       days for what the learner produced (the classroom, the editor) and every 45 for what they watched.</li>
- *   <li><b>Repetition</b>: clicking the same animation, or running byte-identical code again, is one act of
- *       learning, not two. Repeats count for a fifth.</li>
- * </ul>
- *
- * <p>The counting happens here in Java rather than in SQL on purpose: the same arithmetic has to hold on the
- * local H2 and on production MySQL, and a date function that differs between them would quietly change every
- * learner's colours.
- */
 @Service
 public class LearningMapService {
 

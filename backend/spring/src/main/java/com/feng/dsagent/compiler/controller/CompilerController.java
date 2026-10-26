@@ -1,19 +1,18 @@
 package com.feng.dsagent.compiler.controller;
 
-import com.feng.dsagent.compiler.CompilerConcurrencyLimiter;
-import com.feng.dsagent.compiler.RunCodeResponse;
-import com.feng.dsagent.compiler.RunCodeRequest;
+import com.feng.dsagent.compiler.support.CompilerConcurrencyLimiter;
+import com.feng.dsagent.compiler.vo.RunCodeVO;
+import com.feng.dsagent.compiler.dto.RunCodeDTO;
 
 import com.feng.dsagent.compiler.service.CompilerService;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.compiler.error.CompilerErrorCode;
 import com.feng.dsagent.common.WindowRateLimiter;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Clock;
 import java.time.Duration;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -54,17 +53,13 @@ public final class CompilerController {
     }
 
     @PostMapping("/runs")
-    public RunCodeResponse run(
-        @RequestBody RunCodeRequest request,
+    public RunCodeVO run(
+        @RequestBody RunCodeDTO request,
         HttpServletRequest servletRequest,
         Authentication authentication
     ) {
         if (!rateLimiter.allow(clientKey(authentication, servletRequest), clock.instant())) {
-            throw new ApiException(
-                HttpStatus.TOO_MANY_REQUESTS,
-                "COMPILER_RATE_LIMITED",
-                "代码运行请求过于频繁，请稍后重试"
-            );
+            throw CompilerErrorCode.RATE_LIMITED.toException();
         }
         Long userId = authentication != null && authentication.getPrincipal() instanceof AuthenticatedUser user
             ? user.userId()
@@ -80,8 +75,8 @@ public final class CompilerController {
      */
     @Deprecated(since = "1.0", forRemoval = false)
     @PostMapping("/run")
-    public RunCodeResponse runDeprecated(
-        @RequestBody RunCodeRequest request,
+    public RunCodeVO runDeprecated(
+        @RequestBody RunCodeDTO request,
         HttpServletRequest servletRequest,
         Authentication authentication
     ) {

@@ -7,10 +7,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
+import com.feng.dsagent.knowledge.domain.KnowledgeAudience;
+import com.feng.dsagent.knowledge.entity.KnowledgeChunkEntity;
+import com.feng.dsagent.knowledge.vo.KnowledgeSearchResultVO;
 class KnowledgeSearchServiceTest {
 
     private final KnowledgeSearchService service = new KnowledgeSearchService(List.of(
-        new KnowledgeChunk(
+        new KnowledgeChunkEntity(
             "stack-1",
             "03-stack-queue",
             "栈的定义与操作",
@@ -19,7 +22,7 @@ class KnowledgeSearchServiceTest {
             null,
             "PUBLIC"
         ),
-        new KnowledgeChunk(
+        new KnowledgeChunkEntity(
             "tree-1",
             "06-tree",
             "二叉树遍历",
@@ -28,7 +31,7 @@ class KnowledgeSearchServiceTest {
             null,
             "PUBLIC"
         ),
-        new KnowledgeChunk(
+        new KnowledgeChunkEntity(
             "list-1",
             "02-linear-list",
             "单链表头插法",
@@ -37,7 +40,7 @@ class KnowledgeSearchServiceTest {
             null,
             "PUBLIC"
         ),
-        new KnowledgeChunk(
+        new KnowledgeChunkEntity(
             "classroom-hash",
             "08-search",
             "课堂哈希冲突讲义",
@@ -46,7 +49,7 @@ class KnowledgeSearchServiceTest {
             null,
             "CLASSROOM_ONLY"
         ),
-        new KnowledgeChunk(
+        new KnowledgeChunkEntity(
             "team-hash",
             "08-search",
             "教师团队哈希底稿",
@@ -70,23 +73,23 @@ class KnowledgeSearchServiceTest {
 
     @Test
     void keepsResultsInsideRequestedChapter() {
-        List<KnowledgeSearchResult> results = service.search(
+        List<KnowledgeSearchResultVO> results = service.search(
             "二叉树前序遍历顺序", "06-tree", 4, KnowledgeAudience.GUEST
         );
 
         assertThat(results).isNotEmpty();
-        assertThat(results).allMatch(result -> result.chunk().chapterId().equals("06-tree"));
-        assertThat(results.getFirst().chunk().title()).isEqualTo("二叉树遍历");
+        assertThat(results).allMatch(result -> result.chapterId().equals("06-tree"));
+        assertThat(results.getFirst().title()).isEqualTo("二叉树遍历");
     }
 
     @Test
     void retrievesLinkedListPointerOrder() {
-        List<KnowledgeSearchResult> results = service.search(
+        List<KnowledgeSearchResultVO> results = service.search(
             "单链表头插时指针修改顺序", null, 4, KnowledgeAudience.GUEST
         );
 
         assertThat(results).isNotEmpty();
-        assertThat(results.getFirst().chunk().id()).isEqualTo("list-1");
+        assertThat(results.getFirst().id()).isEqualTo("list-1");
     }
 
     @Test
@@ -100,7 +103,7 @@ class KnowledgeSearchServiceTest {
             .contains("classroom-hash", "team-hash");
     }
 
-    private List<String> ids(List<KnowledgeSearchResult> results) {
-        return results.stream().map(result -> result.chunk().id()).toList();
+    private List<String> ids(List<KnowledgeSearchResultVO> results) {
+        return results.stream().map(result -> result.id()).toList();
     }
 }

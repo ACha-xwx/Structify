@@ -1,0 +1,35 @@
+package com.feng.dsagent.modelconfig.support;
+
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import javax.net.ssl.SNIHostName;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
+public interface PinnedHttpsConnection extends AutoCloseable {
+
+    public InputStream input() throws IOException;
+
+    public OutputStream output() throws IOException;
+
+    public void setReadTimeout(Duration timeout) throws IOException;
+
+    @Override
+    public void close() throws IOException;
+}

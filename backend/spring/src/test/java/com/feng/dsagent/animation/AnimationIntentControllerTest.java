@@ -5,9 +5,9 @@ import com.feng.dsagent.animation.service.AnimationChapterService;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
-import com.feng.dsagent.classroom.ClassroomModelJson;
+import com.feng.dsagent.classroom.support.ClassroomModelJson;
 import com.feng.dsagent.model.ModelResponse;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -15,6 +15,10 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.animation.support.AnimationValidator;
+import com.feng.dsagent.animation.support.DsvpAnimationAdapter;
+import com.feng.dsagent.animation.support.DsvpLocalEngine;
 class AnimationIntentControllerTest {
     final ObjectMapper mapper = new ObjectMapper();
     final AnimationChapterService chapters = mock(AnimationChapterService.class);
@@ -41,7 +45,7 @@ class AnimationIntentControllerTest {
 
     @Test void missingChapterNeverCallsTheModel() {
         ClassroomModelJson model = mock(ClassroomModelJson.class);
-        when(chapters.requirePublishedTitle(eq("missing"))).thenThrow(new com.feng.dsagent.common.ApiException(org.springframework.http.HttpStatus.NOT_FOUND, "CHAPTER_NOT_FOUND", "章节未发布或不存在"));
+        when(chapters.requirePublishedTitle(eq("missing"))).thenThrow(new com.feng.dsagent.common.exception.BizException(org.springframework.http.HttpStatus.NOT_FOUND, "CHAPTER_NOT_FOUND", "章节未发布或不存在"));
         var controller = new AnimationIntentController(model,new DsvpAnimationAdapter(mapper,new AnimationValidator()),chapters,mapper);
         assertThatThrownBy(() -> controller.interpret(user,new AnimationIntentController.Input("missing","动画"))).hasMessageContaining("章节未发布");
         verifyNoInteractions(model);

@@ -1,7 +1,5 @@
 package com.feng.dsagent.chat;
 
-import com.feng.dsagent.common.ApiException;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -20,7 +18,7 @@ import org.springframework.test.web.servlet.MvcResult;
  * to provoke a server error.
  *
  * <p>The production smoke found the streaming endpoint doing neither: the refusal was thrown as an
- * {@code ApiException} that the advice could not render for a client accepting only
+ * {@code BizException} that the advice could not render for a client accepting only
  * {@code text/event-stream}, so it escaped the servlet, the container logged an ERROR stack trace per
  * logged-out attempt, and the browser saw the entry point's {@code AUTH_REQUIRED} instead of the
  * documented quota code. Asking for JSON from the same endpoint answered {@code 500 INTERNAL_ERROR}.

@@ -22,6 +22,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.feng.dsagent.modelconfig.support.ModelConfigMasterKeySource;
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(ModelConfigApiIntegrationTest.MissingMasterKeyConfiguration.class)

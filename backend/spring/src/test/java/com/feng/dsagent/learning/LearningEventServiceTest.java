@@ -1,12 +1,14 @@
 package com.feng.dsagent.learning;
 
-import com.feng.dsagent.learning.service.LearningEventService;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.feng.dsagent.common.ApiException;
-import java.time.Instant;
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.learning.dto.LearningEventCommandDTO;
+import com.feng.dsagent.learning.mapper.LearningEventMapper;
+import com.feng.dsagent.learning.mapper.LearningEventMapper.LearningEventInsert;
+import com.feng.dsagent.learning.service.LearningEventService;
+import com.feng.dsagent.learning.vo.LearningEventVO;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -19,19 +21,17 @@ class LearningEventServiceTest {
 
     @Test
     void recordsAWhitelistedEventForAPublishedChapter() throws Exception {
-        FakeLearningEventRepository repository = new FakeLearningEventRepository();
-        LearningEventService service = new LearningEventService(repository, objectMapper);
+        FakeLearningEventMapper mapper = new FakeLearningEventMapper();
+        LearningEventService service = new LearningEventService(mapper, objectMapper);
 
-        LearningEventView event = service.record(7L, new LearningEventCommand(
-            "resource_view",
-            "03-stack-queue",
-            "stack-pdf",
-            objectMapper.readTree("{\"page\":2}")
-        ));
+        LearningEventVO event = service.record(
+                7L,
+                new LearningEventCommandDTO(
+                        "resource_view", "03-stack-queue", "stack-pdf", objectMapper.readTree("{\"page\":2}")));
 
         assertThat(event.eventType()).isEqualTo("RESOURCE_VIEW");
         assertThat(event.chapterId()).isEqualTo("03-stack-queue");
-        assertThat(repository.saved).singleElement().satisfies(saved -> {
+        assertThat(mapper.saved).singleElement().satisfies(saved -> {
             assertThat(saved.userId()).isEqualTo(7L);
             assertThat(saved.payloadJson()).contains("page");
         });
@@ -39,65 +39,57 @@ class LearningEventServiceTest {
 
     @Test
     void rejectsUnknownEventTypesAndUnpublishedChapters() throws Exception {
-        FakeLearningEventRepository repository = new FakeLearningEventRepository();
-        LearningEventService service = new LearningEventService(repository, objectMapper);
+        FakeLearningEventMapper mapper = new FakeLearningEventMapper();
+        LearningEventService service = new LearningEventService(mapper, objectMapper);
 
         assertApiError(
-            () -> service.record(7L, new LearningEventCommand("SHELL_EXEC", null, null, null)),
-            HttpStatus.BAD_REQUEST,
-            "LEARNING_EVENT_TYPE_INVALID"
-        );
+                () -> service.record(7L, new LearningEventCommandDTO("SHELL_EXEC", null, null, null)),
+                HttpStatus.BAD_REQUEST,
+                "LEARNING_EVENT_TYPE_INVALID");
         assertApiError(
-            () -> service.record(7L, new LearningEventCommand("RESOURCE_VIEW", "99-hidden", null, null)),
-            HttpStatus.BAD_REQUEST,
-            "LEARNING_CHAPTER_INVALID"
-        );
+                () -> service.record(7L, new LearningEventCommandDTO("RESOURCE_VIEW", "99-hidden", null, null)),
+                HttpStatus.BAD_REQUEST,
+                "LEARNING_CHAPTER_INVALID");
     }
 
     @Test
     void userSubmittedEventsCannotClaimServerManagedActivities() {
-        FakeLearningEventRepository repository = new FakeLearningEventRepository();
-        LearningEventService service = new LearningEventService(repository, objectMapper);
+        FakeLearningEventMapper mapper = new FakeLearningEventMapper();
+        LearningEventService service = new LearningEventService(mapper, objectMapper);
 
         assertApiError(
-            () -> service.recordUserSubmitted(7L, new LearningEventCommand(
-                "CLASSROOM_ANSWER", "03-stack-queue", "session-1", null
-            )),
-            HttpStatus.BAD_REQUEST,
-            "LEARNING_EVENT_SERVER_MANAGED"
-        );
-        assertThat(repository.saved).isEmpty();
+                () -> service.recordUserSubmitted(
+                        7L, new LearningEventCommandDTO("CLASSROOM_ANSWER", "03-stack-queue", "session-1", null)),
+                HttpStatus.BAD_REQUEST,
+                "LEARNING_EVENT_SERVER_MANAGED");
+        assertThat(mapper.saved).isEmpty();
     }
 
     private static void assertApiError(Runnable action, HttpStatus status, String code) {
-        assertThatThrownBy(action::run).isInstanceOfSatisfying(ApiException.class, error -> {
+        assertThatThrownBy(action::run).isInstanceOfSatisfying(BizException.class, error -> {
             assertThat(error.status()).isEqualTo(status);
             assertThat(error.code()).isEqualTo(code);
         });
     }
 
-    private static final class FakeLearningEventRepository implements LearningEventRepository {
+    private static final class FakeLearningEventMapper implements LearningEventMapper {
         private final List<SavedEvent> saved = new ArrayList<>();
+        private long nextId = 1L;
 
         @Override
-        public boolean isPublishedChapter(String chapterId) {
-            return "03-stack-queue".equals(chapterId);
+        public int countPublishedChapter(String chapterId) {
+            return "03-stack-queue".equals(chapterId) ? 1 : 0;
         }
 
         @Override
-        public LearningEventView save(
-            long userId,
-            String eventType,
-            String chapterId,
-            String referenceId,
-            String payloadJson,
-            Instant createdAt
-        ) {
-            saved.add(new SavedEvent(userId, eventType, chapterId, referenceId, payloadJson));
-            return new LearningEventView(1L, eventType, chapterId, referenceId, createdAt);
+        public int insertEvent(LearningEventInsert row) {
+            row.setId(nextId++);
+            saved.add(new SavedEvent(
+                    row.getUserId(), row.getEventType(), row.getChapterId(), row.getReferenceId(), row.getPayloadJson()));
+            return 1;
         }
     }
 
-    private record SavedEvent(long userId, String eventType, String chapterId, String referenceId, String payloadJson) {
-    }
+    private record SavedEvent(
+            long userId, String eventType, String chapterId, String referenceId, String payloadJson) {}
 }

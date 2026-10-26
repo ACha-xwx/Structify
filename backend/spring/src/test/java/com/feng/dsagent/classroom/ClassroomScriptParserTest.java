@@ -3,10 +3,13 @@ package com.feng.dsagent.classroom;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
+import com.feng.dsagent.classroom.domain.ClassroomScriptPlan;
+import com.feng.dsagent.classroom.domain.ClassroomState;
+import com.feng.dsagent.classroom.support.ClassroomScriptParser;
 class ClassroomScriptParserTest {
 
     private final ClassroomScriptParser parser = new ClassroomScriptParser(new ObjectMapper());
@@ -87,7 +90,7 @@ class ClassroomScriptParserTest {
               "steps":[{"type":"question","role":"teacher","prompt":"答案是什么？"}]
             }
             """))
-            .isInstanceOfSatisfying(ApiException.class, error ->
+            .isInstanceOfSatisfying(BizException.class, error ->
                 assertThat(error.code()).isEqualTo("CLASSROOM_SCRIPT_INVALID")
             );
     }
@@ -130,7 +133,7 @@ class ClassroomScriptParserTest {
               }]
             }
             """))
-            .isInstanceOfSatisfying(ApiException.class, error ->
+            .isInstanceOfSatisfying(BizException.class, error ->
                 assertThat(error.code()).isEqualTo("CLASSROOM_SCRIPT_INVALID")
             );
     }

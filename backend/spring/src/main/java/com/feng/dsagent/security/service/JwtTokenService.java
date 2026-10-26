@@ -1,8 +1,8 @@
 package com.feng.dsagent.security.service;
 
-import com.feng.dsagent.security.NodeCompatibilityToken;
-import com.feng.dsagent.security.InvalidTokenException;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.NodeCompatibilityToken;
+import com.feng.dsagent.security.exception.InvalidTokenException;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
@@ -21,6 +21,9 @@ import javax.crypto.spec.SecretKeySpec;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+/**
+ * 职责：签发与校验 Spring 会话 JWT（含 Node 兼容令牌载荷）。
+ */
 public final class JwtTokenService {
 
     private static final Base64.Encoder URL_ENCODER = Base64.getUrlEncoder().withoutPadding();

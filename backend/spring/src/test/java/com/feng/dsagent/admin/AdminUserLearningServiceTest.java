@@ -5,7 +5,7 @@ import com.feng.dsagent.admin.service.AdminUserLearningService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
 import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +15,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
+import com.feng.dsagent.admin.vo.AdminUserLearningVO;
+import com.feng.dsagent.admin.vo.KnowledgeSettingsVO;
 
 /**
  * The user learning view is a merge of half a dozen ledgers, so the test writes one row into each and checks the
@@ -51,7 +53,7 @@ class AdminUserLearningServiceTest {
     @Test
     @DisplayName("an account with no history reports zeros and an empty map, not an error")
     void emptyAccountReadsAsZeros() {
-        AdminUserLearningService.AdminUserLearningView view = service.learning(userId, adminId, "req-empty");
+        AdminUserLearningVO view = service.learning(userId, adminId, "req-empty");
 
         assertThat(view.userId()).isEqualTo(userId);
         assertThat(view.courses()).isEmpty();
@@ -113,7 +115,7 @@ class AdminUserLearningServiceTest {
             jobId, userId, "job-" + jobId
         );
 
-        AdminUserLearningService.AdminUserLearningView view = service.learning(userId, adminId, "req-full");
+        AdminUserLearningVO view = service.learning(userId, adminId, "req-full");
 
         assertThat(view.classroomSessions()).isEqualTo(1);
         assertThat(view.classroomEvents()).isEqualTo(1);
@@ -145,7 +147,7 @@ class AdminUserLearningServiceTest {
     @DisplayName("an unknown user is a named 404, not a database error")
     void unknownUserIsNamed() {
         assertThatThrownBy(() -> service.learning(999999999L, adminId, ""))
-            .isInstanceOf(ApiException.class)
-            .satisfies(failure -> assertThat(((ApiException) failure).code()).isEqualTo("USER_NOT_FOUND"));
+            .isInstanceOf(BizException.class)
+            .satisfies(failure -> assertThat(((BizException) failure).code()).isEqualTo("USER_NOT_FOUND"));
     }
 }

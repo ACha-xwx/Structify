@@ -2,7 +2,7 @@ package com.feng.dsagent.auth;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -12,6 +12,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.feng.dsagent.auth.domain.VerificationCodeDelivery;
+import com.feng.dsagent.auth.support.VerificationCodeManager;
 @SpringBootTest
 class VerificationCodeConcurrencyIntegrationTest {
 
@@ -52,7 +54,7 @@ class VerificationCodeConcurrencyIntegrationTest {
         try {
             codes.consume(email, "reset", code);
             return true;
-        } catch (ApiException error) {
+        } catch (BizException error) {
             return false;
         }
     }

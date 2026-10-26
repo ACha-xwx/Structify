@@ -17,6 +17,7 @@ class MyBatisConfigurationSmokeTest {
     public void sqlSessionFactoryIsAvailable() {
         assertThat(sqlSessionFactory).isNotNull();
         assertThat(sqlSessionFactory.getConfiguration()).isNotNull();
-        assertThat(sqlSessionFactory.getConfiguration().isMapUnderscoreToCamelCase()).isTrue();
+        // Map-based studyroom SQL keeps snake_case labels (JdbcTemplate-era keys).
+        assertThat(sqlSessionFactory.getConfiguration().isMapUnderscoreToCamelCase()).isFalse();
     }
 }

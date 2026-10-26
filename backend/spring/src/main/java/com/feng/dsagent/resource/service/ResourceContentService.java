@@ -1,34 +1,49 @@
 package com.feng.dsagent.resource.service;
 
-import com.feng.dsagent.resource.ResourceProperties;
-import com.feng.dsagent.resource.ResourceRepository;
-import com.feng.dsagent.resource.ResourceAudience;
-import com.feng.dsagent.resource.ResourceContent;
-import com.feng.dsagent.resource.ResourceAsset;
+import com.feng.dsagent.resource.config.ResourceProperties;
+import com.feng.dsagent.resource.converter.ResourceConverter;
+import com.feng.dsagent.resource.mapper.ResourceMapper;
+import com.feng.dsagent.resource.domain.ResourceAudience;
+import com.feng.dsagent.resource.domain.ResourceContent;
+import com.feng.dsagent.resource.support.ResourceAsset;
 
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.resource.error.ResourceErrorCode;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.springframework.core.io.FileSystemResource;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 
 @Service
 public class ResourceContentService {
-    private final ResourceRepository resources;
+    private final ResourceMapper resources;
+    private final ResourceConverter resourceConverter;
     private final ResourceProperties properties;
 
-    public ResourceContentService(ResourceRepository resources, ResourceProperties properties) {
+    public ResourceContentService(
+        ResourceMapper resources,
+        ResourceConverter resourceConverter,
+        ResourceProperties properties
+    ) {
         this.resources = resources;
+        this.resourceConverter = resourceConverter;
         this.properties = properties;
     }
 
     public ResourceContent content(String id, AuthenticatedUser user) {
-        ResourceAsset asset = resources.findPublishedById(id, ResourceAudience.from(user))
-            .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "资料不存在"));
+        ResourceAudience audience = ResourceAudience.from(user);
+        ResourceMapper.ResourceRow row = resources.selectPublishedById(
+            id,
+            audience.allowClassroomOnly(),
+            audience.allowTeamOnly()
+        );
+        if (row == null) {
+            throw ResourceErrorCode.NOT_FOUND.toException();
+        }
+        ResourceAsset asset = resourceConverter.toAsset(row);
         Path file = resolve(asset.filePath());
         return new ResourceContent(
             new FileSystemResource(file),
@@ -61,7 +76,7 @@ public class ResourceContentService {
                 throw contentNotFound();
             }
             return realCandidate;
-        } catch (ApiException error) {
+        } catch (BizException error) {
             throw error;
         } catch (IOException | RuntimeException error) {
             throw contentNotFound();
@@ -99,7 +114,7 @@ public class ResourceContentService {
             || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg");
     }
 
-    private ApiException contentNotFound() {
-        return new ApiException(HttpStatus.NOT_FOUND, "RESOURCE_CONTENT_NOT_FOUND", "资料内容不存在或不可访问");
+    private BizException contentNotFound() {
+        return ResourceErrorCode.CONTENT_NOT_FOUND.toException();
     }
 }

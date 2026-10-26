@@ -1,56 +1,72 @@
 package com.feng.dsagent.compiler.service;
 
-import com.feng.dsagent.compiler.SandboxConfigRuntimeSettingsSource;
-import com.feng.dsagent.compiler.SandboxConfigUrlValidator;
-import com.feng.dsagent.compiler.SandboxConfigRepository;
-import com.feng.dsagent.compiler.SandboxConnectionResult;
-import com.feng.dsagent.compiler.SandboxConnectionTester;
-import com.feng.dsagent.compiler.controller.SandboxConfigController;
-import com.feng.dsagent.compiler.SandboxRuntimeSettings;
-import com.feng.dsagent.compiler.SandboxProvider;
+import com.feng.dsagent.compiler.converter.SandboxConfigConverter;
+import com.feng.dsagent.compiler.support.SandboxConfigRuntimeSettingsSource;
+import com.feng.dsagent.compiler.support.SandboxConfigUrlValidator;
+import com.feng.dsagent.admin.service.AdminAuditService;
+import com.feng.dsagent.compiler.entity.SandboxConfigEntity;
+import com.feng.dsagent.compiler.mapper.SandboxConfigMapper;
+import org.springframework.dao.DuplicateKeyException;
+import com.feng.dsagent.compiler.domain.SandboxConnectionResult;
+import com.feng.dsagent.compiler.support.SandboxConnectionTester;
+import com.feng.dsagent.compiler.domain.SandboxRuntimeSettings;
+import com.feng.dsagent.compiler.domain.SandboxProvider;
 
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.compiler.error.CompilerErrorCode;
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import java.net.URI;
 import java.util.Optional;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.feng.dsagent.common.vo.ConnectionTestVO;
+import com.feng.dsagent.compiler.dto.UpdateSandboxConfigDTO;
+import com.feng.dsagent.compiler.vo.SandboxConfigCapabilityVO;
+import com.feng.dsagent.compiler.vo.SandboxConfigVO;
+import com.feng.dsagent.compiler.vo.SandboxRuntimeStatusVO;
 
 @Service
 public class SandboxConfigService {
 
-    private final SandboxConfigRepository repository;
+    public static final long CONFIGURATION_ID = 1L;
+
+    private final SandboxConfigMapper mapper;
+    private final SandboxConfigConverter sandboxConfigConverter;
+    private final AdminAuditService auditService;
     private final SandboxConfigUrlValidator urlValidator;
     private final SandboxConnectionTester connectionTester;
     private final SandboxConfigRuntimeSettingsSource runtimeSettings;
 
     public SandboxConfigService(
-        SandboxConfigRepository repository,
+        SandboxConfigMapper mapper,
+        SandboxConfigConverter sandboxConfigConverter,
+        AdminAuditService auditService,
         SandboxConfigUrlValidator urlValidator,
         SandboxConnectionTester connectionTester,
         SandboxConfigRuntimeSettingsSource runtimeSettings
     ) {
-        this.repository = repository;
+        this.mapper = mapper;
+        this.sandboxConfigConverter = sandboxConfigConverter;
+        this.auditService = auditService;
         this.urlValidator = urlValidator;
         this.connectionTester = connectionTester;
         this.runtimeSettings = runtimeSettings;
     }
 
-    public SandboxConfigController.SandboxConfigCapabilityView capability() {
-        Optional<SandboxConfigRepository.StoredSandboxConfig> stored = repository.find();
+    public SandboxConfigCapabilityVO capability() {
+        Optional<SandboxConfigEntity> stored = find();
         if (stored.isEmpty()) {
-            return new SandboxConfigController.SandboxConfigCapabilityView(
+            return new SandboxConfigCapabilityVO(
                 false,
                 "NOT_CONFIGURED",
                 null,
                 runtimeView(runtimeSettings.current().orElse(null), "environment")
             );
         }
-        SandboxConfigRepository.StoredSandboxConfig persisted = stored.get();
+        SandboxConfigEntity persisted = stored.get();
         SandboxProvider provider = SandboxProvider.fromApiName(persisted.provider()).orElse(null);
         if (provider == null) {
-            return new SandboxConfigController.SandboxConfigCapabilityView(
+            return new SandboxConfigCapabilityVO(
                 false,
                 "SANDBOX_CONFIG_INVALID",
                 null,
@@ -59,16 +75,16 @@ public class SandboxConfigService {
         }
         try {
             urlValidator.resolve(persisted.baseUrl());
-        } catch (ApiException ignored) {
-            return new SandboxConfigController.SandboxConfigCapabilityView(
+        } catch (BizException ignored) {
+            return new SandboxConfigCapabilityVO(
                 false,
                 "SANDBOX_CONFIG_INVALID",
                 null,
                 runtimeView(null, "persisted", provider)
             );
         }
-        SandboxConfigController.SandboxConfigView view = view(persisted);
-        return new SandboxConfigController.SandboxConfigCapabilityView(
+        SandboxConfigVO view = view(persisted);
+        return new SandboxConfigCapabilityVO(
             persisted.enabled(),
             persisted.enabled() ? null : "PERSISTED_CONFIGURATION_DISABLED",
             view,
@@ -79,19 +95,19 @@ public class SandboxConfigService {
         );
     }
 
-    private SandboxConfigController.SandboxRuntimeStatusView runtimeView(
+    private SandboxRuntimeStatusVO runtimeView(
         SandboxRuntimeSettings settings,
         String source
     ) {
         return runtimeView(settings, source, settings == null ? null : settings.provider());
     }
 
-    private SandboxConfigController.SandboxRuntimeStatusView runtimeView(
+    private SandboxRuntimeStatusVO runtimeView(
         SandboxRuntimeSettings settings,
         String source,
         SandboxProvider provider
     ) {
-        return new SandboxConfigController.SandboxRuntimeStatusView(
+        return new SandboxRuntimeStatusVO(
             settings != null && settings.enabled(),
             source,
             provider == null ? "UNKNOWN" : provider.name(),
@@ -100,25 +116,23 @@ public class SandboxConfigService {
     }
 
     @Transactional
-    public SandboxConfigController.SandboxConfigView update(
-        SandboxConfigController.UpdateSandboxConfigRequest request,
+    public SandboxConfigVO update(
+        UpdateSandboxConfigDTO request,
         AuthenticatedUser actor,
         String requestId
     ) {
         SandboxProvider provider = SandboxProvider.fromApiName(request.provider())
-            .orElseThrow(() -> new ApiException(
-                HttpStatus.BAD_REQUEST,
-                "SANDBOX_CONFIG_PROVIDER_UNSUPPORTED",
-                "仅支持 Piston 或 Judge0 沙箱"
-            ));
+            .orElseThrow(() -> CompilerErrorCode.SANDBOX_CONFIG_PROVIDER_UNSUPPORTED.toException());
         URI baseUrl = urlValidator.validate(request.baseUrl());
-        SandboxConfigRepository.StoredSandboxConfig before = repository.find().orElse(null);
-        SandboxConfigRepository.StoredSandboxConfig stored = repository.save(provider, baseUrl.toString(), request.enabled());
-        repository.appendAuditEvent(
+        SandboxConfigEntity before = find().orElse(null);
+        SandboxConfigEntity stored = save(provider, baseUrl.toString(), request.enabled());
+        auditService.record(
             actor.userId(),
             "SANDBOX_CONFIG_UPDATED",
+            "SANDBOX_CONFIG",
+            "1",
             "SUCCESS",
-            requestId,
+            safeRequestId(requestId),
             summary(before),
             summary(stored)
         );
@@ -126,24 +140,12 @@ public class SandboxConfigService {
     }
 
     @Transactional
-    public SandboxConfigController.SandboxConnectionTestView testConnection(AuthenticatedUser actor, String requestId) {
-        SandboxConfigRepository.StoredSandboxConfig stored = repository.find().orElseThrow(() -> new ApiException(
-            HttpStatus.CONFLICT,
-            "SANDBOX_CONFIG_NOT_CONFIGURED",
-            "尚未保存沙箱配置"
-        ));
+    public ConnectionTestVO testConnection(AuthenticatedUser actor, String requestId) {
+        SandboxConfigEntity stored = find().orElseThrow(() -> CompilerErrorCode.SANDBOX_CONFIG_NOT_CONFIGURED.toException());
         if (!stored.enabled()) {
-            throw new ApiException(
-                HttpStatus.CONFLICT,
-                "SANDBOX_CONFIG_DISABLED",
-                "当前沙箱配置已停用"
-            );
+            throw CompilerErrorCode.SANDBOX_CONFIG_DISABLED.toException();
         }
-        SandboxProvider provider = SandboxProvider.fromApiName(stored.provider()).orElseThrow(() -> new ApiException(
-            HttpStatus.SERVICE_UNAVAILABLE,
-            "SANDBOX_CONFIG_INVALID",
-            "已保存的沙箱提供商无效"
-        ));
+        SandboxProvider provider = SandboxProvider.fromApiName(stored.provider()).orElseThrow(() -> CompilerErrorCode.SANDBOX_CONFIG_INVALID.toException());
         URI baseUrl = urlValidator.validate(stored.baseUrl());
         SandboxConnectionResult result;
         try {
@@ -154,30 +156,54 @@ public class SandboxConfigService {
         String code = result.code() == null || !result.code().matches("[A-Z0-9_]{1,64}")
             ? "CONNECTION_FAILED"
             : result.code();
-        SandboxConfigRepository.StoredSandboxConfig after = repository.recordConnectionTest(code);
-        repository.appendAuditEvent(
+        SandboxConfigEntity after = recordConnectionTest(code);
+        auditService.record(
             actor.userId(),
             "SANDBOX_CONFIG_CONNECTION_TESTED",
+            "SANDBOX_CONFIG",
+            "1",
             result.connected() ? "SUCCESS" : "FAILED",
-            requestId,
+            safeRequestId(requestId),
             summary(stored),
             summary(after)
         );
-        return new SandboxConfigController.SandboxConnectionTestView(result.connected(), code);
+        return new ConnectionTestVO(result.connected(), code);
     }
 
-    private SandboxConfigController.SandboxConfigView view(SandboxConfigRepository.StoredSandboxConfig stored) {
-        return new SandboxConfigController.SandboxConfigView(
-            stored.provider(),
-            stored.baseUrl(),
-            stored.enabled(),
-            stored.lastConnectionTestStatus(),
-            stored.lastConnectionTestedAt(),
-            stored.updatedAt()
-        );
+
+    private Optional<SandboxConfigEntity> find() {
+        return Optional.ofNullable(mapper.selectById(CONFIGURATION_ID));
     }
 
-    private String summary(SandboxConfigRepository.StoredSandboxConfig stored) {
+    private SandboxConfigEntity save(SandboxProvider provider, String baseUrl, boolean enabled) {
+        int updated = mapper.update(CONFIGURATION_ID, provider.name(), baseUrl, enabled);
+        if (updated == 0) {
+            try {
+                mapper.insert(CONFIGURATION_ID, provider.name(), baseUrl, enabled);
+            } catch (DuplicateKeyException ignored) {
+                mapper.update(CONFIGURATION_ID, provider.name(), baseUrl, enabled);
+            }
+        }
+        return find().orElseThrow(() -> new IllegalStateException("Sandbox configuration was not persisted"));
+    }
+
+    private SandboxConfigEntity recordConnectionTest(String status) {
+        mapper.updateConnectionTest(CONFIGURATION_ID, status);
+        return find().orElseThrow(() -> new IllegalStateException("Sandbox configuration was not persisted"));
+    }
+
+    private String safeRequestId(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value.substring(0, Math.min(128, value.length()));
+    }
+
+    private SandboxConfigVO view(SandboxConfigEntity stored) {
+        return sandboxConfigConverter.toView(stored);
+    }
+
+    private String summary(SandboxConfigEntity stored) {
         if (stored == null) {
             return "state=UNCONFIGURED";
         }

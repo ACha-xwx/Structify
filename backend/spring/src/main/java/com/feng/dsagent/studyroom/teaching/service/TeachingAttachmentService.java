@@ -2,13 +2,11 @@ package com.feng.dsagent.studyroom.teaching.service;
 
 import com.feng.dsagent.studyroom.generation.service.GenerationCallService;
 import com.feng.dsagent.studyroom.service.StudyroomService;
-
-import com.feng.dsagent.studyroom.teaching.TeachingActionValidator;
-
-import com.feng.dsagent.animation.*;
-import com.feng.dsagent.studyroom.*;
-import com.feng.dsagent.studyroom.draft.*;
-import com.feng.dsagent.studyroom.generation.*;
+import com.feng.dsagent.studyroom.teaching.support.TeachingActionValidator;
+import com.feng.dsagent.animation.support.DsvpAnimationAdapter;
+import com.feng.dsagent.animation.support.DsvpLocalEngine;
+import com.feng.dsagent.studyroom.support.StudyroomResourceCatalog;
+import com.feng.dsagent.studyroom.draft.support.OutlineJson;
 import java.util.*;
 import org.springframework.stereotype.Service;
 

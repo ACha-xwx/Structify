@@ -1,24 +1,38 @@
 package com.feng.dsagent.review.service;
 
-import com.feng.dsagent.review.ReviewSourceEntity;
-import com.feng.dsagent.review.ReviewEntity;
-import com.feng.dsagent.review.ReviewQuery;
-
-import com.feng.dsagent.review.ReviewRepository;
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.knowledge.KnowledgeEligibilityChanged;
-import com.feng.dsagent.security.AuthenticatedUser;
-import java.time.Instant;
+import com.feng.dsagent.admin.service.AdminAuditService;
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.common.support.PageParams;
+import com.feng.dsagent.common.support.StringNormalizer;
+import com.feng.dsagent.common.vo.PageVO;
+import com.feng.dsagent.knowledge.domain.KnowledgeEligibilityChanged;
+import com.feng.dsagent.review.converter.ReviewHistoryConverter;
+import com.feng.dsagent.review.converter.ReviewItemConverter;
+import com.feng.dsagent.review.converter.ReviewSourceConverter;
+import com.feng.dsagent.review.domain.ReviewType;
+import com.feng.dsagent.review.entity.ReviewEntity;
+import com.feng.dsagent.review.entity.ReviewSourceEntity;
+import com.feng.dsagent.review.error.ReviewErrorCode;
+import com.feng.dsagent.review.mapper.ReviewMapper;
+import com.feng.dsagent.review.query.ReviewQuery;
+import com.feng.dsagent.review.support.SourceAssessment;
+import com.feng.dsagent.review.vo.ReviewDetailVO;
+import com.feng.dsagent.review.vo.ReviewHistoryVO;
+import com.feng.dsagent.review.vo.ReviewItemVO;
+import com.feng.dsagent.review.vo.ReviewSourceVO;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 职责：编排审核项查询、状态变更与知识库资格事件发布。
+ */
 @Service
 public class ReviewService {
     private static final Set<String> REVIEW_STATUSES = Set.of(
@@ -26,36 +40,63 @@ public class ReviewService {
     );
     private static final Set<String> VERIFIED_SOURCE_STATUSES = Set.of("VERIFIED");
 
-    private final ReviewRepository repository;
+    private final ReviewMapper mapper;
+    private final ReviewHistoryConverter reviewHistoryConverter;
+    private final ReviewItemConverter reviewItemConverter;
+    private final ReviewSourceConverter reviewSourceConverter;
+    private final AdminAuditService adminAudit;
     private final ApplicationEventPublisher events;
 
-    public ReviewService(ReviewRepository repository, ApplicationEventPublisher events) {
-        this.repository = repository;
+    public ReviewService(
+        ReviewMapper mapper,
+        ReviewHistoryConverter reviewHistoryConverter,
+        ReviewItemConverter reviewItemConverter,
+        ReviewSourceConverter reviewSourceConverter,
+        AdminAuditService adminAudit,
+        ApplicationEventPublisher events
+    ) {
+        this.mapper = mapper;
+        this.reviewHistoryConverter = reviewHistoryConverter;
+        this.reviewItemConverter = reviewItemConverter;
+        this.reviewSourceConverter = reviewSourceConverter;
+        this.adminAudit = adminAudit;
         this.events = events;
     }
 
-    public ReviewPage<ReviewItemView> list(int page, int size, String requestedType, String requestedStatus, String search) {
-        validatePage(page, size);
+    public PageVO<ReviewItemVO> list(
+        int page,
+        int size,
+        String requestedType,
+        String requestedStatus,
+        String search
+    ) {
+        PageParams.requireValid(page, size, ReviewErrorCode.PAGE_INVALID);
         List<ReviewType> types = parseTypes(requestedType);
         String status = parseOptionalStatus(requestedStatus);
-        ReviewPage<ReviewEntity> reviews = repository.list(new ReviewQuery(
+        ReviewQuery query = new ReviewQuery(
             page,
             size,
             types,
             status,
-            normalizeOptional(search)
-        ));
-        return new ReviewPage<>(reviews.items().stream().map(this::view).toList(), page, size, reviews.total());
+            StringNormalizer.optional(search)
+        );
+        long total = mapper.countReviews(query);
+        return PageVO.of(
+            page,
+            size,
+            total,
+            mapper.selectReviews(query).stream().map(this::view).toList()
+        );
     }
 
-    public ReviewDetailView detail(String requestedType, String id) {
+    public ReviewDetailVO detail(String requestedType, String id) {
         ReviewEntity item = require(parseType(requestedType), normalizeId(id));
         SourceAssessment assessment = sources(item);
-        return new ReviewDetailView(view(item, assessment.complete()), assessment.chain());
+        return new ReviewDetailVO(view(item, assessment.complete()), assessment.chain());
     }
 
     @Transactional
-    public ReviewItemView updateStatus(
+    public ReviewItemVO updateStatus(
         AuthenticatedUser actor,
         String requestedType,
         String id,
@@ -66,33 +107,31 @@ public class ReviewService {
         ReviewType type = parseType(requestedType);
         String contentId = normalizeId(id);
         String nextStatus = parseRequiredStatus(requestedStatus);
-        String note = normalizeOptional(requestedNote);
-        ReviewEntity before = repository.lock(type, contentId).orElseThrow(() -> notFound(type, contentId));
+        String note = StringNormalizer.optional(requestedNote);
+        ReviewEntity before = mapper.lockOptional(type, contentId).orElseThrow(() -> notFound(type, contentId));
         SourceAssessment assessment = sources(before);
         if ("VERIFIED".equals(nextStatus) && !assessment.complete()) {
-            repository.appendRejectedAdminAudit(
+            adminAudit.recordCommitted(
                 actor.userId(),
-                type,
+                "REVIEW_STATUS_CHANGED",
+                type.name(),
                 contentId,
+                "REJECTED",
                 safeRequestId(requestId),
                 summary(before),
                 "verification_blocked=source_chain_incomplete"
             );
-            throw new ApiException(
-                HttpStatus.CONFLICT,
-                "ADMIN_REVIEW_SOURCE_INCOMPLETE",
-                "Verified review status requires a verified, complete source chain in a published chapter"
-            );
+            throw ReviewErrorCode.SOURCE_INCOMPLETE.toException();
         }
         if (before.status().equals(nextStatus)) {
-            repository.appendAdminAudit(
+            mapper.appendAdminAudit(
                 actor.userId(), type, contentId, "NO_CHANGE", safeRequestId(requestId), summary(before), summary(before)
             );
             return view(before, assessment.complete());
         }
-        repository.updateStatus(type, contentId, nextStatus);
+        mapper.updateStatus(type, contentId, nextStatus);
         ReviewEntity after = require(type, contentId);
-        repository.appendReviewEvent(
+        mapper.appendReviewEvent(
             type,
             contentId,
             before.status(),
@@ -101,40 +140,31 @@ public class ReviewService {
             actor.userId(),
             safeRequestId(requestId)
         );
-        repository.appendAdminAudit(
+        mapper.appendAdminAudit(
             actor.userId(), type, contentId, "SUCCESS", safeRequestId(requestId), summary(before), summary(after)
         );
         events.publishEvent(new KnowledgeEligibilityChanged());
         return view(after);
     }
 
-    public List<ReviewHistoryView> history(String requestedType, String id) {
+    public List<ReviewHistoryVO> history(String requestedType, String id) {
         ReviewType type = parseType(requestedType);
         String contentId = normalizeId(id);
         require(type, contentId);
-        return repository.history(type, contentId);
+        return mapper.history(type, contentId).stream().map(reviewHistoryConverter::toView).toList();
     }
 
-    private ReviewItemView view(ReviewEntity entity) {
+    private ReviewItemVO view(ReviewEntity entity) {
         return view(entity, sources(entity).complete());
     }
 
-    private ReviewItemView view(ReviewEntity entity, boolean sourceComplete) {
-        return new ReviewItemView(
-            entity.type().name(),
-            entity.id(),
-            entity.title(),
-            entity.status(),
-            entity.chapterId(),
-            entity.versionLabel(),
-            sourceComplete,
-            entity.updatedAt()
-        );
+    private ReviewItemVO view(ReviewEntity entity, boolean sourceComplete) {
+        return reviewItemConverter.toView(entity, sourceComplete);
     }
 
     private SourceAssessment sources(ReviewEntity item) {
-        List<ReviewSourceView> chain = new ArrayList<>();
-        Optional<ReviewSourceEntity> chapter = repository.chapter(item.chapterId());
+        List<ReviewSourceVO> chain = new ArrayList<>();
+        Optional<ReviewSourceEntity> chapter = mapper.chapterOptional(item.chapterId());
         chapter.map(this::source).ifPresent(chain::add);
         boolean chapterPublished = chapter.map(value -> "PUBLISHED".equals(value.status())).orElse(false);
 
@@ -152,12 +182,12 @@ public class ReviewService {
 
     private SourceAssessment sourceForKnowledge(
         ReviewEntity item,
-        List<ReviewSourceView> chain,
+        List<ReviewSourceVO> chain,
         boolean chapterPublished
     ) {
         Optional<ReviewEntity> resource = item.parentId() == null || item.parentId().isBlank()
             ? Optional.empty()
-            : repository.find(ReviewType.RESOURCE, item.parentId());
+            : mapper.findOptional(ReviewType.RESOURCE, item.parentId());
         resource.map(this::source).ifPresent(chain::add);
         boolean complete = chapterPublished
             && resource.filter(value -> VERIFIED_SOURCE_STATUSES.contains(value.status()))
@@ -169,14 +199,14 @@ public class ReviewService {
 
     private SourceAssessment sourceForManifest(
         ReviewEntity item,
-        List<ReviewSourceView> chain,
+        List<ReviewSourceVO> chain,
         boolean chapterPublished
     ) {
         Optional<ReviewEntity> resource = item.parentId() == null || item.parentId().isBlank()
             ? Optional.empty()
-            : repository.find(ReviewType.RESOURCE, item.parentId());
+            : mapper.findOptional(ReviewType.RESOURCE, item.parentId());
         resource.map(this::source).ifPresent(chain::add);
-        List<ReviewSourceView> withMetadata = chainWithDeclaredSource(chain, item);
+        List<ReviewSourceVO> withMetadata = chainWithDeclaredSource(chain, item);
         boolean resourceComplete = resource.isEmpty() || resource
             .filter(value -> VERIFIED_SOURCE_STATUSES.contains(value.status()))
             .map(this::sources)
@@ -191,12 +221,12 @@ public class ReviewService {
 
     private SourceAssessment sourceForPage(
         ReviewEntity item,
-        List<ReviewSourceView> chain,
+        List<ReviewSourceVO> chain,
         boolean chapterPublished
     ) {
         Optional<ReviewEntity> manifest = item.parentId() == null || item.parentId().isBlank()
             ? Optional.empty()
-            : repository.find(ReviewType.PRESENTATION_MANIFEST, item.parentId());
+            : mapper.findOptional(ReviewType.PRESENTATION_MANIFEST, item.parentId());
         manifest.map(this::source).ifPresent(chain::add);
         boolean complete = chapterPublished
             && nonBlank(item.contentHash())
@@ -209,12 +239,12 @@ public class ReviewService {
 
     private SourceAssessment sourceForEvidence(
         ReviewEntity item,
-        List<ReviewSourceView> chain,
+        List<ReviewSourceVO> chain,
         boolean chapterPublished
     ) {
         Optional<ReviewEntity> page = item.sourceRef() == null || item.sourceRef().isBlank()
             ? Optional.empty()
-            : repository.findPresentationPageBySourceRef(item.sourceRef());
+            : mapper.findPresentationPageBySourceRefOptional(item.sourceRef());
         page.map(this::source).ifPresent(chain::add);
         boolean complete = chapterPublished
             && page.filter(value -> VERIFIED_SOURCE_STATUSES.contains(value.status()))
@@ -224,12 +254,12 @@ public class ReviewService {
         return new SourceAssessment(chain, complete);
     }
 
-    private List<ReviewSourceView> chainWithDeclaredSource(List<ReviewSourceView> chain, ReviewEntity item) {
+    private List<ReviewSourceVO> chainWithDeclaredSource(List<ReviewSourceVO> chain, ReviewEntity item) {
         if (!nonBlank(item.sourceName())) {
             return chain;
         }
-        List<ReviewSourceView> result = new ArrayList<>(chain);
-        result.add(new ReviewSourceView(
+        List<ReviewSourceVO> result = new ArrayList<>(chain);
+        result.add(new ReviewSourceVO(
             "DECLARED_SOURCE",
             item.id(),
             item.sourceName(),
@@ -238,24 +268,24 @@ public class ReviewService {
         return result;
     }
 
-    private ReviewSourceView source(ReviewSourceEntity entity) {
-        return new ReviewSourceView(entity.type(), entity.id(), entity.title(), entity.status());
+    private ReviewSourceVO source(ReviewSourceEntity entity) {
+        return reviewSourceConverter.toView(entity);
     }
 
-    private ReviewSourceView source(ReviewEntity entity) {
-        return new ReviewSourceView(entity.type().name(), entity.id(), entity.title(), entity.status());
+    private ReviewSourceVO source(ReviewEntity entity) {
+        return reviewSourceConverter.toView(entity);
     }
 
     private ReviewEntity require(ReviewType type, String id) {
-        return repository.find(type, id).orElseThrow(() -> notFound(type, id));
+        return mapper.findOptional(type, id).orElseThrow(() -> notFound(type, id));
     }
 
-    private ApiException notFound(ReviewType type, String id) {
-        return new ApiException(HttpStatus.NOT_FOUND, "ADMIN_REVIEW_NOT_FOUND", type.name() + " review item was not found: " + id);
+    private BizException notFound(ReviewType type, String id) {
+        return ReviewErrorCode.NOT_FOUND.toException(type.name() + " review item was not found: " + id);
     }
 
     private List<ReviewType> parseTypes(String value) {
-        String normalized = normalizeOptional(value);
+        String normalized = StringNormalizer.optional(value);
         if (normalized == null) {
             return List.of(ReviewType.values());
         }
@@ -273,7 +303,7 @@ public class ReviewService {
     }
 
     private ReviewType parseType(String value) {
-        String normalized = normalizeOptional(value);
+        String normalized = StringNormalizer.optional(value);
         if (normalized == null) {
             throw invalidType(value);
         }
@@ -284,35 +314,29 @@ public class ReviewService {
         }
     }
 
-    private ApiException invalidType(String value) {
-        return new ApiException(HttpStatus.BAD_REQUEST, "ADMIN_REVIEW_TYPE_INVALID", "Unknown review type: " + value);
+    private BizException invalidType(String value) {
+        return ReviewErrorCode.TYPE_INVALID.toException("Unknown review type: " + value);
     }
 
     private String parseOptionalStatus(String value) {
-        String normalized = normalizeOptional(value);
+        String normalized = StringNormalizer.optional(value);
         return normalized == null ? null : parseRequiredStatus(normalized);
     }
 
     private String parseRequiredStatus(String value) {
-        String normalized = normalizeOptional(value);
+        String normalized = StringNormalizer.optional(value);
         if (normalized == null || !REVIEW_STATUSES.contains(normalized.toUpperCase(Locale.ROOT))) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ADMIN_REVIEW_STATUS_INVALID", "Unknown review status");
+            throw ReviewErrorCode.STATUS_INVALID.toException();
         }
         return normalized.toUpperCase(Locale.ROOT);
     }
 
     private String normalizeId(String value) {
-        String normalized = normalizeOptional(value);
+        String normalized = StringNormalizer.optional(value);
         if (normalized == null || normalized.length() > 160) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ADMIN_REVIEW_ID_INVALID", "Review item identifier is invalid");
+            throw ReviewErrorCode.ID_INVALID.toException();
         }
         return normalized;
-    }
-
-    private void validatePage(int page, int size) {
-        if (page < 0 || size < 1 || size > 100) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "ADMIN_PAGE_INVALID", "Pagination parameters are invalid");
-        }
     }
 
     private static boolean completeMetadata(String sourceName, String versionLabel) {
@@ -323,12 +347,8 @@ public class ReviewService {
         return value != null && !value.isBlank();
     }
 
-    private static String normalizeOptional(String value) {
-        return nonBlank(value) ? value.trim() : null;
-    }
-
     private static String safeRequestId(String value) {
-        String normalized = normalizeOptional(value);
+        String normalized = StringNormalizer.optional(value);
         return normalized == null ? "" : normalized.substring(0, Math.min(normalized.length(), 128));
     }
 

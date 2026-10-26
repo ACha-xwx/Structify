@@ -1,21 +1,20 @@
 package com.feng.dsagent.classroom.controller;
 
-import com.feng.dsagent.classroom.ClassroomScriptSummary;
-import com.feng.dsagent.classroom.ClassroomPreparation;
-import com.feng.dsagent.classroom.ClassroomSessionView;
-import com.feng.dsagent.classroom.ClassroomAction;
+import com.feng.dsagent.classroom.vo.ClassroomScriptSummaryVO;
+import com.feng.dsagent.classroom.support.ClassroomPreparation;
+import com.feng.dsagent.classroom.vo.ClassroomSessionVO;
+import com.feng.dsagent.classroom.domain.ClassroomAction;
 
 import com.feng.dsagent.classroom.service.ClassroomService;
 
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.classroom.error.ClassroomErrorCode;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.Locale;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,6 +24,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import com.feng.dsagent.classroom.dto.PrepareDTO;
+import com.feng.dsagent.classroom.dto.SlideDTO;
+import com.feng.dsagent.classroom.dto.CreateSessionDTO;
+import com.feng.dsagent.classroom.dto.ActionDTO;
 
 @RestController
 @RequestMapping("/api/v1/classroom")
@@ -42,48 +45,43 @@ public class ClassroomController {
     public List<ClassroomPreparation.Lesson> lessons(@RequestParam(required = false) String chapterId) { return preparation.lessons(chapterId); }
 
     @PostMapping("/preparations")
-    public ClassroomPreparation.Status prepare(@AuthenticationPrincipal AuthenticatedUser user, @Valid @RequestBody PrepareRequest request) { return preparation.start(user.userId(), request.lessonId()); }
+    public ClassroomPreparation.Status prepare(@AuthenticationPrincipal AuthenticatedUser user, @Valid @RequestBody PrepareDTO request) { return preparation.start(user.userId(), request.lessonId()); }
 
     @GetMapping("/preparations/{id}")
     public ClassroomPreparation.Status preparation(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable String id) { return preparation.status(user.userId(), id); }
 
-    public record PrepareRequest(@NotBlank String lessonId) {}
-
     @GetMapping("/scripts")
-    public List<ClassroomScriptSummary> scripts(@RequestParam(required = false) String chapterId) {
+    public List<ClassroomScriptSummaryVO> scripts(@RequestParam(required = false) String chapterId) {
         return classrooms.scripts(chapterId);
     }
 
     @PostMapping("/sessions")
-    public ClassroomSessionView create(
+    public ClassroomSessionVO create(
         @AuthenticationPrincipal AuthenticatedUser user,
-        @Valid @RequestBody CreateSessionRequest request
+        @Valid @RequestBody CreateSessionDTO request
     ) {
         return classrooms.create(user.userId(), request.scriptId());
     }
 
     @GetMapping("/sessions/{id}")
-    public ClassroomSessionView get(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable String id) {
+    public ClassroomSessionVO get(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable String id) {
         return classrooms.get(user.userId(), id);
     }
 
     @PutMapping("/sessions/{id}/slides")
-    public ClassroomSessionView pinSlide(
+    public ClassroomSessionVO pinSlide(
         @AuthenticationPrincipal AuthenticatedUser user,
         @PathVariable String id,
-        @Valid @RequestBody SlideRequest request
+        @Valid @RequestBody SlideDTO request
     ) {
         return classrooms.pinSlide(user.userId(), id, request.stepIndex(), request.slideId());
     }
 
-    public record SlideRequest(@PositiveOrZero int stepIndex, @NotBlank @Size(max = 160) String slideId) {
-    }
-
     @PostMapping("/sessions/{id}/actions")
-    public ClassroomSessionView action(
+    public ClassroomSessionVO action(
         @AuthenticationPrincipal AuthenticatedUser user,
         @PathVariable String id,
-        @Valid @RequestBody ActionRequest request
+        @Valid @RequestBody ActionDTO request
     ) {
         return classrooms.apply(user.userId(), id, action(request.action()), request.content(), request.expectedRevision());
     }
@@ -92,13 +90,8 @@ public class ClassroomController {
         try {
             return ClassroomAction.valueOf(value.trim().toUpperCase(Locale.ROOT));
         } catch (RuntimeException error) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "CLASSROOM_ACTION_INVALID", "课堂操作无效");
+            throw ClassroomErrorCode.ACTION_INVALID.toException();
         }
     }
 
-    public record CreateSessionRequest(@NotBlank String scriptId) {
-    }
-
-    public record ActionRequest(@NotBlank String action, @Size(max = 4000) String content, @PositiveOrZero Integer expectedRevision) {
-    }
 }

@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.classroom.mapper.ClassroomMapper">
+
+  <select id="findPublishedScripts" resultType="com.feng.dsagent.classroom.domain.ClassroomScript">
+    SELECT id, chapter_id AS chapterId, title, version_label AS versionLabel, script_json AS scriptJson
+    FROM classroom_scripts
+    WHERE review_status IN ('PUBLISHED', 'VERIFIED')
+    ORDER BY chapter_id, title, id
+  </select>
+
+  <select id="findPublishedScriptsByChapter" resultType="com.feng.dsagent.classroom.domain.ClassroomScript">
+    SELECT id, chapter_id AS chapterId, title, version_label AS versionLabel, script_json AS scriptJson
+    FROM classroom_scripts
+    WHERE review_status IN ('PUBLISHED', 'VERIFIED') AND chapter_id = #{chapterId}
+    ORDER BY title, id
+  </select>
+
+  <select id="findPublishedScript" resultType="com.feng.dsagent.classroom.domain.ClassroomScript">
+    SELECT id, chapter_id AS chapterId, title, version_label AS versionLabel, script_json AS scriptJson
+    FROM classroom_scripts
+    WHERE id = #{id} AND review_status IN ('PUBLISHED', 'VERIFIED')
+  </select>
+
+  <insert id="insertSession">
+    INSERT INTO classroom_sessions
+      (id, user_id, script_id, state, paused, script_json_snapshot, chapter_id_snapshot)
+    VALUES (#{id}, #{userId}, #{scriptId}, #{state}, #{paused}, #{scriptJson}, #{chapterId})
+  </insert>
+
+  <select id="findSession" resultType="com.feng.dsagent.classroom.entity.ClassroomSessionRecordEntity">
+    SELECT s.id,
+           s.user_id AS userId,
+           s.script_id AS scriptId,
+           COALESCE(s.chapter_id_snapshot, c.chapter_id) AS chapterId,
+           s.state,
+           s.paused,
+           s.summary,
+           COALESCE(s.script_json_snapshot, c.script_json) AS scriptJson
+    FROM classroom_sessions s
+    JOIN classroom_scripts c ON c.id = s.script_id
+    WHERE s.id = #{id} AND s.user_id = #{userId}
+    FOR UPDATE
+  </select>
+
+  <update id="updateSession">
+    UPDATE classroom_sessions
+    SET state = #{state}, paused = #{paused}, summary = #{summary}, updated_at = CURRENT_TIMESTAMP
+    WHERE id = #{id} AND user_id = #{userId}
+  </update>
+
+  <insert id="insertAsk">
+    INSERT INTO classroom_ask_exchanges (session_id, step_index, question, answer)
+    VALUES (#{sessionId}, #{stepIndex}, #{question}, #{answer})
+  </insert>
+
+  <select id="selectAsks" resultType="com.feng.dsagent.classroom.mapper.ClassroomMapper$AskRow">
+    SELECT step_index AS stepIndex,
+           question,
+           answer,
+           created_at AS createdAt
+    FROM classroom_ask_exchanges
+    WHERE session_id = #{sessionId}
+    ORDER BY id
+  </select>
+
+  <select id="attemptsAt" resultType="com.feng.dsagent.classroom.domain.ClassroomStepAttempts">
+    SELECT COALESCE(SUM(CASE WHEN action = 'ANSWER' THEN 1 ELSE 0 END), 0) AS answers,
+           COALESCE(SUM(CASE WHEN action = 'HINT' THEN 1 ELSE 0 END), 0) AS hints
+    FROM classroom_events
+    WHERE session_id = #{sessionId} AND step_index = #{stepIndex}
+  </select>
+
+  <insert id="insertEvent">
+    INSERT INTO classroom_events
+      (session_id, action, content, from_state, to_state, answer_status, misconception, feedback,
+       step_index, question_id, attempt_no, hint_used)
+    VALUES (#{sessionId}, #{action}, #{content}, #{fromState}, #{toState}, #{answerStatus},
+            #{misconception}, #{feedback}, #{stepIndex}, #{questionId}, #{attemptNo}, #{hintUsed})
+  </insert>
+
+  <select id="selectVerifiedLessonSources"
+          resultType="com.feng.dsagent.classroom.mapper.ClassroomMapper$VerifiedLessonSourceRow">
+    SELECT k.chapter_id AS chapterId, k.source_path AS sourcePath, MIN(k.title) AS title
+    FROM knowledge_chunks k JOIN chapters c ON c.id = k.chapter_id
+    WHERE (k.source_path LIKE 'textbook/%' OR k.source_path LIKE 'courseware/%') AND k.review_status = 'VERIFIED'
+      AND k.resource_id IS NULL AND k.license_scope IN ('PUBLIC','CLASSROOM_ONLY') AND c.status = 'PUBLISHED'
+    GROUP BY k.chapter_id, k.source_path ORDER BY k.source_path
+  </select>
+
+  <select id="selectVerifiedPageLabels" resultType="com.feng.dsagent.classroom.mapper.ClassroomMapper$PageLabelRow">
+    SELECT k.source_path AS sourcePath, k.page_label AS pageLabel
+    FROM knowledge_chunks k JOIN chapters c ON c.id = k.chapter_id
+    WHERE (k.source_path LIKE 'textbook/%' OR k.source_path LIKE 'courseware/%') AND k.review_status = 'VERIFIED'
+      AND k.resource_id IS NULL AND k.license_scope IN ('PUBLIC','CLASSROOM_ONLY') AND c.status = 'PUBLISHED'
+  </select>
+
+  <select id="selectVerifiedChunks" resultType="map">
+    SELECT id, content, page_label
+    FROM knowledge_chunks
+    WHERE source_path = #{sourcePath} AND chapter_id = #{chapterId} AND review_status = 'VERIFIED'
+      AND resource_id IS NULL AND license_scope IN ('PUBLIC','CLASSROOM_ONLY')
+    ORDER BY id
+  </select>
+
+  <insert id="insertDraftScript">
+    INSERT INTO classroom_scripts (id, chapter_id, title, version_label, review_status, script_json)
+    VALUES (#{id}, #{chapterId}, #{title}, 'runtime-json-v1', 'DRAFT', #{scriptJson})
+  </insert>
+
+  <select id="selectRuntimeCursor" resultType="com.feng.dsagent.classroom.mapper.ClassroomMapper$RuntimeCursorRow">
+    SELECT runtime_index AS runtimeIndex, runtime_revision AS runtimeRevision, runtime_response AS runtimeResponse
+    FROM classroom_sessions WHERE id = #{id}
+  </select>
+
+  <update id="updateRuntime">
+    UPDATE classroom_sessions
+    SET runtime_index = #{index}, runtime_revision = runtime_revision + 1, runtime_response = #{response}
+    WHERE id = #{id} AND user_id = #{userId} AND runtime_revision = #{revision}
+  </update>
+
+  <select id="countEventsByAction" resultType="int">
+    SELECT COUNT(*) FROM classroom_events WHERE session_id = #{sessionId} AND action = #{action}
+  </select>
+
+  <select id="selectSlideOverride" resultType="string">
+    SELECT slide_id FROM classroom_slide_overrides WHERE script_id = #{scriptId} AND step_index = #{stepIndex}
+  </select>
+
+  <insert id="upsertSlideOverride">
+    INSERT INTO classroom_slide_overrides (script_id, step_index, slide_id, updated_by, updated_at)
+    VALUES (#{scriptId}, #{stepIndex}, #{slideId}, #{updatedBy}, CURRENT_TIMESTAMP)
+    ON DUPLICATE KEY UPDATE slide_id = VALUES(slide_id), updated_by = VALUES(updated_by), updated_at = CURRENT_TIMESTAMP
+  </insert>
+</mapper>

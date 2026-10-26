@@ -1,14 +1,13 @@
 package com.feng.dsagent.aiquota;
 
 import com.feng.dsagent.aiquota.service.AiQuotaLedgerService;
-import com.feng.dsagent.auth.UserAccount;
-import com.feng.dsagent.auth.UserRepository;
+import com.feng.dsagent.auth.entity.UserAccountEntity;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.feng.dsagent.DsAgentServerApplication;
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -30,12 +29,22 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.feng.dsagent.aiquota.domain.AiQuotaReservationStatus;
+import com.feng.dsagent.aiquota.domain.AiQuotaUsageSource;
+import com.feng.dsagent.aiquota.dto.AiQuotaReservationDTO;
+import com.feng.dsagent.aiquota.entity.AiQuotaAccountEntity;
+import com.feng.dsagent.aiquota.entity.AiQuotaReservationEntity;
+import com.feng.dsagent.aiquota.support.DevTestAccountQuotaPolicy;
+import com.feng.dsagent.aiquota.worker.AiQuotaReservationRecoveryRunner;
 @SpringBootTest(classes = DsAgentServerApplication.class)
 @Import(AiQuotaLedgerIntegrationTest.FixedClockConfiguration.class)
 class AiQuotaLedgerIntegrationTest {
 
     @Autowired
     private AiQuotaLedgerService ledger;
+
+    @Autowired
+    private com.feng.dsagent.aiquota.mapper.AiQuotaLedgerMapper mapper;
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -58,10 +67,10 @@ class AiQuotaLedgerIntegrationTest {
     void reserveAndSettlementPersistTheDailyTokenLedger() {
         long userId = userId();
 
-        AiQuotaReservation reserved = ledger.reserve(request(userId, 100, 30, 2, "chat-1", Duration.ofMinutes(5)));
+        AiQuotaReservationEntity reserved = ledger.reserve(request(userId, 100, 30, 2, "chat-1", Duration.ofMinutes(5)));
 
         assertThat(reserved.status()).isEqualTo(AiQuotaReservationStatus.RESERVED);
-        assertThat(ledger.account(userId)).isEqualTo(new AiQuotaAccount(
+        assertThat(ledger.account(userId)).isEqualTo(new AiQuotaAccountEntity(
             userId,
             java.time.LocalDate.of(2026, 8, 11),
             100,
@@ -71,11 +80,11 @@ class AiQuotaLedgerIntegrationTest {
             1
         ));
 
-        AiQuotaReservation settled = ledger.settle(reserved.id(), 24);
+        AiQuotaReservationEntity settled = ledger.settle(reserved.id(), 24);
 
         assertThat(settled.status()).isEqualTo(AiQuotaReservationStatus.SETTLED);
         assertThat(settled.actualTokens()).isEqualTo(24);
-        assertThat(ledger.account(userId)).isEqualTo(new AiQuotaAccount(
+        assertThat(ledger.account(userId)).isEqualTo(new AiQuotaAccountEntity(
             userId,
             java.time.LocalDate.of(2026, 8, 11),
             100,
@@ -90,18 +99,18 @@ class AiQuotaLedgerIntegrationTest {
     void unlimitedDevelopmentAccountStillRecordsUsageAndEnforcesConcurrency() {
         long userId = userId();
         String email = jdbc.queryForObject("SELECT email FROM users WHERE id = ?", String.class, userId);
-        var users = org.mockito.Mockito.mock(com.feng.dsagent.auth.UserRepository.class);
+        var users = org.mockito.Mockito.mock(com.feng.dsagent.auth.service.UserAccountService.class);
         org.mockito.Mockito.when(users.findById(userId)).thenReturn(java.util.Optional.of(
-            new com.feng.dsagent.auth.UserAccount(userId, email, "Student", "hash", java.util.Set.of("STUDENT"))));
+            new com.feng.dsagent.auth.entity.UserAccountEntity(userId, email, "Student", "hash", java.util.Set.of("STUDENT"))));
         var environment = new org.springframework.mock.env.MockEnvironment();
         environment.setActiveProfiles("dev");
-        var unlimitedLedger = new AiQuotaLedgerService(new JdbcAiQuotaLedgerRepository(jdbc), clock);
+        var unlimitedLedger = new AiQuotaLedgerService(mapper, clock);
         unlimitedLedger.configureTestAccountQuota(new DevTestAccountQuotaPolicy(users, environment, true, email));
 
         var first = unlimitedLedger.reserve(request(userId, 10, 100, 1, "unlimited-first", Duration.ofMinutes(2)));
         assertThatThrownBy(() -> unlimitedLedger.reserve(
             request(userId, 10, 100, 1, "unlimited-concurrent", Duration.ofMinutes(2))))
-            .isInstanceOfSatisfying(ApiException.class,
+            .isInstanceOfSatisfying(BizException.class,
                 error -> assertThat(error.code()).isEqualTo("AI_QUOTA_CONCURRENCY_LIMITED"));
         unlimitedLedger.settle(first.id(), 200);
         assertThat(unlimitedLedger.account(userId).consumedTokens()).isEqualTo(200);
@@ -115,12 +124,12 @@ class AiQuotaLedgerIntegrationTest {
     void duplicateRequestIsIdempotentAndConcurrencyCapIsEnforcedPerUser() {
         long userId = userId();
 
-        AiQuotaReservation first = ledger.reserve(request(userId, 100, 20, 1, "chat-1", Duration.ofMinutes(5)));
-        AiQuotaReservation duplicate = ledger.reserve(request(userId, 100, 20, 1, "chat-1", Duration.ofMinutes(5)));
+        AiQuotaReservationEntity first = ledger.reserve(request(userId, 100, 20, 1, "chat-1", Duration.ofMinutes(5)));
+        AiQuotaReservationEntity duplicate = ledger.reserve(request(userId, 100, 20, 1, "chat-1", Duration.ofMinutes(5)));
 
         assertThat(duplicate.id()).isEqualTo(first.id());
         assertThatThrownBy(() -> ledger.reserve(request(userId, 100, 20, 1, "chat-2", Duration.ofMinutes(5))))
-            .isInstanceOfSatisfying(ApiException.class, error ->
+            .isInstanceOfSatisfying(BizException.class, error ->
                 assertThat(error.code()).isEqualTo("AI_QUOTA_CONCURRENCY_LIMITED")
             );
     }
@@ -128,9 +137,9 @@ class AiQuotaLedgerIntegrationTest {
     @Test
     void failureRecordsActualUsageAndReleasesTheReservation() {
         long userId = userId();
-        AiQuotaReservation reserved = ledger.reserve(request(userId, 100, 30, 2, "analysis-1", Duration.ofMinutes(5)));
+        AiQuotaReservationEntity reserved = ledger.reserve(request(userId, 100, 30, 2, "analysis-1", Duration.ofMinutes(5)));
 
-        AiQuotaReservation failed = ledger.fail(reserved.id(), 7, "MODEL_REQUEST_TIMEOUT");
+        AiQuotaReservationEntity failed = ledger.fail(reserved.id(), 7, "MODEL_REQUEST_TIMEOUT");
 
         assertThat(failed.status()).isEqualTo(AiQuotaReservationStatus.FAILED);
         assertThat(failed.failureCode()).isEqualTo("MODEL_REQUEST_TIMEOUT");
@@ -143,15 +152,15 @@ class AiQuotaLedgerIntegrationTest {
     @Test
     void dailyQuotaAllowsTheExactBoundaryThenRejectsAnotherReservation() {
         long userId = userId();
-        AiQuotaReservation reserved = ledger.reserve(request(userId, 100, 100, 2, "daily-boundary", Duration.ofMinutes(5)));
+        AiQuotaReservationEntity reserved = ledger.reserve(request(userId, 100, 100, 2, "daily-boundary", Duration.ofMinutes(5)));
 
-        AiQuotaReservation settled = ledger.settle(reserved.id(), 100, AiQuotaUsageSource.PROVIDER_REPORTED);
+        AiQuotaReservationEntity settled = ledger.settle(reserved.id(), 100, AiQuotaUsageSource.PROVIDER_REPORTED);
 
         assertThat(settled.status()).isEqualTo(AiQuotaReservationStatus.SETTLED);
         assertThat(ledger.account(userId).consumedTokens()).isEqualTo(100);
         assertThat(ledger.account(userId).remainingTokens()).isZero();
         assertThatThrownBy(() -> ledger.reserve(request(userId, 100, 1, 2, "daily-after-boundary", Duration.ofMinutes(5))))
-            .isInstanceOfSatisfying(ApiException.class, error ->
+            .isInstanceOfSatisfying(BizException.class, error ->
                 assertThat(error.code()).isEqualTo("AI_QUOTA_EXHAUSTED")
             );
     }
@@ -159,7 +168,7 @@ class AiQuotaLedgerIntegrationTest {
     @Test
     void expiredReservationsAreRecoveredAndNoLongerBlockTheUser() {
         long userId = userId();
-        AiQuotaReservation reserved = ledger.reserve(request(userId, 100, 40, 1, "stream-1", Duration.ofMinutes(1)));
+        AiQuotaReservationEntity reserved = ledger.reserve(request(userId, 100, 40, 1, "stream-1", Duration.ofMinutes(1)));
         clock.advance(Duration.ofMinutes(2));
 
         assertThat(ledger.recoverExpiredReservations()).isEqualTo(1);
@@ -177,7 +186,7 @@ class AiQuotaLedgerIntegrationTest {
     @Test
     void startupRecoveryClearsExpiredReservationsIdempotently() throws Exception {
         long userId = userId();
-        AiQuotaReservation reserved = ledger.reserve(request(userId, 100, 40, 1, "startup-stream", Duration.ofMinutes(1)));
+        AiQuotaReservationEntity reserved = ledger.reserve(request(userId, 100, 40, 1, "startup-stream", Duration.ofMinutes(1)));
         clock.advance(Duration.ofMinutes(2));
 
         recoveryRunner.run(null);
@@ -209,9 +218,9 @@ class AiQuotaLedgerIntegrationTest {
 
             List<Object> outcomes = futures.stream().map(this::result).toList();
 
-            assertThat(outcomes.stream().filter(AiQuotaReservation.class::isInstance)).hasSize(1);
-            assertThat(outcomes.stream().filter(ApiException.class::isInstance))
-                .allSatisfy(value -> assertThat(((ApiException) value).code()).isEqualTo("AI_QUOTA_EXHAUSTED"));
+            assertThat(outcomes.stream().filter(AiQuotaReservationEntity.class::isInstance)).hasSize(1);
+            assertThat(outcomes.stream().filter(BizException.class::isInstance))
+                .allSatisfy(value -> assertThat(((BizException) value).code()).isEqualTo("AI_QUOTA_EXHAUSTED"));
             assertThat(ledger.account(userId).reservedTokens()).isEqualTo(60);
             assertThat(ledger.account(userId).activeReservations()).isEqualTo(1);
         }
@@ -223,7 +232,7 @@ class AiQuotaLedgerIntegrationTest {
             start.await();
             try {
                 return ledger.reserve(request(userId, 100, 60, 2, requestId, Duration.ofMinutes(5)));
-            } catch (ApiException error) {
+            } catch (BizException error) {
                 return error;
             }
         };
@@ -237,7 +246,7 @@ class AiQuotaLedgerIntegrationTest {
         }
     }
 
-    private AiQuotaReservationRequest request(
+    private AiQuotaReservationDTO request(
         long userId,
         long quota,
         long estimate,
@@ -245,7 +254,7 @@ class AiQuotaLedgerIntegrationTest {
         String requestId,
         Duration ttl
     ) {
-        return new AiQuotaReservationRequest(userId, quota, estimate, concurrency, requestId, ttl);
+        return new AiQuotaReservationDTO(userId, quota, estimate, concurrency, requestId, ttl);
     }
 
     private long userId() {

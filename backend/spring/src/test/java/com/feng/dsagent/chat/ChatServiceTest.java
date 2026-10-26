@@ -1,22 +1,29 @@
 package com.feng.dsagent.chat;
 
-import com.feng.dsagent.chat.service.ChatService;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.knowledge.KnowledgeChunk;
-import com.feng.dsagent.knowledge.KnowledgeAudience;
-import com.feng.dsagent.knowledge.KnowledgeProperties;
+import com.feng.dsagent.chat.domain.ChatAttachment;
+import com.feng.dsagent.chat.domain.ChatCommand;
+import com.feng.dsagent.chat.domain.ChatRetry;
+import com.feng.dsagent.chat.domain.ChatSource;
+import com.feng.dsagent.chat.domain.ChatTurn;
+import com.feng.dsagent.chat.service.ChatPersistenceService;
+import com.feng.dsagent.chat.service.ChatService;
+import com.feng.dsagent.chat.support.PendingChat;
+import com.feng.dsagent.chat.vo.ChatVO;
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.knowledge.config.KnowledgeProperties;
+import com.feng.dsagent.knowledge.domain.KnowledgeAudience;
+import com.feng.dsagent.knowledge.entity.KnowledgeChunkEntity;
 import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
 import com.feng.dsagent.model.ModelClient;
-import com.feng.dsagent.model.ModelClientException;
 import com.feng.dsagent.model.ModelErrorCode;
 import com.feng.dsagent.model.ModelMessage;
 import com.feng.dsagent.model.ModelRequest;
 import com.feng.dsagent.model.ModelResponse;
 import com.feng.dsagent.model.ModelStreamHandler;
+import com.feng.dsagent.model.exception.ModelClientException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,7 +37,7 @@ class ChatServiceTest {
     private final CapturingModelClient model = new CapturingModelClient();
     private final FakeChatRepository repository = new FakeChatRepository();
     private final KnowledgeSearchService knowledge = new KnowledgeSearchService(List.of(
-        new KnowledgeChunk(
+        new KnowledgeChunkEntity(
             "stack-1",
             "03-stack-queue",
             "栈的定义和操作",
@@ -39,7 +46,7 @@ class ChatServiceTest {
             "第 52-58 页",
             "PUBLIC"
         ),
-        new KnowledgeChunk(
+        new KnowledgeChunkEntity(
             "stack-team",
             "03-stack-queue",
             "教师内部栈底稿",
@@ -60,7 +67,7 @@ class ChatServiceTest {
     void unmeteredServiceAdapterKeepsEvidenceFilteringIsolatedFromPersistence() {
         model.response = "栈遵循后进先出。";
 
-        ChatResponse response = service.complete(
+        ChatVO response = service.complete(
             new ChatCommand("什么是栈？", "03-stack-queue", null, List.of()),
             null,
             KnowledgeAudience.GUEST
@@ -93,7 +100,7 @@ class ChatServiceTest {
             new ChatTurn("assistant", "上一答")
         ));
 
-        ChatResponse response = service.complete(
+        ChatVO response = service.complete(
             new ChatCommand("解释栈的操作", "03-stack-queue", "session-1", List.of()),
             7L,
             KnowledgeAudience.STUDENT
@@ -116,7 +123,7 @@ class ChatServiceTest {
             new ChatCommand("继续", null, "missing-session", List.of()),
             7L,
             KnowledgeAudience.STUDENT
-        )).isInstanceOfSatisfying(ApiException.class, error -> {
+        )).isInstanceOfSatisfying(BizException.class, error -> {
             assertThat(error.status()).isEqualTo(HttpStatus.NOT_FOUND);
             assertThat(error.code()).isEqualTo("CHAT_SESSION_NOT_FOUND");
         });
@@ -132,7 +139,7 @@ class ChatServiceTest {
             new ChatCommand("解释这个章节", "99-missing", null, List.of()),
             7L,
             KnowledgeAudience.STUDENT
-        )).isInstanceOfSatisfying(ApiException.class, error -> {
+        )).isInstanceOfSatisfying(BizException.class, error -> {
             assertThat(error.status()).isEqualTo(HttpStatus.BAD_REQUEST);
             assertThat(error.code()).isEqualTo("CHAT_CHAPTER_INVALID");
         });
@@ -146,7 +153,7 @@ class ChatServiceTest {
         model.streamFragments = List.of("先入", "后出");
         List<String> fragments = new ArrayList<>();
 
-        ChatResponse response = service.stream(
+        ChatVO response = service.stream(
             new ChatCommand("演示栈", "03-stack-queue", null, List.of()),
             7L,
             KnowledgeAudience.STUDENT,
@@ -177,7 +184,7 @@ class ChatServiceTest {
             new ChatCommand("Explain a stack", "03-stack-queue", null, List.of()),
             7L,
             KnowledgeAudience.STUDENT
-        )).isInstanceOfSatisfying(ApiException.class, error -> {
+        )).isInstanceOfSatisfying(BizException.class, error -> {
             assertThat(error.status()).isEqualTo(HttpStatus.CONFLICT);
             assertThat(error.code()).isEqualTo("CHAT_EVIDENCE_UNAVAILABLE");
         });
@@ -198,7 +205,7 @@ class ChatServiceTest {
         noEvidenceModel.response = "先反转指针，再移动头指针。";
 
         // The first turn pasted the program; "explain it line by line" retrieves nothing to cite of its own.
-        ChatResponse response = noEvidence.complete(
+        ChatVO response = noEvidence.complete(
             new ChatCommand("逐句解释", "03-stack-queue", null, List.of(
                 new ChatTurn("user", "int main(void)\n{\n    return 0;\n}\n"),
                 new ChatTurn("assistant", "这段代码是一个最小的 C 程序。"))),
@@ -223,7 +230,7 @@ class ChatServiceTest {
         );
         noEvidenceModel.response = "这个文件里只有一个栈顶指针。";
 
-        ChatResponse response = noEvidence.complete(
+        ChatVO response = noEvidence.complete(
             new ChatCommand("这个文件定义了什么？", "03-stack-queue", null, List.of(
                 new ChatTurn("user", "看下这个文件", List.of(
                     new ChatAttachment("stack.c", "file", "text/plain", "int top = -1;")))
@@ -254,7 +261,7 @@ class ChatServiceTest {
         )) {
             assertThatThrownBy(() -> noEvidence.complete(
                 new ChatCommand("再讲一遍", "03-stack-queue", null, historyTurns), null, KnowledgeAudience.STUDENT))
-                .isInstanceOfSatisfying(ApiException.class, error -> {
+                .isInstanceOfSatisfying(BizException.class, error -> {
                     assertThat(error.status()).isEqualTo(HttpStatus.CONFLICT);
                     assertThat(error.code()).isEqualTo("CHAT_EVIDENCE_UNAVAILABLE");
                 });
@@ -269,7 +276,7 @@ class ChatServiceTest {
         model.streamFragments = List.of("Push ", "the value.");
         List<String> answers = new ArrayList<>();
         List<String> thoughts = new ArrayList<>();
-        ChatResponse response = service.stream(
+        ChatVO response = service.stream(
             new ChatCommand("解释栈", "03-stack-queue", null, List.of(), true, "max", List.of()),
             7L, KnowledgeAudience.STUDENT, "thought-stream", ignored -> {}, answers::add, thoughts::add);
 
@@ -291,7 +298,7 @@ class ChatServiceTest {
             new ChatTurn("user", "earlier question"), new ChatTurn("assistant", "earlier answer")));
         model.response = "New answer";
 
-        ChatResponse response = service.complete(
+        ChatVO response = service.complete(
             new ChatCommand("请改为解释栈的入栈操作", null, "session-1", List.of(new ChatTurn("user", "later question")),
                 false, "low", List.of(), 11L), 7L, KnowledgeAudience.STUDENT);
 
@@ -318,7 +325,7 @@ class ChatServiceTest {
         model.failure = new ModelClientException(ModelErrorCode.MODEL_REQUEST_TIMEOUT);
         assertThatThrownBy(() -> service.complete(
             new ChatCommand("ignored", null, "session-1", List.of(), false, null, List.of(), 11L),
-            7L, KnowledgeAudience.STUDENT)).isInstanceOf(ApiException.class);
+            7L, KnowledgeAudience.STUDENT)).isInstanceOf(BizException.class);
         assertThat(repository.replaced).isNull();
         assertThat(repository.saved).isEmpty();
     }
@@ -345,37 +352,14 @@ class ChatServiceTest {
         }
     }
 
-    private static final class FakeChatRepository implements ChatRepository {
+    private static final class FakeChatRepository extends ChatPersistenceService {
         private final Map<String, List<ChatTurn>> history = new LinkedHashMap<>();
         private final List<SavedExchange> saved = new ArrayList<>();
         private boolean chapterExists = true;
         private String savedReasoning;
         private ChatRetry retry;
         private ChatRetry replaced;
-
-        @Override
-        public String saveExchange(long userId, ChatCommand command, String answer, List<ChatSource> sources, String reasoning) {
-            savedReasoning = reasoning;
-            return saveExchange(userId, command.sessionId(), command.chapterId(), command.prompt(), answer, sources);
-        }
-
-        @Override
-        public Optional<ChatRetry> prepareRetry(long userId, String sessionId, long messageId, int limit) {
-            return Optional.ofNullable(retry);
-        }
-
-        @Override
-        public String replaceExchange(long userId, ChatRetry retry, String answer, List<ChatSource> sources, String reasoning) {
-            replaced = retry;
-            return retry.command().sessionId();
-        }
-
-        @Override
-        public String replaceExchange(long userId, ChatRetry retry, ChatCommand command, String answer,
-                                      List<ChatSource> sources, String reasoning) {
-            replaced = new ChatRetry(retry.messageId(), retry.lastMessageId(), command, retry.history());
-            return command.sessionId();
-        }
+        private long nextMessageId = 1L;
 
         @Override
         public boolean isPublishedChapter(String chapterId) {
@@ -385,6 +369,65 @@ class ChatServiceTest {
         @Override
         public Optional<List<ChatTurn>> recentHistory(long userId, String sessionId, int limit) {
             return Optional.ofNullable(history.get(userId + ":" + sessionId));
+        }
+
+        @Override
+        public PendingChat savePending(long userId, ChatCommand command, ChatRetry retry) {
+            String sessionId = command.sessionId() == null ? "session-" + (saved.size() + 1) : command.sessionId();
+            ChatCommand withSession = command.sessionId() == null
+                ? new ChatCommand(
+                    command.prompt(),
+                    command.chapterId(),
+                    sessionId,
+                    command.history(),
+                    command.thinkingEnabled(),
+                    command.reasoningEffort(),
+                    command.attachments(),
+                    command.retryMessageId()
+                )
+                : command;
+            return new PendingChat(sessionId, nextMessageId++, withSession, retry);
+        }
+
+        @Override
+        public String completePending(
+            long userId,
+            PendingChat pending,
+            String answer,
+            List<ChatSource> sources,
+            String reasoning
+        ) {
+            savedReasoning = reasoning;
+            if (pending.retry() != null) {
+                replaced = new ChatRetry(
+                    pending.retry().messageId(),
+                    pending.retry().lastMessageId(),
+                    pending.command(),
+                    pending.retry().history()
+                );
+            } else {
+                saved.add(new SavedExchange(userId, pending.sessionId(), pending.command().prompt(), answer));
+            }
+            return pending.sessionId();
+        }
+
+        @Override
+        public String saveExchange(
+            long userId,
+            ChatCommand command,
+            String answer,
+            List<ChatSource> sources,
+            String reasoning
+        ) {
+            savedReasoning = reasoning;
+            return saveExchange(
+                userId,
+                command.sessionId(),
+                command.chapterId(),
+                command.prompt(),
+                answer,
+                sources
+            );
         }
 
         @Override
@@ -399,6 +442,49 @@ class ChatServiceTest {
             String resolved = sessionId == null ? "session-" + (saved.size() + 1) : sessionId;
             saved.add(new SavedExchange(userId, resolved, prompt, answer));
             return resolved;
+        }
+
+        @Override
+        public Optional<ChatRetry> prepareRetry(long userId, String sessionId, long messageId, int limit) {
+            return Optional.ofNullable(retry);
+        }
+
+        @Override
+        public String replaceExchange(
+            long userId,
+            ChatRetry retry,
+            String answer,
+            List<ChatSource> sources,
+            String reasoning
+        ) {
+            replaced = retry;
+            return retry.command().sessionId();
+        }
+
+        @Override
+        public String replaceExchange(
+            long userId,
+            ChatRetry retry,
+            ChatCommand command,
+            String answer,
+            List<ChatSource> sources,
+            String reasoning
+        ) {
+            replaced = new ChatRetry(retry.messageId(), retry.lastMessageId(), command, retry.history());
+            return command.sessionId();
+        }
+
+        @Override
+        public List<ChatAttachment> hydrateAttachments(long userId, List<ChatAttachment> attachments) {
+            return attachments == null ? List.of() : List.copyOf(attachments);
+        }
+
+        @Override
+        public void markFailed(long userId, PendingChat pending, String failureCode) {
+        }
+
+        @Override
+        public void markStopped(long userId, PendingChat pending) {
         }
     }
 

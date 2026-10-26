@@ -10,6 +10,10 @@ import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import com.feng.dsagent.presentation.config.PresentationProperties;
+import com.feng.dsagent.presentation.domain.PresentationSlide;
+import com.feng.dsagent.presentation.support.PresentationCatalog;
+import com.feng.dsagent.presentation.support.SlideImageLinks;
 class StudyroomPresentationIndexIntegrationTest {
 
     private static final JsonMapper MAPPER = JsonMapper.builder().build();

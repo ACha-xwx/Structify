@@ -1,14 +1,14 @@
 package com.feng.dsagent.resource.controller;
 
-import com.feng.dsagent.resource.ResourceContent;
-import com.feng.dsagent.resource.ResourceView;
-import com.feng.dsagent.resource.ChapterView;
+import com.feng.dsagent.resource.domain.ResourceContent;
+import com.feng.dsagent.resource.vo.ResourceVO;
+import com.feng.dsagent.resource.vo.ChapterVO;
 
 import com.feng.dsagent.resource.service.ResourceService;
 
 import com.feng.dsagent.resource.service.ResourceContentService;
 
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import java.util.List;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ContentDisposition;
@@ -33,12 +33,12 @@ public final class ResourceController {
     }
 
     @GetMapping("/chapters")
-    public List<ChapterView> chapters() {
+    public List<ChapterVO> chapters() {
         return resources.chapters();
     }
 
     @GetMapping("/chapters/{chapterId}/resources")
-    public List<ResourceView> resources(
+    public List<ResourceVO> resources(
         @AuthenticationPrincipal AuthenticatedUser user,
         @PathVariable String chapterId
     ) {
@@ -46,7 +46,7 @@ public final class ResourceController {
     }
 
     @GetMapping("/resources/{id}")
-    public ResourceView resource(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable String id) {
+    public ResourceVO resource(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable String id) {
         return resources.resource(id, user);
     }
 

@@ -2,7 +2,7 @@ package com.feng.dsagent.learning.controller;
 
 import com.feng.dsagent.learning.service.LearningMapService;
 
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;

@@ -5,7 +5,7 @@ import com.feng.dsagent.animation.service.DsvpEvidenceService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +15,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import tools.jackson.databind.ObjectMapper;
 
+import com.feng.dsagent.animation.vo.DsvpSimulationVO;
+import com.feng.dsagent.animation.domain.DsvpEvidenceSource;
 @SpringBootTest
 class DsvpEvidenceServiceIntegrationTest {
 
@@ -155,7 +157,7 @@ class DsvpEvidenceServiceIntegrationTest {
             """);
 
         assertThatThrownBy(() -> evidence.simulate(USER_ID, request, DsvpEvidenceSource.CLASSROOM))
-            .isInstanceOfSatisfying(ApiException.class, error -> {
+            .isInstanceOfSatisfying(BizException.class, error -> {
                 assertThat(error.status().value()).isEqualTo(409);
                 assertThat(error.code()).isEqualTo("DSVP_CHAPTER_CONFLICT");
             });
@@ -173,8 +175,8 @@ class DsvpEvidenceServiceIntegrationTest {
             {"version":"1.0","structure":"stack","operation":"push","params":{"value":5},"initial_state":{"data":[]},"context":{"chapter_id":"03-stack-queue","source_type":"API","source_ref":"retry/evidence"}}
             """);
 
-        DsvpSimulationResponse first = evidence.simulate(USER_ID, request, DsvpEvidenceSource.API);
-        DsvpSimulationResponse retry = evidence.simulate(USER_ID, request, DsvpEvidenceSource.API);
+        DsvpSimulationVO first = evidence.simulate(USER_ID, request, DsvpEvidenceSource.API);
+        DsvpSimulationVO retry = evidence.simulate(USER_ID, request, DsvpEvidenceSource.API);
 
         assertThat(retry.recordId()).isEqualTo(first.recordId());
         assertThat(jdbc.queryForObject(
@@ -200,8 +202,8 @@ class DsvpEvidenceServiceIntegrationTest {
             {"version":"1.0","structure":"queue","operation":"enqueue","params":{"value":8},"initial_state":{"data":[]},"context":{"chapter_id":"03-stack-queue","source_type":"API","source_ref":"multi-user/evidence"}}
             """);
 
-        DsvpSimulationResponse firstUser = evidence.simulate(USER_ID, request, DsvpEvidenceSource.API);
-        DsvpSimulationResponse secondUser = evidence.simulate(SECOND_USER_ID, request, DsvpEvidenceSource.API);
+        DsvpSimulationVO firstUser = evidence.simulate(USER_ID, request, DsvpEvidenceSource.API);
+        DsvpSimulationVO secondUser = evidence.simulate(SECOND_USER_ID, request, DsvpEvidenceSource.API);
 
         assertThat(firstUser.trace().path("trace_id").asText())
             .isNotEqualTo(secondUser.trace().path("trace_id").asText());
@@ -219,7 +221,7 @@ class DsvpEvidenceServiceIntegrationTest {
             """);
 
         assertThatThrownBy(() -> evidence.simulate(SECOND_USER_ID, request, DsvpEvidenceSource.CLASSROOM))
-            .isInstanceOfSatisfying(ApiException.class, error -> {
+            .isInstanceOfSatisfying(BizException.class, error -> {
                 assertThat(error.status().value()).isEqualTo(403);
                 assertThat(error.code()).isEqualTo("DSVP_SOURCE_FORBIDDEN");
             });

@@ -3,7 +3,7 @@ package com.feng.dsagent.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -11,6 +11,7 @@ import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
+import com.feng.dsagent.auth.support.AuthRequestRateLimiter;
 class AuthRequestRateLimiterTest {
 
     private final Clock clock = Clock.fixed(Instant.parse("2026-07-22T10:00:00Z"), ZoneOffset.UTC);
@@ -48,7 +49,7 @@ class AuthRequestRateLimiterTest {
     }
 
     private static void assertRateLimited(Runnable action, String code) {
-        assertThatThrownBy(action::run).isInstanceOfSatisfying(ApiException.class, error -> {
+        assertThatThrownBy(action::run).isInstanceOfSatisfying(BizException.class, error -> {
             assertThat(error.status()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
             assertThat(error.code()).isEqualTo(code);
         });

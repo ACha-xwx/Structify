@@ -3,7 +3,7 @@ package com.feng.dsagent.presentation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,6 +13,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import tools.jackson.databind.json.JsonMapper;
 
+import com.feng.dsagent.presentation.config.PresentationProperties;
+import com.feng.dsagent.presentation.domain.PresentationSlide;
+import com.feng.dsagent.presentation.support.PresentationCatalog;
+import com.feng.dsagent.presentation.support.SlideImageLinks;
 class PresentationCatalogTest {
 
     @TempDir
@@ -137,14 +141,14 @@ class PresentationCatalogTest {
     void listsDecksInSlideOrder() {
         assertThat(catalog.decks()).extracting(PresentationCatalog.Deck::deckId).containsExactly("deck-a", "deck-c", "deck-b");
         assertThat(catalog.deckSlides("deck-a")).extracting(PresentationSlide::slideNumber).containsExactly(1, 2);
-        assertThatThrownBy(() -> catalog.deckSlides("missing")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> catalog.deckSlides("missing")).isInstanceOf(BizException.class);
     }
 
     @Test
     void refusesUnknownSlidesAndPathsOutsideTheMount() throws IOException {
         assertThat(catalog.imageFile("deck-a-s001")).isEqualTo(root.resolve("rendered/deck-a/001.png").toRealPath());
-        assertThatThrownBy(() -> catalog.imageFile("../../etc/passwd")).isInstanceOf(ApiException.class);
-        assertThatThrownBy(() -> catalog.imageFile("deck-a-unknown")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> catalog.imageFile("../../etc/passwd")).isInstanceOf(BizException.class);
+        assertThatThrownBy(() -> catalog.imageFile("deck-a-unknown")).isInstanceOf(BizException.class);
 
         // A record that points outside the mount must not resolve, even though its id is well formed.
         Path outside = root.getParent().resolve("secret.png");
@@ -154,7 +158,7 @@ class PresentationCatalogTest {
              "builtAt":"now"}
             """);
         catalog = catalogFor(root, true);
-        assertThatThrownBy(() -> catalog.imageFile("deck-a-s009")).isInstanceOf(ApiException.class);
+        assertThatThrownBy(() -> catalog.imageFile("deck-a-s009")).isInstanceOf(BizException.class);
     }
 
     @Test

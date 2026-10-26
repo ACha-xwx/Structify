@@ -5,6 +5,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import tools.jackson.databind.json.JsonMapper;
 import static org.junit.jupiter.api.Assertions.*;
+import com.feng.dsagent.common.exception.ApiErrorFallbackResolver;
+import com.feng.dsagent.common.exception.BizException;
 class ClosedStreamErrorTest {
     @Test void clientDisconnectDoesNotAttemptAnotherBodyOnAClosedStream() throws Exception {
         var response=new MockHttpServletResponse();response.setContentType("text/event-stream");response.flushBuffer();
@@ -15,7 +17,7 @@ class ClosedStreamErrorTest {
     @Test void ordinaryStreamAuthorizationFailureStillHasItsRealStatusAndEnvelope() throws Exception {
         var request=new MockHttpServletRequest();request.addHeader("Accept","text/event-stream");var response=new MockHttpServletResponse();
         var resolver=new ApiErrorFallbackResolver(JsonMapper.builder().build());
-        assertNotNull(resolver.resolveException(request,response,null,new ApiException(HttpStatus.NOT_FOUND,"STREAM_NOT_FOUND","课堂进度不存在")));
+        assertNotNull(resolver.resolveException(request,response,null,new BizException(HttpStatus.NOT_FOUND,"STREAM_NOT_FOUND","课堂进度不存在")));
         assertEquals(404,response.getStatus());assertTrue(response.getContentAsString().contains("STREAM_NOT_FOUND"));
     }
 }

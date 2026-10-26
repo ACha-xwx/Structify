@@ -26,4 +26,12 @@ public interface ClassroomQuestionMapper {
     public Map<String, Object> selectJobForUpdate(@Param("jobId") Object jobId);
     public int cancelQuestion(@Param("questionId") String questionId);
     public int cancelJob(@Param("jobId") Object jobId);
+    public Map<String, Object> selectByUser(@Param("questionId") String questionId, @Param("userId") long userId);
+    public int markRunning(@Param("questionId") String questionId);
+    public int updateAnswerText(@Param("answerText") String answerText, @Param("questionId") String questionId);
+    public int completeQuestion(@Param("answerText") String answerText, @Param("sourcesJson") String sourcesJson,
+        @Param("actionsJson") String actionsJson, @Param("questionId") String questionId);
+    public Map<String, Object> selectFragmentRevision(@Param("fragmentId") Object fragmentId, @Param("runId") Object runId);
+    public List<Map<String, Object>> selectQuizContext(@Param("userId") long userId, @Param("runId") Object runId,
+        @Param("fragmentId") Object fragmentId, @Param("contentRevision") Object contentRevision);
 }

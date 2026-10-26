@@ -1,16 +1,18 @@
 package com.feng.dsagent.learning.service;
 
-import com.feng.dsagent.learning.LearningEventRepository;
-import com.feng.dsagent.learning.LearningEventCommand;
-import com.feng.dsagent.learning.LearningEventView;
-
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.learning.converter.LearningEventConverter;
+import com.feng.dsagent.learning.dto.LearningEventCommandDTO;
+import com.feng.dsagent.learning.error.LearningErrorCode;
+import com.feng.dsagent.learning.mapper.LearningEventMapper;
+import com.feng.dsagent.learning.mapper.LearningEventMapper.LearningEventInsert;
+import com.feng.dsagent.learning.vo.LearningEventVO;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.Set;
+import org.mapstruct.factory.Mappers;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
@@ -37,22 +39,33 @@ public class LearningEventService {
     );
     private static final int MAX_PAYLOAD_LENGTH = 8_000;
 
-    private final LearningEventRepository repository;
+    private final LearningEventMapper mapper;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private final LearningEventConverter converter;
 
-    public LearningEventService(LearningEventRepository repository, ObjectMapper objectMapper) {
-        this(repository, objectMapper, Clock.systemUTC());
+    public LearningEventService(LearningEventMapper mapper, ObjectMapper objectMapper) {
+        this(mapper, objectMapper, Clock.systemUTC(), Mappers.getMapper(LearningEventConverter.class));
+    }
+
+    public LearningEventService(LearningEventMapper mapper, ObjectMapper objectMapper, Clock clock) {
+        this(mapper, objectMapper, clock, Mappers.getMapper(LearningEventConverter.class));
     }
 
     @Autowired
-    public LearningEventService(LearningEventRepository repository, ObjectMapper objectMapper, Clock clock) {
-        this.repository = repository;
+    public LearningEventService(
+        LearningEventMapper mapper,
+        ObjectMapper objectMapper,
+        Clock clock,
+        LearningEventConverter converter
+    ) {
+        this.mapper = mapper;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.converter = converter;
     }
 
-    public LearningEventView record(long userId, LearningEventCommand command) {
+    public LearningEventVO record(long userId, LearningEventCommandDTO command) {
         if (command == null) {
             throw invalidEvent();
         }
@@ -61,22 +74,29 @@ public class LearningEventService {
         String referenceId = normalizeReferenceId(command.referenceId());
         String payloadJson = serialize(command.payload());
         Instant createdAt = clock.instant();
-        return repository.save(userId, eventType, chapterId, referenceId, payloadJson, createdAt);
+        LearningEventInsert row = new LearningEventInsert();
+        row.setUserId(userId);
+        row.setChapterId(chapterId);
+        row.setEventType(eventType);
+        row.setReferenceId(referenceId);
+        row.setPayloadJson(payloadJson);
+        row.setCreatedAt(createdAt);
+        mapper.insertEvent(row);
+        if (row.getId() == null) {
+            throw new IllegalStateException("Learning event did not return a generated id");
+        }
+        return converter.toView(row);
     }
 
-    public LearningEventView recordUserSubmitted(long userId, LearningEventCommand command) {
+    public LearningEventVO recordUserSubmitted(long userId, LearningEventCommandDTO command) {
         if (command == null) {
             throw invalidEvent();
         }
         String eventType = normalizeEventType(command.eventType());
         if (SERVER_MANAGED_EVENT_TYPES.contains(eventType)) {
-            throw new ApiException(
-                HttpStatus.BAD_REQUEST,
-                "LEARNING_EVENT_SERVER_MANAGED",
-                "该学习记录只能由对应学习流程生成"
-            );
+            throw LearningErrorCode.EVENT_SERVER_MANAGED.toException();
         }
-        return record(userId, new LearningEventCommand(
+        return record(userId, new LearningEventCommandDTO(
             eventType,
             command.chapterId(),
             command.referenceId(),
@@ -98,8 +118,8 @@ public class LearningEventService {
         }
         String normalized = chapterId.trim();
         if (normalized.length() > 64 || !normalized.matches("^[0-9]{2}-[a-z0-9-]+$")
-                || !repository.isPublishedChapter(normalized)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "LEARNING_CHAPTER_INVALID", "章节不存在或尚未发布");
+                || mapper.countPublishedChapter(normalized) <= 0) {
+            throw LearningErrorCode.CHAPTER_INVALID.toException();
         }
         return normalized;
     }
@@ -110,7 +130,7 @@ public class LearningEventService {
         }
         String normalized = referenceId.trim();
         if (normalized.length() > 96) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "LEARNING_REFERENCE_INVALID", "学习记录关联编号无效");
+            throw LearningErrorCode.REFERENCE_INVALID.toException();
         }
         return normalized;
     }
@@ -122,17 +142,17 @@ public class LearningEventService {
         try {
             String json = objectMapper.writeValueAsString(payload);
             if (json.length() > MAX_PAYLOAD_LENGTH) {
-                throw new ApiException(HttpStatus.PAYLOAD_TOO_LARGE, "LEARNING_PAYLOAD_TOO_LONG", "学习记录内容过长");
+                throw LearningErrorCode.PAYLOAD_TOO_LONG.toException();
             }
             return json;
-        } catch (ApiException error) {
+        } catch (BizException error) {
             throw error;
         } catch (Exception error) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "LEARNING_PAYLOAD_INVALID", "学习记录内容无效");
+            throw LearningErrorCode.PAYLOAD_INVALID.toException();
         }
     }
 
-    private ApiException invalidEvent() {
-        return new ApiException(HttpStatus.BAD_REQUEST, "LEARNING_EVENT_TYPE_INVALID", "学习记录类型无效");
+    private BizException invalidEvent() {
+        return LearningErrorCode.EVENT_TYPE_INVALID.toException();
     }
 }

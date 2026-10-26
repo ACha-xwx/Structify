@@ -2,7 +2,7 @@ package com.feng.dsagent.studyroom.events;
 
 import com.feng.dsagent.security.service.JwtTokenService;
 import com.feng.dsagent.studyroom.*;
-import com.feng.dsagent.studyroom.draft.OutlineJson;
+import com.feng.dsagent.studyroom.draft.support.OutlineJson;
 import com.feng.dsagent.studyroom.checks.service.ClassroomCheckService;
 import java.nio.file.*;
 import java.util.*;
@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.junit.jupiter.api.Assertions.*;
+import com.feng.dsagent.studyroom.domain.StudyroomScene;
 
 @SpringBootTest
 @AutoConfigureMockMvc

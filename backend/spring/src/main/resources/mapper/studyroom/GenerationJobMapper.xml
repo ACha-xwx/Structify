@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.studyroom.generation.mapper.GenerationJobMapper">
+  <select id="lockUser" resultType="long">SELECT id FROM users WHERE id=#{userId} FOR UPDATE</select>
+  <select id="selectJobByKey" resultType="map">
+    SELECT id FROM studyroom_generation_jobs WHERE job_key=#{jobKey}
+  </select>
+  <insert id="insertJob">
+    INSERT INTO studyroom_generation_jobs(id,user_id,draft_id,run_id,unit_id,job_type,job_key,status,payload_json)
+    VALUES(#{id},#{userId},#{draftId},#{runId},#{unitId},#{jobType},#{jobKey},'QUEUED',#{payloadJson})
+  </insert>
+  <select id="selectClaimCandidates" resultType="map">
+    SELECT id,user_id FROM studyroom_generation_jobs
+    WHERE status='QUEUED' AND next_attempt_at&lt;=CURRENT_TIMESTAMP
+      AND NOT EXISTS(
+        SELECT 1 FROM studyroom_generation_jobs running
+        WHERE running.user_id=studyroom_generation_jobs.user_id AND running.status='RUNNING')
+    ORDER BY priority DESC,created_at,id LIMIT 20
+  </select>
+  <select id="countRunningForUser" resultType="int">
+    SELECT COUNT(*) FROM studyroom_generation_jobs WHERE user_id=#{userId} AND status='RUNNING'
+  </select>
+  <update id="claimQueued">
+    UPDATE studyroom_generation_jobs
+    SET status='RUNNING',lease_token=#{leaseToken},lease_until=#{leaseUntil},heartbeat_at=#{heartbeatAt},updated_at=#{updatedAt}
+    WHERE id=#{jobId} AND status='QUEUED' AND next_attempt_at&lt;=CURRENT_TIMESTAMP
+  </update>
+  <select id="selectJob" resultType="map">SELECT * FROM studyroom_generation_jobs WHERE id=#{jobId}</select>
+  <select id="selectJobForUpdate" resultType="map">
+    SELECT * FROM studyroom_generation_jobs WHERE id=#{jobId} FOR UPDATE
+  </select>
+  <select id="countActiveLease" resultType="int">
+    SELECT COUNT(*) FROM studyroom_generation_jobs
+    WHERE id=#{jobId} AND status='RUNNING' AND lease_token=#{leaseToken} AND lease_until&gt;CURRENT_TIMESTAMP
+  </select>
+  <update id="heartbeat">
+    UPDATE studyroom_generation_jobs SET lease_until=#{leaseUntil},heartbeat_at=CURRENT_TIMESTAMP
+    WHERE id=#{jobId} AND lease_token=#{leaseToken} AND status='RUNNING'
+  </update>
+  <update id="finish">
+    UPDATE studyroom_generation_jobs
+    SET status='SUCCEEDED',updated_at=CURRENT_TIMESTAMP,lease_until=NULL
+    WHERE id=#{jobId} AND lease_token=#{leaseToken} AND status='RUNNING'
+  </update>
+  <update id="failJob">
+    UPDATE studyroom_generation_jobs
+    SET status='FAILED',failure_code=#{failureCode},failure_message=#{failureMessage},updated_at=CURRENT_TIMESTAMP
+    WHERE id=#{jobId} AND lease_token=#{leaseToken}
+  </update>
+  <update id="failFragment">
+    UPDATE studyroom_fragments
+    SET status='FAILED',error_code=#{errorCode},issues_json=#{issuesJson},updated_at=CURRENT_TIMESTAMP
+    WHERE id=#{fragmentId}
+  </update>
+  <update id="touchRun">UPDATE studyroom_runs SET state_version=state_version+1 WHERE id=#{runId}</update>
+  <update id="failUnit">
+    UPDATE studyroom_units SET status='FAILED',error_code=#{errorCode},error_message=#{errorMessage}
+    WHERE id=#{unitId} AND status&lt;&gt;'READY'
+  </update>
+  <select id="selectExpiredRunning" resultType="map">
+    SELECT * FROM studyroom_generation_jobs WHERE status='RUNNING' AND lease_until&lt;CURRENT_TIMESTAMP
+  </select>
+  <select id="countSentCalls" resultType="int">
+    SELECT COUNT(*) FROM studyroom_generation_calls WHERE job_id=#{jobId} AND status='SENT'
+  </select>
+  <update id="requeueJob">
+    UPDATE studyroom_generation_jobs SET status='QUEUED',lease_token=NULL,lease_until=NULL WHERE id=#{jobId}
+  </update>
+  <update id="markCallsUncertain">
+    UPDATE studyroom_generation_calls SET status='UNCERTAIN',failure_code='MODEL_CALL_UNCERTAIN'
+    WHERE job_id=#{jobId} AND status='SENT'
+  </update>
+  <update id="failJobUncertain">
+    UPDATE studyroom_generation_jobs
+    SET status='FAILED',failure_code='MODEL_CALL_UNCERTAIN',
+        failure_message='模型调用结果未保存，前次可能已消耗额度。可主动重试。'
+    WHERE id=#{jobId}
+  </update>
+  <update id="failFragmentUncertain">
+    UPDATE studyroom_fragments SET status='FAILED',error_code='MODEL_CALL_UNCERTAIN',issues_json=#{issuesJson}
+    WHERE id=#{fragmentId}
+  </update>
+  <update id="failUnitUncertain">
+    UPDATE studyroom_units
+    SET status='FAILED',error_code='MODEL_CALL_UNCERTAIN',
+        error_message='调用结果未保存，前次可能已消耗额度。'
+    WHERE id=#{unitId}
+  </update>
+  <select id="selectDraftPendingJob" resultType="map">
+    SELECT * FROM study_outline_drafts WHERE id=#{draftId} AND pending_job_id=#{jobId}
+  </select>
+  <select id="selectRevision" resultType="map">
+    SELECT * FROM study_outline_revisions WHERE draft_id=#{draftId} AND revision=#{revision}
+  </select>
+  <update id="restoreDraft">
+    UPDATE study_outline_drafts
+    SET depth=#{depth},status=#{status},pending_job_id=NULL,updated_at=CURRENT_TIMESTAMP
+    WHERE id=#{draftId} AND pending_job_id=#{jobId}
+  </update>
+  <select id="selectFragmentForGeneration" resultType="map">
+    SELECT f.*,u.unit_spec_json,d.question,d.chapter_id
+    FROM studyroom_fragments f
+    JOIN studyroom_units u ON u.id=f.unit_id
+    JOIN studyroom_runs r ON r.id=f.run_id
+    JOIN study_outline_drafts d ON d.id=r.draft_id
+    WHERE f.id=#{fragmentId}
+  </select>
+  <update id="markFragmentGenerating">
+    UPDATE studyroom_fragments SET status='GENERATING',updated_at=CURRENT_TIMESTAMP WHERE id=#{fragmentId}
+  </update>
+  <update id="updateJobPayload">
+    UPDATE studyroom_generation_jobs SET payload_json=#{payloadJson} WHERE id=#{jobId}
+  </update>
+  <select id="selectOwnedDraft" resultType="map">
+    SELECT * FROM study_outline_drafts WHERE id=#{draftId} AND user_id=#{userId} AND deleted_at IS NULL
+    <if test="lock"> FOR UPDATE</if>
+  </select>
+  <select id="selectJobByUser" resultType="map">
+    SELECT * FROM studyroom_generation_jobs WHERE id=#{jobId} AND user_id=#{userId}
+  </select>
+</mapper>

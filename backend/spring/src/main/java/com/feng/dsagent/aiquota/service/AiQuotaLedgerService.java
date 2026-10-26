@@ -1,18 +1,16 @@
 package com.feng.dsagent.aiquota.service;
 
-import com.feng.dsagent.aiquota.AiQuotaConcurrency;
-import com.feng.dsagent.aiquota.AiQuotaBucket;
-
-import com.feng.dsagent.aiquota.JdbcAiQuotaLedgerRepository;
-import com.feng.dsagent.aiquota.AiQuotaReservationAttempt;
-import com.feng.dsagent.aiquota.AiQuotaReservationRequest;
-import com.feng.dsagent.aiquota.DevTestAccountQuotaPolicy;
-import com.feng.dsagent.aiquota.AiQuotaReservationStatus;
-import com.feng.dsagent.aiquota.AiQuotaReservation;
-import com.feng.dsagent.aiquota.AiQuotaUsageSource;
-import com.feng.dsagent.aiquota.AiQuotaAccount;
-
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.aiquota.domain.AiQuotaConcurrency;
+import com.feng.dsagent.aiquota.domain.AiQuotaReservationStatus;
+import com.feng.dsagent.aiquota.domain.AiQuotaUsageSource;
+import com.feng.dsagent.aiquota.dto.AiQuotaReservationDTO;
+import com.feng.dsagent.aiquota.entity.AiQuotaAccountEntity;
+import com.feng.dsagent.aiquota.entity.AiQuotaBucketEntity;
+import com.feng.dsagent.aiquota.entity.AiQuotaReservationEntity;
+import com.feng.dsagent.aiquota.entity.AiQuotaReservationAttemptEntity;
+import com.feng.dsagent.aiquota.mapper.AiQuotaLedgerMapper;
+import com.feng.dsagent.aiquota.support.DevTestAccountQuotaPolicy;
+import com.feng.dsagent.aiquota.error.AiQuotaErrorCode;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -21,7 +19,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,7 +32,7 @@ public class AiQuotaLedgerService {
     private static final Duration MAXIMUM_RESERVATION_TTL = Duration.ofHours(1);
     private static final int EXPIRY_RECOVERY_BATCH_SIZE = 500;
 
-    private final JdbcAiQuotaLedgerRepository repository;
+    private final AiQuotaLedgerMapper mapper;
     private final Clock clock;
 
     private DevTestAccountQuotaPolicy testAccountPolicy;
@@ -48,42 +46,42 @@ public class AiQuotaLedgerService {
         return testAccountPolicy != null && testAccountPolicy.isUnlimited(userId);
     }
 
-    public AiQuotaLedgerService(JdbcAiQuotaLedgerRepository repository, Clock clock) {
-        this.repository = repository;
+    public AiQuotaLedgerService(AiQuotaLedgerMapper mapper, Clock clock) {
+        this.mapper = mapper;
         this.clock = clock;
     }
 
     @Transactional
-    public AiQuotaReservation reserve(AiQuotaReservationRequest request) {
+    public AiQuotaReservationEntity reserve(AiQuotaReservationDTO request) {
         return reserveAttempt(request).reservation();
     }
 
     @Transactional
-    public AiQuotaReservationAttempt reserveAttempt(AiQuotaReservationRequest request) {
+    public AiQuotaReservationAttemptEntity reserveAttempt(AiQuotaReservationDTO request) {
         validate(request);
         Instant now = clock.instant();
         LocalDate quotaDate = quotaDate(now);
 
-        repository.ensureConcurrencyRow(request.userId(), now);
-        AiQuotaConcurrency concurrency = repository.lockConcurrency(request.userId());
+        ensureConcurrencyRow(request.userId(), now);
+        AiQuotaConcurrency concurrency = mapper.lockConcurrency(request.userId());
         int activeReservations = recoverExpiredForUser(request.userId(), now, concurrency.activeReservations());
 
-        repository.ensureBucket(request.userId(), quotaDate, request.dailyTokenQuota(), now);
-        AiQuotaBucket bucket = repository.lockBucket(request.userId(), quotaDate, request.dailyTokenQuota(), now);
-        Optional<AiQuotaReservation> existing = repository.findByRequestForUpdate(
+        ensureBucket(request.userId(), quotaDate, request.dailyTokenQuota(), now);
+        AiQuotaBucketEntity bucket = lockBucket(request.userId(), quotaDate, request.dailyTokenQuota(), now);
+        Optional<AiQuotaReservationEntity> existing = Optional.ofNullable(mapper.findByRequestForUpdate(
             request.userId(), quotaDate, request.requestId().trim()
-        );
+        ));
         if (existing.isPresent()) {
-            return new AiQuotaReservationAttempt(existing.get(), false);
+            return new AiQuotaReservationAttemptEntity(existing.get(), false);
         }
         if (activeReservations >= request.maximumConcurrentRequests()) {
-            throw tooManyRequests("AI_QUOTA_CONCURRENCY_LIMITED", "AI 请求并发数已达到上限");
+            throw AiQuotaErrorCode.CONCURRENCY_LIMITED.toException();
         }
         if (!hasCapacity(bucket, request.estimatedTokens())) {
-            throw tooManyRequests("AI_QUOTA_EXHAUSTED", "AI 每日 token 配额不足");
+            throw AiQuotaErrorCode.EXHAUSTED.toException();
         }
 
-        AiQuotaReservation reservation = new AiQuotaReservation(
+        AiQuotaReservationEntity reservation = new AiQuotaReservationEntity(
             UUID.randomUUID().toString(),
             request.userId(),
             quotaDate,
@@ -97,55 +95,57 @@ public class AiQuotaLedgerService {
             null,
             null
         );
-        repository.createReservation(reservation);
-        repository.reserveTokens(request.userId(), quotaDate, request.estimatedTokens(), now);
-        repository.incrementConcurrency(request.userId(), now);
-        return new AiQuotaReservationAttempt(reservation, true);
+        mapper.createReservation(reservation);
+        mapper.reserveTokens(request.userId(), quotaDate, request.estimatedTokens(), now);
+        mapper.incrementConcurrency(request.userId(), now);
+        return new AiQuotaReservationAttemptEntity(reservation, true);
     }
 
     @Transactional
-    public AiQuotaReservation settle(String reservationId, long actualTokens) {
+    public AiQuotaReservationEntity settle(String reservationId, long actualTokens) {
         return settle(reservationId, actualTokens, AiQuotaUsageSource.PROVIDER_REPORTED);
     }
 
     @Transactional
-    public AiQuotaReservation settle(String reservationId, long actualTokens, AiQuotaUsageSource usageSource) {
+    public AiQuotaReservationEntity settle(String reservationId, long actualTokens, AiQuotaUsageSource usageSource) {
         requireReservationId(reservationId);
         requireActualTokens(actualTokens);
         requireUsageSource(usageSource);
         Instant now = clock.instant();
-        AiQuotaReservation candidate = repository.findReservation(reservationId)
-            .orElseThrow(() -> notFound(reservationId));
-        repository.ensureConcurrencyRow(candidate.userId(), now);
-        AiQuotaConcurrency concurrency = repository.lockConcurrency(candidate.userId());
-        AiQuotaReservation reservation = repository.lockReservation(reservationId).orElseThrow(() -> notFound(reservationId));
+        AiQuotaReservationEntity candidate = Optional.ofNullable(mapper.findReservation(reservationId))
+            .orElseThrow(AiQuotaErrorCode.RESERVATION_NOT_FOUND::toException);
+        ensureConcurrencyRow(candidate.userId(), now);
+        AiQuotaConcurrency concurrency = mapper.lockConcurrency(candidate.userId());
+        AiQuotaReservationEntity reservation = Optional.ofNullable(mapper.lockReservation(reservationId))
+            .orElseThrow(AiQuotaErrorCode.RESERVATION_NOT_FOUND::toException);
 
         if (reservation.status() == AiQuotaReservationStatus.SETTLED) {
             return reservation;
         }
-        AiQuotaBucket bucket = repository.lockExistingBucket(reservation.userId(), reservation.quotaDate());
+        AiQuotaBucketEntity bucket = requireBucket(mapper.lockBucket(reservation.userId(), reservation.quotaDate()));
         if (reservation.status() == AiQuotaReservationStatus.EXPIRED) {
-            if (!repository.markExpiredSettlement(reservationId, actualTokens, usageSource, now)) {
-                throw conflict("AI_QUOTA_RESERVATION_NOT_ACTIVE", "AI 配额预留状态已变化");
+            if (mapper.markExpiredSettlement(reservationId, actualTokens, usageSource.name(), now) != 1) {
+                throw AiQuotaErrorCode.RESERVATION_NOT_ACTIVE.toException();
             }
-            repository.charge(reservation.userId(), reservation.quotaDate(), actualTokens, now);
+            mapper.charge(reservation.userId(), reservation.quotaDate(), actualTokens, now);
         } else if (reservation.status() == AiQuotaReservationStatus.RESERVED) {
             requireReleasable(bucket, concurrency, reservation);
-            if (!repository.markSettled(reservationId, actualTokens, usageSource, now)) {
-                throw conflict("AI_QUOTA_RESERVATION_NOT_ACTIVE", "AI 配额预留状态已变化");
+            if (mapper.markSettled(reservationId, actualTokens, usageSource.name(), now) != 1) {
+                throw AiQuotaErrorCode.RESERVATION_NOT_ACTIVE.toException();
             }
-            repository.releaseAndCharge(
+            mapper.releaseAndCharge(
                 reservation.userId(), reservation.quotaDate(), reservation.estimatedTokens(), actualTokens, now
             );
-            repository.decrementConcurrency(reservation.userId(), now);
+            mapper.decrementConcurrency(reservation.userId(), now);
         } else {
-            throw conflict("AI_QUOTA_RESERVATION_NOT_ACTIVE", "AI 配额预留已结束");
+            throw AiQuotaErrorCode.RESERVATION_NOT_ACTIVE.toException("AI 配额预留已结束");
         }
-        return repository.findReservation(reservationId).orElseThrow(() -> notFound(reservationId));
+        return Optional.ofNullable(mapper.findReservation(reservationId))
+            .orElseThrow(AiQuotaErrorCode.RESERVATION_NOT_FOUND::toException);
     }
 
     @Transactional
-    public AiQuotaReservation fail(String reservationId, long actualTokens, String failureCode) {
+    public AiQuotaReservationEntity fail(String reservationId, long actualTokens, String failureCode) {
         AiQuotaUsageSource source = actualTokens > 0
             ? AiQuotaUsageSource.PROVIDER_REPORTED
             : AiQuotaUsageSource.NO_USAGE_REPORTED;
@@ -153,7 +153,7 @@ public class AiQuotaLedgerService {
     }
 
     @Transactional
-    public AiQuotaReservation fail(
+    public AiQuotaReservationEntity fail(
         String reservationId,
         long actualTokens,
         String failureCode,
@@ -164,41 +164,43 @@ public class AiQuotaLedgerService {
         String normalizedFailureCode = normalizeFailureCode(failureCode);
         requireUsageSource(usageSource);
         Instant now = clock.instant();
-        AiQuotaReservation candidate = repository.findReservation(reservationId)
-            .orElseThrow(() -> notFound(reservationId));
-        repository.ensureConcurrencyRow(candidate.userId(), now);
-        AiQuotaConcurrency concurrency = repository.lockConcurrency(candidate.userId());
-        AiQuotaReservation reservation = repository.lockReservation(reservationId).orElseThrow(() -> notFound(reservationId));
+        AiQuotaReservationEntity candidate = Optional.ofNullable(mapper.findReservation(reservationId))
+            .orElseThrow(AiQuotaErrorCode.RESERVATION_NOT_FOUND::toException);
+        ensureConcurrencyRow(candidate.userId(), now);
+        AiQuotaConcurrency concurrency = mapper.lockConcurrency(candidate.userId());
+        AiQuotaReservationEntity reservation = Optional.ofNullable(mapper.lockReservation(reservationId))
+            .orElseThrow(AiQuotaErrorCode.RESERVATION_NOT_FOUND::toException);
 
         if (reservation.status() == AiQuotaReservationStatus.FAILED) {
             return reservation;
         }
-        AiQuotaBucket bucket = repository.lockExistingBucket(reservation.userId(), reservation.quotaDate());
+        AiQuotaBucketEntity bucket = requireBucket(mapper.lockBucket(reservation.userId(), reservation.quotaDate()));
         if (reservation.status() == AiQuotaReservationStatus.EXPIRED) {
-            if (!repository.markExpiredFailure(reservationId, actualTokens, normalizedFailureCode, usageSource, now)) {
-                throw conflict("AI_QUOTA_RESERVATION_NOT_ACTIVE", "AI 配额预留状态已变化");
+            if (mapper.markExpiredFailure(reservationId, actualTokens, normalizedFailureCode, usageSource.name(), now) != 1) {
+                throw AiQuotaErrorCode.RESERVATION_NOT_ACTIVE.toException();
             }
-            repository.charge(reservation.userId(), reservation.quotaDate(), actualTokens, now);
+            mapper.charge(reservation.userId(), reservation.quotaDate(), actualTokens, now);
         } else if (reservation.status() == AiQuotaReservationStatus.RESERVED) {
             requireReleasable(bucket, concurrency, reservation);
-            if (!repository.markFailed(reservationId, actualTokens, normalizedFailureCode, usageSource, now)) {
-                throw conflict("AI_QUOTA_RESERVATION_NOT_ACTIVE", "AI 配额预留状态已变化");
+            if (mapper.markFailed(reservationId, actualTokens, normalizedFailureCode, usageSource.name(), now) != 1) {
+                throw AiQuotaErrorCode.RESERVATION_NOT_ACTIVE.toException();
             }
-            repository.releaseAndCharge(
+            mapper.releaseAndCharge(
                 reservation.userId(), reservation.quotaDate(), reservation.estimatedTokens(), actualTokens, now
             );
-            repository.decrementConcurrency(reservation.userId(), now);
+            mapper.decrementConcurrency(reservation.userId(), now);
         } else {
-            throw conflict("AI_QUOTA_RESERVATION_NOT_ACTIVE", "AI 配额预留已结束");
+            throw AiQuotaErrorCode.RESERVATION_NOT_ACTIVE.toException("AI 配额预留已结束");
         }
-        return repository.findReservation(reservationId).orElseThrow(() -> notFound(reservationId));
+        return Optional.ofNullable(mapper.findReservation(reservationId))
+            .orElseThrow(AiQuotaErrorCode.RESERVATION_NOT_FOUND::toException);
     }
 
     @Transactional
     public int recoverExpiredReservations() {
         Instant now = clock.instant();
         int recovered = 0;
-        List<String> candidates = repository.expiredReservationIds(now, EXPIRY_RECOVERY_BATCH_SIZE);
+        List<String> candidates = mapper.expiredReservationIds(now, EXPIRY_RECOVERY_BATCH_SIZE);
         for (String reservationId : candidates) {
             if (recoverExpiredReservation(reservationId, now)) {
                 recovered++;
@@ -208,45 +210,45 @@ public class AiQuotaLedgerService {
     }
 
     @Transactional(readOnly = true)
-    public Optional<AiQuotaReservation> findReservation(String reservationId) {
+    public Optional<AiQuotaReservationEntity> findReservation(String reservationId) {
         requireReservationId(reservationId);
-        return repository.findReservation(reservationId);
+        return Optional.ofNullable(mapper.findReservation(reservationId));
     }
 
     @Transactional(readOnly = true)
-    public AiQuotaAccount account(long userId) {
+    public AiQuotaAccountEntity account(long userId) {
         if (userId < 1) {
-            throw badRequest("AI_QUOTA_USER_INVALID", "用户标识无效");
+            throw AiQuotaErrorCode.USER_INVALID.toException();
         }
         LocalDate date = quotaDate(clock.instant());
-        AiQuotaBucket bucket = repository.findBucket(userId, date)
-            .orElse(new AiQuotaBucket(userId, date, 0, 0, 0));
-        return new AiQuotaAccount(
+        AiQuotaBucketEntity bucket = Optional.ofNullable(mapper.findBucket(userId, date))
+            .orElse(new AiQuotaBucketEntity(userId, date, 0, 0, 0));
+        return new AiQuotaAccountEntity(
             userId,
             date,
             bucket.dailyTokenQuota(),
             bucket.reservedTokens(),
             bucket.consumedTokens(),
             remaining(bucket),
-            repository.activeReservations(userId)
+            activeReservations(userId)
         );
     }
 
     private int recoverExpiredForUser(long userId, Instant now, int activeReservations) {
         int active = activeReservations;
-        for (String reservationId : repository.expiredReservationIdsForUser(userId, now)) {
-            AiQuotaReservation reservation = repository.lockReservation(reservationId).orElse(null);
+        for (String reservationId : mapper.expiredReservationIdsForUser(userId, now)) {
+            AiQuotaReservationEntity reservation = mapper.lockReservation(reservationId);
             if (reservation == null || reservation.status() != AiQuotaReservationStatus.RESERVED
                     || reservation.expiresAt().isAfter(now)) {
                 continue;
             }
-            AiQuotaBucket bucket = repository.lockExistingBucket(reservation.userId(), reservation.quotaDate());
+            AiQuotaBucketEntity bucket = requireBucket(mapper.lockBucket(reservation.userId(), reservation.quotaDate()));
             requireReleasable(bucket, new AiQuotaConcurrency(userId, active), reservation);
-            if (repository.markExpired(reservationId, now)) {
-                repository.releaseAndCharge(
+            if (mapper.markExpired(reservationId, now) == 1) {
+                mapper.releaseAndCharge(
                     reservation.userId(), reservation.quotaDate(), reservation.estimatedTokens(), 0, now
                 );
-                repository.decrementConcurrency(userId, now);
+                mapper.decrementConcurrency(userId, now);
                 active--;
             }
         }
@@ -254,88 +256,129 @@ public class AiQuotaLedgerService {
     }
 
     private boolean recoverExpiredReservation(String reservationId, Instant now) {
-        AiQuotaReservation candidate = repository.findReservation(reservationId).orElse(null);
+        AiQuotaReservationEntity candidate = mapper.findReservation(reservationId);
         if (candidate == null) {
             return false;
         }
-        repository.ensureConcurrencyRow(candidate.userId(), now);
-        AiQuotaConcurrency concurrency = repository.lockConcurrency(candidate.userId());
-        AiQuotaReservation reservation = repository.lockReservation(reservationId).orElse(null);
+        ensureConcurrencyRow(candidate.userId(), now);
+        AiQuotaConcurrency concurrency = mapper.lockConcurrency(candidate.userId());
+        AiQuotaReservationEntity reservation = mapper.lockReservation(reservationId);
         if (reservation == null || reservation.status() != AiQuotaReservationStatus.RESERVED
                 || reservation.expiresAt().isAfter(now)) {
             return false;
         }
-        AiQuotaBucket bucket = repository.lockExistingBucket(reservation.userId(), reservation.quotaDate());
+        AiQuotaBucketEntity bucket = requireBucket(mapper.lockBucket(reservation.userId(), reservation.quotaDate()));
         requireReleasable(bucket, concurrency, reservation);
-        if (!repository.markExpired(reservationId, now)) {
+        if (mapper.markExpired(reservationId, now) != 1) {
             return false;
         }
-        repository.releaseAndCharge(reservation.userId(), reservation.quotaDate(), reservation.estimatedTokens(), 0, now);
-        repository.decrementConcurrency(reservation.userId(), now);
+        mapper.releaseAndCharge(reservation.userId(), reservation.quotaDate(), reservation.estimatedTokens(), 0, now);
+        mapper.decrementConcurrency(reservation.userId(), now);
         return true;
     }
 
-    private void validate(AiQuotaReservationRequest request) {
+    private void ensureConcurrencyRow(long userId, Instant now) {
+        try {
+            mapper.insertConcurrencyRow(userId, now);
+        } catch (DuplicateKeyException ignored) {
+        }
+    }
+
+    private void ensureBucket(long userId, LocalDate quotaDate, long dailyTokenQuota, Instant now) {
+        try {
+            mapper.insertBucket(userId, quotaDate, dailyTokenQuota, now);
+        } catch (DuplicateKeyException ignored) {
+        }
+    }
+
+    private AiQuotaBucketEntity lockBucket(long userId, LocalDate quotaDate, long currentDailyQuota, Instant now) {
+        AiQuotaBucketEntity bucket = requireBucket(mapper.lockBucket(userId, quotaDate));
+        if (bucket.dailyTokenQuota() == currentDailyQuota) {
+            return bucket;
+        }
+        mapper.updateDailyTokenQuota(userId, quotaDate, currentDailyQuota, now);
+        return new AiQuotaBucketEntity(
+            bucket.userId(),
+            bucket.quotaDate(),
+            currentDailyQuota,
+            bucket.reservedTokens(),
+            bucket.consumedTokens()
+        );
+    }
+
+    private int activeReservations(long userId) {
+        Integer active = mapper.selectActiveReservations(userId);
+        return active == null ? 0 : active;
+    }
+
+    private static AiQuotaBucketEntity requireBucket(AiQuotaBucketEntity bucket) {
+        if (bucket == null) {
+            throw new IllegalStateException("AI quota bucket was not created");
+        }
+        return bucket;
+    }
+
+    private void validate(AiQuotaReservationDTO request) {
         if (request == null) {
-            throw badRequest("AI_QUOTA_REQUEST_INVALID", "AI 配额预留参数不能为空");
+            throw AiQuotaErrorCode.REQUEST_INVALID.toException();
         }
         if (request.userId() < 1) {
-            throw badRequest("AI_QUOTA_USER_INVALID", "用户标识无效");
+            throw AiQuotaErrorCode.USER_INVALID.toException();
         }
         if (request.dailyTokenQuota() < 1) {
-            throw badRequest("AI_QUOTA_NOT_CONFIGURED", "AI 每日 token 配额尚未配置");
+            throw AiQuotaErrorCode.NOT_CONFIGURED.toException();
         }
         if (request.estimatedTokens() < 1) {
-            throw badRequest("AI_QUOTA_ESTIMATE_INVALID", "预估 token 数必须大于零");
+            throw AiQuotaErrorCode.ESTIMATE_INVALID.toException();
         }
         if (request.maximumConcurrentRequests() < 1) {
-            throw badRequest("AI_QUOTA_CONCURRENCY_INVALID", "AI 并发上限必须大于零");
+            throw AiQuotaErrorCode.CONCURRENCY_INVALID.toException();
         }
         if (request.requestId() == null || !request.requestId().trim().matches("^[A-Za-z0-9._:-]{1,128}$")) {
-            throw badRequest("AI_QUOTA_REQUEST_ID_INVALID", "AI 请求标识无效");
+            throw AiQuotaErrorCode.REQUEST_ID_INVALID.toException();
         }
         if (request.reservationTtl() == null || request.reservationTtl().isNegative() || request.reservationTtl().isZero()
                 || request.reservationTtl().compareTo(MAXIMUM_RESERVATION_TTL) > 0) {
-            throw badRequest("AI_QUOTA_RESERVATION_TTL_INVALID", "AI 配额预留时长无效");
+            throw AiQuotaErrorCode.RESERVATION_TTL_INVALID.toException();
         }
     }
 
     private void requireReservationId(String reservationId) {
         if (reservationId == null || !reservationId.matches("^[A-Za-z0-9-]{1,64}$")) {
-            throw badRequest("AI_QUOTA_RESERVATION_ID_INVALID", "AI 配额预留标识无效");
+            throw AiQuotaErrorCode.RESERVATION_ID_INVALID.toException();
         }
     }
 
     private void requireActualTokens(long actualTokens) {
         if (actualTokens < 0) {
-            throw badRequest("AI_QUOTA_USAGE_INVALID", "实际 token 数不能为负数");
+            throw AiQuotaErrorCode.USAGE_INVALID.toException();
         }
     }
 
     private void requireUsageSource(AiQuotaUsageSource usageSource) {
         if (usageSource == null) {
-            throw badRequest("AI_QUOTA_USAGE_SOURCE_INVALID", "AI usage source is required");
+            throw AiQuotaErrorCode.USAGE_SOURCE_INVALID.toException();
         }
     }
 
     private String normalizeFailureCode(String failureCode) {
         if (failureCode == null || !failureCode.trim().matches("^[A-Z0-9_]{1,96}$")) {
-            throw badRequest("AI_QUOTA_FAILURE_CODE_INVALID", "AI 失败代码无效");
+            throw AiQuotaErrorCode.FAILURE_CODE_INVALID.toException();
         }
         return failureCode.trim();
     }
 
     private void requireReleasable(
-        AiQuotaBucket bucket,
+        AiQuotaBucketEntity bucket,
         AiQuotaConcurrency concurrency,
-        AiQuotaReservation reservation
+        AiQuotaReservationEntity reservation
     ) {
         if (concurrency.activeReservations() < 1 || bucket.reservedTokens() < reservation.estimatedTokens()) {
             throw new IllegalStateException("AI quota ledger invariant violated");
         }
     }
 
-    private boolean hasCapacity(AiQuotaBucket bucket, long estimatedTokens) {
+    private boolean hasCapacity(AiQuotaBucketEntity bucket, long estimatedTokens) {
         if (isUnlimited(bucket.userId())) {
             return true;
         }
@@ -349,7 +392,7 @@ public class AiQuotaLedgerService {
         return estimatedTokens <= afterConsumption - bucket.reservedTokens();
     }
 
-    private long remaining(AiQuotaBucket bucket) {
+    private long remaining(AiQuotaBucketEntity bucket) {
         if (isUnlimited(bucket.userId())) {
             return Long.MAX_VALUE;
         }
@@ -363,19 +406,4 @@ public class AiQuotaLedgerService {
         return instant.atZone(ZoneOffset.UTC).toLocalDate();
     }
 
-    private ApiException notFound(String reservationId) {
-        return new ApiException(HttpStatus.NOT_FOUND, "AI_QUOTA_RESERVATION_NOT_FOUND", "AI 配额预留不存在");
-    }
-
-    private ApiException tooManyRequests(String code, String message) {
-        return new ApiException(HttpStatus.TOO_MANY_REQUESTS, code, message);
-    }
-
-    private ApiException conflict(String code, String message) {
-        return new ApiException(HttpStatus.CONFLICT, code, message);
-    }
-
-    private ApiException badRequest(String code, String message) {
-        return new ApiException(HttpStatus.BAD_REQUEST, code, message);
-    }
 }

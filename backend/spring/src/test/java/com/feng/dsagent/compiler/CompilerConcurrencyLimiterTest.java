@@ -2,7 +2,8 @@ package com.feng.dsagent.compiler;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.compiler.support.CompilerConcurrencyLimiter;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
@@ -28,7 +29,7 @@ class CompilerConcurrencyLimiterTest {
     }
 
     private static void assertLimited(Runnable action) {
-        assertThatThrownBy(action::run).isInstanceOfSatisfying(ApiException.class, error -> {
+        assertThatThrownBy(action::run).isInstanceOfSatisfying(BizException.class, error -> {
             org.assertj.core.api.Assertions.assertThat(error.status()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
             org.assertj.core.api.Assertions.assertThat(error.code()).isEqualTo("COMPILER_CONCURRENCY_LIMITED");
         });

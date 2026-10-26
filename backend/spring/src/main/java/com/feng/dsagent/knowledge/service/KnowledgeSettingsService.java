@@ -1,21 +1,13 @@
 package com.feng.dsagent.knowledge.service;
 
-import com.feng.dsagent.knowledge.KnowledgeProperties;
-import com.feng.dsagent.knowledge.KnowledgeText;
 
+import org.springframework.stereotype.Service;
+import com.feng.dsagent.knowledge.config.KnowledgeProperties;
+import com.feng.dsagent.knowledge.support.KnowledgeText;
 import com.feng.dsagent.knowledge.mapper.KnowledgeSettingsMapper;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
-import org.springframework.stereotype.Service;
 
-/**
- * The retrieval tuning that is actually in effect: the admin-saved row when one exists, the
- * {@code app.knowledge.*} configuration properties otherwise.
- *
- * <p>The search service reads through {@link #current()} on every query, so a saved change takes effect on the
- * next request without a restart and without touching the chunk snapshot. Reads are cheap (a cached reference);
- * the cache is reloaded after each save and is safe to reload again if the row changes behind our back.
- */
 @Service
 public class KnowledgeSettingsService {
 

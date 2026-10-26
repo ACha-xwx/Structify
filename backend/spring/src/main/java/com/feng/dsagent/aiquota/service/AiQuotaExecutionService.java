@@ -1,32 +1,28 @@
 package com.feng.dsagent.aiquota.service;
 
-import com.feng.dsagent.aiquota.AiQuotaExecutionProperties;
-import com.feng.dsagent.aiquota.AiQuotaReservationAttempt;
-import com.feng.dsagent.aiquota.AiQuotaReservationRequest;
-import com.feng.dsagent.aiquota.AiQuotaReservationStatus;
-import com.feng.dsagent.aiquota.AiStreamAbortedException;
-import com.feng.dsagent.aiquota.AiQuotaReservation;
-import com.feng.dsagent.aiquota.AiQuotaUsageSource;
-import com.feng.dsagent.aiquota.AiQuotaExecution;
-import com.feng.dsagent.aiquota.AiQuotaRequestId;
-import com.feng.dsagent.aiquota.AiQuotaAccount;
 
+import org.springframework.stereotype.Service;
+import com.feng.dsagent.aiquota.config.AiQuotaExecutionProperties;
+import com.feng.dsagent.aiquota.entity.AiQuotaReservationAttemptEntity;
+import com.feng.dsagent.aiquota.dto.AiQuotaReservationDTO;
+import com.feng.dsagent.aiquota.domain.AiQuotaReservationStatus;
+import com.feng.dsagent.aiquota.exception.AiStreamAbortedException;
+import com.feng.dsagent.aiquota.entity.AiQuotaReservationEntity;
+import com.feng.dsagent.aiquota.domain.AiQuotaUsageSource;
+import com.feng.dsagent.aiquota.support.AiQuotaExecution;
+import com.feng.dsagent.aiquota.support.AiQuotaRequestId;
+import com.feng.dsagent.aiquota.entity.AiQuotaAccountEntity;
 import com.feng.dsagent.aiquota.service.AiQuotaLedgerService;
-
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.aiquota.error.AiQuotaErrorCode;
+import com.feng.dsagent.common.exception.BizException;
 import com.feng.dsagent.model.ModelClient;
-import com.feng.dsagent.model.ModelClientException;
+import com.feng.dsagent.model.exception.ModelClientException;
 import com.feng.dsagent.model.ModelRequest;
 import com.feng.dsagent.model.ModelResponse;
 import com.feng.dsagent.model.ModelStreamHandler;
-import com.feng.dsagent.modelconfig.ModelGenerationReadiness;
+import com.feng.dsagent.modelconfig.support.ModelGenerationReadiness;
 import java.util.Objects;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
 
-/**
- * One metered execution path for formal AI generation across chat, code analysis, and animation.
- */
 @Service
 public class AiQuotaExecutionService implements AiQuotaExecution {
 
@@ -55,7 +51,7 @@ public class AiQuotaExecutionService implements AiQuotaExecution {
         Objects.requireNonNull(request, "request");
         ModelGenerationReadiness.State state = modelReadiness.current();
         long dailyTokenQuota = configuredQuota(state);
-        AiQuotaReservationAttempt attempt = ledger.reserveAttempt(new AiQuotaReservationRequest(
+        AiQuotaReservationAttemptEntity attempt = ledger.reserveAttempt(new AiQuotaReservationDTO(
             userId,
             dailyTokenQuota,
             estimatedTokens(request),
@@ -101,7 +97,7 @@ public class AiQuotaExecutionService implements AiQuotaExecution {
         Objects.requireNonNull(handler, "handler");
         ModelGenerationReadiness.State state = modelReadiness.current();
         long dailyTokenQuota = configuredQuota(state);
-        AiQuotaReservationAttempt attempt = ledger.reserveAttempt(new AiQuotaReservationRequest(
+        AiQuotaReservationAttemptEntity attempt = ledger.reserveAttempt(new AiQuotaReservationDTO(
             userId,
             dailyTokenQuota,
             estimatedTokens(request),
@@ -173,11 +169,7 @@ public class AiQuotaExecutionService implements AiQuotaExecution {
     @Override
     public void requireFormalAuthentication(Long userId) {
         if (userId == null) {
-            throw new ApiException(
-                HttpStatus.UNAUTHORIZED,
-                "AI_QUOTA_AUTHENTICATION_REQUIRED",
-                "Authentication is required for formal AI generation"
-            );
+            throw AiQuotaErrorCode.AUTHENTICATION_REQUIRED.toException();
         }
     }
 
@@ -187,7 +179,7 @@ public class AiQuotaExecutionService implements AiQuotaExecution {
             return Availability.notConfigured();
         }
         ledger.recoverExpiredReservations();
-        AiQuotaAccount account = ledger.account(userId);
+        AiQuotaAccountEntity account = ledger.account(userId);
         if (ledger.isUnlimited(userId)) {
             boolean available = account.activeReservations() < properties.maximumConcurrentRequests();
             return new Availability(null, null, account.activeReservations(),
@@ -205,11 +197,7 @@ public class AiQuotaExecutionService implements AiQuotaExecution {
 
     private long configuredQuota(ModelGenerationReadiness.State state) {
         if (!state.eligible() || state.dailyTokenQuota() == null || state.dailyTokenQuota() < 1) {
-            throw new ApiException(
-                HttpStatus.SERVICE_UNAVAILABLE,
-                "AI_QUOTA_NOT_CONFIGURED",
-                "AI token quota is not configured for the active model"
-            );
+            throw AiQuotaErrorCode.NOT_CONFIGURED_UNAVAILABLE.toException();
         }
         return state.dailyTokenQuota();
     }
@@ -224,11 +212,11 @@ public class AiQuotaExecutionService implements AiQuotaExecution {
         try {
             return Math.addExact(output, input);
         } catch (ArithmeticException error) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "AI_QUOTA_ESTIMATE_INVALID", "AI request is too large");
+            throw AiQuotaErrorCode.ESTIMATE_TOO_LARGE.toException();
         }
     }
 
-    private Usage successUsage(ModelResponse response, AiQuotaReservation reservation) {
+    private Usage successUsage(ModelResponse response, AiQuotaReservationEntity reservation) {
         Long reportedTokens = response.totalTokens();
         if (reportedTokens != null && reportedTokens >= 0) {
             return new Usage(reportedTokens, AiQuotaUsageSource.PROVIDER_REPORTED);
@@ -237,7 +225,7 @@ public class AiQuotaExecutionService implements AiQuotaExecution {
     }
 
     private void settleFailure(
-        AiQuotaReservation reservation,
+        AiQuotaReservationEntity reservation,
         String failureCode,
         Usage usage,
         RuntimeException original
@@ -250,7 +238,7 @@ public class AiQuotaExecutionService implements AiQuotaExecution {
     }
 
     private Usage failedUsage(
-        AiQuotaReservation reservation,
+        AiQuotaReservationEntity reservation,
         Long errorReportedTokens,
         Long streamedReportedTokens,
         boolean receivedContent
@@ -271,14 +259,10 @@ public class AiQuotaExecutionService implements AiQuotaExecution {
         return new Usage(0L, AiQuotaUsageSource.NO_USAGE_REPORTED);
     }
 
-    private ApiException existingRequest(AiQuotaReservation reservation) {
-        String code = reservation.status() == AiQuotaReservationStatus.RESERVED
-            ? "AI_QUOTA_REQUEST_IN_PROGRESS"
-            : "AI_QUOTA_REQUEST_ALREADY_FINALIZED";
-        String message = reservation.status() == AiQuotaReservationStatus.RESERVED
-            ? "An AI request with this idempotency key is still in progress"
-            : "An AI request with this idempotency key has already completed";
-        return new ApiException(HttpStatus.CONFLICT, code, message);
+    private BizException existingRequest(AiQuotaReservationEntity reservation) {
+        return reservation.status() == AiQuotaReservationStatus.RESERVED
+            ? AiQuotaErrorCode.REQUEST_IN_PROGRESS.toException()
+            : AiQuotaErrorCode.REQUEST_ALREADY_FINALIZED.toException();
     }
 
     private record Usage(long tokens, AiQuotaUsageSource source) {

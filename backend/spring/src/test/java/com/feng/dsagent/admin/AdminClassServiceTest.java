@@ -5,7 +5,7 @@ import com.feng.dsagent.admin.service.AdminClassService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -82,8 +82,8 @@ class AdminClassServiceTest {
     @DisplayName("a blank class name is refused before anything is written")
     void refusesABlankName() {
         assertThatThrownBy(() -> service.create("   ", null, adminId, ""))
-            .isInstanceOf(ApiException.class)
-            .satisfies(failure -> assertThat(((ApiException) failure).code()).isEqualTo("CLASS_NAME_REQUIRED"));
+            .isInstanceOf(BizException.class)
+            .satisfies(failure -> assertThat(((BizException) failure).code()).isEqualTo("CLASS_NAME_REQUIRED"));
 
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM classes", Long.class)).isZero();
     }
@@ -143,17 +143,17 @@ class AdminClassServiceTest {
         service.addMember(classId, studentEmail, "STUDENT", adminId, "");
 
         assertThatThrownBy(() -> service.addMember(classId, "nobody@example.test", "STUDENT", adminId, ""))
-            .isInstanceOf(ApiException.class)
-            .satisfies(failure -> assertThat(((ApiException) failure).code()).isEqualTo("USER_NOT_FOUND"));
+            .isInstanceOf(BizException.class)
+            .satisfies(failure -> assertThat(((BizException) failure).code()).isEqualTo("USER_NOT_FOUND"));
         assertThatThrownBy(() -> service.addMember(classId, studentEmail, "ADMIN", adminId, ""))
-            .isInstanceOf(ApiException.class)
-            .satisfies(failure -> assertThat(((ApiException) failure).code()).isEqualTo("ROLE_IN_CLASS_INVALID"));
+            .isInstanceOf(BizException.class)
+            .satisfies(failure -> assertThat(((BizException) failure).code()).isEqualTo("ROLE_IN_CLASS_INVALID"));
         assertThatThrownBy(() -> service.addMember(classId, "student-one", "STUDENT", adminId, ""))
-            .isInstanceOf(ApiException.class)
-            .satisfies(failure -> assertThat(((ApiException) failure).code()).isEqualTo("ALREADY_ENROLLED"));
+            .isInstanceOf(BizException.class)
+            .satisfies(failure -> assertThat(((BizException) failure).code()).isEqualTo("ALREADY_ENROLLED"));
         assertThatThrownBy(() -> service.members("no-such-class"))
-            .isInstanceOf(ApiException.class)
-            .satisfies(failure -> assertThat(((ApiException) failure).code()).isEqualTo("CLASS_NOT_FOUND"));
+            .isInstanceOf(BizException.class)
+            .satisfies(failure -> assertThat(((BizException) failure).code()).isEqualTo("CLASS_NOT_FOUND"));
 
         // A refused write must not leave an audit row that claims success.
         assertThat(jdbc.queryForObject(

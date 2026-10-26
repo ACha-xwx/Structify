@@ -5,8 +5,8 @@ import com.feng.dsagent.admin.service.AdminKnowledgeService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.feng.dsagent.common.ApiException;
-import com.feng.dsagent.knowledge.KnowledgeChunk;
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.knowledge.entity.KnowledgeChunkEntity;
 import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
 import com.feng.dsagent.knowledge.service.KnowledgeSettingsService;
 import java.util.List;
@@ -19,7 +19,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
+import com.feng.dsagent.admin.vo.AdminUserLearningVO;
+import com.feng.dsagent.admin.vo.KnowledgeSettingsVO;
 
+import com.feng.dsagent.common.vo.PageVO;
 /**
  * The knowledge console, end to end at service level: the tuning is a single row that overrides the
  * configuration defaults, and chunk maintenance is audited and gated by the same eligibility chain the
@@ -78,7 +81,7 @@ class AdminKnowledgeServiceTest {
     @Test
     @DisplayName("with no saved row the configuration defaults are reported as the settings in effect")
     void defaultsUntilSaved() {
-        AdminKnowledgeService.KnowledgeSettingsView view = service.settingsView();
+        KnowledgeSettingsVO view = service.settingsView();
 
         assertThat(view.customized()).isFalse();
         assertThat(view.minimumScore()).isEqualTo(view.defaults().minimumScore());
@@ -90,7 +93,7 @@ class AdminKnowledgeServiceTest {
     @Test
     @DisplayName("saving writes the single row, is audited, and a reset returns to the defaults")
     void savesAndResets() {
-        AdminKnowledgeService.KnowledgeSettingsView saved = service.saveSettings(12.5, 8, 7.0, 2.0, adminId, "req-save");
+        KnowledgeSettingsVO saved = service.saveSettings(12.5, 8, 7.0, 2.0, adminId, "req-save");
 
         assertThat(saved.customized()).isTrue();
         assertThat(saved.minimumScore()).isEqualTo(12.5);
@@ -98,7 +101,7 @@ class AdminKnowledgeServiceTest {
         assertThat(settings.current().minimumScore()).isEqualTo(12.5);
         assertThat(auditRows("KNOWLEDGE_SETTINGS_UPDATED", "1")).isEqualTo(1);
 
-        AdminKnowledgeService.KnowledgeSettingsView reset = service.resetSettings(adminId, "req-reset");
+        KnowledgeSettingsVO reset = service.resetSettings(adminId, "req-reset");
         assertThat(reset.customized()).isFalse();
         assertThat(reset.minimumScore()).isEqualTo(reset.defaults().minimumScore());
         assertThat(auditRows("KNOWLEDGE_SETTINGS_RESET", "1")).isEqualTo(1);
@@ -108,14 +111,14 @@ class AdminKnowledgeServiceTest {
     @DisplayName("out-of-range or incomplete tuning is refused with a named error and writes nothing")
     void refusesBadSettings() {
         assertThatThrownBy(() -> service.saveSettings(-1.0, 6, 5.0, 3.0, adminId, ""))
-            .isInstanceOf(ApiException.class)
-            .satisfies(failure -> assertThat(((ApiException) failure).code()).isEqualTo("ADMIN_KNOWLEDGE_SETTINGS_INVALID"));
+            .isInstanceOf(BizException.class)
+            .satisfies(failure -> assertThat(((BizException) failure).code()).isEqualTo("ADMIN_KNOWLEDGE_SETTINGS_INVALID"));
         assertThatThrownBy(() -> service.saveSettings(4.0, 99, 5.0, 3.0, adminId, ""))
-            .isInstanceOf(ApiException.class)
-            .satisfies(failure -> assertThat(((ApiException) failure).code()).isEqualTo("ADMIN_KNOWLEDGE_SETTINGS_INVALID"));
+            .isInstanceOf(BizException.class)
+            .satisfies(failure -> assertThat(((BizException) failure).code()).isEqualTo("ADMIN_KNOWLEDGE_SETTINGS_INVALID"));
         assertThatThrownBy(() -> service.saveSettings(4.0, null, 5.0, 3.0, adminId, ""))
-            .isInstanceOf(ApiException.class)
-            .satisfies(failure -> assertThat(((ApiException) failure).code()).isEqualTo("ADMIN_KNOWLEDGE_SETTINGS_INCOMPLETE"));
+            .isInstanceOf(BizException.class)
+            .satisfies(failure -> assertThat(((BizException) failure).code()).isEqualTo("ADMIN_KNOWLEDGE_SETTINGS_INCOMPLETE"));
 
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM knowledge_settings", Long.class)).isZero();
         assertThat(jdbc.queryForObject(
@@ -180,16 +183,16 @@ class AdminKnowledgeServiceTest {
         assertThat(auditRows("KNOWLEDGE_CHUNK_DELETED", created.id())).isEqualTo(1);
 
         assertThatThrownBy(() -> service.chunk(created.id()))
-            .isInstanceOf(ApiException.class)
-            .satisfies(failure -> assertThat(((ApiException) failure).code()).isEqualTo("ADMIN_KNOWLEDGE_CHUNK_NOT_FOUND"));
+            .isInstanceOf(BizException.class)
+            .satisfies(failure -> assertThat(((BizException) failure).code()).isEqualTo("ADMIN_KNOWLEDGE_CHUNK_NOT_FOUND"));
         assertThatThrownBy(() -> service.createChunk(
             "no-such-chapter", "x", "y", null, null, null, adminId, ""
         ))
-            .isInstanceOf(ApiException.class)
-            .satisfies(failure -> assertThat(((ApiException) failure).code()).isEqualTo("ADMIN_KNOWLEDGE_CHAPTER_NOT_FOUND"));
+            .isInstanceOf(BizException.class)
+            .satisfies(failure -> assertThat(((BizException) failure).code()).isEqualTo("ADMIN_KNOWLEDGE_CHAPTER_NOT_FOUND"));
         assertThatThrownBy(() -> service.createChunk(null, "x", "y", null, "NOPE", null, adminId, ""))
-            .isInstanceOf(ApiException.class)
-            .satisfies(failure -> assertThat(((ApiException) failure).code()).isEqualTo("ADMIN_KNOWLEDGE_REVIEW_STATUS_INVALID"));
+            .isInstanceOf(BizException.class)
+            .satisfies(failure -> assertThat(((BizException) failure).code()).isEqualTo("ADMIN_KNOWLEDGE_REVIEW_STATUS_INVALID"));
     }
 
     @Test
@@ -198,23 +201,23 @@ class AdminKnowledgeServiceTest {
         service.createChunk(chapterId, "哈夫曼树", "带权路径长度……", null, "VERIFIED", null, adminId, "");
         service.createChunk(null, "并查集", "按秩合并……", null, "PENDING", null, adminId, "");
 
-        AdminPage<AdminKnowledgeService.ChunkRow> all = service.chunks(0, 20, null, null, null, null);
+        PageVO<AdminKnowledgeService.ChunkRow> all = service.chunks(0, 20, null, null, null, null);
         assertThat(all.total()).isGreaterThanOrEqualTo(2);
 
-        AdminPage<AdminKnowledgeService.ChunkRow> pending = service.chunks(0, 20, null, "PENDING", null, null);
+        PageVO<AdminKnowledgeService.ChunkRow> pending = service.chunks(0, 20, null, "PENDING", null, null);
         assertThat(pending.items()).allSatisfy(row -> assertThat(row.reviewStatus()).isEqualTo("PENDING"));
         assertThat(pending.items()).anySatisfy(row -> assertThat(row.title()).isEqualTo("并查集"));
 
-        AdminPage<AdminKnowledgeService.ChunkRow> manual = service.chunks(0, 20, null, null, "admin", null);
+        PageVO<AdminKnowledgeService.ChunkRow> manual = service.chunks(0, 20, null, null, "admin", null);
         assertThat(manual.items()).allSatisfy(row -> assertThat(row.sourcePath()).startsWith("admin/"));
 
-        AdminPage<AdminKnowledgeService.ChunkRow> search = service.chunks(0, 20, null, null, null, "哈夫曼");
+        PageVO<AdminKnowledgeService.ChunkRow> search = service.chunks(0, 20, null, null, null, "哈夫曼");
         assertThat(search.items()).hasSize(1);
         assertThat(search.items().get(0).retrievable()).isTrue();
 
         assertThatThrownBy(() -> service.chunks(-1, 20, null, null, null, null))
-            .isInstanceOf(ApiException.class)
-            .satisfies(failure -> assertThat(((ApiException) failure).code()).isEqualTo("ADMIN_PAGE_INVALID"));
+            .isInstanceOf(BizException.class)
+            .satisfies(failure -> assertThat(((BizException) failure).code()).isEqualTo("ADMIN_PAGE_INVALID"));
     }
 
     // ----- test search --------------------------------------------------------------
@@ -226,7 +229,7 @@ class AdminKnowledgeServiceTest {
             chapterId, "二叉树的遍历", "先序遍历先访问根结点……", null, null, null, adminId, ""
         );
         // The snapshot refreshes after commit in production; in a rolled-back test we replace it by hand.
-        search.replace(List.of(new KnowledgeChunk(
+        search.replace(List.of(new KnowledgeChunkEntity(
             created.id(), chapterId, created.title(), created.content(),
             created.sourcePath(), created.pageLabel(), created.licenseScope()
         )));
@@ -250,8 +253,8 @@ class AdminKnowledgeServiceTest {
         assertThat(service.testSearch("二叉树", null, "GUEST", null, null, null, null).hits()).isEmpty();
 
         assertThatThrownBy(() -> service.testSearch(" ", null, null, null, null, null, null))
-            .isInstanceOf(ApiException.class)
-            .satisfies(failure -> assertThat(((ApiException) failure).code()).isEqualTo("ADMIN_KNOWLEDGE_QUERY_REQUIRED"));
+            .isInstanceOf(BizException.class)
+            .satisfies(failure -> assertThat(((BizException) failure).code()).isEqualTo("ADMIN_KNOWLEDGE_QUERY_REQUIRED"));
     }
 
     @Test

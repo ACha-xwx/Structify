@@ -8,6 +8,9 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import com.feng.dsagent.animation.support.AnimationValidator;
+import com.feng.dsagent.animation.support.DsvpAnimationAdapter;
+import com.feng.dsagent.animation.support.DsvpLocalEngine;
 /**
  * The adapter asks the local engine first and falls back to the in-process simulator.
  *

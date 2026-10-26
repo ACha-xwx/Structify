@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.learning.mapper.LearningProgressMapper">
+
+  <select id="selectPublishedChapters" resultType="com.feng.dsagent.learning.mapper.LearningProgressMapper$ChapterRow">
+    SELECT id, chapter_number AS chapterNumber, title
+    FROM chapters
+    WHERE status = 'PUBLISHED'
+    ORDER BY chapter_number
+  </select>
+
+  <select id="selectChatActivity" resultType="com.feng.dsagent.learning.mapper.LearningProgressMapper$ActivityRow">
+    SELECT chapter_id AS chapterId, COUNT(*) AS activityCount, MAX(updated_at) AS lastAt
+    FROM chat_sessions
+    WHERE user_id = #{userId} AND chapter_id IS NOT NULL
+    GROUP BY chapter_id
+  </select>
+
+  <select id="selectClassroomActivity" resultType="com.feng.dsagent.learning.mapper.LearningProgressMapper$ActivityRow">
+    SELECT COALESCE(cs.chapter_id_snapshot, s.chapter_id) AS chapterId,
+           COUNT(*) AS activityCount,
+           MAX(cs.updated_at) AS lastAt
+    FROM classroom_sessions cs
+    JOIN classroom_scripts s ON s.id = cs.script_id
+    WHERE cs.user_id = #{userId}
+    GROUP BY COALESCE(cs.chapter_id_snapshot, s.chapter_id)
+  </select>
+
+  <select id="selectAnimationActivity" resultType="com.feng.dsagent.learning.mapper.LearningProgressMapper$ActivityRow">
+    SELECT chapter_id AS chapterId, COUNT(*) AS activityCount, MAX(updated_at) AS lastAt
+    FROM animation_records
+    WHERE user_id = #{userId} AND chapter_id IS NOT NULL
+    GROUP BY chapter_id
+  </select>
+
+  <select id="selectCodeActivity" resultType="com.feng.dsagent.learning.mapper.LearningProgressMapper$ActivityRow">
+    SELECT chapter_id AS chapterId, COUNT(*) AS activityCount, MAX(created_at) AS lastAt
+    FROM code_runs
+    WHERE user_id = #{userId} AND chapter_id IS NOT NULL
+    GROUP BY chapter_id
+  </select>
+
+  <select id="selectEventActivity" resultType="com.feng.dsagent.learning.mapper.LearningProgressMapper$ActivityRow">
+    SELECT chapter_id AS chapterId, COUNT(*) AS activityCount, MAX(created_at) AS lastAt
+    FROM learning_records
+    WHERE user_id = #{userId} AND chapter_id IS NOT NULL
+    GROUP BY chapter_id
+  </select>
+</mapper>

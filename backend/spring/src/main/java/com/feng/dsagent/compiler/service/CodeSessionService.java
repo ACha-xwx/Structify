@@ -1,10 +1,12 @@
 package com.feng.dsagent.compiler.service;
 
-import com.feng.dsagent.compiler.InteractiveCodeSession;
-import com.feng.dsagent.compiler.SandboxProperties;
-import com.feng.dsagent.compiler.SupportedLanguage;
 
-import com.feng.dsagent.common.ApiException;
+import org.springframework.stereotype.Service;
+import com.feng.dsagent.compiler.support.InteractiveCodeSession;
+import com.feng.dsagent.compiler.config.SandboxProperties;
+import com.feng.dsagent.compiler.domain.SupportedLanguage;
+import com.feng.dsagent.compiler.error.CompilerErrorCode;
+import com.feng.dsagent.common.exception.BizException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,13 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
 
-/**
- * Keeps the interactive sessions alive, and makes sure a bored browser tab cannot leave a program
- * running forever.
- */
 @Service
 public final class CodeSessionService {
 
@@ -39,6 +35,10 @@ public final class CodeSessionService {
     private final SandboxProperties properties;
     private final Map<String, InteractiveCodeSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, LinkedHashSet<String>> ownedSessions = new ConcurrentHashMap<>();
+    /**
+     * Named single-thread sweeper (not an unbounded pool): periodically reaps idle sandbox sessions.
+     * Kept as a dedicated platform thread so session cleanup is independent of request threads.
+     */
     private final ScheduledExecutorService sweeper = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread thread = new Thread(runnable, "sandbox-sweeper");
         thread.setDaemon(true);
@@ -63,19 +63,11 @@ public final class CodeSessionService {
 
     public SessionStart start(String clientKey, SupportedLanguage language, String code) {
         if (!properties.enabled()) {
-            throw new ApiException(
-                HttpStatus.SERVICE_UNAVAILABLE,
-                "SANDBOX_DISABLED",
-                "交互式运行环境未启用"
-            );
+            throw CompilerErrorCode.SANDBOX_DISABLED.toException();
         }
         if (sessions.size() >= properties.maximumSessions()) {
             rejectedForCapacity.incrementAndGet();
-            throw new ApiException(
-                HttpStatus.TOO_MANY_REQUESTS,
-                "SANDBOX_SESSION_LIMITED",
-                "正在运行的程序太多，请稍后再试"
-            );
+            throw CompilerErrorCode.SANDBOX_SESSION_LIMITED.toException();
         }
         Path workDirectory;
         try {
@@ -84,11 +76,7 @@ public final class CodeSessionService {
                 ? Files.createTempDirectory("structify-sandbox-")
                 : Files.createTempDirectory(parent, "structify-sandbox-");
         } catch (IOException error) {
-            throw new ApiException(
-                HttpStatus.SERVICE_UNAVAILABLE,
-                "SANDBOX_UNAVAILABLE",
-                "运行环境暂时不可用"
-            );
+            throw CompilerErrorCode.SANDBOX_UNAVAILABLE.toException();
         }
 
         String id = UUID.randomUUID().toString();
@@ -106,11 +94,7 @@ public final class CodeSessionService {
                 Thread.currentThread().interrupt();
             }
             log.warn("sandbox could not start a session: {}", error.getMessage());
-            throw new ApiException(
-                HttpStatus.SERVICE_UNAVAILABLE,
-                "SANDBOX_UNAVAILABLE",
-                "运行环境暂时不可用"
-            );
+            throw CompilerErrorCode.SANDBOX_UNAVAILABLE.toException();
         }
         sessions.put(id, session);
         // The execute routes are open to anonymous callers, so a single browser must not be able to
@@ -128,7 +112,7 @@ public final class CodeSessionService {
     public InteractiveCodeSession require(String id) {
         InteractiveCodeSession session = id == null ? null : sessions.get(id);
         if (session == null) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "SANDBOX_SESSION_NOT_FOUND", "运行会话不存在或已结束");
+            throw CompilerErrorCode.SANDBOX_SESSION_NOT_FOUND.toException();
         }
         return session;
     }

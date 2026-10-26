@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+  "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.feng.dsagent.learning.mapper.LearningWorkbenchMapper">
+
+  <select id="findLatestOwnedDsvpScenes"
+          resultType="com.feng.dsagent.learning.mapper.LearningWorkbenchMapper$PersistedSceneCandidate">
+    SELECT a.id AS recordId, a.chapter_id AS chapterId, a.payload_json AS payloadJson, a.updated_at AS updatedAt
+    FROM animation_records a
+    INNER JOIN dsvp_request_snapshots s
+        ON s.animation_record_id = a.id
+        AND s.protocol_version = 'dsvp/1.0'
+    INNER JOIN chapters c
+        ON c.id = a.chapter_id
+        AND c.status = 'PUBLISHED'
+    WHERE a.user_id = #{userId}
+      AND a.chapter_id IS NOT NULL
+    ORDER BY s.created_at DESC, a.updated_at DESC, a.id DESC
+    LIMIT #{limit}
+  </select>
+</mapper>

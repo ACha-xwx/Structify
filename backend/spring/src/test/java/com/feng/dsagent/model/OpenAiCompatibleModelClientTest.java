@@ -3,6 +3,7 @@ package com.feng.dsagent.model;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import com.feng.dsagent.model.config.ModelProperties;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import com.feng.dsagent.model.exception.ModelClientException;
 class OpenAiCompatibleModelClientTest {
 
     private static final String API_KEY = "test-api-key";

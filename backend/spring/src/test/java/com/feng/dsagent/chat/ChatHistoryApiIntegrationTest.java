@@ -9,7 +9,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.chat.domain.ChatAttachment;
+import com.feng.dsagent.chat.domain.ChatCommand;
+import com.feng.dsagent.chat.domain.ChatRetry;
+import com.feng.dsagent.chat.domain.ChatTurn;
+import com.feng.dsagent.chat.service.ChatPersistenceService;
+import com.feng.dsagent.chat.support.PendingChat;
+import com.feng.dsagent.common.exception.BizException;
 import com.feng.dsagent.security.service.JwtTokenService;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -56,7 +62,7 @@ class ChatHistoryApiIntegrationTest {
     private JwtTokenService tokens;
 
     @Autowired
-    private ChatRepository chats;
+    private ChatPersistenceService chats;
 
     @BeforeEach
     void prepareData() {
@@ -176,7 +182,7 @@ class ChatHistoryApiIntegrationTest {
             "越权问题",
             "不应保存的回答",
             List.of()
-        )).isInstanceOfSatisfying(ApiException.class, error -> {
+        )).isInstanceOfSatisfying(BizException.class, error -> {
             org.assertj.core.api.Assertions.assertThat(error.status().value()).isEqualTo(404);
             org.assertj.core.api.Assertions.assertThat(error.code()).isEqualTo("CHAT_SESSION_NOT_FOUND");
         });
@@ -275,7 +281,7 @@ class ChatHistoryApiIntegrationTest {
         assertThat(chats.prepareRetry(OWNER, pending.sessionId(), pending.messageId(), 12)
             .orElseThrow().command().attachments().getFirst().content()).isEqualTo(file.content());
         assertThatThrownBy(() -> chats.hydrateAttachments(OTHER, List.of(metadata)))
-            .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.code()).isEqualTo("CHAT_ATTACHMENT_NOT_FOUND"));
+            .isInstanceOfSatisfying(BizException.class, error -> assertThat(error.code()).isEqualTo("CHAT_ATTACHMENT_NOT_FOUND"));
 
         String storageKey = jdbc.queryForObject("SELECT storage_key FROM chat_attachments WHERE id = ?",
             String.class, attachmentId);
@@ -305,11 +311,11 @@ class ChatHistoryApiIntegrationTest {
         chats.saveExchange(OWNER, "history-api-owned", null, "retry question", "old answer", List.of());
         ChatRetry retry = chats.prepareRetry(OWNER, "history-api-owned", questionId("retry question"), 12).orElseThrow();
         assertThatThrownBy(() -> chats.replaceExchange(OTHER, retry, "foreign answer", List.of(), null))
-            .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.code()).isEqualTo("CHAT_SESSION_NOT_FOUND"));
+            .isInstanceOfSatisfying(BizException.class, error -> assertThat(error.code()).isEqualTo("CHAT_SESSION_NOT_FOUND"));
         chats.saveExchange(OWNER, "history-api-owned", null, "concurrent question", "concurrent answer", List.of());
         List<String> before = contents();
         assertThatThrownBy(() -> chats.replaceExchange(OWNER, retry, "new answer", List.of(), null))
-            .isInstanceOfSatisfying(ApiException.class, error -> assertThat(error.code()).isEqualTo("CHAT_RETRY_CONFLICT"));
+            .isInstanceOfSatisfying(BizException.class, error -> assertThat(error.code()).isEqualTo("CHAT_RETRY_CONFLICT"));
         assertThat(contents()).isEqualTo(before);
     }
 

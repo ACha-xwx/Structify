@@ -1,0 +1,109 @@
+package com.feng.dsagent.classroom.support;
+
+import java.util.Map;
+import java.util.Objects;
+
+import com.feng.dsagent.classroom.exception.IllegalClassroomTransitionException;
+import com.feng.dsagent.classroom.domain.ClassroomAction;
+import com.feng.dsagent.classroom.domain.ClassroomState;
+import com.feng.dsagent.classroom.domain.ClassroomStatus;
+public final class ClassroomStateMachine {
+
+    private static final Map<ClassroomState, ClassroomState> CONTINUE_TRANSITIONS = Map.of(
+            ClassroomState.OPENING, ClassroomState.EXPLAIN,
+            ClassroomState.EXPLAIN, ClassroomState.QUESTION,
+            ClassroomState.QUESTION, ClassroomState.WAITING,
+            ClassroomState.DISCUSS, ClassroomState.BLACKBOARD,
+            ClassroomState.BLACKBOARD, ClassroomState.SUMMARY);
+
+    public ClassroomStatus initialStatus() {
+        return new ClassroomStatus(ClassroomState.OPENING, false);
+    }
+
+    public ClassroomStatus transition(ClassroomStatus current, ClassroomAction action) {
+        Objects.requireNonNull(current, "current status must not be null");
+        Objects.requireNonNull(action, "action must not be null");
+
+        if (current.paused()) {
+            if (action == ClassroomAction.RESUME) {
+                return new ClassroomStatus(current.state(), false);
+            }
+            throw invalid(current, action, "classroom is paused; apply RESUME first");
+        }
+
+        if (action == ClassroomAction.RESUME) {
+            throw invalid(current, action, "classroom is not paused");
+        }
+        if (current.state() == ClassroomState.SUMMARY) {
+            throw invalid(current, action, "classroom has already finished");
+        }
+
+        return switch (action) {
+            case ASK -> current;
+            case HINT -> hint(current);
+            case PAUSE -> new ClassroomStatus(current.state(), true);
+            case FINISH -> new ClassroomStatus(ClassroomState.SUMMARY, false);
+            case ANSWER -> answer(current, true);
+            case SKIP -> skipQuestion(current);
+            case CONTINUE -> continueClassroom(current);
+            case RESUME -> throw new IllegalStateException("RESUME is handled before active transitions");
+        };
+    }
+
+    /**
+     * Asking for a hint is not a move: the question stays open and the cursor does not budge, so a
+     * learner who wanted help still answers the same question afterwards.
+     */
+    public ClassroomStatus hint(ClassroomStatus current) {
+        Objects.requireNonNull(current, "current status must not be null");
+        if (current.state() != ClassroomState.WAITING) {
+            throw invalid(current, ClassroomAction.HINT, "a hint belongs to a waiting question");
+        }
+        return current;
+    }
+
+    /**
+     * Skipping resolves the question without an answer: the learner gets the explanation instead, and
+     * the lesson moves on from the blackboard. Whether the per-lesson budget still allows it is the
+     * timeline's business - the state machine only knows that the question is no longer open.
+     */
+    public ClassroomStatus skipQuestion(ClassroomStatus current) {
+        Objects.requireNonNull(current, "current status must not be null");
+        if (current.state() != ClassroomState.WAITING) {
+            throw invalid(current, ClassroomAction.SKIP, "only a waiting question can be skipped");
+        }
+        return new ClassroomStatus(ClassroomState.BLACKBOARD, false);
+    }
+
+    public ClassroomStatus answer(ClassroomStatus current, boolean requiresDiscussion) {
+        Objects.requireNonNull(current, "current status must not be null");
+        if (current.paused()) {
+            throw invalid(current, ClassroomAction.ANSWER, "classroom is paused; apply RESUME first");
+        }
+        if (current.state() != ClassroomState.WAITING) {
+            throw invalid(current, ClassroomAction.ANSWER, "answers are accepted only in WAITING");
+        }
+        return new ClassroomStatus(
+            requiresDiscussion ? ClassroomState.DISCUSS : ClassroomState.BLACKBOARD,
+            false
+        );
+    }
+
+    private ClassroomStatus continueClassroom(ClassroomStatus current) {
+        ClassroomState next = CONTINUE_TRANSITIONS.get(current.state());
+        if (next != null) {
+            return new ClassroomStatus(next, false);
+        }
+        if (current.state() == ClassroomState.WAITING) {
+            throw invalid(current, ClassroomAction.CONTINUE, "apply ANSWER before continuing");
+        }
+        throw invalid(current, ClassroomAction.CONTINUE, "no continuation is defined");
+    }
+
+    private IllegalClassroomTransitionException invalid(
+            ClassroomStatus current,
+            ClassroomAction action,
+            String reason) {
+        return new IllegalClassroomTransitionException(current.state(), action, reason);
+    }
+}

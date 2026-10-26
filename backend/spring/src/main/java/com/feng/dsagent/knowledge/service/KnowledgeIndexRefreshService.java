@@ -1,8 +1,7 @@
 package com.feng.dsagent.knowledge.service;
 
-import com.feng.dsagent.knowledge.KnowledgeEligibilityChanged;
-import com.feng.dsagent.knowledge.KnowledgeChunkRepository;
-import com.feng.dsagent.knowledge.KnowledgeChunk;
+import com.feng.dsagent.knowledge.domain.KnowledgeEligibilityChanged;
+import com.feng.dsagent.knowledge.entity.KnowledgeChunkEntity;
 
 import com.feng.dsagent.knowledge.service.KnowledgeSearchService;
 
@@ -19,11 +18,11 @@ public class KnowledgeIndexRefreshService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(KnowledgeIndexRefreshService.class);
 
-    private final KnowledgeChunkRepository repository;
+    private final KnowledgeChunkService repository;
     private final KnowledgeSearchService search;
     private final ReentrantLock refreshLock = new ReentrantLock();
 
-    public KnowledgeIndexRefreshService(KnowledgeChunkRepository repository, KnowledgeSearchService search) {
+    public KnowledgeIndexRefreshService(KnowledgeChunkService repository, KnowledgeSearchService search) {
         this.repository = repository;
         this.search = search;
     }
@@ -32,7 +31,7 @@ public class KnowledgeIndexRefreshService {
     public void refreshAfterEligibilityChange(KnowledgeEligibilityChanged ignored) {
         refreshLock.lock();
         try {
-            List<KnowledgeChunk> eligible = repository.findPublished();
+            List<KnowledgeChunkEntity> eligible = repository.findPublished();
             search.replace(eligible);
             LOGGER.info("Refreshed knowledge retrieval index with {} eligible chunks", eligible.size());
         } catch (RuntimeException error) {

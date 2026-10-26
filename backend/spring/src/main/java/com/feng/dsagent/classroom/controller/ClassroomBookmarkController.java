@@ -1,14 +1,10 @@
 package com.feng.dsagent.classroom.controller;
 
-import com.feng.dsagent.classroom.ClassroomBookmark;
-
+import com.feng.dsagent.classroom.dto.BookmarkDTO;
 import com.feng.dsagent.classroom.service.ClassroomBookmarkService;
-
-import com.feng.dsagent.security.AuthenticatedUser;
+import com.feng.dsagent.classroom.vo.ClassroomBookmarkVO;
+import com.feng.dsagent.security.domain.AuthenticatedUser;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.PositiveOrZero;
-import jakarta.validation.constraints.Size;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -34,12 +30,12 @@ public class ClassroomBookmarkController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public ClassroomBookmark save(@AuthenticationPrincipal AuthenticatedUser user, @Valid @RequestBody BookmarkRequest request) {
+    public ClassroomBookmarkVO save(@AuthenticationPrincipal AuthenticatedUser user, @Valid @RequestBody BookmarkDTO request) {
         return bookmarks.save(user.userId(), request.sessionId(), request.stepIndex());
     }
 
     @GetMapping
-    public List<ClassroomBookmark> list(@AuthenticationPrincipal AuthenticatedUser user) {
+    public List<ClassroomBookmarkVO> list(@AuthenticationPrincipal AuthenticatedUser user) {
         return bookmarks.list(user.userId());
     }
 
@@ -47,9 +43,5 @@ public class ClassroomBookmarkController {
     public ResponseEntity<Void> delete(@AuthenticationPrincipal AuthenticatedUser user, @PathVariable long id) {
         bookmarks.delete(user.userId(), id);
         return ResponseEntity.noContent().build();
-    }
-
-    /** What the learner points at: which lesson they were in, and which step of it. */
-    public record BookmarkRequest(@NotBlank @Size(max = 64) String sessionId, @PositiveOrZero int stepIndex) {
     }
 }

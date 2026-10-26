@@ -1,15 +1,22 @@
 package com.feng.dsagent.compiler;
 
-import com.feng.dsagent.compiler.service.CompilerService;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.feng.dsagent.common.ApiException;
+import com.feng.dsagent.common.exception.BizException;
+import com.feng.dsagent.compiler.config.CompilerProperties;
+import com.feng.dsagent.compiler.domain.CompilerExecution;
+import com.feng.dsagent.compiler.dto.RunCodeDTO;
+import com.feng.dsagent.compiler.entity.CodeRunSnapshotEntity;
+import com.feng.dsagent.compiler.mapper.CodeRunMapper;
+import com.feng.dsagent.compiler.service.CompilerService;
+import com.feng.dsagent.compiler.support.CompilerGateway;
+import com.feng.dsagent.compiler.vo.RunCodeVO;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
@@ -23,8 +30,8 @@ class CompilerServiceTest {
             return new CompilerExecution("success", "", "");
         });
 
-        assertThatThrownBy(() -> service.run(new RunCodeRequest("java", "class Main {}", "")))
-            .isInstanceOfSatisfying(ApiException.class, error -> {
+        assertThatThrownBy(() -> service.run(new RunCodeDTO("java", "class Main {}", "")))
+            .isInstanceOfSatisfying(BizException.class, error -> {
                 assertThat(error.status()).isEqualTo(HttpStatus.BAD_REQUEST);
                 assertThat(error.code()).isEqualTo("COMPILER_LANGUAGE_UNSUPPORTED");
             });
@@ -40,12 +47,12 @@ class CompilerServiceTest {
         });
 
         assertApiError(
-            () -> service.run(new RunCodeRequest("c", "123456", "")),
+            () -> service.run(new RunCodeDTO("c", "123456", "")),
             HttpStatus.PAYLOAD_TOO_LARGE,
             "COMPILER_CODE_TOO_LONG"
         );
         assertApiError(
-            () -> service.run(new RunCodeRequest("python", "print", "1234")),
+            () -> service.run(new RunCodeDTO("python", "print", "1234")),
             HttpStatus.PAYLOAD_TOO_LARGE,
             "COMPILER_INPUT_TOO_LONG"
         );
@@ -58,7 +65,7 @@ class CompilerServiceTest {
             new CompilerExecution("runtime_error", "abcdefghijklmnopqrstuvwxyz", "0123456789abcdefghijklmnop")
         );
 
-        RunCodeResponse response = service.run(new RunCodeRequest("python", "print('x')", ""));
+        RunCodeVO response = service.run(new RunCodeDTO("python", "print('x')", ""));
 
         assertThat(response.language()).isEqualTo("python");
         assertThat(response.status()).isEqualTo("runtime_error");
@@ -81,9 +88,40 @@ class CompilerServiceTest {
             3_000
         );
         List<SavedCodeRun> saved = new ArrayList<>();
-        CodeRunRepository runs = (userId, chapterId, request, response) -> {
-            saved.add(new SavedCodeRun(userId, chapterId, request, response));
-            return "run-1";
+        AtomicReference<String> insertedId = new AtomicReference<>();
+        CodeRunMapper runs = new CodeRunMapper() {
+            @Override
+            public int insert(
+                String id,
+                long userId,
+                String chapterId,
+                String language,
+                String sourceCode,
+                String stdinText,
+                String status,
+                String outputText,
+                String errorText,
+                Long durationMs
+            ) {
+                insertedId.set(id);
+                saved.add(new SavedCodeRun(
+                    userId,
+                    chapterId,
+                    new RunCodeDTO(language, sourceCode, stdinText, chapterId),
+                    new RunCodeVO(language, status, outputText, errorText, durationMs == null ? 0L : durationMs, null)
+                ));
+                return 1;
+            }
+
+            @Override
+            public int countPublishedChapter(String chapterId) {
+                return 1;
+            }
+
+            @Override
+            public CodeRunSnapshotEntity selectOwned(String runId, long userId) {
+                return null;
+            }
         };
         CompilerService service = new CompilerService(
             properties,
@@ -91,8 +129,8 @@ class CompilerServiceTest {
             runs
         );
 
-        RunCodeResponse response = service.run(
-            new RunCodeRequest("c", "int main(){}", "", "03-stack-queue"),
+        RunCodeVO response = service.run(
+            new RunCodeDTO("c", "int main(){}", "", "03-stack-queue"),
             7L
         );
 
@@ -102,7 +140,7 @@ class CompilerServiceTest {
             assertThat(run.response().status()).isEqualTo(response.status());
             assertThat(run.response().runId()).isNull();
         });
-        assertThat(response.runId()).isEqualTo("run-1");
+        assertThat(response.runId()).isEqualTo(insertedId.get());
     }
 
     private static CompilerService service(
@@ -127,7 +165,7 @@ class CompilerServiceTest {
 
     private static void assertApiError(Runnable invocation, HttpStatus status, String code) {
         assertThatThrownBy(invocation::run)
-            .isInstanceOfSatisfying(ApiException.class, error -> {
+            .isInstanceOfSatisfying(BizException.class, error -> {
                 assertThat(error.status()).isEqualTo(status);
                 assertThat(error.code()).isEqualTo(code);
             });
@@ -136,8 +174,8 @@ class CompilerServiceTest {
     private record SavedCodeRun(
         long userId,
         String chapterId,
-        RunCodeRequest request,
-        RunCodeResponse response
+        RunCodeDTO request,
+        RunCodeVO response
     ) {
     }
 }
