@@ -90,8 +90,8 @@
            s.chapter_id AS chapterId,
            s.title,
            s.updated_at AS updatedAt,
-           s.pinned,
-           (SELECT COUNT(*) FROM chat_messages m WHERE m.session_id = s.id) AS messageCount
+           (SELECT COUNT(*) FROM chat_messages m WHERE m.session_id = s.id) AS messageCount,
+           s.pinned
     FROM chat_sessions s
     WHERE s.user_id = #{userId}
     ORDER BY s.pinned DESC, s.updated_at DESC, s.id DESC
@@ -103,8 +103,8 @@
            chapter_id AS chapterId,
            title,
            updated_at AS updatedAt,
-           pinned,
-           0 AS messageCount
+           0 AS messageCount,
+           pinned
     FROM chat_sessions
     WHERE id = #{sessionId} AND user_id = #{userId}
   </select>
